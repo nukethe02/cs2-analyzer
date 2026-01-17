@@ -1,3 +1,13 @@
+---
+title: OpenSight CS2 Analytics
+emoji: 🎮
+colorFrom: blue
+colorTo: cyan
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # OpenSight
 
 **Local CS2 Analytics Framework** - Professional-grade metrics without cloud dependencies.
