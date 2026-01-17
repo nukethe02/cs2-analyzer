@@ -1,0 +1,1 @@
+"""OpenSight test suite."""
