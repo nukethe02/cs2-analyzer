@@ -153,12 +153,37 @@ class DemoParser:
 
         # Extract header info
         header = self._parser.parse_header()
-        map_name = header.get("map_name", "unknown")
-        tick_rate = int(header.get("tickrate", 64))
+        # Header might be a dict or have different structure
+        if isinstance(header, dict):
+            map_name = header.get("map_name", "unknown")
+            tick_rate = int(header.get("tickrate", 64))
+        else:
+            # Try to access as attributes or default
+            map_name = getattr(header, "map_name", "unknown") if header else "unknown"
+            tick_rate = int(getattr(header, "tickrate", 64)) if header else 64
 
-        # Parse player info
+        # Parse player info - might be DataFrame or list
         player_info = self._parser.parse_player_info()
-        player_names = {p["steamid"]: p["name"] for p in player_info}
+        player_names = {}
+        if isinstance(player_info, pd.DataFrame):
+            for _, row in player_info.iterrows():
+                sid = row.get("steamid") or row.get("steam_id") or 0
+                name = row.get("name", "Unknown")
+                if sid:
+                    player_names[int(sid)] = str(name)
+        elif isinstance(player_info, list):
+            for p in player_info:
+                if isinstance(p, dict):
+                    sid = p.get("steamid") or p.get("steam_id") or 0
+                    name = p.get("name", "Unknown")
+                    if sid:
+                        player_names[int(sid)] = str(name)
+        elif hasattr(player_info, 'iterrows'):
+            for _, row in player_info.iterrows():
+                sid = row.get("steamid") or row.get("steam_id") or 0
+                name = row.get("name", "Unknown")
+                if sid:
+                    player_names[int(sid)] = str(name)
 
         # Parse tick-level data
         # Request specific fields for efficiency
@@ -217,6 +242,11 @@ class DemoParser:
         # Parse game events
         try:
             events = self._parser.parse_events(["player_death", "player_hurt", "weapon_fire"])
+            # Events might be a dict of DataFrames or dict of lists
+            if isinstance(events, dict):
+                for key in events:
+                    if isinstance(events[key], pd.DataFrame):
+                        events[key] = events[key].to_dict('records')
         except Exception as e:
             logger.warning(f"Failed to parse events: {e}")
             events = {}
@@ -231,13 +261,22 @@ class DemoParser:
         shots_fired = self._process_shots(events.get("weapon_fire", []))
 
         # Parse round events
+        round_starts = []
+        round_ends = []
         try:
             round_events = self._parser.parse_events(["round_start", "round_end"])
-            round_starts = [e["tick"] for e in round_events.get("round_start", [])]
-            round_ends = [e["tick"] for e in round_events.get("round_end", [])]
-        except Exception:
-            round_starts = []
-            round_ends = []
+            if isinstance(round_events, dict):
+                rs = round_events.get("round_start", [])
+                re = round_events.get("round_end", [])
+                # Convert DataFrames if needed
+                if isinstance(rs, pd.DataFrame):
+                    rs = rs.to_dict('records')
+                if isinstance(re, pd.DataFrame):
+                    re = re.to_dict('records')
+                round_starts = [e.get("tick", 0) for e in rs if isinstance(e, dict)]
+                round_ends = [e.get("tick", 0) for e in re if isinstance(e, dict)]
+        except Exception as e:
+            logger.warning(f"Failed to parse round events: {e}")
 
         # Calculate duration
         max_tick = int(ticks_df["tick"].max()) if not ticks_df.empty else 0
