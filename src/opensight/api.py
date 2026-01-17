@@ -9,7 +9,8 @@ from tempfile import NamedTemporaryFile
 from typing import Optional
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from opensight import __version__, decode_sharecode
@@ -38,10 +39,17 @@ class HealthResponse(BaseModel):
     version: str
 
 
-@app.get("/", response_model=HealthResponse)
+# Get the static files directory
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    """Health check endpoint."""
-    return {"status": "ok", "version": __version__}
+    """Serve the main web interface."""
+    html_file = STATIC_DIR / "index.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(), status_code=200)
+    return HTMLResponse(content="<h1>OpenSight</h1><p>Web interface not found.</p>", status_code=200)
 
 
 @app.get("/health", response_model=HealthResponse)
