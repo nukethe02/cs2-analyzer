@@ -1,0 +1,20 @@
+# OpenSight - CS2 Analytics Framework
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+demoparser2>=0.9.0
+awpy>=2.0.0
+watchdog>=3.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+rich>=13.0.0
+typer>=0.9.0
+
+# Web application
+flask>=3.0.0
+werkzeug>=3.0.0
+gunicorn>=21.0.0
+
+# Export formats
+openpyxl>=3.1.0
+pyyaml>=6.0

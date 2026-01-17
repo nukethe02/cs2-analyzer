@@ -33,12 +33,17 @@ dependencies = [
     "pandas>=2.0.0",
     "rich>=13.0.0",
     "typer>=0.9.0",
+    "flask>=3.0.0",
+    "werkzeug>=3.0.0",
 ]
 
 [project.optional-dependencies]
 # Export format support
 excel = ["openpyxl>=3.1.0"]
 yaml = ["pyyaml>=6.0"]
+
+# Web server for production
+web = ["gunicorn>=21.0.0"]
 
 # All export formats
 export = [
@@ -56,12 +61,14 @@ dev = [
     "bandit>=1.7.0",
     "openpyxl>=3.1.0",
     "pyyaml>=6.0",
+    "gunicorn>=21.0.0",
 ]
 
 # Full installation with all features
 all = [
     "openpyxl>=3.1.0",
     "pyyaml>=6.0",
+    "gunicorn>=21.0.0",
 ]
 
 [project.scripts]
