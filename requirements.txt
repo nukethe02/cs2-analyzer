@@ -6,3 +6,9 @@ numpy>=1.24.0
 pandas>=2.0.0
 rich>=13.0.0
 typer>=0.9.0
+
+# Web API Dependencies
+fastapi>=0.100.0
+uvicorn>=0.23.0
+gunicorn>=21.0.0
+python-multipart>=0.0.6
