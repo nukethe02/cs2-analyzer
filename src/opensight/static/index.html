@@ -271,6 +271,17 @@
     </div>
 
     <script>
+        // Helper to safely parse JSON response
+        async function parseResponse(response) {
+            const text = await response.text();
+            if (!text) return null;
+            try {
+                return JSON.parse(text);
+            } catch {
+                return null;
+            }
+        }
+
         // Decode Share Code
         document.getElementById('decode-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -287,12 +298,16 @@
                     body: JSON.stringify({ code })
                 });
 
+                const data = await parseResponse(response);
+
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Failed to decode');
+                    throw new Error(data?.detail || `Server error: ${response.status}`);
                 }
 
-                const data = await response.json();
+                if (!data) {
+                    throw new Error('Empty response from server');
+                }
+
                 resultsDiv.innerHTML = `
                     <h3>Decoded Information</h3>
                     <div class="result-item">
@@ -334,12 +349,15 @@
                     body: formData
                 });
 
+                const data = await parseResponse(response);
+
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Analysis failed');
+                    throw new Error(data?.detail || `Server error: ${response.status}`);
                 }
 
-                const data = await response.json();
+                if (!data) {
+                    throw new Error('Empty response from server');
+                }
 
                 let html = `
                     <h3>Demo Analysis</h3>
