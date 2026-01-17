@@ -10,12 +10,10 @@ from typing import Optional
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from opensight import __version__, decode_sharecode
-from opensight.parser import DemoParser
-from opensight.metrics import calculate_engagement_metrics, calculate_ttd, calculate_crosshair_placement
+# Version without importing heavy dependencies
+__version__ = "0.1.0"
 
 app = FastAPI(
     title="OpenSight API",
@@ -62,6 +60,8 @@ async def health():
 async def decode_share_code(request: ShareCodeRequest):
     """Decode a CS2 share code."""
     try:
+        # Lazy import
+        from opensight.sharecode import decode_sharecode
         info = decode_sharecode(request.code)
         return {
             "match_id": info.match_id,
@@ -70,6 +70,8 @@ async def decode_share_code(request: ShareCodeRequest):
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Module not available: {str(e)}")
 
 
 @app.post("/analyze")
@@ -85,7 +87,18 @@ async def analyze_demo(
     if not file.filename.endswith(".dem"):
         raise HTTPException(status_code=400, detail="File must be a .dem file")
 
+    # Lazy imports for heavy dependencies
+    try:
+        from opensight.parser import DemoParser
+        from opensight.metrics import calculate_engagement_metrics, calculate_ttd, calculate_crosshair_placement
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Demo analysis not available on this server. Missing dependency: {str(e)}"
+        )
+
     # Save uploaded file temporarily
+    tmp_path = None
     try:
         with NamedTemporaryFile(suffix=".dem", delete=False) as tmp:
             content = await file.read()
@@ -158,11 +171,14 @@ async def analyze_demo(
 
         return JSONResponse(content=result)
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
     finally:
         # Clean up temp file
-        try:
-            tmp_path.unlink()
-        except:
-            pass
+        if tmp_path:
+            try:
+                tmp_path.unlink()
+            except:
+                pass
