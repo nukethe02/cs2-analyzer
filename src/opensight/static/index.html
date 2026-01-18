@@ -20,7 +20,7 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1100px;
             margin: 0 auto;
         }
 
@@ -38,6 +38,16 @@
         .subtitle {
             color: #888;
             font-size: 1.1rem;
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: rgba(0, 212, 255, 0.2);
+            color: #00d4ff;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-top: 10px;
         }
 
         .card {
@@ -133,6 +143,7 @@
         .results h3 {
             color: #00d4ff;
             margin-bottom: 15px;
+            font-size: 1.1rem;
         }
 
         .result-item {
@@ -155,42 +166,191 @@
             font-weight: 500;
         }
 
-        .player-card {
-            background: rgba(255, 255, 255, 0.03);
+        /* Match Info Grid */
+        .match-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .match-stat {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.2);
             border-radius: 8px;
             padding: 15px;
-            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .match-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #00d4ff;
+        }
+
+        .match-stat-label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        /* Player Cards */
+        .player-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .player-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .player-name {
             font-weight: 600;
+            font-size: 1.2rem;
+            color: #fff;
+        }
+
+        .player-team {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .team-ct {
+            background: rgba(93, 121, 174, 0.3);
+            color: #5d79ae;
+        }
+
+        .team-t {
+            background: rgba(222, 155, 53, 0.3);
+            color: #de9b35;
+        }
+
+        .team-unknown {
+            background: rgba(136, 136, 136, 0.3);
+            color: #888;
+        }
+
+        /* Stats Sections */
+        .stats-section {
+            margin-bottom: 15px;
+        }
+
+        .stats-section-title {
+            font-size: 0.85rem;
             color: #00d4ff;
             margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .player-stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
             gap: 10px;
         }
 
         .stat {
             text-align: center;
-            padding: 10px;
+            padding: 12px 8px;
             background: rgba(0, 0, 0, 0.2);
-            border-radius: 6px;
+            border-radius: 8px;
         }
 
         .stat-value {
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             font-weight: 600;
             color: #fff;
         }
 
         .stat-label {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: #888;
             margin-top: 4px;
+            text-transform: uppercase;
+        }
+
+        /* Advanced Stats */
+        .advanced-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .stat.highlight {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+        }
+
+        .stat.highlight .stat-value {
+            color: #00d4ff;
+        }
+
+        .stat.good .stat-value {
+            color: #4ade80;
+        }
+
+        .stat.warning .stat-value {
+            color: #fbbf24;
+        }
+
+        /* Weapon Stats */
+        .weapon-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .weapon-tag {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 0.8rem;
+            color: #ccc;
+        }
+
+        .weapon-tag .weapon-kills {
+            color: #00d4ff;
+            font-weight: 600;
+            margin-left: 4px;
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: relative;
+            cursor: help;
+        }
+
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 12px;
+            background: #1a1a2e;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: #ccc;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 100;
+        }
+
+        .tooltip:hover::after {
+            opacity: 1;
         }
 
         .error {
@@ -204,19 +364,22 @@
 
         .loading {
             text-align: center;
-            padding: 20px;
+            padding: 40px;
             color: #888;
         }
 
-        .loading::after {
-            content: '';
-            animation: dots 1.5s infinite;
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0, 212, 255, 0.2);
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
         }
 
-        @keyframes dots {
-            0%, 20% { content: '.'; }
-            40% { content: '..'; }
-            60%, 100% { content: '...'; }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         footer {
@@ -230,6 +393,32 @@
             color: #00d4ff;
             text-decoration: none;
         }
+
+        /* Info boxes */
+        .info-box {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        .info-box strong {
+            color: #00d4ff;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .player-stats, .advanced-stats {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .match-info-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
     </style>
 </head>
 <body>
@@ -237,11 +426,15 @@
         <header>
             <h1>OpenSight</h1>
             <p class="subtitle">Local CS2 Analytics - Professional metrics, zero cost</p>
+            <span class="version-badge">v0.2.0 - TTD & Crosshair Placement</span>
         </header>
 
         <!-- Share Code Decoder -->
         <div class="card">
             <h2>Decode Share Code</h2>
+            <div class="info-box">
+                Enter your CS2 match share code to extract match metadata. Find share codes in-game via the Watch tab or Steam's Personal Game Data.
+            </div>
             <form id="decode-form">
                 <div class="form-group">
                     <label for="sharecode">CS2 Share Code</label>
@@ -255,18 +448,21 @@
         <!-- Demo Analyzer -->
         <div class="card">
             <h2>Analyze Demo File</h2>
+            <div class="info-box">
+                Upload a CS2 demo file (.dem) to get comprehensive analytics including <strong>Time to Damage (TTD)</strong> and <strong>Crosshair Placement</strong> metrics. Analysis may take 30-60 seconds for full matches.
+            </div>
             <form id="analyze-form">
                 <div class="form-group">
                     <label for="demofile">Upload .dem File</label>
                     <input type="file" id="demofile" accept=".dem" required>
                 </div>
-                <button type="submit">Analyze</button>
+                <button type="submit">Analyze Demo</button>
             </form>
             <div id="analyze-results" class="results"></div>
         </div>
 
         <footer>
-            <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer">OpenSight</a></p>
+            <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer">OpenSight</a> | <a href="/about">API Docs</a></p>
         </footer>
     </div>
 
@@ -282,13 +478,48 @@
             }
         }
 
+        // Format milliseconds nicely
+        function formatMs(ms) {
+            if (ms === null || ms === undefined) return '-';
+            return Math.round(ms) + 'ms';
+        }
+
+        // Format degrees
+        function formatDeg(deg) {
+            if (deg === null || deg === undefined) return '-';
+            return deg.toFixed(1) + '°';
+        }
+
+        // Get TTD rating class
+        function getTTDClass(ms) {
+            if (ms === null || ms === undefined) return '';
+            if (ms < 300) return 'good';
+            if (ms > 500) return 'warning';
+            return '';
+        }
+
+        // Get CP rating class
+        function getCPClass(deg) {
+            if (deg === null || deg === undefined) return '';
+            if (deg < 10) return 'good';
+            if (deg > 25) return 'warning';
+            return '';
+        }
+
+        // Get team class
+        function getTeamClass(team) {
+            if (team === 'CT') return 'team-ct';
+            if (team === 'T') return 'team-t';
+            return 'team-unknown';
+        }
+
         // Decode Share Code
         document.getElementById('decode-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const code = document.getElementById('sharecode').value.trim();
             const resultsDiv = document.getElementById('decode-results');
 
-            resultsDiv.innerHTML = '<div class="loading">Decoding</div>';
+            resultsDiv.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Decoding...</div>';
             resultsDiv.classList.add('show');
 
             try {
@@ -337,7 +568,16 @@
 
             if (!file) return;
 
-            resultsDiv.innerHTML = '<div class="loading">Analyzing demo (this may take a while)</div>';
+            const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+            resultsDiv.innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>Analyzing ${file.name} (${fileSizeMB} MB)</div>
+                    <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
+                        Parsing events and computing TTD/CP metrics...
+                    </div>
+                </div>
+            `;
             resultsDiv.classList.add('show');
 
             const formData = new FormData();
@@ -359,68 +599,129 @@
                     throw new Error('Empty response from server');
                 }
 
+                // Build match info
                 let html = `
-                    <h3>Demo Analysis</h3>
-                    <div class="result-item">
-                        <span class="result-label">Map</span>
-                        <span class="result-value">${data.demo_info.map}</span>
+                    <h3>Match Overview</h3>
+                    <div class="match-info-grid">
+                        <div class="match-stat">
+                            <div class="match-stat-value">${data.demo_info.map || 'Unknown'}</div>
+                            <div class="match-stat-label">Map</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${data.demo_info.rounds || 'N/A'}</div>
+                            <div class="match-stat-label">Rounds</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${Math.round(data.demo_info.duration_minutes || 0)}m</div>
+                            <div class="match-stat-label">Duration</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${data.demo_info.player_count || 0}</div>
+                            <div class="match-stat-label">Players</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${data.demo_info.total_kills || 0}</div>
+                            <div class="match-stat-label">Total Kills</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${data.demo_info.tick_rate || 64}</div>
+                            <div class="match-stat-label">Tick Rate</div>
+                        </div>
                     </div>
-                    <div class="result-item">
-                        <span class="result-label">Duration</span>
-                        <span class="result-value">${data.demo_info.duration_minutes || Math.round(data.demo_info.duration_seconds / 60)} minutes</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Rounds</span>
-                        <span class="result-value">${data.demo_info.rounds || 'N/A'}</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Players</span>
-                        <span class="result-value">${data.demo_info.player_count}</span>
-                    </div>
-                    <h3 style="margin-top: 20px;">Player Stats</h3>
+                    <h3>Player Performance</h3>
                 `;
 
                 // Sort players by kills
-                const players = Object.values(data.players).sort((a, b) =>
-                    (b.stats?.kills || 0) - (a.stats?.kills || 0)
-                );
+                const players = Object.entries(data.players)
+                    .map(([id, p]) => ({ id, ...p }))
+                    .sort((a, b) => (b.stats?.kills || 0) - (a.stats?.kills || 0));
 
                 for (const player of players) {
+                    const stats = player.stats || {};
+                    const advanced = player.advanced || {};
+                    const weapons = player.weapons || [];
+
                     html += `
                         <div class="player-card">
-                            <div class="player-name">${player.name} (${player.team})</div>
-                            <div class="player-stats">
-                                ${player.stats ? `
+                            <div class="player-header">
+                                <span class="player-name">${player.name || 'Unknown'}</span>
+                                <span class="player-team ${getTeamClass(player.team)}">${player.team || 'Unknown'}</span>
+                            </div>
+
+                            <div class="stats-section">
+                                <div class="stats-section-title">Combat Stats</div>
+                                <div class="player-stats">
                                     <div class="stat">
-                                        <div class="stat-value">${player.stats.kills}</div>
+                                        <div class="stat-value">${stats.kills || 0}</div>
                                         <div class="stat-label">Kills</div>
                                     </div>
                                     <div class="stat">
-                                        <div class="stat-value">${player.stats.deaths}</div>
+                                        <div class="stat-value">${stats.deaths || 0}</div>
                                         <div class="stat-label">Deaths</div>
                                     </div>
                                     <div class="stat">
-                                        <div class="stat-value">${player.stats.assists || 0}</div>
+                                        <div class="stat-value">${stats.assists || 0}</div>
                                         <div class="stat-label">Assists</div>
                                     </div>
                                     <div class="stat">
-                                        <div class="stat-value">${player.stats.kd_ratio || (player.stats.deaths > 0 ? (player.stats.kills / player.stats.deaths).toFixed(2) : player.stats.kills)}</div>
+                                        <div class="stat-value">${stats.kd_ratio || '-'}</div>
                                         <div class="stat-label">K/D</div>
                                     </div>
                                     <div class="stat">
-                                        <div class="stat-value">${player.stats.adr || player.stats.damage_per_round || 0}</div>
+                                        <div class="stat-value">${stats.adr || 0}</div>
                                         <div class="stat-label">ADR</div>
                                     </div>
                                     <div class="stat">
-                                        <div class="stat-value">${player.stats.headshot_pct || 0}%</div>
+                                        <div class="stat-value">${stats.headshot_pct || 0}%</div>
                                         <div class="stat-label">HS%</div>
                                     </div>
                                     <div class="stat">
-                                        <div class="stat-value">${player.stats.total_damage || 0}</div>
+                                        <div class="stat-value">${stats.total_damage || 0}</div>
                                         <div class="stat-label">Damage</div>
                                     </div>
-                                ` : '<div class="stat"><div class="stat-value">-</div><div class="stat-label">No data</div></div>'}
+                                </div>
                             </div>
+
+                            <div class="stats-section">
+                                <div class="stats-section-title">Advanced Metrics</div>
+                                <div class="advanced-stats">
+                                    <div class="stat highlight tooltip ${getTTDClass(advanced.ttd_median_ms)}" data-tooltip="Time from engagement start to damage. Lower = faster reactions.">
+                                        <div class="stat-value">${formatMs(advanced.ttd_median_ms)}</div>
+                                        <div class="stat-label">TTD (Median)</div>
+                                    </div>
+                                    <div class="stat tooltip" data-tooltip="Average time to damage">
+                                        <div class="stat-value">${formatMs(advanced.ttd_mean_ms)}</div>
+                                        <div class="stat-label">TTD (Mean)</div>
+                                    </div>
+                                    <div class="stat tooltip" data-tooltip="Fastest reaction time">
+                                        <div class="stat-value">${formatMs(advanced.ttd_min_ms)}</div>
+                                        <div class="stat-label">TTD (Best)</div>
+                                    </div>
+                                    <div class="stat highlight tooltip ${getCPClass(advanced.cp_median_error_deg)}" data-tooltip="Degrees off-target when engaging. Lower = better crosshair placement.">
+                                        <div class="stat-value">${formatDeg(advanced.cp_median_error_deg)}</div>
+                                        <div class="stat-label">CP Error</div>
+                                    </div>
+                                    <div class="stat tooltip" data-tooltip="Vertical aim tendency. Negative = aiming too low.">
+                                        <div class="stat-value">${formatDeg(advanced.cp_pitch_bias_deg)}</div>
+                                        <div class="stat-label">Pitch Bias</div>
+                                    </div>
+                                    <div class="stat tooltip" data-tooltip="Kills with instant damage (prediction/prefire)">
+                                        <div class="stat-value">${advanced.prefire_kills || 0}</div>
+                                        <div class="stat-label">Prefires</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            ${weapons.length > 0 ? `
+                                <div class="stats-section">
+                                    <div class="stats-section-title">Weapons Used</div>
+                                    <div class="weapon-stats">
+                                        ${weapons.map(w => `
+                                            <span class="weapon-tag">${w.weapon}<span class="weapon-kills">${w.kills}</span></span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
                         </div>
                     `;
                 }
