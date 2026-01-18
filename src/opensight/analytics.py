@@ -2,7 +2,7 @@
 Advanced Analytics for CS2 Demo Analysis
 
 Implements Time to Damage (TTD) and Crosshair Placement (CP) metrics.
-Based on professional esports analytics methodology.
+Uses awpy's clean data structures for reliable analysis.
 """
 
 from dataclasses import dataclass
@@ -13,21 +13,9 @@ import math
 import numpy as np
 import pandas as pd
 
-from opensight.parser import DemoData, KillEvent, DamageEvent, safe_int, safe_str, safe_bool
+from opensight.parser import DemoData, KillEvent, DamageEvent, safe_int, safe_str, safe_float
 
 logger = logging.getLogger(__name__)
-
-
-def safe_float(value, default: float = 0.0) -> float:
-    """Safely convert a value to float."""
-    if value is None:
-        return default
-    try:
-        if pd.isna(value):
-            return default
-        return float(value)
-    except (ValueError, TypeError):
-        return default
 
 
 @dataclass
@@ -42,6 +30,7 @@ class TTDResult:
     weapon: str
     headshot: bool
     is_prefire: bool  # TTD <= 0 indicates prediction/prefire
+    round_num: int = 0
 
 
 @dataclass
@@ -50,9 +39,10 @@ class CrosshairPlacementResult:
     tick: int
     attacker_steamid: int
     victim_steamid: int
-    angular_error_deg: float  # Degrees off-target at moment of engagement
-    pitch_error_deg: float  # Vertical error (negative = aiming too low)
-    yaw_error_deg: float  # Horizontal error
+    angular_error_deg: float
+    pitch_error_deg: float
+    yaw_error_deg: float
+    round_num: int = 0
 
 
 @dataclass
@@ -60,7 +50,7 @@ class PlayerAnalytics:
     """Complete analytics for a player."""
     steam_id: int
     name: str
-    team: str
+    team: str  # "CT", "T", or "Unknown"
 
     # Basic stats
     kills: int
@@ -81,7 +71,7 @@ class PlayerAnalytics:
     # Crosshair Placement Stats
     cp_median_error_deg: Optional[float]
     cp_mean_error_deg: Optional[float]
-    cp_pitch_bias_deg: Optional[float]  # Negative = tends to aim low
+    cp_pitch_bias_deg: Optional[float]
 
     # Weapon breakdown
     weapon_kills: dict[str, int]
@@ -94,13 +84,12 @@ class PlayerAnalytics:
 class DemoAnalyzer:
     """Analyzer for computing advanced metrics from parsed demo data."""
 
-    # Constants
-    TICK_RATE = 64  # CS2 tick rate
+    TICK_RATE = 64
     MS_PER_TICK = 1000 / TICK_RATE  # ~15.625ms
 
     # TTD filtering thresholds
-    TTD_MIN_MS = 0  # Below this is prefire
-    TTD_MAX_MS = 1500  # Above this is likely not a reaction shot
+    TTD_MIN_MS = 0
+    TTD_MAX_MS = 1500
 
     def __init__(self, demo_data: DemoData):
         self.data = demo_data
@@ -114,9 +103,8 @@ class DemoAnalyzer:
         # Compute TTD for all kills
         self._compute_ttd()
 
-        # Compute crosshair placement (if tick data available)
-        if self.data.ticks_df is not None:
-            self._compute_crosshair_placement()
+        # Compute crosshair placement (uses position data from events or ticks)
+        self._compute_crosshair_placement()
 
         # Build per-player analytics
         player_analytics = self._build_player_analytics()
@@ -125,13 +113,7 @@ class DemoAnalyzer:
         return player_analytics
 
     def _compute_ttd(self) -> None:
-        """
-        Compute Time to Damage for each kill.
-
-        TTD = Time from first visibility to first damage.
-        Since we don't have full visibility raycasting, we approximate
-        by using the time from first damage to kill.
-        """
+        """Compute Time to Damage for each kill."""
         if self.data.damages_df.empty or self.data.kills_df.empty:
             logger.warning("No damage or kill data for TTD computation")
             return
@@ -139,33 +121,28 @@ class DemoAnalyzer:
         kills_df = self.data.kills_df
         damages_df = self.data.damages_df
 
-        # Find column names
-        def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
-            for col in options:
-                if col in df.columns:
-                    return col
-            return None
+        # awpy uses consistent column names
+        kill_att = "attacker_steamid" if "attacker_steamid" in kills_df.columns else None
+        kill_vic = "victim_steamid" if "victim_steamid" in kills_df.columns else None
+        kill_tick = "tick" if "tick" in kills_df.columns else None
+        kill_weapon = "weapon" if "weapon" in kills_df.columns else None
+        kill_hs = "headshot" if "headshot" in kills_df.columns else None
+        kill_round = "round_num" if "round_num" in kills_df.columns else None
 
-        kill_att = find_col(kills_df, ["attacker_steamid", "attacker_steam_id"])
-        kill_vic = find_col(kills_df, ["user_steamid", "victim_steamid"])
-        kill_tick = find_col(kills_df, ["tick"])
-        kill_weapon = find_col(kills_df, ["weapon"])
-        kill_hs = find_col(kills_df, ["headshot"])
-
-        dmg_att = find_col(damages_df, ["attacker_steamid", "attacker_steam_id"])
-        dmg_vic = find_col(damages_df, ["user_steamid", "victim_steamid"])
-        dmg_tick = find_col(damages_df, ["tick"])
+        dmg_att = "attacker_steamid" if "attacker_steamid" in damages_df.columns else None
+        dmg_vic = "victim_steamid" if "victim_steamid" in damages_df.columns else None
+        dmg_tick = "tick" if "tick" in damages_df.columns else None
 
         if not all([kill_att, kill_vic, kill_tick, dmg_att, dmg_vic, dmg_tick]):
             logger.warning("Missing columns for TTD computation")
             return
 
-        # For each kill, find the first damage event from that attacker to that victim
         for _, kill_row in kills_df.iterrows():
             try:
                 att_id = safe_int(kill_row[kill_att])
                 vic_id = safe_int(kill_row[kill_vic])
                 kill_tick_val = safe_int(kill_row[kill_tick])
+                round_num = safe_int(kill_row.get(kill_round, 0)) if kill_round else 0
 
                 if not att_id or not vic_id:
                     continue
@@ -181,11 +158,7 @@ class DemoAnalyzer:
                 if engagement_damages.empty:
                     continue
 
-                # First damage tick in this engagement
                 first_dmg_tick = safe_int(engagement_damages.iloc[0][dmg_tick])
-
-                # Calculate TTD (using first damage as proxy for "spotted")
-                # This is a simplified approximation
                 ttd_ticks = kill_tick_val - first_dmg_tick
                 ttd_ms = ttd_ticks * self.MS_PER_TICK
 
@@ -197,8 +170,9 @@ class DemoAnalyzer:
                     attacker_steamid=att_id,
                     victim_steamid=vic_id,
                     weapon=safe_str(kill_row.get(kill_weapon)) if kill_weapon else "",
-                    headshot=safe_bool(kill_row.get(kill_hs)) if kill_hs else False,
+                    headshot=bool(kill_row.get(kill_hs, False)) if kill_hs else False,
                     is_prefire=ttd_ms <= self.TTD_MIN_MS,
+                    round_num=round_num,
                 )
                 self._ttd_results.append(result)
             except Exception as e:
@@ -208,140 +182,111 @@ class DemoAnalyzer:
         logger.info(f"Computed TTD for {len(self._ttd_results)} engagements")
 
     def _compute_crosshair_placement(self) -> None:
-        """
-        Compute crosshair placement error for each kill.
-
-        Angular error = angle between player's view vector and ideal vector to target.
-        Uses position/angle data embedded in kills_df (via demoparser2 player= param).
-        """
+        """Compute crosshair placement error for each kill."""
         if self.data.kills_df.empty:
             return
 
         kills_df = self.data.kills_df
 
-        # Find required columns - now embedded in kills_df from parse_event(player=...)
-        def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
-            for col in options:
-                if col in df.columns:
-                    return col
-            return None
+        # Check for position data in kills_df (awpy may include it)
+        has_positions = all(col in kills_df.columns for col in [
+            "attacker_X", "attacker_Y", "attacker_Z",
+            "victim_X", "victim_Y", "victim_Z"
+        ])
 
-        # Kill columns
-        kill_att = find_col(kills_df, ["attacker_steamid", "attacker_steam_id"])
-        kill_vic = find_col(kills_df, ["user_steamid", "victim_steamid"])
-        kill_tick = find_col(kills_df, ["tick"])
+        # Check for angle data
+        has_angles = all(col in kills_df.columns for col in ["attacker_pitch", "attacker_yaw"])
 
-        # Position/angle columns from player= param (prefixed with attacker_/user_)
-        att_x = find_col(kills_df, ["attacker_X", "attacker_x"])
-        att_y = find_col(kills_df, ["attacker_Y", "attacker_y"])
-        att_z = find_col(kills_df, ["attacker_Z", "attacker_z"])
-        att_pitch = find_col(kills_df, ["attacker_pitch"])
-        att_yaw = find_col(kills_df, ["attacker_yaw"])
-        vic_x = find_col(kills_df, ["user_X", "user_x"])
-        vic_y = find_col(kills_df, ["user_Y", "user_y"])
-        vic_z = find_col(kills_df, ["user_Z", "user_z"])
+        if has_positions and has_angles:
+            self._compute_cp_from_events()
+        elif self.data.ticks_df is not None and not self.data.ticks_df.empty:
+            self._compute_cp_from_ticks()
+        else:
+            logger.info("No position/angle data available for CP computation")
 
-        # Check if we have position data in kills_df (from optimized parsing)
-        has_positions = all([att_x, att_y, att_z, att_pitch, att_yaw, vic_x, vic_y, vic_z])
+    def _compute_cp_from_events(self) -> None:
+        """Compute CP from position data embedded in kill events."""
+        kills_df = self.data.kills_df
+        logger.info("Computing CP from event-embedded positions")
 
-        if not has_positions:
-            # Fallback to tick-based if position data not in events
-            if self.data.ticks_df is not None and not self.data.ticks_df.empty:
-                self._compute_crosshair_placement_from_ticks()
-            else:
-                logger.warning("No position data available for crosshair placement")
-            return
-
-        logger.info("Computing CP from event-embedded positions (fast path)")
-
-        for _, kill_row in kills_df.iterrows():
+        for _, row in kills_df.iterrows():
             try:
-                att_id = safe_int(kill_row.get(kill_att))
-                vic_id = safe_int(kill_row.get(kill_vic))
-                kill_tick_val = safe_int(kill_row.get(kill_tick))
+                att_id = safe_int(row.get("attacker_steamid"))
+                vic_id = safe_int(row.get("victim_steamid"))
+                tick = safe_int(row.get("tick"))
+                round_num = safe_int(row.get("round_num", 0))
 
                 if not att_id or not vic_id:
                     continue
 
-                # Get positions directly from kill event
                 att_pos = np.array([
-                    safe_float(kill_row.get(att_x)),
-                    safe_float(kill_row.get(att_y)),
-                    safe_float(kill_row.get(att_z)) + 64  # Eye height offset
+                    safe_float(row.get("attacker_X")),
+                    safe_float(row.get("attacker_Y")),
+                    safe_float(row.get("attacker_Z")) + 64
                 ])
-                att_pitch_val = safe_float(kill_row.get(att_pitch))
-                att_yaw_val = safe_float(kill_row.get(att_yaw))
+                att_pitch = safe_float(row.get("attacker_pitch"))
+                att_yaw = safe_float(row.get("attacker_yaw"))
 
                 vic_pos = np.array([
-                    safe_float(kill_row.get(vic_x)),
-                    safe_float(kill_row.get(vic_y)),
-                    safe_float(kill_row.get(vic_z)) + 64  # Head height
+                    safe_float(row.get("victim_X")),
+                    safe_float(row.get("victim_Y")),
+                    safe_float(row.get("victim_Z")) + 64
                 ])
 
-                # Skip if positions are zero (data not available)
                 if np.allclose(att_pos[:2], 0) or np.allclose(vic_pos[:2], 0):
                     continue
 
-                # Calculate angular error
                 angular_error, pitch_error, yaw_error = self._calculate_angular_error(
-                    att_pos, att_pitch_val, att_yaw_val, vic_pos
+                    att_pos, att_pitch, att_yaw, vic_pos
                 )
 
                 result = CrosshairPlacementResult(
-                    tick=kill_tick_val,
+                    tick=tick,
                     attacker_steamid=att_id,
                     victim_steamid=vic_id,
                     angular_error_deg=angular_error,
                     pitch_error_deg=pitch_error,
                     yaw_error_deg=yaw_error,
+                    round_num=round_num,
                 )
                 self._cp_results.append(result)
             except Exception as e:
                 logger.debug(f"Error processing kill for CP: {e}")
                 continue
 
-        logger.info(f"Computed crosshair placement for {len(self._cp_results)} kills")
+        logger.info(f"Computed CP for {len(self._cp_results)} kills")
 
-    def _compute_crosshair_placement_from_ticks(self) -> None:
-        """Fallback: compute CP from tick data (slower)."""
+    def _compute_cp_from_ticks(self) -> None:
+        """Compute CP from tick-level data (fallback)."""
         ticks_df = self.data.ticks_df
         kills_df = self.data.kills_df
+        logger.info("Computing CP from tick data (slower)")
 
-        def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
-            for col in options:
-                if col in df.columns:
-                    return col
-            return None
+        # Find columns
+        steamid_col = "steamid" if "steamid" in ticks_df.columns else None
+        x_col = "X" if "X" in ticks_df.columns else None
+        y_col = "Y" if "Y" in ticks_df.columns else None
+        z_col = "Z" if "Z" in ticks_df.columns else None
+        pitch_col = "pitch" if "pitch" in ticks_df.columns else None
+        yaw_col = "yaw" if "yaw" in ticks_df.columns else None
+        tick_col = "tick" if "tick" in ticks_df.columns else None
 
-        kill_att = find_col(kills_df, ["attacker_steamid", "attacker_steam_id"])
-        kill_vic = find_col(kills_df, ["user_steamid", "victim_steamid"])
-        kill_tick = find_col(kills_df, ["tick"])
-
-        tick_steamid = find_col(ticks_df, ["steamid", "steam_id"])
-        tick_x = find_col(ticks_df, ["X", "x"])
-        tick_y = find_col(ticks_df, ["Y", "y"])
-        tick_z = find_col(ticks_df, ["Z", "z"])
-        tick_pitch = find_col(ticks_df, ["pitch"])
-        tick_yaw = find_col(ticks_df, ["yaw"])
-        tick_col = find_col(ticks_df, ["tick"])
-
-        if not all([kill_att, kill_vic, kill_tick, tick_steamid, tick_x, tick_y, tick_z, tick_pitch, tick_yaw, tick_col]):
-            logger.warning("Missing columns for tick-based CP computation")
+        if not all([steamid_col, x_col, y_col, z_col, pitch_col, yaw_col, tick_col]):
+            logger.warning("Missing columns for tick-based CP")
             return
-
-        logger.info("Computing CP from tick data (slow path)")
 
         for _, kill_row in kills_df.iterrows():
             try:
-                att_id = safe_int(kill_row[kill_att])
-                vic_id = safe_int(kill_row[kill_vic])
-                kill_tick_val = safe_int(kill_row[kill_tick])
+                att_id = safe_int(kill_row.get("attacker_steamid"))
+                vic_id = safe_int(kill_row.get("victim_steamid"))
+                kill_tick = safe_int(kill_row.get("tick"))
+                round_num = safe_int(kill_row.get("round_num", 0))
 
                 if not att_id or not vic_id:
                     continue
 
-                att_ticks = ticks_df[(ticks_df[tick_steamid] == att_id) & (ticks_df[tick_col] <= kill_tick_val)]
-                vic_ticks = ticks_df[(ticks_df[tick_steamid] == vic_id) & (ticks_df[tick_col] <= kill_tick_val)]
+                att_ticks = ticks_df[(ticks_df[steamid_col] == att_id) & (ticks_df[tick_col] <= kill_tick)]
+                vic_ticks = ticks_df[(ticks_df[steamid_col] == vic_id) & (ticks_df[tick_col] <= kill_tick)]
 
                 if att_ticks.empty or vic_ticks.empty:
                     continue
@@ -350,37 +295,38 @@ class DemoAnalyzer:
                 vic_state = vic_ticks.iloc[-1]
 
                 att_pos = np.array([
-                    safe_float(att_state[tick_x]),
-                    safe_float(att_state[tick_y]),
-                    safe_float(att_state[tick_z]) + 64
+                    safe_float(att_state[x_col]),
+                    safe_float(att_state[y_col]),
+                    safe_float(att_state[z_col]) + 64
                 ])
-                att_pitch_val = safe_float(att_state[tick_pitch])
-                att_yaw_val = safe_float(att_state[tick_yaw])
+                att_pitch = safe_float(att_state[pitch_col])
+                att_yaw = safe_float(att_state[yaw_col])
 
                 vic_pos = np.array([
-                    safe_float(vic_state[tick_x]),
-                    safe_float(vic_state[tick_y]),
-                    safe_float(vic_state[tick_z]) + 64
+                    safe_float(vic_state[x_col]),
+                    safe_float(vic_state[y_col]),
+                    safe_float(vic_state[z_col]) + 64
                 ])
 
                 angular_error, pitch_error, yaw_error = self._calculate_angular_error(
-                    att_pos, att_pitch_val, att_yaw_val, vic_pos
+                    att_pos, att_pitch, att_yaw, vic_pos
                 )
 
                 result = CrosshairPlacementResult(
-                    tick=kill_tick_val,
+                    tick=kill_tick,
                     attacker_steamid=att_id,
                     victim_steamid=vic_id,
                     angular_error_deg=angular_error,
                     pitch_error_deg=pitch_error,
                     yaw_error_deg=yaw_error,
+                    round_num=round_num,
                 )
                 self._cp_results.append(result)
             except Exception as e:
-                logger.debug(f"Error processing kill for CP (tick): {e}")
+                logger.debug(f"Error in tick-based CP: {e}")
                 continue
 
-        logger.info(f"Computed crosshair placement for {len(self._cp_results)} kills (tick-based)")
+        logger.info(f"Computed CP for {len(self._cp_results)} kills (tick-based)")
 
     def _calculate_angular_error(
         self,
@@ -389,42 +335,35 @@ class DemoAnalyzer:
         yaw_deg: float,
         victim_pos: np.ndarray
     ) -> tuple[float, float, float]:
-        """
-        Calculate angular error between view direction and target.
-
-        Returns: (total_error_deg, pitch_error_deg, yaw_error_deg)
-        """
-        # Convert angles to radians
+        """Calculate angular error between view direction and target."""
         pitch_rad = math.radians(pitch_deg)
         yaw_rad = math.radians(yaw_deg)
 
-        # View vector from Euler angles (Source engine convention)
-        # X = forward, Y = right, Z = up
+        # View vector from Euler angles
         view_x = math.cos(yaw_rad) * math.cos(pitch_rad)
         view_y = math.sin(yaw_rad) * math.cos(pitch_rad)
-        view_z = -math.sin(pitch_rad)  # Negative because positive pitch is down in Source
+        view_z = -math.sin(pitch_rad)
         view_vec = np.array([view_x, view_y, view_z])
 
-        # Ideal vector from attacker to victim
+        # Ideal vector
         ideal_vec = victim_pos - attacker_pos
         distance = np.linalg.norm(ideal_vec)
         if distance < 0.001:
             return 0.0, 0.0, 0.0
 
-        ideal_vec = ideal_vec / distance  # Normalize
+        ideal_vec = ideal_vec / distance
 
-        # Total angular error using dot product
+        # Total angular error
         dot = np.clip(np.dot(view_vec, ideal_vec), -1.0, 1.0)
         angular_error = math.degrees(math.acos(dot))
 
-        # Calculate pitch and yaw errors separately
+        # Separate pitch/yaw errors
         ideal_pitch = math.degrees(math.asin(-ideal_vec[2]))
         ideal_yaw = math.degrees(math.atan2(ideal_vec[1], ideal_vec[0]))
 
         pitch_error = pitch_deg - ideal_pitch
         yaw_error = yaw_deg - ideal_yaw
 
-        # Normalize yaw error to [-180, 180]
         while yaw_error > 180:
             yaw_error -= 360
         while yaw_error < -180:
@@ -437,7 +376,7 @@ class DemoAnalyzer:
         analytics: dict[int, PlayerAnalytics] = {}
 
         for steam_id, stats in self.data.player_stats.items():
-            # Gather TTD values for this player
+            # TTD values for this player
             player_ttd = [
                 r.ttd_ms for r in self._ttd_results
                 if r.attacker_steamid == steam_id
@@ -449,24 +388,18 @@ class DemoAnalyzer:
                 if r.attacker_steamid == steam_id and r.is_prefire
             )
 
-            # Gather CP values for this player
-            player_cp = [
-                r.angular_error_deg for r in self._cp_results
-                if r.attacker_steamid == steam_id
-            ]
-            player_pitch_errors = [
-                r.pitch_error_deg for r in self._cp_results
-                if r.attacker_steamid == steam_id
-            ]
+            # CP values
+            player_cp = [r.angular_error_deg for r in self._cp_results if r.attacker_steamid == steam_id]
+            player_pitch_errors = [r.pitch_error_deg for r in self._cp_results if r.attacker_steamid == steam_id]
 
-            # Calculate TTD stats
+            # TTD stats
             ttd_median = float(np.median(player_ttd)) if player_ttd else None
             ttd_mean = float(np.mean(player_ttd)) if player_ttd else None
             ttd_min = float(np.min(player_ttd)) if player_ttd else None
             ttd_max = float(np.max(player_ttd)) if player_ttd else None
             ttd_std = float(np.std(player_ttd)) if len(player_ttd) > 1 else None
 
-            # Calculate CP stats
+            # CP stats
             cp_median = float(np.median(player_cp)) if player_cp else None
             cp_mean = float(np.mean(player_cp)) if player_cp else None
             cp_pitch_bias = float(np.mean(player_pitch_errors)) if player_pitch_errors else None
@@ -477,7 +410,7 @@ class DemoAnalyzer:
                 team=stats["team"],
                 kills=stats["kills"],
                 deaths=stats["deaths"],
-                assists=stats["assists"],
+                assists=stats.get("assists", 0),
                 adr=stats["adr"],
                 hs_percent=stats["hs_percent"],
                 ttd_median_ms=ttd_median,

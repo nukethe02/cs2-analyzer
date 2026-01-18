@@ -11,9 +11,14 @@ RUN apt-get update && apt-get install -y \
 # Copy and install requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir fastapi uvicorn python-multipart pandas numpy || true
+
+# Install awpy (preferred parser) - requires Python 3.11+
+# awpy includes demoparser2 as a dependency
+RUN pip install --no-cache-dir awpy || echo "awpy failed, will use demoparser2 fallback"
+
+# Install other dependencies
+RUN pip install --no-cache-dir fastapi uvicorn python-multipart pandas numpy polars || true
 RUN pip install --no-cache-dir demoparser2 || echo "demoparser2 failed, continuing"
-RUN pip install --no-cache-dir watchdog rich typer || true
 
 # Copy source code
 COPY src/ ./src/
