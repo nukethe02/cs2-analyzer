@@ -97,11 +97,111 @@ class MultiKillStats:
 
 @dataclass
 class UtilityStats:
-    """Utility (grenade) statistics."""
+    """Utility (grenade) statistics - Leetify-style comprehensive tracking."""
+    # Flash stats
     flash_assists: int = 0
-    enemies_flashed: int = 0
-    he_damage: int = 0
+    flashbangs_thrown: int = 0
+    enemies_flashed: int = 0          # Total enemies blinded >1.1s
+    teammates_flashed: int = 0        # Bad - blinding your own team
+    total_blind_time: float = 0.0     # Total seconds enemies were blind
+
+    # HE stats
+    he_thrown: int = 0
+    he_damage: int = 0                # Total damage to enemies
+    he_team_damage: int = 0           # Bad - damage to teammates
+
+    # Molotov/Incendiary stats
+    molotov_thrown: int = 0
     molotov_damage: int = 0
+    molotov_team_damage: int = 0
+
+    # Smoke stats
+    smokes_thrown: int = 0
+
+    # Unused utility (at death)
+    unused_utility_value: int = 0     # $ value of utility at death
+    deaths_with_utility: int = 0      # Times died with unused utility
+
+    @property
+    def enemies_flashed_per_flash(self) -> float:
+        """Average enemies flashed per flashbang (Leetify metric)."""
+        return self.enemies_flashed / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
+
+    @property
+    def avg_blind_time(self) -> float:
+        """Average blind time per flashbang (seconds)."""
+        return self.total_blind_time / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
+
+    @property
+    def teammates_flashed_per_flash(self) -> float:
+        """Average teammates flashed per flashbang (bad - should be low)."""
+        return self.teammates_flashed / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
+
+    @property
+    def he_damage_per_nade(self) -> float:
+        """Average HE damage per grenade."""
+        return self.he_damage / self.he_thrown if self.he_thrown > 0 else 0.0
+
+    @property
+    def molotov_damage_per_nade(self) -> float:
+        """Average molotov damage per grenade."""
+        return self.molotov_damage / self.molotov_thrown if self.molotov_thrown > 0 else 0.0
+
+    @property
+    def utility_thrown_per_round(self) -> float:
+        """Total utility thrown per round (for quantity rating)."""
+        # This needs to be calculated with rounds_played from PlayerMatchStats
+        return 0.0
+
+
+@dataclass
+class SideStats:
+    """CT-side vs T-side performance breakdown (Leetify/Scope.gg style)."""
+    rounds_played: int = 0
+    kills: int = 0
+    deaths: int = 0
+    assists: int = 0
+    total_damage: int = 0
+    opening_kills: int = 0
+    opening_deaths: int = 0
+
+    @property
+    def kd_ratio(self) -> float:
+        return round(self.kills / self.deaths, 2) if self.deaths > 0 else float(self.kills)
+
+    @property
+    def adr(self) -> float:
+        return round(self.total_damage / self.rounds_played, 1) if self.rounds_played > 0 else 0.0
+
+    @property
+    def kills_per_round(self) -> float:
+        return round(self.kills / self.rounds_played, 2) if self.rounds_played > 0 else 0.0
+
+    @property
+    def opening_success_rate(self) -> float:
+        """% of opening duels won."""
+        total = self.opening_kills + self.opening_deaths
+        return round(self.opening_kills / total * 100, 1) if total > 0 else 0.0
+
+
+@dataclass
+class MistakesStats:
+    """Mistakes tracking (Scope.gg style)."""
+    teammates_flashed: int = 0          # Times you blinded teammates
+    team_damage: int = 0                # Damage dealt to teammates
+    team_kills: int = 0                 # Teamkills
+    deaths_with_utility: int = 0        # Died with unused utility
+    eco_round_deaths: int = 0           # Deaths in eco rounds (when you shouldn't die)
+    unnecessary_peeks: int = 0          # Deaths while team had advantage
+
+    @property
+    def total_mistakes(self) -> int:
+        return (
+            self.teammates_flashed +
+            (1 if self.team_damage > 50 else 0) +
+            self.team_kills * 3 +
+            self.deaths_with_utility
+        )
 
 
 @dataclass
@@ -154,6 +254,13 @@ class PlayerMatchStats:
     multi_kills: MultiKillStats = field(default_factory=MultiKillStats)
     utility: UtilityStats = field(default_factory=UtilityStats)
 
+    # Side-based stats (Leetify style)
+    ct_stats: SideStats = field(default_factory=SideStats)
+    t_stats: SideStats = field(default_factory=SideStats)
+
+    # Mistakes tracking (Scope.gg style)
+    mistakes: MistakesStats = field(default_factory=MistakesStats)
+
     # KAST tracking
     kast_rounds: int = 0  # Rounds with Kill/Assist/Survived/Traded
     rounds_survived: int = 0
@@ -167,6 +274,11 @@ class PlayerMatchStats:
 
     # CP stats
     cp_values: list = field(default_factory=list)
+
+    # Accuracy stats (Leetify style)
+    shots_fired: int = 0
+    shots_hit: int = 0
+    headshot_hits: int = 0  # Hits to head (not just kills)
 
     # Derived properties
     @property
@@ -276,6 +388,117 @@ class PlayerMatchStats:
     @property
     def cp_mean_error_deg(self) -> Optional[float]:
         return float(np.mean(self.cp_values)) if self.cp_values else None
+
+    # Accuracy properties (Leetify style)
+    @property
+    def accuracy(self) -> float:
+        """Overall accuracy - shots hit / shots fired."""
+        return round(self.shots_hit / self.shots_fired * 100, 1) if self.shots_fired > 0 else 0.0
+
+    @property
+    def head_hit_rate(self) -> float:
+        """% of hits that were headshots (different from HS kill %)."""
+        return round(self.headshot_hits / self.shots_hit * 100, 1) if self.shots_hit > 0 else 0.0
+
+    # Utility Rating (Leetify style composite)
+    @property
+    def utility_quantity_rating(self) -> float:
+        """
+        Leetify-style Utility Quantity Rating.
+        Based on utility thrown vs expected (3 per round).
+        Uses x^(2/3) scaling, max 100.
+        """
+        total_utility = (
+            self.utility.flashbangs_thrown +
+            self.utility.he_thrown +
+            self.utility.molotov_thrown +
+            self.utility.smokes_thrown
+        )
+        expected = 3.0 * self.rounds_played
+        if expected <= 0:
+            return 0.0
+        ratio = min(total_utility / expected, 1.0)  # Cap at 1.0
+        # Apply x^(2/3) scaling
+        scaled = ratio ** (2/3)
+        return round(scaled * 100, 1)
+
+    @property
+    def utility_quality_rating(self) -> float:
+        """
+        Leetify-style Utility Quality Rating.
+        Based on flash effectiveness, HE damage, etc.
+        """
+        score = 50.0  # Start at average
+
+        # Flash quality (0-30 points)
+        if self.utility.flashbangs_thrown > 0:
+            # Enemies flashed per flash (0.5 = average, 1.0+ = good)
+            flash_score = min(self.utility.enemies_flashed_per_flash / 0.5, 2.0) * 15
+            # Penalize teammate flashes
+            flash_score -= self.utility.teammates_flashed_per_flash * 10
+            score += max(flash_score - 15, -15)  # -15 to +15
+
+        # HE quality (0-20 points)
+        if self.utility.he_thrown > 0:
+            # 30 damage per HE is good
+            he_score = min(self.utility.he_damage_per_nade / 30, 2.0) * 10
+            # Penalize team damage
+            if self.utility.he_team_damage > 0:
+                he_score -= min(self.utility.he_team_damage / 20, 10)
+            score += max(he_score - 10, -10)  # -10 to +10
+
+        return round(max(0, min(100, score)), 1)
+
+    @property
+    def utility_rating(self) -> float:
+        """
+        Leetify-style overall Utility Rating.
+        Geometric mean of quantity and quality ratings.
+        """
+        quantity = self.utility_quantity_rating
+        quality = self.utility_quality_rating
+        if quantity <= 0 or quality <= 0:
+            return 0.0
+        # Geometric mean
+        return round(math.sqrt(quantity * quality), 1)
+
+    # Aim Rating (Leetify style composite)
+    @property
+    def aim_rating(self) -> float:
+        """
+        Leetify-style Aim Rating composite.
+        Based on: TTD, Crosshair Placement, HS%, accuracy.
+        Score is 0-100 where 50 is average.
+        """
+        score = 50.0  # Start at average
+
+        # TTD component (faster = better, 400ms is average)
+        if self.ttd_median_ms:
+            # Lower is better: 200ms = +20, 400ms = 0, 600ms = -20
+            ttd_delta = (400 - self.ttd_median_ms) / 10
+            score += max(-20, min(20, ttd_delta))
+
+        # Crosshair Placement component (lower error = better, 10 deg is average)
+        if self.cp_median_error_deg:
+            # Lower is better: 5 deg = +15, 10 deg = 0, 15 deg = -15
+            cp_delta = (10 - self.cp_median_error_deg) * 3
+            score += max(-15, min(15, cp_delta))
+
+        # Headshot % component (25% is average)
+        hs_delta = (self.headshot_percentage - 25) / 2
+        score += max(-10, min(10, hs_delta))
+
+        # Prefire bonus (shows game sense)
+        if self.kills > 0:
+            prefire_rate = self.prefire_count / self.kills * 100
+            score += min(prefire_rate * 2, 5)  # Up to +5 for prefires
+
+        return round(max(0, min(100, score)), 1)
+
+    @property
+    def entry_success_rate(self) -> float:
+        """% of opening duels won (entry frag success rate)."""
+        return self.opening_duels.win_rate
 
 
 @dataclass
@@ -387,6 +610,15 @@ class DemoAnalyzer:
 
         # Compute crosshair placement
         self._compute_crosshair_placement()
+
+        # Calculate side-based stats (CT vs T)
+        self._calculate_side_stats()
+
+        # Calculate utility stats
+        self._calculate_utility_stats()
+
+        # Calculate mistakes
+        self._calculate_mistakes()
 
         # Build result
         team_scores = self._calculate_team_scores()
@@ -991,6 +1223,183 @@ class DemoAnalyzer:
             yaw_error += 360
 
         return angular_error, pitch_error, yaw_error
+
+    def _calculate_side_stats(self) -> None:
+        """Calculate CT-side vs T-side performance breakdown."""
+        kills_df = self.data.kills_df
+        damages_df = self.data.damages_df
+
+        if kills_df.empty or not self._att_id_col or not self._att_side_col:
+            logger.info("Skipping side stats - missing columns")
+            return
+
+        # Determine which rounds were CT/T side for each player
+        # In CS2, sides swap at halftime (typically round 13)
+        # For simplicity, we use the attacker's side at kill time
+
+        for steam_id, player in self._players.items():
+            # Count CT-side kills
+            if self._att_side_col:
+                ct_kills_df = kills_df[
+                    (kills_df[self._att_id_col] == steam_id) &
+                    (kills_df[self._att_side_col].astype(str).str.upper().str.contains("CT", na=False))
+                ]
+                player.ct_stats.kills = len(ct_kills_df)
+
+                t_kills_df = kills_df[
+                    (kills_df[self._att_id_col] == steam_id) &
+                    (~kills_df[self._att_side_col].astype(str).str.upper().str.contains("CT", na=False)) &
+                    (kills_df[self._att_side_col].astype(str).str.upper().str.contains("T", na=False))
+                ]
+                player.t_stats.kills = len(t_kills_df)
+
+            # Count CT-side deaths
+            if self._vic_id_col and self._vic_side_col:
+                ct_deaths_df = kills_df[
+                    (kills_df[self._vic_id_col] == steam_id) &
+                    (kills_df[self._vic_side_col].astype(str).str.upper().str.contains("CT", na=False))
+                ]
+                player.ct_stats.deaths = len(ct_deaths_df)
+
+                t_deaths_df = kills_df[
+                    (kills_df[self._vic_id_col] == steam_id) &
+                    (~kills_df[self._vic_side_col].astype(str).str.upper().str.contains("CT", na=False)) &
+                    (kills_df[self._vic_side_col].astype(str).str.upper().str.contains("T", na=False))
+                ]
+                player.t_stats.deaths = len(t_deaths_df)
+
+            # Estimate rounds per side (typically half each)
+            total_rounds = max(self.data.num_rounds, 1)
+            half_rounds = total_rounds // 2
+            player.ct_stats.rounds_played = half_rounds
+            player.t_stats.rounds_played = total_rounds - half_rounds
+
+            # Calculate side-specific damage
+            if not damages_df.empty:
+                dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+                dmg_att_side = self._find_col(damages_df, self.ATT_SIDE_COLS)
+                dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+
+                if dmg_att_col and dmg_att_side and dmg_col:
+                    ct_dmg = damages_df[
+                        (damages_df[dmg_att_col] == steam_id) &
+                        (damages_df[dmg_att_side].astype(str).str.upper().str.contains("CT", na=False))
+                    ]
+                    player.ct_stats.total_damage = int(ct_dmg[dmg_col].sum())
+
+                    t_dmg = damages_df[
+                        (damages_df[dmg_att_col] == steam_id) &
+                        (~damages_df[dmg_att_side].astype(str).str.upper().str.contains("CT", na=False)) &
+                        (damages_df[dmg_att_side].astype(str).str.upper().str.contains("T", na=False))
+                    ]
+                    player.t_stats.total_damage = int(t_dmg[dmg_col].sum())
+
+        logger.info("Calculated side-based stats")
+
+    def _calculate_utility_stats(self) -> None:
+        """Calculate comprehensive utility statistics (Leetify-style)."""
+        damages_df = self.data.damages_df
+        if damages_df.empty:
+            logger.info("Skipping utility stats - no damage data")
+            return
+
+        # Find columns
+        att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+        vic_col = self._find_col(damages_df, self.VIC_ID_COLS)
+        att_side = self._find_col(damages_df, self.ATT_SIDE_COLS)
+        vic_side = self._find_col(damages_df, self.VIC_SIDE_COLS)
+        weapon_col = self._find_col(damages_df, ["weapon"])
+        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+
+        if not att_col or not weapon_col or not dmg_col:
+            logger.info(f"Skipping utility stats - missing columns. Have: {list(damages_df.columns)}")
+            return
+
+        # HE grenade weapons
+        he_weapons = ["hegrenade", "he_grenade", "grenade_he", "hegrenade_projectile"]
+        molly_weapons = ["molotov", "incgrenade", "inferno", "molotov_projectile", "incendiary"]
+
+        for steam_id, player in self._players.items():
+            player_dmg = damages_df[damages_df[att_col] == steam_id]
+
+            # HE damage to enemies
+            he_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(he_weapons)]
+            if not he_dmg.empty:
+                # Separate enemy vs team damage
+                if att_side and vic_side:
+                    enemy_he = he_dmg[he_dmg[att_side] != he_dmg[vic_side]]
+                    team_he = he_dmg[he_dmg[att_side] == he_dmg[vic_side]]
+                    player.utility.he_damage = int(enemy_he[dmg_col].sum())
+                    player.utility.he_team_damage = int(team_he[dmg_col].sum())
+                else:
+                    player.utility.he_damage = int(he_dmg[dmg_col].sum())
+
+                # Estimate HE thrown (each HE hit is one throw)
+                player.utility.he_thrown = len(he_dmg[dmg_col].unique()) or 1
+
+            # Molotov damage
+            molly_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(molly_weapons)]
+            if not molly_dmg.empty:
+                if att_side and vic_side:
+                    enemy_molly = molly_dmg[molly_dmg[att_side] != molly_dmg[vic_side]]
+                    team_molly = molly_dmg[molly_dmg[att_side] == molly_dmg[vic_side]]
+                    player.utility.molotov_damage = int(enemy_molly[dmg_col].sum())
+                    player.utility.molotov_team_damage = int(team_molly[dmg_col].sum())
+                else:
+                    player.utility.molotov_damage = int(molly_dmg[dmg_col].sum())
+
+                player.utility.molotov_thrown = len(molly_dmg.groupby(self._round_col if self._round_col else "tick")) or 1
+
+        # Flash stats from kills (flash assists already calculated in basic stats)
+        # We estimate flashes thrown based on flash assists
+        kills_df = self.data.kills_df
+        if not kills_df.empty and "assister_steamid" in kills_df.columns and "flash_assist" in kills_df.columns:
+            for steam_id, player in self._players.items():
+                flash_assists = kills_df[
+                    (kills_df["assister_steamid"] == steam_id) &
+                    (kills_df["flash_assist"] == True)
+                ]
+                player.utility.flash_assists = len(flash_assists)
+                # Rough estimate: 1 flash assist per 2 flashes thrown
+                player.utility.flashbangs_thrown = max(player.utility.flash_assists * 2, 1)
+                player.utility.enemies_flashed = player.utility.flash_assists  # Conservative estimate
+
+        logger.info("Calculated utility stats")
+
+    def _calculate_mistakes(self) -> None:
+        """Calculate mistakes (Scope.gg style)."""
+        kills_df = self.data.kills_df
+        damages_df = self.data.damages_df
+
+        # Team kills (friendly fire deaths)
+        if not kills_df.empty and self._att_id_col and self._vic_id_col and self._att_side_col and self._vic_side_col:
+            for steam_id, player in self._players.items():
+                # Check for team kills (attacker and victim same team)
+                team_kills = kills_df[
+                    (kills_df[self._att_id_col] == steam_id) &
+                    (kills_df[self._att_side_col] == kills_df[self._vic_side_col])
+                ]
+                player.mistakes.team_kills = len(team_kills)
+
+        # Team damage
+        if not damages_df.empty:
+            att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+            att_side = self._find_col(damages_df, self.ATT_SIDE_COLS)
+            vic_side = self._find_col(damages_df, self.VIC_SIDE_COLS)
+            dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+
+            if att_col and att_side and vic_side and dmg_col:
+                for steam_id, player in self._players.items():
+                    team_dmg = damages_df[
+                        (damages_df[att_col] == steam_id) &
+                        (damages_df[att_side] == damages_df[vic_side])
+                    ]
+                    player.mistakes.team_damage = int(team_dmg[dmg_col].sum())
+
+                    # Teammates flashed (from utility stats)
+                    player.mistakes.teammates_flashed = player.utility.teammates_flashed
+
+        logger.info("Calculated mistakes")
 
     def _calculate_team_scores(self) -> tuple[int, int]:
         """Calculate team scores from round data."""

@@ -172,6 +172,10 @@ async def analyze_demo(file: UploadFile = File(...)):
                     "kills_per_round": player.kills_per_round,
                     "deaths_per_round": player.deaths_per_round,
                     "survival_rate": player.survival_rate,
+                    # Leetify-style composite ratings
+                    "aim_rating": player.aim_rating,
+                    "utility_rating": player.utility_rating,
+                    "entry_success_rate": player.entry_success_rate,
                 },
                 "duels": {
                     # Opening duels
@@ -210,7 +214,48 @@ async def analyze_demo(file: UploadFile = File(...)):
                     "cp_samples": len(player.cp_values),
                 },
                 "utility": {
+                    # Flash stats (Leetify style)
                     "flash_assists": player.utility.flash_assists,
+                    "flashbangs_thrown": player.utility.flashbangs_thrown,
+                    "enemies_flashed": player.utility.enemies_flashed,
+                    "teammates_flashed": player.utility.teammates_flashed,
+                    "enemies_flashed_per_flash": round(player.utility.enemies_flashed_per_flash, 2),
+                    "avg_blind_time": round(player.utility.avg_blind_time, 2),
+                    # HE stats
+                    "he_thrown": player.utility.he_thrown,
+                    "he_damage": player.utility.he_damage,
+                    "he_team_damage": player.utility.he_team_damage,
+                    "he_damage_per_nade": round(player.utility.he_damage_per_nade, 1),
+                    # Molotov stats
+                    "molotov_thrown": player.utility.molotov_thrown,
+                    "molotov_damage": player.utility.molotov_damage,
+                    # Ratings
+                    "utility_quantity_rating": player.utility_quantity_rating,
+                    "utility_quality_rating": player.utility_quality_rating,
+                },
+                "side_stats": {
+                    # CT-side performance
+                    "ct": {
+                        "kills": player.ct_stats.kills,
+                        "deaths": player.ct_stats.deaths,
+                        "kd_ratio": player.ct_stats.kd_ratio,
+                        "adr": player.ct_stats.adr,
+                        "rounds_played": player.ct_stats.rounds_played,
+                    },
+                    # T-side performance
+                    "t": {
+                        "kills": player.t_stats.kills,
+                        "deaths": player.t_stats.deaths,
+                        "kd_ratio": player.t_stats.kd_ratio,
+                        "adr": player.t_stats.adr,
+                        "rounds_played": player.t_stats.rounds_played,
+                    },
+                },
+                "mistakes": {
+                    "team_kills": player.mistakes.team_kills,
+                    "team_damage": player.mistakes.team_damage,
+                    "teammates_flashed": player.mistakes.teammates_flashed,
+                    "total_mistakes": player.mistakes.total_mistakes,
                 },
                 "weapons": weapon_stats,
             }
@@ -237,7 +282,7 @@ async def about():
     return {
         "name": "OpenSight",
         "version": __version__,
-        "description": "Local CS2 analytics framework - professional-grade metrics",
+        "description": "Local CS2 analytics framework - Leetify/Scope.gg style professional-grade metrics",
         "metrics": {
             "basic": {
                 "kills": "Total eliminations",
@@ -251,6 +296,9 @@ async def about():
                 "hltv_rating": "HLTV 2.0 Rating - industry standard performance metric (1.0 = average)",
                 "impact_rating": "Impact component - measures round-winning contributions",
                 "kast_percentage": "KAST% - rounds with Kill, Assist, Survived, or Traded",
+                "aim_rating": "Leetify-style Aim Rating (0-100, 50 = average) - based on TTD, CP, HS%",
+                "utility_rating": "Leetify-style Utility Rating (0-100) - geometric mean of quantity and quality",
+                "entry_success_rate": "Percentage of opening duels won",
             },
             "advanced": {
                 "ttd_median_ms": "Time to Damage (median) - milliseconds from engagement start to damage dealt",
@@ -264,18 +312,68 @@ async def about():
                 "kills_traded": "Times you avenged a teammate within 5 seconds",
                 "deaths_traded": "Times a teammate avenged your death within 5 seconds",
             },
+            "utility": {
+                "flash_assists": "Kills on enemies you flashed",
+                "enemies_flashed": "Total enemies blinded >1.1s",
+                "teammates_flashed": "Times you blinded teammates (mistake)",
+                "enemies_flashed_per_flash": "Average enemies blinded per flashbang (Leetify metric)",
+                "avg_blind_time": "Average enemy blind duration per flash",
+                "he_damage": "Total HE grenade damage to enemies",
+                "he_damage_per_nade": "Average damage per HE grenade",
+                "molotov_damage": "Total molotov/incendiary damage",
+                "utility_quantity_rating": "How much utility thrown vs expected (3/round)",
+                "utility_quality_rating": "Flash/HE effectiveness composite",
+            },
+            "side_stats": {
+                "ct_kills": "Kills while playing CT side",
+                "ct_deaths": "Deaths while playing CT side",
+                "ct_adr": "ADR on CT side",
+                "t_kills": "Kills while playing T side",
+                "t_deaths": "Deaths while playing T side",
+                "t_adr": "ADR on T side",
+            },
+            "mistakes": {
+                "team_kills": "Friendly fire kills (bad)",
+                "team_damage": "Total damage dealt to teammates",
+                "teammates_flashed": "Times you blinded your teammates",
+                "total_mistakes": "Composite mistake score",
+            },
         },
         "rating_interpretation": {
-            "below_0.8": "Below average",
-            "0.8_to_1.0": "Average",
-            "1.0_to_1.2": "Above average",
-            "1.2_to_1.5": "Excellent",
-            "above_1.5": "Exceptional",
+            "hltv_rating": {
+                "below_0.8": "Below average",
+                "0.8_to_1.0": "Average",
+                "1.0_to_1.2": "Above average",
+                "1.2_to_1.5": "Excellent",
+                "above_1.5": "Exceptional",
+            },
+            "aim_rating": {
+                "0_to_30": "Poor",
+                "30_to_45": "Below average",
+                "45_to_55": "Average",
+                "55_to_70": "Good",
+                "70_to_100": "Excellent",
+            },
+            "utility_rating": {
+                "0_to_20": "Rarely uses utility",
+                "20_to_40": "Below average",
+                "40_to_60": "Average",
+                "60_to_80": "Good utility player",
+                "80_to_100": "Utility specialist",
+            },
         },
         "methodology": {
             "hltv_rating": "Rating = 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + 0.2372*Impact + 0.0032*ADR + 0.1587*RMK",
             "trade_window": "5.0 seconds (industry standard from Leetify/Stratbook)",
             "ttd": "TTD measures reaction time from first damage to kill. Lower is better. Values under 200ms indicate fast reactions.",
             "crosshair_placement": "CP measures how far your crosshair was from the enemy when engaging. Lower is better. Under 5 degrees is elite-level.",
+            "aim_rating": "Composite of TTD, CP, HS%, and prefire rate. 50 = average, adjusted by component performance.",
+            "utility_rating": "Geometric mean of Quantity (utility thrown) and Quality (effectiveness). Leetify methodology.",
+            "enemies_flashed_threshold": "Only counts enemies blinded for >1.1 seconds (excludes half-blinds).",
+        },
+        "comparisons": {
+            "leetify": "Aim Rating, Utility Rating, and detailed flash stats follow Leetify methodology",
+            "scope_gg": "Mistakes tracking and side-based stats follow Scope.gg methodology",
+            "hltv": "HLTV 2.0 Rating formula and KAST% calculation",
         }
     }
