@@ -304,55 +304,70 @@ class DemoParser:
         )
         return self._data
 
-    def _process_damage_events(self, events: list[dict]) -> pd.DataFrame:
+    def _process_damage_events(self, events) -> pd.DataFrame:
         """Process player_hurt events into a DataFrame."""
         if not events:
             return pd.DataFrame(columns=[
                 "tick", "attacker_id", "victim_id", "damage", "weapon", "hitgroup"
             ])
 
+        # Handle DataFrame input
+        if isinstance(events, pd.DataFrame):
+            events = events.to_dict('records')
+
         records = []
         for event in events:
-            records.append({
-                "tick": event.get("tick", 0),
-                "attacker_id": event.get("attacker_steamid", 0),
-                "victim_id": event.get("userid_steamid", 0),
-                "damage": event.get("dmg_health", 0),
-                "weapon": event.get("weapon", "unknown"),
-                "hitgroup": event.get("hitgroup", 0),
-            })
+            if isinstance(event, dict):
+                records.append({
+                    "tick": event.get("tick", 0),
+                    "attacker_id": event.get("attacker_steamid", 0),
+                    "victim_id": event.get("userid_steamid", 0),
+                    "damage": event.get("dmg_health", 0),
+                    "weapon": event.get("weapon", "unknown"),
+                    "hitgroup": event.get("hitgroup", 0),
+                })
         return pd.DataFrame(records)
 
-    def _process_kill_events(self, events: list[dict]) -> pd.DataFrame:
+    def _process_kill_events(self, events) -> pd.DataFrame:
         """Process player_death events into a DataFrame."""
         if not events:
             return pd.DataFrame(columns=[
                 "tick", "attacker_id", "victim_id", "weapon", "headshot"
             ])
 
+        # Handle DataFrame input
+        if isinstance(events, pd.DataFrame):
+            events = events.to_dict('records')
+
         records = []
         for event in events:
-            records.append({
-                "tick": event.get("tick", 0),
-                "attacker_id": event.get("attacker_steamid", 0),
-                "victim_id": event.get("userid_steamid", 0),
-                "weapon": event.get("weapon", "unknown"),
-                "headshot": event.get("headshot", False),
-            })
+            if isinstance(event, dict):
+                records.append({
+                    "tick": event.get("tick", 0),
+                    "attacker_id": event.get("attacker_steamid", 0),
+                    "victim_id": event.get("userid_steamid", 0),
+                    "weapon": event.get("weapon", "unknown"),
+                    "headshot": event.get("headshot", False),
+                })
         return pd.DataFrame(records)
 
-    def _process_shots(self, events: list[dict]) -> pd.DataFrame:
+    def _process_shots(self, events) -> pd.DataFrame:
         """Process weapon_fire events into a DataFrame."""
         if not events:
             return pd.DataFrame(columns=["tick", "steam_id", "weapon"])
 
+        # Handle DataFrame input
+        if isinstance(events, pd.DataFrame):
+            events = events.to_dict('records')
+
         records = []
         for event in events:
-            records.append({
-                "tick": event.get("tick", 0),
-                "steam_id": event.get("userid_steamid", 0),
-                "weapon": event.get("weapon", "unknown"),
-            })
+            if isinstance(event, dict):
+                records.append({
+                    "tick": event.get("tick", 0),
+                    "steam_id": event.get("userid_steamid", 0),
+                    "weapon": event.get("weapon", "unknown"),
+                })
         return pd.DataFrame(records)
 
     def get_player_positions_between(
