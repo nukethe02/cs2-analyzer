@@ -615,27 +615,41 @@ class DemoAnalyzer:
 
     def _compute_ttd(self) -> None:
         """Compute Time to Damage for each kill."""
-        if self.data.damages_df.empty or self.data.kills_df.empty:
+        if self.data.damages_df.empty or not self.data.kills:
             logger.warning("No damage or kill data for TTD computation")
             return
 
-        kills_df = self.data.kills_df
         damages_df = self.data.damages_df
 
-        for _, kill_row in kills_df.iterrows():
+        # Find the right column names
+        def find_col(df, options):
+            for col in options:
+                if col in df.columns:
+                    return col
+            return None
+
+        dmg_att_col = find_col(damages_df, ["attacker_steamid", "attacker_steam_id"])
+        dmg_vic_col = find_col(damages_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
+
+        if not dmg_att_col or not dmg_vic_col:
+            logger.warning(f"Missing columns for TTD. Have: {list(damages_df.columns)}")
+            return
+
+        # Use KillEvent objects directly
+        for kill in self.data.kills:
             try:
-                att_id = safe_int(kill_row.get("attacker_steamid"))
-                vic_id = safe_int(kill_row.get("victim_steamid"))
-                kill_tick = safe_int(kill_row.get("tick"))
-                round_num = safe_int(kill_row.get("round_num", 0))
+                att_id = kill.attacker_steamid
+                vic_id = kill.victim_steamid
+                kill_tick = kill.tick
+                round_num = kill.round_num
 
                 if not att_id or not vic_id:
                     continue
 
                 # Find first damage from attacker to victim before kill
                 mask = (
-                    (damages_df["attacker_steamid"] == att_id) &
-                    (damages_df["victim_steamid"] == vic_id) &
+                    (damages_df[dmg_att_col] == att_id) &
+                    (damages_df[dmg_vic_col] == vic_id) &
                     (damages_df["tick"] <= kill_tick)
                 )
                 engagement_damages = damages_df[mask].sort_values("tick")
@@ -662,8 +676,8 @@ class DemoAnalyzer:
                     ttd_ms=ttd_ms,
                     attacker_steamid=att_id,
                     victim_steamid=vic_id,
-                    weapon=safe_str(kill_row.get("weapon", "")),
-                    headshot=bool(kill_row.get("headshot", False)),
+                    weapon=kill.weapon,
+                    headshot=kill.headshot,
                     is_prefire=is_prefire,
                     round_num=round_num,
                 ))
@@ -676,29 +690,98 @@ class DemoAnalyzer:
 
     def _compute_crosshair_placement(self) -> None:
         """Compute crosshair placement error for each kill."""
-        if self.data.kills_df.empty:
+        # First try using KillEvent objects directly (preferred - they have embedded position data)
+        kills_with_pos = [k for k in self.data.kills if k.attacker_x is not None and k.attacker_pitch is not None and k.victim_x is not None]
+
+        if kills_with_pos:
+            logger.info(f"Computing CP from {len(kills_with_pos)} KillEvent objects with position data")
+            self._compute_cp_from_kill_events(kills_with_pos)
             return
 
-        kills_df = self.data.kills_df
+        # Fallback: check DataFrame for position columns
+        if not self.data.kills_df.empty:
+            kills_df = self.data.kills_df
 
-        # Check for position data
-        has_positions = all(col in kills_df.columns for col in [
-            "attacker_X", "attacker_Y", "attacker_Z",
-            "victim_X", "victim_Y", "victim_Z"
-        ])
-        has_angles = all(col in kills_df.columns for col in ["attacker_pitch", "attacker_yaw"])
+            # Check various column name patterns
+            pos_patterns = [
+                ["attacker_X", "attacker_Y", "attacker_Z", "victim_X", "victim_Y", "victim_Z"],
+                ["attacker_x", "attacker_y", "attacker_z", "victim_x", "victim_y", "victim_z"],
+                ["attacker_X", "attacker_Y", "attacker_Z", "user_X", "user_Y", "user_Z"],
+            ]
+            angle_patterns = [
+                ["attacker_pitch", "attacker_yaw"],
+            ]
 
-        if has_positions and has_angles:
-            self._compute_cp_from_events()
-        elif self.data.ticks_df is not None and not self.data.ticks_df.empty:
+            has_positions = any(all(col in kills_df.columns for col in pattern) for pattern in pos_patterns)
+            has_angles = any(all(col in kills_df.columns for col in pattern) for pattern in angle_patterns)
+
+            if has_positions and has_angles:
+                logger.info(f"Computing CP from DataFrame. Columns: {list(kills_df.columns)}")
+                self._compute_cp_from_events()
+                return
+
+        # Final fallback: tick data
+        if self.data.ticks_df is not None and not self.data.ticks_df.empty:
             self._compute_cp_from_ticks()
         else:
-            logger.info("No position/angle data available for CP computation")
+            logger.warning("No position/angle data available for CP computation. Position data requires parsing with player props.")
+
+    def _compute_cp_from_kill_events(self, kills: list) -> None:
+        """Compute CP from KillEvent objects with embedded position data."""
+        for kill in kills:
+            try:
+                att_id = kill.attacker_steamid
+                vic_id = kill.victim_steamid
+
+                if not att_id or not vic_id:
+                    continue
+
+                # Build position arrays (add 64 units for eye height)
+                att_pos = np.array([
+                    kill.attacker_x,
+                    kill.attacker_y,
+                    kill.attacker_z + 64 if kill.attacker_z else 0
+                ])
+                vic_pos = np.array([
+                    kill.victim_x,
+                    kill.victim_y,
+                    kill.victim_z + 64 if kill.victim_z else 0
+                ])
+
+                att_pitch = kill.attacker_pitch or 0.0
+                att_yaw = kill.attacker_yaw or 0.0
+
+                # Skip if positions are zero
+                if np.allclose(att_pos[:2], 0) or np.allclose(vic_pos[:2], 0):
+                    continue
+
+                angular_error, pitch_error, yaw_error = self._calculate_angular_error(
+                    att_pos, att_pitch, att_yaw, vic_pos
+                )
+
+                if att_id in self._players:
+                    self._players[att_id].cp_values.append(angular_error)
+
+                self._cp_results.append(CrosshairPlacementResult(
+                    tick=kill.tick,
+                    attacker_steamid=att_id,
+                    victim_steamid=vic_id,
+                    angular_error_deg=angular_error,
+                    pitch_error_deg=pitch_error,
+                    yaw_error_deg=yaw_error,
+                    round_num=kill.round_num,
+                ))
+
+            except Exception as e:
+                logger.debug(f"Error processing kill for CP: {e}")
+                continue
+
+        logger.info(f"Computed CP for {len(self._cp_results)} kills from KillEvent objects")
 
     def _compute_cp_from_events(self) -> None:
-        """Compute CP from position data embedded in kill events."""
+        """Compute CP from position data embedded in kill events DataFrame."""
         kills_df = self.data.kills_df
-        logger.info("Computing CP from event-embedded positions")
+        logger.info("Computing CP from DataFrame event-embedded positions")
 
         for _, row in kills_df.iterrows():
             try:
