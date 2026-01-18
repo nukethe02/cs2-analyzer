@@ -178,7 +178,8 @@ async def analyze_demo(file: UploadFile = File(...)):
         if tmp_path and tmp_path.exists():
             try:
                 tmp_path.unlink()
-            except:
+            except OSError:
+                # Ignore cleanup errors - temp file will be cleaned up by OS
                 pass
 
 

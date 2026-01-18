@@ -32,6 +32,15 @@ def __getattr__(name):
     elif name == "ReplayWatcher":
         from opensight.watcher import ReplayWatcher
         return ReplayWatcher
+    elif name == "EconomyAnalyzer":
+        from opensight.economy import EconomyAnalyzer
+        return EconomyAnalyzer
+    elif name == "analyze_economy":
+        from opensight.economy import analyze_economy
+        return analyze_economy
+    elif name == "BuyType":
+        from opensight.economy import BuyType
+        return BuyType
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
 
@@ -43,4 +52,7 @@ __all__ = [
     "calculate_ttd",
     "calculate_crosshair_placement",
     "ReplayWatcher",
+    "EconomyAnalyzer",
+    "analyze_economy",
+    "BuyType",
 ]

@@ -6,7 +6,7 @@ Based on professional esports analytics methodology.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 import logging
 import math
 
@@ -18,8 +18,16 @@ from opensight.parser import DemoData, KillEvent, DamageEvent, safe_int, safe_st
 logger = logging.getLogger(__name__)
 
 
-def safe_float(value, default: float = 0.0) -> float:
-    """Safely convert a value to float."""
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """Safely convert a value to float, returning default on failure.
+
+    Args:
+        value: The value to convert.
+        default: The default value to return if conversion fails.
+
+    Returns:
+        The converted float value, or the default if conversion fails.
+    """
     if value is None:
         return default
     try:
