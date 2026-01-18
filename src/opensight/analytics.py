@@ -617,6 +617,9 @@ class DemoAnalyzer:
         # Calculate utility stats
         self._calculate_utility_stats()
 
+        # Calculate accuracy stats (from weapon_fire events)
+        self._calculate_accuracy_stats()
+
         # Calculate mistakes
         self._calculate_mistakes()
 
@@ -1297,61 +1300,110 @@ class DemoAnalyzer:
         logger.info("Calculated side-based stats")
 
     def _calculate_utility_stats(self) -> None:
-        """Calculate comprehensive utility statistics (Leetify-style)."""
+        """Calculate comprehensive utility statistics (Leetify-style) using all available data."""
+
+        # ===========================================
+        # Use BLINDS data for accurate flash stats
+        # ===========================================
+        if hasattr(self.data, 'blinds') and self.data.blinds:
+            logger.info(f"Using {len(self.data.blinds)} blind events for flash stats")
+            for steam_id, player in self._players.items():
+                player_blinds = [b for b in self.data.blinds if b.attacker_steamid == steam_id]
+
+                # Separate enemy vs teammate blinds
+                enemy_blinds = [b for b in player_blinds if not b.is_teammate]
+                team_blinds = [b for b in player_blinds if b.is_teammate]
+
+                # Only count blinds > 1.1 seconds as "real" blinds (Leetify threshold)
+                significant_enemy_blinds = [b for b in enemy_blinds if b.blind_duration >= 1.1]
+
+                player.utility.enemies_flashed = len(significant_enemy_blinds)
+                player.utility.teammates_flashed = len(team_blinds)
+                player.utility.total_blind_time = sum(b.blind_duration for b in enemy_blinds)
+
+                # Count unique flashbangs (group blinds by tick proximity)
+                if player_blinds:
+                    blind_ticks = sorted(set(b.tick for b in player_blinds))
+                    # Group ticks within 10 ticks as same flash
+                    flash_count = 1
+                    for i in range(1, len(blind_ticks)):
+                        if blind_ticks[i] - blind_ticks[i-1] > 10:
+                            flash_count += 1
+                    player.utility.flashbangs_thrown = flash_count
+
+        # ===========================================
+        # Use GRENADES data for accurate grenade counts
+        # ===========================================
+        if hasattr(self.data, 'grenades') and self.data.grenades:
+            logger.info(f"Using {len(self.data.grenades)} grenade events")
+            for steam_id, player in self._players.items():
+                player_grenades = [g for g in self.data.grenades if g.player_steamid == steam_id]
+
+                # Count by type
+                player.utility.smokes_thrown = len([g for g in player_grenades
+                    if 'smoke' in g.grenade_type.lower() and g.event_type == 'thrown'])
+                he_thrown = len([g for g in player_grenades
+                    if 'hegrenade' in g.grenade_type.lower() or 'he_grenade' in g.grenade_type.lower()])
+                molly_thrown = len([g for g in player_grenades
+                    if 'molotov' in g.grenade_type.lower() or 'incendiary' in g.grenade_type.lower()])
+                flash_thrown = len([g for g in player_grenades
+                    if 'flash' in g.grenade_type.lower() and g.event_type == 'thrown'])
+
+                # Only update if we got data (don't overwrite with 0 if no grenades events)
+                if he_thrown > 0:
+                    player.utility.he_thrown = he_thrown
+                if molly_thrown > 0:
+                    player.utility.molotov_thrown = molly_thrown
+                if flash_thrown > 0 and player.utility.flashbangs_thrown == 0:
+                    player.utility.flashbangs_thrown = flash_thrown
+
+        # ===========================================
+        # Use DAMAGES data for HE/Molly damage (fallback and supplement)
+        # ===========================================
         damages_df = self.data.damages_df
-        if damages_df.empty:
-            logger.info("Skipping utility stats - no damage data")
-            return
+        if not damages_df.empty:
+            att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+            att_side = self._find_col(damages_df, self.ATT_SIDE_COLS)
+            vic_side = self._find_col(damages_df, self.VIC_SIDE_COLS)
+            weapon_col = self._find_col(damages_df, ["weapon"])
+            dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
 
-        # Find columns
-        att_col = self._find_col(damages_df, self.ATT_ID_COLS)
-        vic_col = self._find_col(damages_df, self.VIC_ID_COLS)
-        att_side = self._find_col(damages_df, self.ATT_SIDE_COLS)
-        vic_side = self._find_col(damages_df, self.VIC_SIDE_COLS)
-        weapon_col = self._find_col(damages_df, ["weapon"])
-        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+            if att_col and weapon_col and dmg_col:
+                he_weapons = ["hegrenade", "he_grenade", "grenade_he", "hegrenade_projectile"]
+                molly_weapons = ["molotov", "incgrenade", "inferno", "molotov_projectile", "incendiary"]
 
-        if not att_col or not weapon_col or not dmg_col:
-            logger.info(f"Skipping utility stats - missing columns. Have: {list(damages_df.columns)}")
-            return
+                for steam_id, player in self._players.items():
+                    player_dmg = damages_df[damages_df[att_col] == steam_id]
 
-        # HE grenade weapons
-        he_weapons = ["hegrenade", "he_grenade", "grenade_he", "hegrenade_projectile"]
-        molly_weapons = ["molotov", "incgrenade", "inferno", "molotov_projectile", "incendiary"]
+                    # HE damage
+                    he_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(he_weapons)]
+                    if not he_dmg.empty:
+                        if att_side and vic_side:
+                            enemy_he = he_dmg[he_dmg[att_side] != he_dmg[vic_side]]
+                            team_he = he_dmg[he_dmg[att_side] == he_dmg[vic_side]]
+                            player.utility.he_damage = int(enemy_he[dmg_col].sum())
+                            player.utility.he_team_damage = int(team_he[dmg_col].sum())
+                        else:
+                            player.utility.he_damage = int(he_dmg[dmg_col].sum())
+                        if player.utility.he_thrown == 0:
+                            player.utility.he_thrown = max(1, len(he_dmg[dmg_col].unique()))
 
-        for steam_id, player in self._players.items():
-            player_dmg = damages_df[damages_df[att_col] == steam_id]
+                    # Molotov damage
+                    molly_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(molly_weapons)]
+                    if not molly_dmg.empty:
+                        if att_side and vic_side:
+                            enemy_molly = molly_dmg[molly_dmg[att_side] != molly_dmg[vic_side]]
+                            team_molly = molly_dmg[molly_dmg[att_side] == molly_dmg[vic_side]]
+                            player.utility.molotov_damage = int(enemy_molly[dmg_col].sum())
+                            player.utility.molotov_team_damage = int(team_molly[dmg_col].sum())
+                        else:
+                            player.utility.molotov_damage = int(molly_dmg[dmg_col].sum())
+                        if player.utility.molotov_thrown == 0:
+                            player.utility.molotov_thrown = max(1, len(set(molly_dmg['tick'])) if 'tick' in molly_dmg.columns else 1)
 
-            # HE damage to enemies
-            he_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(he_weapons)]
-            if not he_dmg.empty:
-                # Separate enemy vs team damage
-                if att_side and vic_side:
-                    enemy_he = he_dmg[he_dmg[att_side] != he_dmg[vic_side]]
-                    team_he = he_dmg[he_dmg[att_side] == he_dmg[vic_side]]
-                    player.utility.he_damage = int(enemy_he[dmg_col].sum())
-                    player.utility.he_team_damage = int(team_he[dmg_col].sum())
-                else:
-                    player.utility.he_damage = int(he_dmg[dmg_col].sum())
-
-                # Estimate HE thrown (each HE hit is one throw)
-                player.utility.he_thrown = len(he_dmg[dmg_col].unique()) or 1
-
-            # Molotov damage
-            molly_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(molly_weapons)]
-            if not molly_dmg.empty:
-                if att_side and vic_side:
-                    enemy_molly = molly_dmg[molly_dmg[att_side] != molly_dmg[vic_side]]
-                    team_molly = molly_dmg[molly_dmg[att_side] == molly_dmg[vic_side]]
-                    player.utility.molotov_damage = int(enemy_molly[dmg_col].sum())
-                    player.utility.molotov_team_damage = int(team_molly[dmg_col].sum())
-                else:
-                    player.utility.molotov_damage = int(molly_dmg[dmg_col].sum())
-
-                player.utility.molotov_thrown = len(molly_dmg.groupby(self._round_col if self._round_col else "tick")) or 1
-
-        # Flash stats from kills (flash assists already calculated in basic stats)
-        # We estimate flashes thrown based on flash assists
+        # ===========================================
+        # Flash assists from kills (supplement)
+        # ===========================================
         kills_df = self.data.kills_df
         if not kills_df.empty and "assister_steamid" in kills_df.columns and "flash_assist" in kills_df.columns:
             for steam_id, player in self._players.items():
@@ -1360,11 +1412,36 @@ class DemoAnalyzer:
                     (kills_df["flash_assist"] == True)
                 ]
                 player.utility.flash_assists = len(flash_assists)
-                # Rough estimate: 1 flash assist per 2 flashes thrown
-                player.utility.flashbangs_thrown = max(player.utility.flash_assists * 2, 1)
-                player.utility.enemies_flashed = player.utility.flash_assists  # Conservative estimate
 
         logger.info("Calculated utility stats")
+
+    def _calculate_accuracy_stats(self) -> None:
+        """Calculate accuracy statistics from weapon_fire events."""
+        if not hasattr(self.data, 'weapon_fires') or not self.data.weapon_fires:
+            logger.info("No weapon_fire data available for accuracy stats")
+            return
+
+        damages_df = self.data.damages_df
+
+        for steam_id, player in self._players.items():
+            # Count shots fired
+            player_shots = [f for f in self.data.weapon_fires if f.player_steamid == steam_id]
+            player.shots_fired = len(player_shots)
+
+            # Count shots that hit (from damage events)
+            if not damages_df.empty:
+                att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+                if att_col:
+                    player_hits = damages_df[damages_df[att_col] == steam_id]
+                    player.shots_hit = len(player_hits)
+
+                    # Count headshot hits
+                    hitgroup_col = self._find_col(damages_df, ["hitgroup"])
+                    if hitgroup_col:
+                        head_hits = player_hits[player_hits[hitgroup_col].str.lower().str.contains("head", na=False)]
+                        player.headshot_hits = len(head_hits)
+
+        logger.info("Calculated accuracy stats")
 
     def _calculate_mistakes(self) -> None:
         """Calculate mistakes (Scope.gg style)."""
