@@ -82,7 +82,7 @@ async def analyze_demo(
     """
     Analyze an uploaded demo file.
 
-    Returns engagement metrics, TTD, and crosshair placement data.
+    Returns player stats including kills, deaths, assists, ADR, headshot %.
     """
     if not file.filename.endswith(".dem"):
         raise HTTPException(status_code=400, detail="File must be a .dem file")
@@ -90,7 +90,6 @@ async def analyze_demo(
     # Lazy imports for heavy dependencies
     try:
         from opensight.parser import DemoParser
-        from opensight.metrics import calculate_engagement_metrics, calculate_ttd, calculate_crosshair_placement
     except ImportError as e:
         raise HTTPException(
             status_code=503,
@@ -109,71 +108,46 @@ async def analyze_demo(
         parser = DemoParser(tmp_path)
         data = parser.parse()
 
-        # Filter by player if specified
-        steam_id = None
-        if player_filter:
-            try:
-                steam_id = int(player_filter)
-            except ValueError:
-                for sid, name in data.player_names.items():
-                    if player_filter.lower() in name.lower():
-                        steam_id = sid
-                        break
+        # Get number of rounds
+        num_rounds = len(data.rounds_df) if hasattr(data, 'rounds_df') and not data.rounds_df.empty else 1
 
-        # Calculate metrics
-        engagement = calculate_engagement_metrics(data, steam_id)
-        ttd = calculate_ttd(data, steam_id)
-        cp = calculate_crosshair_placement(data, steam_id)
-
-        # Build response
+        # Build response using player_stats from parser
         result = {
             "demo_info": {
                 "map": data.map_name,
-                "duration_seconds": data.duration_seconds,
+                "duration_seconds": round(data.duration_seconds, 1),
+                "duration_minutes": round(data.duration_seconds / 60, 1),
                 "tick_rate": data.tick_rate,
                 "player_count": len(data.player_names),
+                "rounds": num_rounds,
             },
             "players": {}
         }
 
-        for sid, name in data.player_names.items():
-            player_data = {
-                "name": name,
-                "team": data.teams.get(sid, "Unknown"),
+        # Use the pre-calculated player_stats
+        for steam_id, stats in data.player_stats.items():
+            result["players"][str(steam_id)] = {
+                "name": stats["name"],
+                "team": stats["team"],
+                "stats": {
+                    "kills": stats["kills"],
+                    "deaths": stats["deaths"],
+                    "assists": stats["assists"],
+                    "kd_ratio": stats["kd_ratio"],
+                    "headshots": stats["headshots"],
+                    "headshot_pct": stats["hs_percent"],
+                    "total_damage": stats["total_damage"],
+                    "adr": stats["adr"],
+                }
             }
-
-            if sid in engagement:
-                m = engagement[sid]
-                player_data["stats"] = {
-                    "kills": m.total_kills,
-                    "deaths": m.total_deaths,
-                    "headshot_pct": round(m.headshot_percentage, 1),
-                    "damage_per_round": round(m.damage_per_round, 1),
-                }
-
-            if sid in ttd:
-                t = ttd[sid]
-                player_data["ttd"] = {
-                    "mean_ms": round(t.mean_ttd_ms, 0),
-                    "median_ms": round(t.median_ttd_ms, 0),
-                    "engagements": t.engagement_count,
-                }
-
-            if sid in cp:
-                c = cp[sid]
-                player_data["crosshair_placement"] = {
-                    "mean_angle": round(c.mean_angle_deg, 1),
-                    "score": round(c.placement_score, 1),
-                    "samples": c.sample_count,
-                }
-
-            result["players"][str(sid)] = player_data
 
         return JSONResponse(content=result)
 
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
     finally:
         # Clean up temp file

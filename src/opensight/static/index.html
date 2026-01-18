@@ -367,7 +367,11 @@
                     </div>
                     <div class="result-item">
                         <span class="result-label">Duration</span>
-                        <span class="result-value">${Math.round(data.demo_info.duration_seconds / 60)} minutes</span>
+                        <span class="result-value">${data.demo_info.duration_minutes || Math.round(data.demo_info.duration_seconds / 60)} minutes</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Rounds</span>
+                        <span class="result-value">${data.demo_info.rounds || 'N/A'}</span>
                     </div>
                     <div class="result-item">
                         <span class="result-label">Players</span>
@@ -396,26 +400,26 @@
                                         <div class="stat-label">Deaths</div>
                                     </div>
                                     <div class="stat">
-                                        <div class="stat-value">${player.stats.headshot_pct}%</div>
+                                        <div class="stat-value">${player.stats.assists || 0}</div>
+                                        <div class="stat-label">Assists</div>
+                                    </div>
+                                    <div class="stat">
+                                        <div class="stat-value">${player.stats.kd_ratio || (player.stats.deaths > 0 ? (player.stats.kills / player.stats.deaths).toFixed(2) : player.stats.kills)}</div>
+                                        <div class="stat-label">K/D</div>
+                                    </div>
+                                    <div class="stat">
+                                        <div class="stat-value">${player.stats.adr || player.stats.damage_per_round || 0}</div>
+                                        <div class="stat-label">ADR</div>
+                                    </div>
+                                    <div class="stat">
+                                        <div class="stat-value">${player.stats.headshot_pct || 0}%</div>
                                         <div class="stat-label">HS%</div>
                                     </div>
                                     <div class="stat">
-                                        <div class="stat-value">${player.stats.damage_per_round}</div>
-                                        <div class="stat-label">ADR</div>
+                                        <div class="stat-value">${player.stats.total_damage || 0}</div>
+                                        <div class="stat-label">Damage</div>
                                     </div>
-                                ` : ''}
-                                ${player.ttd ? `
-                                    <div class="stat">
-                                        <div class="stat-value">${player.ttd.mean_ms}ms</div>
-                                        <div class="stat-label">TTD</div>
-                                    </div>
-                                ` : ''}
-                                ${player.crosshair_placement ? `
-                                    <div class="stat">
-                                        <div class="stat-value">${player.crosshair_placement.score}</div>
-                                        <div class="stat-label">CP Score</div>
-                                    </div>
-                                ` : ''}
+                                ` : '<div class="stat"><div class="stat-value">-</div><div class="stat-label">No data</div></div>'}
                             </div>
                         </div>
                     `;
