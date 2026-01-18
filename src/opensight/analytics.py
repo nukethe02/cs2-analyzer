@@ -13,9 +13,21 @@ import math
 import numpy as np
 import pandas as pd
 
-from opensight.parser import DemoData, KillEvent, DamageEvent
+from opensight.parser import DemoData, KillEvent, DamageEvent, safe_int, safe_str, safe_bool
 
 logger = logging.getLogger(__name__)
+
+
+def safe_float(value, default: float = 0.0) -> float:
+    """Safely convert a value to float."""
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 
 @dataclass
@@ -150,44 +162,48 @@ class DemoAnalyzer:
 
         # For each kill, find the first damage event from that attacker to that victim
         for _, kill_row in kills_df.iterrows():
-            att_id = kill_row[kill_att]
-            vic_id = kill_row[kill_vic]
-            kill_tick_val = kill_row[kill_tick]
+            try:
+                att_id = safe_int(kill_row[kill_att])
+                vic_id = safe_int(kill_row[kill_vic])
+                kill_tick_val = safe_int(kill_row[kill_tick])
 
-            if not att_id or not vic_id:
+                if not att_id or not vic_id:
+                    continue
+
+                # Find damage events from this attacker to this victim before this kill
+                mask = (
+                    (damages_df[dmg_att] == att_id) &
+                    (damages_df[dmg_vic] == vic_id) &
+                    (damages_df[dmg_tick] <= kill_tick_val)
+                )
+                engagement_damages = damages_df[mask].sort_values(dmg_tick)
+
+                if engagement_damages.empty:
+                    continue
+
+                # First damage tick in this engagement
+                first_dmg_tick = safe_int(engagement_damages.iloc[0][dmg_tick])
+
+                # Calculate TTD (using first damage as proxy for "spotted")
+                # This is a simplified approximation
+                ttd_ticks = kill_tick_val - first_dmg_tick
+                ttd_ms = ttd_ticks * self.MS_PER_TICK
+
+                result = TTDResult(
+                    tick_spotted=first_dmg_tick,
+                    tick_damage=kill_tick_val,
+                    ttd_ticks=ttd_ticks,
+                    ttd_ms=ttd_ms,
+                    attacker_steamid=att_id,
+                    victim_steamid=vic_id,
+                    weapon=safe_str(kill_row.get(kill_weapon)) if kill_weapon else "",
+                    headshot=safe_bool(kill_row.get(kill_hs)) if kill_hs else False,
+                    is_prefire=ttd_ms <= self.TTD_MIN_MS,
+                )
+                self._ttd_results.append(result)
+            except Exception as e:
+                logger.debug(f"Error processing kill for TTD: {e}")
                 continue
-
-            # Find damage events from this attacker to this victim before this kill
-            mask = (
-                (damages_df[dmg_att] == att_id) &
-                (damages_df[dmg_vic] == vic_id) &
-                (damages_df[dmg_tick] <= kill_tick_val)
-            )
-            engagement_damages = damages_df[mask].sort_values(dmg_tick)
-
-            if engagement_damages.empty:
-                continue
-
-            # First damage tick in this engagement
-            first_dmg_tick = int(engagement_damages.iloc[0][dmg_tick])
-
-            # Calculate TTD (using first damage as proxy for "spotted")
-            # This is a simplified approximation
-            ttd_ticks = int(kill_tick_val) - first_dmg_tick
-            ttd_ms = ttd_ticks * self.MS_PER_TICK
-
-            result = TTDResult(
-                tick_spotted=first_dmg_tick,
-                tick_damage=int(kill_tick_val),
-                ttd_ticks=ttd_ticks,
-                ttd_ms=ttd_ms,
-                attacker_steamid=int(att_id),
-                victim_steamid=int(vic_id),
-                weapon=str(kill_row.get(kill_weapon, "")) if kill_weapon else "",
-                headshot=bool(kill_row.get(kill_hs, False)) if kill_hs else False,
-                is_prefire=ttd_ms <= self.TTD_MIN_MS,
-            )
-            self._ttd_results.append(result)
 
         logger.info(f"Computed TTD for {len(self._ttd_results)} engagements")
 
@@ -233,54 +249,58 @@ class DemoAnalyzer:
             return
 
         for _, kill_row in kills_df.iterrows():
-            att_id = kill_row[kill_att]
-            vic_id = kill_row[kill_vic]
-            kill_tick_val = kill_row[kill_tick]
+            try:
+                att_id = safe_int(kill_row[kill_att])
+                vic_id = safe_int(kill_row[kill_vic])
+                kill_tick_val = safe_int(kill_row[kill_tick])
 
-            if not att_id or not vic_id:
+                if not att_id or not vic_id:
+                    continue
+
+                # Get attacker and victim positions at kill tick (or closest tick before)
+                att_ticks = ticks_df[(ticks_df[tick_steamid] == att_id) & (ticks_df[tick_col] <= kill_tick_val)]
+                vic_ticks = ticks_df[(ticks_df[tick_steamid] == vic_id) & (ticks_df[tick_col] <= kill_tick_val)]
+
+                if att_ticks.empty or vic_ticks.empty:
+                    continue
+
+                # Get closest tick data
+                att_state = att_ticks.iloc[-1]
+                vic_state = vic_ticks.iloc[-1]
+
+                # Attacker position and angles
+                att_pos = np.array([
+                    safe_float(att_state[tick_x]),
+                    safe_float(att_state[tick_y]),
+                    safe_float(att_state[tick_z]) + 64  # Eye height offset
+                ])
+                att_pitch = safe_float(att_state[tick_pitch])
+                att_yaw = safe_float(att_state[tick_yaw])
+
+                # Victim position (head level)
+                vic_pos = np.array([
+                    safe_float(vic_state[tick_x]),
+                    safe_float(vic_state[tick_y]),
+                    safe_float(vic_state[tick_z]) + 64  # Head height
+                ])
+
+                # Calculate angular error
+                angular_error, pitch_error, yaw_error = self._calculate_angular_error(
+                    att_pos, att_pitch, att_yaw, vic_pos
+                )
+
+                result = CrosshairPlacementResult(
+                    tick=kill_tick_val,
+                    attacker_steamid=att_id,
+                    victim_steamid=vic_id,
+                    angular_error_deg=angular_error,
+                    pitch_error_deg=pitch_error,
+                    yaw_error_deg=yaw_error,
+                )
+                self._cp_results.append(result)
+            except Exception as e:
+                logger.debug(f"Error processing kill for CP: {e}")
                 continue
-
-            # Get attacker and victim positions at kill tick (or closest tick before)
-            att_ticks = ticks_df[(ticks_df[tick_steamid] == att_id) & (ticks_df[tick_col] <= kill_tick_val)]
-            vic_ticks = ticks_df[(ticks_df[tick_steamid] == vic_id) & (ticks_df[tick_col] <= kill_tick_val)]
-
-            if att_ticks.empty or vic_ticks.empty:
-                continue
-
-            # Get closest tick data
-            att_state = att_ticks.iloc[-1]
-            vic_state = vic_ticks.iloc[-1]
-
-            # Attacker position and angles
-            att_pos = np.array([
-                float(att_state[tick_x]),
-                float(att_state[tick_y]),
-                float(att_state[tick_z]) + 64  # Eye height offset
-            ])
-            att_pitch = float(att_state[tick_pitch])
-            att_yaw = float(att_state[tick_yaw])
-
-            # Victim position (head level)
-            vic_pos = np.array([
-                float(vic_state[tick_x]),
-                float(vic_state[tick_y]),
-                float(vic_state[tick_z]) + 64  # Head height
-            ])
-
-            # Calculate angular error
-            angular_error, pitch_error, yaw_error = self._calculate_angular_error(
-                att_pos, att_pitch, att_yaw, vic_pos
-            )
-
-            result = CrosshairPlacementResult(
-                tick=int(kill_tick_val),
-                attacker_steamid=int(att_id),
-                victim_steamid=int(vic_id),
-                angular_error_deg=angular_error,
-                pitch_error_deg=pitch_error,
-                yaw_error_deg=yaw_error,
-            )
-            self._cp_results.append(result)
 
         logger.info(f"Computed crosshair placement for {len(self._cp_results)} kills")
 

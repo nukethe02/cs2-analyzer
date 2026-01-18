@@ -58,7 +58,39 @@ class DamageEvent:
     victim_steamid: int
     damage: int
     weapon: str
-    hitgroup: int  # 1=head, 2=chest, etc.
+    hitgroup: str  # 'head', 'chest', 'generic', etc.
+
+
+def safe_int(value: Any, default: int = 0) -> int:
+    """Safely convert a value to int, returning default on failure."""
+    if value is None:
+        return default
+    try:
+        # Handle pandas NA/NaN
+        if pd.isna(value):
+            return default
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_str(value: Any, default: str = "") -> str:
+    """Safely convert a value to string."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return default
+    return str(value)
+
+
+def safe_bool(value: Any, default: bool = False) -> bool:
+    """Safely convert a value to bool."""
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+        return bool(value)
+    except (ValueError, TypeError):
+        return default
 
 
 @dataclass
@@ -276,7 +308,7 @@ class DemoParser:
                     if not player_ticks.empty:
                         team = player_ticks[team_col].mode()
                         if len(team) > 0:
-                            teams[sid] = int(team.iloc[0])
+                            teams[sid] = safe_int(team.iloc[0])
 
         # Default teams based on kill patterns if not found
         if not teams and not kills_df.empty:
@@ -332,7 +364,11 @@ class DemoParser:
 
                     # Headshots
                     if hs_col and kills > 0:
-                        headshots = int(player_kills_df[hs_col].sum())
+                        try:
+                            headshots = int(player_kills_df[hs_col].sum())
+                        except (ValueError, TypeError):
+                            # Handle case where headshot is bool column
+                            headshots = player_kills_df[hs_col].apply(lambda x: 1 if x else 0).sum()
 
                     # Weapon breakdown
                     if weapon_col and kills > 0:
@@ -349,7 +385,10 @@ class DemoParser:
             # Damage
             if not damages_df.empty and dmg_att_col and dmg_col:
                 player_dmg = damages_df[damages_df[dmg_att_col] == steam_id]
-                total_damage = int(player_dmg[dmg_col].sum())
+                try:
+                    total_damage = int(player_dmg[dmg_col].sum())
+                except (ValueError, TypeError):
+                    total_damage = 0
 
             # Derived stats
             kd_ratio = round(kills / deaths, 2) if deaths > 0 else float(kills)
@@ -398,18 +437,18 @@ class DemoParser:
         tick_col = find_col(kills_df, ["tick"])
 
         for _, row in kills_df.iterrows():
-            tick = int(row.get(tick_col, 0)) if tick_col else 0
-            att_id = int(row.get(att_col, 0)) if att_col else 0
-            vic_id = int(row.get(vic_col, 0)) if vic_col else 0
+            tick = safe_int(row.get(tick_col)) if tick_col else 0
+            att_id = safe_int(row.get(att_col)) if att_col else 0
+            vic_id = safe_int(row.get(vic_col)) if vic_col else 0
 
             kill = KillEvent(
                 tick=tick,
                 attacker_steamid=att_id,
-                attacker_name=str(row.get(att_name_col, "")) if att_name_col else "",
+                attacker_name=safe_str(row.get(att_name_col)) if att_name_col else "",
                 victim_steamid=vic_id,
-                victim_name=str(row.get(vic_name_col, "")) if vic_name_col else "",
-                weapon=str(row.get(weapon_col, "")) if weapon_col else "",
-                headshot=bool(row.get(hs_col, False)) if hs_col else False,
+                victim_name=safe_str(row.get(vic_name_col)) if vic_name_col else "",
+                weapon=safe_str(row.get(weapon_col)) if weapon_col else "",
+                headshot=safe_bool(row.get(hs_col)) if hs_col else False,
             )
             kills.append(kill)
 
@@ -436,12 +475,12 @@ class DemoParser:
 
         for _, row in damages_df.iterrows():
             dmg = DamageEvent(
-                tick=int(row.get(tick_col, 0)) if tick_col else 0,
-                attacker_steamid=int(row.get(att_col, 0)) if att_col else 0,
-                victim_steamid=int(row.get(vic_col, 0)) if vic_col else 0,
-                damage=int(row.get(dmg_col, 0)) if dmg_col else 0,
-                weapon=str(row.get(weapon_col, "")) if weapon_col else "",
-                hitgroup=int(row.get(hitgroup_col, 0)) if hitgroup_col else 0,
+                tick=safe_int(row.get(tick_col)) if tick_col else 0,
+                attacker_steamid=safe_int(row.get(att_col)) if att_col else 0,
+                victim_steamid=safe_int(row.get(vic_col)) if vic_col else 0,
+                damage=safe_int(row.get(dmg_col)) if dmg_col else 0,
+                weapon=safe_str(row.get(weapon_col)) if weapon_col else "",
+                hitgroup=safe_str(row.get(hitgroup_col)) if hitgroup_col else "",
             )
             damages.append(dmg)
 
