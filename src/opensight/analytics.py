@@ -316,15 +316,50 @@ class DemoAnalyzer:
     TTD_MIN_MS = 0
     TTD_MAX_MS = 1500
 
+    # Column name variations
+    ROUND_COLS = ["round_num", "total_rounds_played", "round"]
+    ATT_ID_COLS = ["attacker_steamid", "attacker_steam_id"]
+    VIC_ID_COLS = ["victim_steamid", "user_steamid", "victim_steam_id"]
+    ATT_SIDE_COLS = ["attacker_side", "attacker_team_name", "attacker_team"]
+    VIC_SIDE_COLS = ["victim_side", "user_team_name", "victim_team"]
+
     def __init__(self, demo_data: DemoData):
         self.data = demo_data
         self._ttd_results: list[TTDResult] = []
         self._cp_results: list[CrosshairPlacementResult] = []
         self._players: dict[int, PlayerMatchStats] = {}
+        # Cache column lookups
+        self._round_col: Optional[str] = None
+        self._att_id_col: Optional[str] = None
+        self._vic_id_col: Optional[str] = None
+        self._att_side_col: Optional[str] = None
+        self._vic_side_col: Optional[str] = None
+
+    def _find_col(self, df: pd.DataFrame, options: list[str]) -> Optional[str]:
+        """Find first matching column from options."""
+        for col in options:
+            if col in df.columns:
+                return col
+        return None
+
+    def _init_column_cache(self) -> None:
+        """Initialize column name cache for kills DataFrame."""
+        kills_df = self.data.kills_df
+        if kills_df.empty:
+            return
+        self._round_col = self._find_col(kills_df, self.ROUND_COLS)
+        self._att_id_col = self._find_col(kills_df, self.ATT_ID_COLS)
+        self._vic_id_col = self._find_col(kills_df, self.VIC_ID_COLS)
+        self._att_side_col = self._find_col(kills_df, self.ATT_SIDE_COLS)
+        self._vic_side_col = self._find_col(kills_df, self.VIC_SIDE_COLS)
+        logger.info(f"Column cache: round={self._round_col}, att_id={self._att_id_col}, vic_id={self._vic_id_col}")
 
     def analyze(self) -> MatchAnalysis:
         """Run full analysis and return match analysis."""
         logger.info("Starting professional analysis...")
+
+        # Initialize column name cache
+        self._init_column_cache()
 
         # Initialize player stats
         self._init_player_stats()
@@ -422,15 +457,13 @@ class DemoAnalyzer:
     def _calculate_multi_kills(self) -> None:
         """Calculate multi-kill rounds for each player."""
         kills_df = self.data.kills_df
-        if kills_df.empty or "round_num" not in kills_df.columns:
+        if kills_df.empty or not self._round_col or not self._att_id_col:
+            logger.info("Skipping multi-kill calculation - missing columns")
             return
 
         for steam_id, player in self._players.items():
-            if "attacker_steamid" not in kills_df.columns:
-                continue
-
-            player_kills = kills_df[kills_df["attacker_steamid"] == steam_id]
-            kills_per_round = player_kills.groupby("round_num").size()
+            player_kills = kills_df[kills_df[self._att_id_col] == steam_id]
+            kills_per_round = player_kills.groupby(self._round_col).size()
 
             player.multi_kills.rounds_with_1k = int((kills_per_round == 1).sum())
             player.multi_kills.rounds_with_2k = int((kills_per_round == 2).sum())
@@ -441,18 +474,19 @@ class DemoAnalyzer:
     def _detect_opening_duels(self) -> None:
         """Detect opening duels (first kill of each round)."""
         kills_df = self.data.kills_df
-        if kills_df.empty or "round_num" not in kills_df.columns:
+        if kills_df.empty or not self._round_col or not self._att_id_col or not self._vic_id_col:
+            logger.info("Skipping opening duels - missing columns")
             return
 
         # Get first kill of each round
-        for round_num in kills_df["round_num"].unique():
-            round_kills = kills_df[kills_df["round_num"] == round_num].sort_values("tick")
+        for round_num in kills_df[self._round_col].unique():
+            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
             if round_kills.empty:
                 continue
 
             first_kill = round_kills.iloc[0]
-            attacker_id = safe_int(first_kill.get("attacker_steamid"))
-            victim_id = safe_int(first_kill.get("victim_steamid"))
+            attacker_id = safe_int(first_kill.get(self._att_id_col))
+            victim_id = safe_int(first_kill.get(self._vic_id_col))
 
             if attacker_id in self._players:
                 self._players[attacker_id].opening_duels.attempts += 1
@@ -465,34 +499,43 @@ class DemoAnalyzer:
     def _detect_trades(self) -> None:
         """Detect trade kills (kill within 5 seconds of teammate death)."""
         kills_df = self.data.kills_df
-        if kills_df.empty:
+        if kills_df.empty or not self._round_col:
+            logger.info("Skipping trade detection - missing round column")
+            return
+
+        if not self._vic_id_col or not self._att_id_col:
+            logger.info("Skipping trade detection - missing id columns")
             return
 
         trade_window_ticks = int(TRADE_WINDOW_SECONDS * self.TICK_RATE)
 
-        for round_num in kills_df["round_num"].unique():
-            round_kills = kills_df[kills_df["round_num"] == round_num].sort_values("tick")
+        for round_num in kills_df[self._round_col].unique():
+            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
 
             for idx, kill in round_kills.iterrows():
-                victim_id = safe_int(kill.get("victim_steamid"))
-                victim_team = safe_str(kill.get("victim_side"))
-                killer_id = safe_int(kill.get("attacker_steamid"))
+                victim_id = safe_int(kill.get(self._vic_id_col))
+                victim_team = safe_str(kill.get(self._vic_side_col)) if self._vic_side_col else ""
+                killer_id = safe_int(kill.get(self._att_id_col))
                 kill_tick = safe_int(kill.get("tick"))
 
                 if not victim_id or not killer_id:
                     continue
 
                 # Look for trade (teammate kills the killer within window)
+                # Need attacker_side column for this
+                if not self._att_side_col or self._att_side_col not in round_kills.columns:
+                    continue
+
                 potential_trades = round_kills[
                     (round_kills["tick"] > kill_tick) &
                     (round_kills["tick"] <= kill_tick + trade_window_ticks) &
-                    (round_kills["victim_steamid"] == killer_id) &
-                    (round_kills["attacker_side"] == victim_team)
+                    (round_kills[self._vic_id_col] == killer_id) &
+                    (round_kills[self._att_side_col] == victim_team)
                 ]
 
                 if not potential_trades.empty:
                     # Trade occurred
-                    trader_id = safe_int(potential_trades.iloc[0].get("attacker_steamid"))
+                    trader_id = safe_int(potential_trades.iloc[0].get(self._att_id_col))
 
                     if victim_id in self._players:
                         self._players[victim_id].trades.deaths_traded += 1
@@ -505,11 +548,12 @@ class DemoAnalyzer:
         # This requires tracking alive players per tick, which is complex
         # For now, we use a simplified heuristic based on kill sequence
         kills_df = self.data.kills_df
-        if kills_df.empty or "round_num" not in kills_df.columns:
+        if kills_df.empty or not self._round_col or not self._vic_id_col or not self._vic_side_col:
+            logger.info("Skipping clutch detection - missing columns")
             return
 
-        for round_num in kills_df["round_num"].unique():
-            round_kills = kills_df[kills_df["round_num"] == round_num].sort_values("tick")
+        for round_num in kills_df[self._round_col].unique():
+            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
             if len(round_kills) < 5:  # Need enough kills for clutch
                 continue
 
@@ -518,8 +562,8 @@ class DemoAnalyzer:
             t_deaths = []
 
             for _, kill in round_kills.iterrows():
-                victim_id = safe_int(kill.get("victim_steamid"))
-                victim_side = safe_str(kill.get("victim_side"))
+                victim_id = safe_int(kill.get(self._vic_id_col))
+                victim_side = safe_str(kill.get(self._vic_side_col))
 
                 if victim_side == "CT":
                     ct_deaths.append(victim_id)
@@ -567,19 +611,23 @@ class DemoAnalyzer:
     def _calculate_kast(self) -> None:
         """Calculate KAST (Kill/Assist/Survived/Traded) for each player."""
         kills_df = self.data.kills_df
-        if kills_df.empty or "round_num" not in kills_df.columns:
+        if kills_df.empty or not self._round_col or not self._att_id_col or not self._vic_id_col:
+            logger.info("Skipping KAST calculation - missing columns")
             return
 
         trade_window_ticks = int(TRADE_WINDOW_SECONDS * self.TICK_RATE)
 
-        for round_num in range(1, self.data.num_rounds + 1):
-            round_kills = kills_df[kills_df["round_num"] == round_num].sort_values("tick")
+        # Get unique round numbers from the data
+        round_nums = sorted(kills_df[self._round_col].unique())
+
+        for round_num in round_nums:
+            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
 
             for steam_id, player in self._players.items():
                 kast_this_round = False
 
                 # K - Got a kill
-                if len(round_kills[round_kills["attacker_steamid"] == steam_id]) > 0:
+                if len(round_kills[round_kills[self._att_id_col] == steam_id]) > 0:
                     kast_this_round = True
 
                 # A - Got an assist
@@ -588,7 +636,7 @@ class DemoAnalyzer:
                         kast_this_round = True
 
                 # S - Survived
-                player_deaths = round_kills[round_kills["victim_steamid"] == steam_id]
+                player_deaths = round_kills[round_kills[self._vic_id_col] == steam_id]
                 if player_deaths.empty:
                     kast_this_round = True
                     player.rounds_survived += 1
@@ -597,18 +645,19 @@ class DemoAnalyzer:
                 if not kast_this_round and not player_deaths.empty:
                     death = player_deaths.iloc[0]
                     death_tick = safe_int(death.get("tick"))
-                    killer_id = safe_int(death.get("attacker_steamid"))
+                    killer_id = safe_int(death.get(self._att_id_col))
                     player_team = player.team
 
                     # Check if teammate killed the killer within trade window
-                    trades = round_kills[
-                        (round_kills["tick"] > death_tick) &
-                        (round_kills["tick"] <= death_tick + trade_window_ticks) &
-                        (round_kills["victim_steamid"] == killer_id) &
-                        (round_kills["attacker_side"] == player_team)
-                    ]
-                    if not trades.empty:
-                        kast_this_round = True
+                    if self._att_side_col and self._att_side_col in round_kills.columns:
+                        trades = round_kills[
+                            (round_kills["tick"] > death_tick) &
+                            (round_kills["tick"] <= death_tick + trade_window_ticks) &
+                            (round_kills[self._vic_id_col] == killer_id) &
+                            (round_kills[self._att_side_col] == player_team)
+                        ]
+                        if not trades.empty:
+                            kast_this_round = True
 
                 if kast_this_round:
                     player.kast_rounds += 1
