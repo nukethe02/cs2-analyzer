@@ -212,18 +212,14 @@ class DemoAnalyzer:
         Compute crosshair placement error for each kill.
 
         Angular error = angle between player's view vector and ideal vector to target.
+        Uses position/angle data embedded in kills_df (via demoparser2 player= param).
         """
-        if self.data.ticks_df is None or self.data.ticks_df.empty:
-            logger.warning("No tick data for crosshair placement computation")
-            return
-
         if self.data.kills_df.empty:
             return
 
-        ticks_df = self.data.ticks_df
         kills_df = self.data.kills_df
 
-        # Find required columns
+        # Find required columns - now embedded in kills_df from parse_event(player=...)
         def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
             for col in options:
                 if col in df.columns:
@@ -235,58 +231,60 @@ class DemoAnalyzer:
         kill_vic = find_col(kills_df, ["user_steamid", "victim_steamid"])
         kill_tick = find_col(kills_df, ["tick"])
 
-        # Tick columns
-        tick_steamid = find_col(ticks_df, ["steamid", "steam_id"])
-        tick_x = find_col(ticks_df, ["X", "x"])
-        tick_y = find_col(ticks_df, ["Y", "y"])
-        tick_z = find_col(ticks_df, ["Z", "z"])
-        tick_pitch = find_col(ticks_df, ["pitch"])
-        tick_yaw = find_col(ticks_df, ["yaw"])
-        tick_col = find_col(ticks_df, ["tick"])
+        # Position/angle columns from player= param (prefixed with attacker_/user_)
+        att_x = find_col(kills_df, ["attacker_X", "attacker_x"])
+        att_y = find_col(kills_df, ["attacker_Y", "attacker_y"])
+        att_z = find_col(kills_df, ["attacker_Z", "attacker_z"])
+        att_pitch = find_col(kills_df, ["attacker_pitch"])
+        att_yaw = find_col(kills_df, ["attacker_yaw"])
+        vic_x = find_col(kills_df, ["user_X", "user_x"])
+        vic_y = find_col(kills_df, ["user_Y", "user_y"])
+        vic_z = find_col(kills_df, ["user_Z", "user_z"])
 
-        if not all([kill_att, kill_vic, kill_tick, tick_steamid, tick_x, tick_y, tick_z, tick_pitch, tick_yaw, tick_col]):
-            logger.warning("Missing columns for crosshair placement computation")
+        # Check if we have position data in kills_df (from optimized parsing)
+        has_positions = all([att_x, att_y, att_z, att_pitch, att_yaw, vic_x, vic_y, vic_z])
+
+        if not has_positions:
+            # Fallback to tick-based if position data not in events
+            if self.data.ticks_df is not None and not self.data.ticks_df.empty:
+                self._compute_crosshair_placement_from_ticks()
+            else:
+                logger.warning("No position data available for crosshair placement")
             return
+
+        logger.info("Computing CP from event-embedded positions (fast path)")
 
         for _, kill_row in kills_df.iterrows():
             try:
-                att_id = safe_int(kill_row[kill_att])
-                vic_id = safe_int(kill_row[kill_vic])
-                kill_tick_val = safe_int(kill_row[kill_tick])
+                att_id = safe_int(kill_row.get(kill_att))
+                vic_id = safe_int(kill_row.get(kill_vic))
+                kill_tick_val = safe_int(kill_row.get(kill_tick))
 
                 if not att_id or not vic_id:
                     continue
 
-                # Get attacker and victim positions at kill tick (or closest tick before)
-                att_ticks = ticks_df[(ticks_df[tick_steamid] == att_id) & (ticks_df[tick_col] <= kill_tick_val)]
-                vic_ticks = ticks_df[(ticks_df[tick_steamid] == vic_id) & (ticks_df[tick_col] <= kill_tick_val)]
-
-                if att_ticks.empty or vic_ticks.empty:
-                    continue
-
-                # Get closest tick data
-                att_state = att_ticks.iloc[-1]
-                vic_state = vic_ticks.iloc[-1]
-
-                # Attacker position and angles
+                # Get positions directly from kill event
                 att_pos = np.array([
-                    safe_float(att_state[tick_x]),
-                    safe_float(att_state[tick_y]),
-                    safe_float(att_state[tick_z]) + 64  # Eye height offset
+                    safe_float(kill_row.get(att_x)),
+                    safe_float(kill_row.get(att_y)),
+                    safe_float(kill_row.get(att_z)) + 64  # Eye height offset
                 ])
-                att_pitch = safe_float(att_state[tick_pitch])
-                att_yaw = safe_float(att_state[tick_yaw])
+                att_pitch_val = safe_float(kill_row.get(att_pitch))
+                att_yaw_val = safe_float(kill_row.get(att_yaw))
 
-                # Victim position (head level)
                 vic_pos = np.array([
-                    safe_float(vic_state[tick_x]),
-                    safe_float(vic_state[tick_y]),
-                    safe_float(vic_state[tick_z]) + 64  # Head height
+                    safe_float(kill_row.get(vic_x)),
+                    safe_float(kill_row.get(vic_y)),
+                    safe_float(kill_row.get(vic_z)) + 64  # Head height
                 ])
+
+                # Skip if positions are zero (data not available)
+                if np.allclose(att_pos[:2], 0) or np.allclose(vic_pos[:2], 0):
+                    continue
 
                 # Calculate angular error
                 angular_error, pitch_error, yaw_error = self._calculate_angular_error(
-                    att_pos, att_pitch, att_yaw, vic_pos
+                    att_pos, att_pitch_val, att_yaw_val, vic_pos
                 )
 
                 result = CrosshairPlacementResult(
@@ -303,6 +301,86 @@ class DemoAnalyzer:
                 continue
 
         logger.info(f"Computed crosshair placement for {len(self._cp_results)} kills")
+
+    def _compute_crosshair_placement_from_ticks(self) -> None:
+        """Fallback: compute CP from tick data (slower)."""
+        ticks_df = self.data.ticks_df
+        kills_df = self.data.kills_df
+
+        def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+            for col in options:
+                if col in df.columns:
+                    return col
+            return None
+
+        kill_att = find_col(kills_df, ["attacker_steamid", "attacker_steam_id"])
+        kill_vic = find_col(kills_df, ["user_steamid", "victim_steamid"])
+        kill_tick = find_col(kills_df, ["tick"])
+
+        tick_steamid = find_col(ticks_df, ["steamid", "steam_id"])
+        tick_x = find_col(ticks_df, ["X", "x"])
+        tick_y = find_col(ticks_df, ["Y", "y"])
+        tick_z = find_col(ticks_df, ["Z", "z"])
+        tick_pitch = find_col(ticks_df, ["pitch"])
+        tick_yaw = find_col(ticks_df, ["yaw"])
+        tick_col = find_col(ticks_df, ["tick"])
+
+        if not all([kill_att, kill_vic, kill_tick, tick_steamid, tick_x, tick_y, tick_z, tick_pitch, tick_yaw, tick_col]):
+            logger.warning("Missing columns for tick-based CP computation")
+            return
+
+        logger.info("Computing CP from tick data (slow path)")
+
+        for _, kill_row in kills_df.iterrows():
+            try:
+                att_id = safe_int(kill_row[kill_att])
+                vic_id = safe_int(kill_row[kill_vic])
+                kill_tick_val = safe_int(kill_row[kill_tick])
+
+                if not att_id or not vic_id:
+                    continue
+
+                att_ticks = ticks_df[(ticks_df[tick_steamid] == att_id) & (ticks_df[tick_col] <= kill_tick_val)]
+                vic_ticks = ticks_df[(ticks_df[tick_steamid] == vic_id) & (ticks_df[tick_col] <= kill_tick_val)]
+
+                if att_ticks.empty or vic_ticks.empty:
+                    continue
+
+                att_state = att_ticks.iloc[-1]
+                vic_state = vic_ticks.iloc[-1]
+
+                att_pos = np.array([
+                    safe_float(att_state[tick_x]),
+                    safe_float(att_state[tick_y]),
+                    safe_float(att_state[tick_z]) + 64
+                ])
+                att_pitch_val = safe_float(att_state[tick_pitch])
+                att_yaw_val = safe_float(att_state[tick_yaw])
+
+                vic_pos = np.array([
+                    safe_float(vic_state[tick_x]),
+                    safe_float(vic_state[tick_y]),
+                    safe_float(vic_state[tick_z]) + 64
+                ])
+
+                angular_error, pitch_error, yaw_error = self._calculate_angular_error(
+                    att_pos, att_pitch_val, att_yaw_val, vic_pos
+                )
+
+                result = CrosshairPlacementResult(
+                    tick=kill_tick_val,
+                    attacker_steamid=att_id,
+                    victim_steamid=vic_id,
+                    angular_error_deg=angular_error,
+                    pitch_error_deg=pitch_error,
+                    yaw_error_deg=yaw_error,
+                )
+                self._cp_results.append(result)
+            except Exception as e:
+                logger.debug(f"Error processing kill for CP (tick): {e}")
+                continue
+
+        logger.info(f"Computed crosshair placement for {len(self._cp_results)} kills (tick-based)")
 
     def _calculate_angular_error(
         self,

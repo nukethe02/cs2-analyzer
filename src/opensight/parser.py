@@ -138,8 +138,13 @@ class DemoParser:
             raise FileNotFoundError(f"Demo file not found: {demo_path}")
         self._data: Optional[DemoData] = None
 
-    def parse(self) -> DemoData:
-        """Parse the demo file and extract all relevant data."""
+    def parse(self, parse_ticks: bool = False) -> DemoData:
+        """Parse the demo file and extract all relevant data.
+
+        Args:
+            parse_ticks: If True, parse tick-level data (slow).
+                        Position data is now extracted from events directly (fast).
+        """
         if self._data is not None:
             return self._data
 
@@ -152,13 +157,13 @@ class DemoParser:
         # Parse header for map name
         map_name = self._parse_header(parser)
 
-        # Parse events
+        # Parse events (with player positions/angles embedded - FAST)
         kills_df = self._parse_kills(parser)
         damages_df = self._parse_damages(parser)
         round_ends = self._parse_rounds(parser)
 
-        # Parse tick-level data for position/angle analysis
-        ticks_df = self._parse_ticks(parser)
+        # Skip slow tick parsing - we now get position data from events directly
+        ticks_df = self._parse_ticks(parser) if parse_ticks else None
 
         # Calculate duration and tick rate
         duration_seconds, tick_rate = self._get_duration(ticks_df, kills_df)
@@ -202,25 +207,51 @@ class DemoParser:
         return "unknown"
 
     def _parse_kills(self, parser: Demoparser2) -> pd.DataFrame:
-        """Parse player_death events."""
+        """Parse player_death events with player position/angle data."""
         try:
-            df = parser.parse_event("player_death")
+            # Use player= param to get positions/angles directly from events (FAST)
+            # This eliminates the need for slow tick parsing
+            df = parser.parse_event(
+                "player_death",
+                player=["X", "Y", "Z", "pitch", "yaw", "team_num"],
+                other=["total_rounds_played"]
+            )
             if df is not None and not df.empty:
                 logger.info(f"Found {len(df)} kill events. Columns: {list(df.columns)}")
                 return df
         except Exception as e:
-            logger.warning(f"Failed to parse player_death: {e}")
+            logger.warning(f"Failed to parse player_death with player props: {e}")
+            # Fallback to basic parsing
+            try:
+                df = parser.parse_event("player_death")
+                if df is not None and not df.empty:
+                    logger.info(f"Found {len(df)} kill events (basic). Columns: {list(df.columns)}")
+                    return df
+            except Exception as e2:
+                logger.warning(f"Failed to parse player_death: {e2}")
         return pd.DataFrame()
 
     def _parse_damages(self, parser: Demoparser2) -> pd.DataFrame:
-        """Parse player_hurt events."""
+        """Parse player_hurt events with player position data."""
         try:
-            df = parser.parse_event("player_hurt")
+            # Use player= param to get positions directly (FAST)
+            df = parser.parse_event(
+                "player_hurt",
+                player=["X", "Y", "Z", "team_num"],
+            )
             if df is not None and not df.empty:
                 logger.info(f"Found {len(df)} damage events. Columns: {list(df.columns)}")
                 return df
         except Exception as e:
-            logger.warning(f"Failed to parse player_hurt: {e}")
+            logger.warning(f"Failed to parse player_hurt with player props: {e}")
+            # Fallback to basic parsing
+            try:
+                df = parser.parse_event("player_hurt")
+                if df is not None and not df.empty:
+                    logger.info(f"Found {len(df)} damage events (basic). Columns: {list(df.columns)}")
+                    return df
+            except Exception as e2:
+                logger.warning(f"Failed to parse player_hurt: {e2}")
         return pd.DataFrame()
 
     def _parse_rounds(self, parser: Demoparser2) -> pd.DataFrame:
