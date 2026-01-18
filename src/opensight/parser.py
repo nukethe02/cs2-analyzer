@@ -1,8 +1,8 @@
 """
 Demo Parser Wrapper for CS2 Replay Files
 
-Wraps demoparser2 to extract tick-level game data from .dem files,
-providing structured access to player positions, events, and game state.
+Uses demoparser2 to extract game events and player stats from .dem files.
+API Reference: https://github.com/LaihoE/demoparser
 """
 
 from dataclasses import dataclass
@@ -11,7 +11,6 @@ from typing import Any, Optional
 import logging
 
 import pandas as pd
-import numpy as np
 
 try:
     from demoparser2 import DemoParser as Demoparser2
@@ -24,39 +23,23 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DemoData:
     """Parsed demo data container."""
-
     file_path: Path
     map_name: str
-    tick_rate: int
-    duration_ticks: int
     duration_seconds: float
-
-    # Player data
-    player_names: dict[int, str]  # steam_id -> name
-    teams: dict[int, str]  # steam_id -> team
-
-    # DataFrames
+    player_stats: dict[int, dict]
+    num_rounds: int
     kills_df: pd.DataFrame
     damages_df: pd.DataFrame
-    rounds_df: pd.DataFrame
-
-    # Aggregated stats per player
-    player_stats: dict[int, dict]  # steam_id -> stats dict
 
 
 class DemoParser:
-    """
-    Parser for CS2 demo files using demoparser2.
-    """
+    """Parser for CS2 demo files using demoparser2."""
 
     def __init__(self, demo_path: str | Path):
         self.demo_path = Path(demo_path)
         if not self.demo_path.exists():
             raise FileNotFoundError(f"Demo file not found: {demo_path}")
-        if not self.demo_path.suffix.lower() == ".dem":
-            raise ValueError(f"Expected .dem file, got: {self.demo_path.suffix}")
 
-        self._parser: Optional[Any] = None
         self._data: Optional[DemoData] = None
 
     def parse(self) -> DemoData:
@@ -65,163 +48,207 @@ class DemoParser:
             return self._data
 
         if Demoparser2 is None:
-            raise ImportError(
-                "demoparser2 is required but not installed. "
-                "Install with: pip install demoparser2"
-            )
+            raise ImportError("demoparser2 is required. Install with: pip install demoparser2")
 
         logger.info(f"Parsing demo: {self.demo_path}")
-        self._parser = Demoparser2(str(self.demo_path))
+        parser = Demoparser2(str(self.demo_path))
 
         # Get header info
-        header = self._parser.parse_header()
-        map_name = header.get("map_name", "unknown") if isinstance(header, dict) else "unknown"
-        tick_rate = 64
-
-        # Parse player info
-        player_names = {}
-        teams = {}
-
         try:
-            # Get player info from ticks - this is more reliable
-            player_df = self._parser.parse_ticks(["steamid", "name", "team_num"])
-            if isinstance(player_df, pd.DataFrame) and not player_df.empty:
-                # Get unique players
-                for steamid in player_df["steamid"].unique():
-                    if steamid and steamid != 0:
-                        player_data = player_df[player_df["steamid"] == steamid].iloc[-1]
-                        player_names[int(steamid)] = str(player_data.get("name", f"Player_{steamid}"))
-                        team_num = player_data.get("team_num", 0)
-                        teams[int(steamid)] = "CT" if team_num == 3 else "T" if team_num == 2 else "Spec"
+            header = parser.parse_header()
+            map_name = header.get("map_name", "unknown") if isinstance(header, dict) else "unknown"
         except Exception as e:
-            logger.warning(f"Failed to parse player info from ticks: {e}")
+            logger.warning(f"Failed to parse header: {e}")
+            map_name = "unknown"
 
-        # Parse kills (player_death events)
+        # Parse player_death events - this gives us kills
+        # Columns returned: tick, user_steamid, user_name, attacker_steamid, attacker_name,
+        #                   assister_steamid, weapon, headshot, etc.
         kills_df = pd.DataFrame()
         try:
-            kills_df = self._parser.parse_event("player_death")
-            if isinstance(kills_df, pd.DataFrame) and not kills_df.empty:
+            kills_df = parser.parse_event("player_death")
+            if kills_df is not None and not kills_df.empty:
                 logger.info(f"Found {len(kills_df)} kill events")
-                # Rename columns for consistency
-                kills_df = kills_df.rename(columns={
-                    "attacker_steamid": "attacker_id",
-                    "user_steamid": "victim_id",
-                    "assister_steamid": "assister_id",
-                })
+                logger.info(f"Kill columns: {list(kills_df.columns)}")
         except Exception as e:
-            logger.warning(f"Failed to parse kills: {e}")
-            kills_df = pd.DataFrame()
+            logger.warning(f"Failed to parse player_death: {e}")
 
-        # Parse damage (player_hurt events)
+        # Parse player_hurt events - this gives us damage
         damages_df = pd.DataFrame()
         try:
-            damages_df = self._parser.parse_event("player_hurt")
-            if isinstance(damages_df, pd.DataFrame) and not damages_df.empty:
+            damages_df = parser.parse_event("player_hurt")
+            if damages_df is not None and not damages_df.empty:
                 logger.info(f"Found {len(damages_df)} damage events")
-                damages_df = damages_df.rename(columns={
-                    "attacker_steamid": "attacker_id",
-                    "user_steamid": "victim_id",
-                    "dmg_health": "damage",
-                    "dmg_armor": "armor_damage",
-                })
+                logger.info(f"Damage columns: {list(damages_df.columns)}")
         except Exception as e:
-            logger.warning(f"Failed to parse damage: {e}")
-            damages_df = pd.DataFrame()
+            logger.warning(f"Failed to parse player_hurt: {e}")
 
-        # Parse rounds
-        rounds_df = pd.DataFrame()
+        # Parse round_end events
+        num_rounds = 0
         try:
-            round_end = self._parser.parse_event("round_end")
-            if isinstance(round_end, pd.DataFrame) and not round_end.empty:
-                rounds_df = round_end
-                logger.info(f"Found {len(rounds_df)} rounds")
+            rounds_df = parser.parse_event("round_end")
+            if rounds_df is not None and not rounds_df.empty:
+                num_rounds = len(rounds_df)
+                logger.info(f"Found {num_rounds} rounds")
         except Exception as e:
-            logger.warning(f"Failed to parse rounds: {e}")
+            logger.warning(f"Failed to parse round_end: {e}")
 
-        # Calculate duration from ticks
-        duration_ticks = 0
+        # Get duration from ticks
         duration_seconds = 0.0
         try:
-            tick_df = self._parser.parse_ticks(["tick"])
-            if isinstance(tick_df, pd.DataFrame) and not tick_df.empty:
-                duration_ticks = int(tick_df["tick"].max())
-                duration_seconds = duration_ticks / tick_rate
+            ticks_df = parser.parse_ticks(["tick"])
+            if ticks_df is not None and not ticks_df.empty:
+                max_tick = int(ticks_df["tick"].max())
+                duration_seconds = max_tick / 64  # Assume 64 tick
         except Exception as e:
             logger.warning(f"Failed to get duration: {e}")
 
-        # Calculate per-player stats
-        player_stats = self._calculate_player_stats(
-            player_names, teams, kills_df, damages_df, rounds_df
-        )
+        # Calculate player stats from the DataFrames
+        player_stats = self._calculate_stats(kills_df, damages_df, num_rounds)
 
         self._data = DemoData(
             file_path=self.demo_path,
             map_name=map_name,
-            tick_rate=tick_rate,
-            duration_ticks=duration_ticks,
             duration_seconds=duration_seconds,
-            player_names=player_names,
-            teams=teams,
+            player_stats=player_stats,
+            num_rounds=max(num_rounds, 1),
             kills_df=kills_df,
             damages_df=damages_df,
-            rounds_df=rounds_df,
-            player_stats=player_stats,
         )
 
-        logger.info(f"Parsed demo: {map_name}, {duration_seconds:.0f}s, {len(player_names)} players")
+        logger.info(f"Parsed: {map_name}, {duration_seconds:.0f}s, {len(player_stats)} players, {num_rounds} rounds")
         return self._data
 
-    def _calculate_player_stats(
+    def _calculate_stats(
         self,
-        player_names: dict[int, str],
-        teams: dict[int, str],
         kills_df: pd.DataFrame,
         damages_df: pd.DataFrame,
-        rounds_df: pd.DataFrame,
+        num_rounds: int
     ) -> dict[int, dict]:
-        """Calculate aggregated stats for each player."""
-        stats = {}
-        num_rounds = len(rounds_df) if not rounds_df.empty else 1
+        """Calculate player stats from event DataFrames."""
+        stats: dict[int, dict] = {}
+        num_rounds = max(num_rounds, 1)
 
-        for steam_id, name in player_names.items():
-            # Count kills
+        # Find the correct column names for steam IDs
+        attacker_col = None
+        victim_col = None
+        assister_col = None
+        attacker_name_col = None
+        victim_name_col = None
+
+        if not kills_df.empty:
+            cols = kills_df.columns.tolist()
+            logger.info(f"Available kill columns: {cols}")
+
+            # Try different possible column names
+            for col in ["attacker_steamid", "attacker_steam_id", "attacker"]:
+                if col in cols:
+                    attacker_col = col
+                    break
+
+            for col in ["user_steamid", "user_steam_id", "userid", "victim_steamid"]:
+                if col in cols:
+                    victim_col = col
+                    break
+
+            for col in ["assister_steamid", "assister_steam_id", "assister"]:
+                if col in cols:
+                    assister_col = col
+                    break
+
+            for col in ["attacker_name", "attacker"]:
+                if col in cols and "steamid" not in col.lower():
+                    attacker_name_col = col
+                    break
+
+            for col in ["user_name", "user", "victim_name"]:
+                if col in cols and "steamid" not in col.lower():
+                    victim_name_col = col
+                    break
+
+        # Get unique players from kills
+        all_players = set()
+        player_names = {}
+
+        if not kills_df.empty:
+            if attacker_col and attacker_col in kills_df.columns:
+                for sid in kills_df[attacker_col].dropna().unique():
+                    if sid and sid != 0:
+                        all_players.add(int(sid))
+
+            if victim_col and victim_col in kills_df.columns:
+                for sid in kills_df[victim_col].dropna().unique():
+                    if sid and sid != 0:
+                        all_players.add(int(sid))
+
+            # Get player names
+            if attacker_col and attacker_name_col:
+                for _, row in kills_df.drop_duplicates(subset=[attacker_col]).iterrows():
+                    sid = row.get(attacker_col)
+                    name = row.get(attacker_name_col)
+                    if sid and sid != 0 and name:
+                        player_names[int(sid)] = str(name)
+
+            if victim_col and victim_name_col:
+                for _, row in kills_df.drop_duplicates(subset=[victim_col]).iterrows():
+                    sid = row.get(victim_col)
+                    name = row.get(victim_name_col)
+                    if sid and sid != 0 and name:
+                        player_names[int(sid)] = str(name)
+
+        # Calculate stats for each player
+        for steam_id in all_players:
             kills = 0
-            headshots = 0
-            if not kills_df.empty and "attacker_id" in kills_df.columns:
-                player_kills = kills_df[kills_df["attacker_id"] == steam_id]
-                kills = len(player_kills)
-                if "headshot" in kills_df.columns:
-                    headshots = int(player_kills["headshot"].sum())
-
-            # Count deaths
             deaths = 0
-            if not kills_df.empty and "victim_id" in kills_df.columns:
-                deaths = len(kills_df[kills_df["victim_id"] == steam_id])
-
-            # Count assists
             assists = 0
-            if not kills_df.empty and "assister_id" in kills_df.columns:
-                assists = len(kills_df[kills_df["assister_id"] == steam_id])
+            headshots = 0
+
+            if not kills_df.empty:
+                # Count kills
+                if attacker_col:
+                    player_kills = kills_df[kills_df[attacker_col] == steam_id]
+                    kills = len(player_kills)
+                    if "headshot" in kills_df.columns:
+                        headshots = int(player_kills["headshot"].sum())
+
+                # Count deaths
+                if victim_col:
+                    deaths = len(kills_df[kills_df[victim_col] == steam_id])
+
+                # Count assists
+                if assister_col:
+                    assists = len(kills_df[kills_df[assister_col] == steam_id])
 
             # Calculate damage
             total_damage = 0
-            if not damages_df.empty and "attacker_id" in damages_df.columns:
-                player_damage = damages_df[damages_df["attacker_id"] == steam_id]
-                if "damage" in damages_df.columns:
-                    total_damage = int(player_damage["damage"].sum())
+            damage_col = None
+            damage_attacker_col = None
 
-            # Calculate ADR (Average Damage per Round)
-            adr = total_damage / num_rounds if num_rounds > 0 else 0
+            if not damages_df.empty:
+                damage_cols = damages_df.columns.tolist()
 
-            # Calculate K/D ratio
-            kd_ratio = kills / deaths if deaths > 0 else kills
+                for col in ["dmg_health", "damage", "dmg"]:
+                    if col in damage_cols:
+                        damage_col = col
+                        break
 
-            # Calculate headshot percentage
-            hs_percent = (headshots / kills * 100) if kills > 0 else 0
+                for col in ["attacker_steamid", "attacker_steam_id", "attacker"]:
+                    if col in damage_cols:
+                        damage_attacker_col = col
+                        break
+
+                if damage_col and damage_attacker_col:
+                    player_damage = damages_df[damages_df[damage_attacker_col] == steam_id]
+                    total_damage = int(player_damage[damage_col].sum())
+
+            # Calculate derived stats
+            adr = total_damage / num_rounds
+            kd_ratio = kills / deaths if deaths > 0 else float(kills)
+            hs_percent = (headshots / kills * 100) if kills > 0 else 0.0
 
             stats[steam_id] = {
-                "name": name,
-                "team": teams.get(steam_id, "Unknown"),
+                "name": player_names.get(steam_id, f"Player_{steam_id}"),
+                "team": "Unknown",  # Would need team data from ticks
                 "kills": kills,
                 "deaths": deaths,
                 "assists": assists,
