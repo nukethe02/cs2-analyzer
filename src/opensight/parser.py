@@ -240,25 +240,39 @@ class DemoParser:
         player_health = ticks_df[health_cols].copy() if len(health_cols) > 2 else pd.DataFrame()
 
         # Parse game events
+        damage_events_list = []
+        kill_events_list = []
+        shots_list = []
+
         try:
             events = self._parser.parse_events(["player_death", "player_hurt", "weapon_fire"])
-            # Events might be a dict of DataFrames or dict of lists
+
+            # Handle different return types from parse_events
             if isinstance(events, dict):
                 for key in events:
                     if isinstance(events[key], pd.DataFrame):
                         events[key] = events[key].to_dict('records')
+                damage_events_list = events.get("player_hurt", [])
+                kill_events_list = events.get("player_death", [])
+                shots_list = events.get("weapon_fire", [])
+            elif isinstance(events, pd.DataFrame):
+                # Single DataFrame - try to separate by event type if possible
+                events = events.to_dict('records')
+            elif isinstance(events, list):
+                # List of events - already in usable format
+                pass
+
         except Exception as e:
             logger.warning(f"Failed to parse events: {e}")
-            events = {}
 
         # Process damage events
-        damage_events = self._process_damage_events(events.get("player_hurt", []))
+        damage_events = self._process_damage_events(damage_events_list)
 
         # Process kill events
-        kill_events = self._process_kill_events(events.get("player_death", []))
+        kill_events = self._process_kill_events(kill_events_list)
 
         # Process shots fired
-        shots_fired = self._process_shots(events.get("weapon_fire", []))
+        shots_fired = self._process_shots(shots_list)
 
         # Parse round events
         round_starts = []
@@ -267,14 +281,16 @@ class DemoParser:
             round_events = self._parser.parse_events(["round_start", "round_end"])
             if isinstance(round_events, dict):
                 rs = round_events.get("round_start", [])
-                re = round_events.get("round_end", [])
+                re_events = round_events.get("round_end", [])
                 # Convert DataFrames if needed
                 if isinstance(rs, pd.DataFrame):
                     rs = rs.to_dict('records')
-                if isinstance(re, pd.DataFrame):
-                    re = re.to_dict('records')
-                round_starts = [e.get("tick", 0) for e in rs if isinstance(e, dict)]
-                round_ends = [e.get("tick", 0) for e in re if isinstance(e, dict)]
+                if isinstance(re_events, pd.DataFrame):
+                    re_events = re_events.to_dict('records')
+                if isinstance(rs, list):
+                    round_starts = [e.get("tick", 0) for e in rs if isinstance(e, dict)]
+                if isinstance(re_events, list):
+                    round_ends = [e.get("tick", 0) for e in re_events if isinstance(e, dict)]
         except Exception as e:
             logger.warning(f"Failed to parse round events: {e}")
 
