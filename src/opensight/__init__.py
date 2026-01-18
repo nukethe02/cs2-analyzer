@@ -41,6 +41,18 @@ def __getattr__(name):
     elif name == "BuyType":
         from opensight.economy import BuyType
         return BuyType
+    elif name == "CombatAnalyzer":
+        from opensight.combat import CombatAnalyzer
+        return CombatAnalyzer
+    elif name == "analyze_combat":
+        from opensight.combat import analyze_combat
+        return analyze_combat
+    elif name == "UtilityAnalyzer":
+        from opensight.utility import UtilityAnalyzer
+        return UtilityAnalyzer
+    elif name == "analyze_utility":
+        from opensight.utility import analyze_utility
+        return analyze_utility
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
 
@@ -55,4 +67,8 @@ __all__ = [
     "EconomyAnalyzer",
     "analyze_economy",
     "BuyType",
+    "CombatAnalyzer",
+    "analyze_combat",
+    "UtilityAnalyzer",
+    "analyze_utility",
 ]
