@@ -1042,6 +1042,386 @@ async def compare_players_from_job(
     })
 
 
+# =============================================================================
+# Excel Export Endpoint
+# =============================================================================
+
+@app.post("/export/excel")
+async def export_to_excel(file: UploadFile = File(...)):
+    """
+    Export CS2 demo analysis to a professionally formatted Excel file.
+
+    Creates a multi-sheet Excel workbook with:
+    - Overview: Player stats table (Name, K, D, ADR, Rating, etc.)
+    - Kills: Detailed list of every kill event
+    - Damages: Detailed list of damage events
+    - Advanced: TTD, Clutch, Utility stats per player
+
+    Returns a downloadable .xlsx file.
+    """
+    import io
+
+    # Validate file extension
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    filename_lower = file.filename.lower()
+    if not filename_lower.endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
+        )
+
+    # Verify required modules
+    try:
+        import pandas as pd
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils.dataframe import dataframe_to_rows
+        from opensight.parser import DemoParser
+        from opensight.analytics import DemoAnalyzer
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Excel export not available. Missing: {str(e)}"
+        )
+
+    # Read and validate file
+    content = await file.read()
+    file_size_bytes = len(content)
+    file_size_mb = file_size_bytes / (1024 * 1024)
+
+    if file_size_bytes > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB"
+        )
+
+    if file_size_bytes == 0:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+    tmp_path = None
+    try:
+        # Save to temp file
+        suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
+        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
+        # Parse the demo
+        parser = DemoParser(tmp_path)
+        data = parser.parse()
+
+        # Run analytics
+        analyzer = DemoAnalyzer(data)
+        analysis = analyzer.analyze()
+
+        # Create Excel workbook
+        wb = Workbook()
+
+        # Define styles
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        ct_fill = PatternFill(start_color="D6EAF8", end_color="D6EAF8", fill_type="solid")
+        t_fill = PatternFill(start_color="FDEBD0", end_color="FDEBD0", fill_type="solid")
+
+        def style_header_row(ws, num_cols):
+            """Apply header styling to first row."""
+            for col in range(1, num_cols + 1):
+                cell = ws.cell(row=1, column=col)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = thin_border
+
+        def add_autofilter(ws, num_cols):
+            """Add autofilter to the worksheet."""
+            if ws.max_row > 1:
+                ws.auto_filter.ref = f"A1:{chr(64 + min(num_cols, 26))}{ws.max_row}"
+
+        def adjust_column_widths(ws):
+            """Auto-adjust column widths based on content."""
+            for column_cells in ws.columns:
+                max_length = 0
+                column = column_cells[0].column_letter
+                for cell in column_cells:
+                    try:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column].width = max(adjusted_width, 10)
+
+        # =====================================================================
+        # Sheet 1: Overview - Player Stats
+        # =====================================================================
+        ws_overview = wb.active
+        ws_overview.title = "Overview"
+
+        # Create player stats dataframe
+        overview_data = []
+        for player in analysis.get_leaderboard():
+            overview_data.append({
+                "Name": player.name,
+                "Team": player.team,
+                "K": player.kills,
+                "D": player.deaths,
+                "A": player.assists,
+                "K/D": round(player.kd_ratio, 2),
+                "+/-": player.kd_diff,
+                "ADR": round(player.adr, 1),
+                "HS%": round(player.headshot_percentage, 1),
+                "KAST%": round(player.kast_percentage, 1),
+                "Rating": round(player.hltv_rating, 2),
+                "Impact": round(player.impact_rating, 2),
+                "Aim Rating": round(player.aim_rating, 1) if player.aim_rating else 0,
+                "Utility Rating": round(player.utility_rating, 1) if player.utility_rating else 0,
+            })
+
+        df_overview = pd.DataFrame(overview_data)
+
+        # Write dataframe to sheet
+        for r_idx, row in enumerate(dataframe_to_rows(df_overview, index=False, header=True), 1):
+            for c_idx, value in enumerate(row, 1):
+                cell = ws_overview.cell(row=r_idx, column=c_idx, value=value)
+                cell.border = thin_border
+                # Color-code by team
+                if r_idx > 1 and c_idx == 2:  # Team column
+                    if value == "CT":
+                        for col in range(1, len(row) + 1):
+                            ws_overview.cell(row=r_idx, column=col).fill = ct_fill
+                    elif value == "T":
+                        for col in range(1, len(row) + 1):
+                            ws_overview.cell(row=r_idx, column=col).fill = t_fill
+
+        style_header_row(ws_overview, len(df_overview.columns))
+        add_autofilter(ws_overview, len(df_overview.columns))
+        adjust_column_widths(ws_overview)
+
+        # Add match info at the top (insert rows)
+        ws_overview.insert_rows(1, 4)
+        ws_overview.cell(row=1, column=1, value="Map:").font = Font(bold=True)
+        ws_overview.cell(row=1, column=2, value=analysis.map_name)
+        ws_overview.cell(row=2, column=1, value="Score:").font = Font(bold=True)
+        ws_overview.cell(row=2, column=2, value=f"{analysis.team1_score} - {analysis.team2_score}")
+        ws_overview.cell(row=3, column=1, value="Rounds:").font = Font(bold=True)
+        ws_overview.cell(row=3, column=2, value=analysis.total_rounds)
+        ws_overview.cell(row=3, column=3, value="Duration:").font = Font(bold=True)
+        ws_overview.cell(row=3, column=4, value=f"{round(data.duration_seconds / 60, 1)} min")
+
+        # =====================================================================
+        # Sheet 2: Kills - Detailed Kill Events
+        # =====================================================================
+        ws_kills = wb.create_sheet("Kills")
+
+        kills_data = []
+        for kill in data.kills:
+            kills_data.append({
+                "Round": kill.round_num,
+                "Tick": kill.tick,
+                "Attacker": kill.attacker_name,
+                "Attacker Team": kill.attacker_side,
+                "Victim": kill.victim_name,
+                "Victim Team": kill.victim_side,
+                "Weapon": kill.weapon,
+                "Headshot": "Yes" if kill.headshot else "No",
+                "Wallbang": "Yes" if kill.wallbang else "No",
+                "Through Smoke": "Yes" if kill.through_smoke else "No",
+                "No Scope": "Yes" if kill.no_scope else "No",
+                "Blind Kill": "Yes" if kill.blind_kill else "No",
+                "Assister": kill.assister_name or "",
+            })
+
+        if kills_data:
+            df_kills = pd.DataFrame(kills_data)
+            for r_idx, row in enumerate(dataframe_to_rows(df_kills, index=False, header=True), 1):
+                for c_idx, value in enumerate(row, 1):
+                    cell = ws_kills.cell(row=r_idx, column=c_idx, value=value)
+                    cell.border = thin_border
+
+            style_header_row(ws_kills, len(df_kills.columns))
+            add_autofilter(ws_kills, len(df_kills.columns))
+            adjust_column_widths(ws_kills)
+        else:
+            ws_kills.cell(row=1, column=1, value="No kill data available")
+
+        # =====================================================================
+        # Sheet 3: Damages - Detailed Damage Events
+        # =====================================================================
+        ws_damages = wb.create_sheet("Damages")
+
+        damages_data = []
+        for dmg in data.damages[:5000]:  # Limit to 5000 rows to prevent huge files
+            damages_data.append({
+                "Round": dmg.round_num,
+                "Tick": dmg.tick,
+                "Attacker": dmg.attacker_name,
+                "Attacker Team": dmg.attacker_side,
+                "Victim": dmg.victim_name,
+                "Victim Team": dmg.victim_side,
+                "Weapon": dmg.weapon,
+                "Damage": dmg.damage,
+                "Damage Armor": dmg.damage_armor,
+                "Hitgroup": dmg.hitgroup,
+            })
+
+        if damages_data:
+            df_damages = pd.DataFrame(damages_data)
+            for r_idx, row in enumerate(dataframe_to_rows(df_damages, index=False, header=True), 1):
+                for c_idx, value in enumerate(row, 1):
+                    cell = ws_damages.cell(row=r_idx, column=c_idx, value=value)
+                    cell.border = thin_border
+
+            style_header_row(ws_damages, len(df_damages.columns))
+            add_autofilter(ws_damages, len(df_damages.columns))
+            adjust_column_widths(ws_damages)
+        else:
+            ws_damages.cell(row=1, column=1, value="No damage data available")
+
+        # =====================================================================
+        # Sheet 4: Advanced - TTD, Clutch, Utility Stats
+        # =====================================================================
+        ws_advanced = wb.create_sheet("Advanced")
+
+        advanced_data = []
+        for player in analysis.get_leaderboard():
+            advanced_data.append({
+                "Name": player.name,
+                "Team": player.team,
+                # TTD Stats
+                "TTD Median (ms)": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
+                "TTD Mean (ms)": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
+                "TTD Samples": len(player.ttd_values),
+                "Prefire Kills": player.prefire_count,
+                # Crosshair Placement
+                "CP Median (deg)": round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None,
+                "CP Mean (deg)": round(player.cp_mean_error_deg, 1) if player.cp_mean_error_deg else None,
+                "CP Samples": len(player.cp_values),
+                # Opening Duels
+                "Opening Wins": player.opening_duels.wins,
+                "Opening Losses": player.opening_duels.losses,
+                "Opening Win%": round(player.opening_duels.win_rate, 1),
+                # Trades
+                "Kills Traded": player.trades.kills_traded,
+                "Deaths Traded": player.trades.deaths_traded,
+                # Clutches
+                "Clutch Attempts": player.clutches.total_situations,
+                "Clutch Wins": player.clutches.total_wins,
+                "1v1 W/A": f"{player.clutches.wins_1v1}/{player.clutches.situations_1v1}",
+                "1v2 W/A": f"{player.clutches.wins_1v2}/{player.clutches.situations_1v2}",
+                "1v3+ W/A": f"{player.clutches.wins_1v3 + player.clutches.wins_1v4 + player.clutches.wins_1v5}/{player.clutches.situations_1v3 + player.clutches.situations_1v4 + player.clutches.situations_1v5}",
+                # Multi-kills
+                "2K Rounds": player.multi_kills.rounds_with_2k,
+                "3K Rounds": player.multi_kills.rounds_with_3k,
+                "4K Rounds": player.multi_kills.rounds_with_4k,
+                "5K (Ace)": player.multi_kills.rounds_with_5k,
+                # Utility
+                "Flashes Thrown": player.utility.flashbangs_thrown,
+                "Smokes Thrown": player.utility.smokes_thrown,
+                "Enemies Flashed": player.utility.enemies_flashed,
+                "Flash Eff": round(player.utility.enemies_flashed_per_flash, 2),
+                "HE Thrown": player.utility.he_thrown,
+                "HE Damage": player.utility.he_damage,
+                "Molotov Thrown": player.utility.molotovs_thrown,
+                "Molotov Damage": player.utility.molotov_damage,
+                "Flash Assists": player.utility.flash_assists,
+            })
+
+        df_advanced = pd.DataFrame(advanced_data)
+        for r_idx, row in enumerate(dataframe_to_rows(df_advanced, index=False, header=True), 1):
+            for c_idx, value in enumerate(row, 1):
+                cell = ws_advanced.cell(row=r_idx, column=c_idx, value=value)
+                cell.border = thin_border
+                # Color-code by team
+                if r_idx > 1 and c_idx == 2:
+                    if value == "CT":
+                        for col in range(1, len(row) + 1):
+                            ws_advanced.cell(row=r_idx, column=col).fill = ct_fill
+                    elif value == "T":
+                        for col in range(1, len(row) + 1):
+                            ws_advanced.cell(row=r_idx, column=col).fill = t_fill
+
+        style_header_row(ws_advanced, len(df_advanced.columns))
+        add_autofilter(ws_advanced, len(df_advanced.columns))
+        adjust_column_widths(ws_advanced)
+
+        # =====================================================================
+        # Sheet 5: Rounds - Round-by-Round Data
+        # =====================================================================
+        ws_rounds = wb.create_sheet("Rounds")
+
+        rounds_data = []
+        for round_info in data.rounds:
+            round_kills = [k for k in data.kills if k.round_num == round_info.round_num]
+            rounds_data.append({
+                "Round": round_info.round_num,
+                "Winner": round_info.winner,
+                "Win Reason": round_info.reason,
+                "CT Score": round_info.ct_score,
+                "T Score": round_info.t_score,
+                "Kills": len(round_kills),
+                "Round Type": round_info.round_type or "unknown",
+            })
+
+        if rounds_data:
+            df_rounds = pd.DataFrame(rounds_data)
+            for r_idx, row in enumerate(dataframe_to_rows(df_rounds, index=False, header=True), 1):
+                for c_idx, value in enumerate(row, 1):
+                    cell = ws_rounds.cell(row=r_idx, column=c_idx, value=value)
+                    cell.border = thin_border
+                    # Color-code winner column
+                    if r_idx > 1 and c_idx == 2:
+                        if value == "CT":
+                            cell.fill = ct_fill
+                        elif value == "T":
+                            cell.fill = t_fill
+
+            style_header_row(ws_rounds, len(df_rounds.columns))
+            add_autofilter(ws_rounds, len(df_rounds.columns))
+            adjust_column_widths(ws_rounds)
+
+        # Save workbook to bytes buffer
+        excel_buffer = io.BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+
+        # Generate filename
+        map_name = analysis.map_name.replace(" ", "_") if analysis.map_name else "unknown"
+        output_filename = f"{map_name}_analysis.xlsx"
+
+        logger.info(f"Excel export complete: {output_filename}")
+
+        return Response(
+            content=excel_buffer.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{output_filename}"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Excel export failed")
+        raise HTTPException(status_code=500, detail=f"Excel export failed: {str(e)}")
+
+    finally:
+        # Clean up temp file
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+
 @app.get("/about")
 async def about():
     """API documentation and metric descriptions."""
