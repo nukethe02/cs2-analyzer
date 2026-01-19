@@ -531,10 +531,25 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
         for player in analysis.get_leaderboard():
             steam_id = player.steam_id
 
-            # Build weapon stats
+            # Build enhanced weapon stats from analysis
             weapon_stats = []
-            for weapon, count in sorted(player.weapon_kills.items(), key=lambda x: -x[1]):
-                weapon_stats.append({"weapon": weapon, "kills": count})
+            player_weapon_stats = analysis.weapon_stats.get(player.name, [])
+            if player_weapon_stats:
+                # Use enhanced weapon stats if available
+                for ws in player_weapon_stats:
+                    weapon_stats.append({
+                        "weapon": ws.weapon,
+                        "kills": ws.kills,
+                        "headshots": ws.headshots,
+                        "headshot_pct": ws.headshot_percentage,
+                        "damage": ws.damage,
+                        "shots_fired": ws.shots_fired,
+                        "accuracy": ws.accuracy,
+                    })
+            else:
+                # Fallback to basic weapon kills
+                for weapon, count in sorted(player.weapon_kills.items(), key=lambda x: -x[1]):
+                    weapon_stats.append({"weapon": weapon, "kills": count})
 
             result["players"][str(steam_id)] = {
                 "name": player.name,

@@ -338,6 +338,38 @@ class MultiKillStats:
 
 
 @dataclass
+class WeaponStats:
+    """Per-weapon statistics for a player."""
+    weapon: str
+    kills: int = 0
+    headshots: int = 0
+    damage: int = 0
+    shots_fired: int = 0
+    shots_hit: int = 0
+
+    @property
+    def headshot_percentage(self) -> float:
+        """Percentage of kills that were headshots."""
+        if self.kills <= 0:
+            return 0.0
+        return round(self.headshots / self.kills * 100, 1)
+
+    @property
+    def accuracy(self) -> float:
+        """Shot accuracy (hits / shots fired)."""
+        if self.shots_fired <= 0:
+            return 0.0
+        return round(self.shots_hit / self.shots_fired * 100, 1)
+
+    @property
+    def damage_per_shot(self) -> float:
+        """Average damage per shot fired."""
+        if self.shots_fired <= 0:
+            return 0.0
+        return round(self.damage / self.shots_fired, 1)
+
+
+@dataclass
 class UtilityStats:
     """Utility usage statistics."""
     flashbangs_thrown: int = 0
@@ -808,6 +840,10 @@ class MatchAnalysis:
     # AI Coaching insights
     coaching_insights: list[dict] = field(default_factory=list)
 
+    # Weapon-specific statistics per player
+    # Key: player name, Value: list of WeaponStats
+    weapon_stats: dict[str, list[WeaponStats]] = field(default_factory=dict)
+
     def get_leaderboard(self, sort_by: str = "hltv_rating") -> list[PlayerMatchStats]:
         """Get players sorted by specified metric (descending)."""
         players_list = list(self.players.values())
@@ -1072,6 +1108,10 @@ class DemoAnalyzer:
         with stage_timer("generate_coaching_insights"):
             coaching_insights = self._generate_coaching_insights()
 
+        # Calculate weapon-specific statistics
+        with stage_timer("calculate_weapon_stats"):
+            weapon_stats = calculate_weapon_stats(self.data)
+
         # Build result
         team_scores = self._calculate_team_scores()
         analysis = MatchAnalysis(
@@ -1089,6 +1129,7 @@ class DemoAnalyzer:
             grenade_positions=grenade_positions,
             grenade_team_stats=grenade_team_stats,
             coaching_insights=coaching_insights,
+            weapon_stats=weapon_stats,
         )
 
         logger.info(f"Analysis complete. {len(self._players)} players analyzed.")
@@ -2782,6 +2823,134 @@ def get_player_comparison_stats(
         "player_b": player_b_stats,
         "normalized": normalize,
     }
+
+
+def calculate_weapon_stats(match_data: "DemoData") -> dict[str, list[WeaponStats]]:
+    """
+    Calculate per-weapon statistics for all players.
+
+    Breaks down player performance by specific weapon to identify weapon mastery.
+
+    Args:
+        match_data: Parsed demo data containing kills, damages, and weapon fires
+
+    Returns:
+        Dictionary mapping player names to lists of WeaponStats objects,
+        sorted by kills descending for each player.
+    """
+    from collections import defaultdict
+
+    result: dict[str, list[WeaponStats]] = {}
+
+    # Get dataframes
+    kills_df = match_data.kills_df
+    damages_df = match_data.damages_df
+    weapon_fires_df = getattr(match_data, 'weapon_fires_df', pd.DataFrame())
+
+    if kills_df.empty:
+        logger.info("No kills data for weapon stats calculation")
+        return result
+
+    # Find column names (handle variations)
+    att_name_col = None
+    for col in ['attacker_name', 'killer_name', 'att_name']:
+        if col in kills_df.columns:
+            att_name_col = col
+            break
+
+    weapon_col = 'weapon' if 'weapon' in kills_df.columns else None
+    headshot_col = 'headshot' if 'headshot' in kills_df.columns else None
+
+    if not att_name_col or not weapon_col:
+        logger.info(f"Missing required columns for weapon stats: att_name={att_name_col}, weapon={weapon_col}")
+        return result
+
+    # Get unique player names
+    player_names = kills_df[att_name_col].dropna().unique()
+
+    for player_name in player_names:
+        player_kills = kills_df[kills_df[att_name_col] == player_name]
+        weapon_data: dict[str, dict] = defaultdict(lambda: {
+            'kills': 0, 'headshots': 0, 'damage': 0, 'shots_fired': 0, 'shots_hit': 0
+        })
+
+        # Count kills and headshots per weapon
+        for weapon in player_kills[weapon_col].unique():
+            weapon_kills = player_kills[player_kills[weapon_col] == weapon]
+            weapon_data[weapon]['kills'] = len(weapon_kills)
+
+            if headshot_col and headshot_col in weapon_kills.columns:
+                weapon_data[weapon]['headshots'] = int(weapon_kills[headshot_col].sum())
+
+        # Calculate damage per weapon from damages_df
+        if not damages_df.empty:
+            dmg_att_col = None
+            for col in ['attacker_name', 'att_name']:
+                if col in damages_df.columns:
+                    dmg_att_col = col
+                    break
+
+            dmg_col = None
+            for col in ['dmg_health', 'damage', 'hp_damage']:
+                if col in damages_df.columns:
+                    dmg_col = col
+                    break
+
+            dmg_weapon_col = 'weapon' if 'weapon' in damages_df.columns else None
+
+            if dmg_att_col and dmg_col and dmg_weapon_col:
+                player_damages = damages_df[damages_df[dmg_att_col] == player_name]
+                for weapon in player_damages[dmg_weapon_col].unique():
+                    weapon_dmg = player_damages[player_damages[dmg_weapon_col] == weapon]
+                    weapon_data[weapon]['damage'] = int(weapon_dmg[dmg_col].sum())
+
+        # Calculate shots fired per weapon from weapon_fires_df
+        if not weapon_fires_df.empty:
+            fire_name_col = None
+            for col in ['player_name', 'name']:
+                if col in weapon_fires_df.columns:
+                    fire_name_col = col
+                    break
+
+            fire_weapon_col = 'weapon' if 'weapon' in weapon_fires_df.columns else None
+
+            if fire_name_col and fire_weapon_col:
+                player_shots = weapon_fires_df[weapon_fires_df[fire_name_col] == player_name]
+                for weapon in player_shots[fire_weapon_col].unique():
+                    weapon_shots = player_shots[player_shots[fire_weapon_col] == weapon]
+                    weapon_data[weapon]['shots_fired'] = len(weapon_shots)
+
+                    # Estimate shots hit from damage events (rough approximation)
+                    # More accurate would be to use hit events if available
+                    if weapon in weapon_data:
+                        # Use damage dealt and approximate damage per hit
+                        # This is a rough estimate since we don't have actual hit data
+                        dmg = weapon_data[weapon].get('damage', 0)
+                        shots = weapon_data[weapon].get('shots_fired', 0)
+                        if shots > 0 and dmg > 0:
+                            # Estimate hits based on average damage per hit (roughly 25-30 for rifles)
+                            avg_dmg_per_hit = 27
+                            weapon_data[weapon]['shots_hit'] = min(shots, int(dmg / avg_dmg_per_hit) + weapon_data[weapon]['kills'])
+
+        # Convert to WeaponStats objects
+        weapon_stats_list = []
+        for weapon, data in weapon_data.items():
+            if data['kills'] > 0 or data['damage'] > 0:  # Only include weapons with activity
+                stats = WeaponStats(
+                    weapon=weapon,
+                    kills=data['kills'],
+                    headshots=data['headshots'],
+                    damage=data['damage'],
+                    shots_fired=data['shots_fired'],
+                    shots_hit=data['shots_hit']
+                )
+                weapon_stats_list.append(stats)
+
+        # Sort by kills descending
+        weapon_stats_list.sort(key=lambda x: x.kills, reverse=True)
+        result[player_name] = weapon_stats_list
+
+    return result
 
 
 # Alias for backward compatibility
