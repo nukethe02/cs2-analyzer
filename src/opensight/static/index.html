@@ -1405,7 +1405,7 @@
                 const teamClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
                 const ratingClass = getRatingClass(r.hltv_rating);
 
-                return `
+                html += `
                 <div class="player-card fade-in" data-player-id="${player.id}">
                     <div class="player-main">
                         <div class="player-header">
@@ -1602,6 +1602,10 @@
                     </div>
                 </div>
             `;
+            }
+
+            html += '</div>';
+            return html;
         }
 
         function renderChartsTab() {
