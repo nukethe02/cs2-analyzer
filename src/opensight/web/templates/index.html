@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero fade-in">
+    <div class="hero-badge">
+        <i class="fas fa-bolt"></i>
+        <span>Pro-Grade Analytics</span>
+    </div>
+
+    <h1>
+        Dominate with<br>
+        <span class="gradient-text">Data-Driven Insights</span>
+    </h1>
+
+    <p>
+        Professional CS2 analytics that reveal what separates good players from great ones.
+        Track every metric that matters. Improve faster.
+    </p>
+
+    <div class="hero-actions">
+        <a href="{{ url_for('analyze') }}" class="btn btn-primary btn-lg">
+            <i class="fas fa-upload"></i>
+            <span>Analyze Demo</span>
+        </a>
+        <a href="{{ url_for('team') }}" class="btn btn-secondary btn-lg">
+            <i class="fas fa-users"></i>
+            <span>View Team Stats</span>
+        </a>
+    </div>
+
+    <div class="hero-stats">
+        <div class="hero-stat">
+            <span class="hero-stat-value">
+                <span class="counter" data-target="1247">0</span>+
+            </span>
+            <span class="hero-stat-label">Demos Analyzed</span>
+        </div>
+        <div class="hero-stat">
+            <span class="hero-stat-value">
+                <span class="counter" data-target="89">0</span>
+            </span>
+            <span class="hero-stat-label">Active Teams</span>
+        </div>
+        <div class="hero-stat">
+            <span class="hero-stat-value">
+                <span class="counter" data-target="15">0</span>
+            </span>
+            <span class="hero-stat-label">Metrics Tracked</span>
+        </div>
+    </div>
+</section>
+
+<!-- Quick Actions -->
+<section class="mb-6">
+    <h2 class="font-display mb-4" style="font-size: 1.5rem;">Quick Actions</h2>
+
+    <div class="grid grid-4">
+        <a href="{{ url_for('analyze') }}" class="card feature-card fade-in stagger-1" style="text-decoration: none; color: inherit;">
+            <div class="card-glow card-glow-red"></div>
+            <div class="feature-icon">
+                <i class="fas fa-crosshairs"></i>
+            </div>
+            <h3>Analyze Demo</h3>
+            <p>Upload a .dem file and get instant professional metrics</p>
+        </a>
+
+        <a href="{{ url_for('decode') }}" class="card feature-card fade-in stagger-2" style="text-decoration: none; color: inherit;">
+            <div class="card-glow card-glow-cyan"></div>
+            <div class="feature-icon" style="background: var(--gradient-cyber);">
+                <i class="fas fa-key"></i>
+            </div>
+            <h3>Decode Share Code</h3>
+            <p>Extract match info from CS2 share codes</p>
+        </a>
+
+        <a href="{{ url_for('team') }}" class="card feature-card fade-in stagger-3" style="text-decoration: none; color: inherit;">
+            <div class="card-glow card-glow-red"></div>
+            <div class="feature-icon" style="background: var(--gradient-legendary);">
+                <i class="fas fa-trophy"></i>
+            </div>
+            <h3>Team Dashboard</h3>
+            <p>Track your squad's performance over time</p>
+        </a>
+
+        <a href="{{ url_for('about') }}" class="card feature-card fade-in stagger-4" style="text-decoration: none; color: inherit;">
+            <div class="card-glow card-glow-cyan"></div>
+            <div class="feature-icon" style="background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);">
+                <i class="fas fa-book"></i>
+            </div>
+            <h3>Learn Metrics</h3>
+            <p>Understand what each stat means</p>
+        </a>
+    </div>
+</section>
+
+<!-- Metrics Overview -->
+<section class="mb-6">
+    <div class="card-header mb-3">
+        <h2 class="card-title font-display">
+            <i class="fas fa-chart-bar"></i>
+            <span>Metrics We Track</span>
+        </h2>
+        <span class="rank-badge rank-legendary">
+            <i class="fas fa-star"></i>
+            Pro-Grade
+        </span>
+    </div>
+
+    <div class="grid grid-3">
+        <div class="stat-card fade-in">
+            <div class="stat-icon">
+                <i class="fas fa-bolt"></i>
+            </div>
+            <div class="stat-value">TTD</div>
+            <div class="stat-label">Time to Damage</div>
+            <p class="text-muted mt-2" style="font-size: 0.85rem;">
+                Measures reaction speed from spotting to dealing damage
+            </p>
+        </div>
+
+        <div class="stat-card fade-in stagger-1">
+            <div class="stat-icon" style="color: var(--accent-cyber);">
+                <i class="fas fa-crosshairs"></i>
+            </div>
+            <div class="stat-value" style="background: var(--gradient-cyber); -webkit-background-clip: text;">CP</div>
+            <div class="stat-label">Crosshair Placement</div>
+            <p class="text-muted mt-2" style="font-size: 0.85rem;">
+                Angular distance between your aim and enemy positions
+            </p>
+        </div>
+
+        <div class="stat-card fade-in stagger-2">
+            <div class="stat-icon" style="color: var(--accent-gold);">
+                <i class="fas fa-skull-crossbones"></i>
+            </div>
+            <div class="stat-value" style="background: var(--gradient-legendary); -webkit-background-clip: text;">K/D</div>
+            <div class="stat-label">Kill/Death Ratio</div>
+            <p class="text-muted mt-2" style="font-size: 0.85rem;">
+                Your fragging impact with headshot percentage
+            </p>
+        </div>
+
+        <div class="stat-card fade-in stagger-3">
+            <div class="stat-icon" style="color: var(--accent-epic);">
+                <i class="fas fa-hand-fist"></i>
+            </div>
+            <div class="stat-value" style="background: linear-gradient(135deg, #a855f7, #7c3aed); -webkit-background-clip: text;">FD</div>
+            <div class="stat-label">Opening Duels</div>
+            <p class="text-muted mt-2" style="font-size: 0.85rem;">
+                First kills vs first deaths each round
+            </p>
+        </div>
+
+        <div class="stat-card fade-in stagger-4">
+            <div class="stat-icon" style="color: #00d4aa;">
+                <i class="fas fa-handshake"></i>
+            </div>
+            <div class="stat-value" style="background: linear-gradient(135deg, #00d4aa, #00f5c4); -webkit-background-clip: text;">TRADE</div>
+            <div class="stat-label">Trade Success</div>
+            <p class="text-muted mt-2" style="font-size: 0.85rem;">
+                How often you trade teammates or get traded
+            </p>
+        </div>
+
+        <div class="stat-card fade-in stagger-4">
+            <div class="stat-icon" style="color: #ffaa00;">
+                <i class="fas fa-coins"></i>
+            </div>
+            <div class="stat-value" style="background: linear-gradient(135deg, #ffaa00, #ffd700); -webkit-background-clip: text;">ECON</div>
+            <div class="stat-label">Economy Efficiency</div>
+            <p class="text-muted mt-2" style="font-size: 0.85rem;">
+                Damage dealt per dollar spent on loadout
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- Recent Activity (placeholder) -->
+<section>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-clock"></i>
+                <span>Recent Activity</span>
+            </h3>
+            <span class="card-badge">Last 24h</span>
+        </div>
+
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Demo</th>
+                        <th>Map</th>
+                        <th>Players</th>
+                        <th>Top Performer</th>
+                        <th>Rating</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="player-row">
+                        <td>
+                            <div class="player-info">
+                                <div class="player-avatar">🎮</div>
+                                <div>
+                                    <div class="player-name">Scrim vs Team Alpha</div>
+                                    <div class="player-tag">Competitive</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="text-accent">de_mirage</span></td>
+                        <td>10</td>
+                        <td>
+                            <div class="rating-display">
+                                <span class="rank-badge rank-legendary" style="padding: 4px 8px; font-size: 0.7rem;">
+                                    <i class="fas fa-crown"></i>
+                                    MVP
+                                </span>
+                                <span>PlayerOne</span>
+                            </div>
+                        </td>
+                        <td><span class="rating-value rating-high">87.3</span></td>
+                        <td class="text-muted">2h ago</td>
+                    </tr>
+                    <tr class="player-row">
+                        <td>
+                            <div class="player-info">
+                                <div class="player-avatar">🎯</div>
+                                <div>
+                                    <div class="player-name">Practice Session</div>
+                                    <div class="player-tag">Aim Training</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="text-accent">de_dust2</span></td>
+                        <td>6</td>
+                        <td>
+                            <span>TeamMate3</span>
+                        </td>
+                        <td><span class="rating-value rating-medium">72.1</span></td>
+                        <td class="text-muted">5h ago</td>
+                    </tr>
+                    <tr class="player-row">
+                        <td>
+                            <div class="player-info">
+                                <div class="player-avatar">⚔️</div>
+                                <div>
+                                    <div class="player-name">League Match</div>
+                                    <div class="player-tag">ESEA Open</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="text-accent">de_inferno</span></td>
+                        <td>10</td>
+                        <td>
+                            <div class="rating-display">
+                                <span class="rank-badge rank-epic" style="padding: 4px 8px; font-size: 0.7rem;">
+                                    <i class="fas fa-fire"></i>
+                                    ACE
+                                </span>
+                                <span>ProPlayer</span>
+                            </div>
+                        </td>
+                        <td><span class="rating-value rating-high">91.7</span></td>
+                        <td class="text-muted">Yesterday</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="text-center mt-4">
+            <p class="text-muted mb-2">Upload a demo to see your stats here</p>
+            <a href="{{ url_for('analyze') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                <span>Analyze Your First Demo</span>
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}

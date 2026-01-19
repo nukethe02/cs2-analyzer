@@ -26,8 +26,14 @@ from opensight.metrics import (
     calculate_ttd,
     calculate_crosshair_placement,
     calculate_engagement_metrics,
+    calculate_economy_metrics,
+    calculate_utility_metrics,
+    calculate_trade_metrics,
+    calculate_opening_metrics,
+    calculate_comprehensive_metrics,
 )
 from opensight.watcher import ReplayWatcher, DemoFileEvent, get_default_replays_folder
+from opensight.export import export_analysis
 
 app = typer.Typer(
     name="opensight",
@@ -92,13 +98,13 @@ def analyze(
         None,
         "--output",
         "-o",
-        help="Output file for results (JSON format)"
+        help="Output file for results (format detected from extension: .json, .csv, .xlsx, .html)"
     ),
     metrics: str = typer.Option(
         "all",
         "--metrics",
         "-m",
-        help="Metrics to calculate: all, ttd, cp, or engagement"
+        help="Metrics to calculate: all, ttd, cp, engagement, economy, utility, trades, opening"
     ),
 ) -> None:
     """
@@ -164,9 +170,22 @@ def analyze(
     if metrics in ("all", "cp"):
         _display_cp_metrics(data, steam_id)
 
+    if metrics in ("all", "economy"):
+        _display_economy_metrics(data, steam_id)
+
+    if metrics in ("all", "utility"):
+        _display_utility_metrics(data, steam_id)
+
+    if metrics in ("all", "trades"):
+        _display_trade_metrics(data, steam_id)
+
+    if metrics in ("all", "opening"):
+        _display_opening_metrics(data, steam_id)
+
     # Export if requested
     if output:
-        _export_results(data, steam_id, output)
+        comprehensive = calculate_comprehensive_metrics(data, steam_id)
+        export_analysis(data, comprehensive, output)
         console.print(f"\n[green]Results exported to:[/green] {output}")
 
 
@@ -261,9 +280,9 @@ def _display_cp_metrics(data: DemoData, steam_id: Optional[int]) -> None:
     console.print()
 
 
-def _export_results(data: DemoData, steam_id: Optional[int], output: Path) -> None:
-    """Export results to JSON file."""
-    import json
+def _display_economy_metrics(data: DemoData, steam_id: Optional[int]) -> None:
+    """Display economy metrics table."""
+    econ_results = calculate_economy_metrics(data, steam_id)
 
     metrics = calculate_engagement_metrics(data, steam_id)
     ttd = calculate_ttd(data, steam_id)
@@ -282,7 +301,7 @@ def _export_results(data: DemoData, steam_id: Optional[int], output: Path) -> No
     for sid in data.player_names:
         player_data = {
             "name": data.player_names[sid],
-            "team": data.teams.get(sid, "Unknown"),
+            "team": data.player_teams.get(sid, 0),
         }
 
         if sid in metrics:

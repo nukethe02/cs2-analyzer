@@ -13,8 +13,8 @@ Implements industry-standard metrics:
 - Crosshair Placement
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
+from typing import Any, Optional
 import logging
 import math
 
@@ -33,175 +33,24 @@ from opensight.constants import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class OpeningDuelStats:
-    """Opening duel (first kill of round) statistics."""
-    attempts: int = 0       # Times player was in first duel
-    wins: int = 0           # Times player got first kill
-    losses: int = 0         # Times player was first death
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """Safely convert a value to float, returning default on failure.
 
-    @property
-    def win_rate(self) -> float:
-        return (self.wins / self.attempts * 100) if self.attempts > 0 else 0.0
+    Args:
+        value: The value to convert.
+        default: The default value to return if conversion fails.
 
-
-@dataclass
-class TradeStats:
-    """Trade kill statistics."""
-    kills_traded: int = 0       # Times player traded a teammate
-    deaths_traded: int = 0      # Times player was traded by teammate
-    trade_attempts: int = 0     # Opportunities to trade
-
-    @property
-    def trade_success_rate(self) -> float:
-        return (self.kills_traded / self.trade_attempts * 100) if self.trade_attempts > 0 else 0.0
-
-
-@dataclass
-class ClutchStats:
-    """Clutch situation statistics."""
-    situations_1v1: int = 0
-    wins_1v1: int = 0
-    situations_1v2: int = 0
-    wins_1v2: int = 0
-    situations_1v3: int = 0
-    wins_1v3: int = 0
-    situations_1v4: int = 0
-    wins_1v4: int = 0
-    situations_1v5: int = 0
-    wins_1v5: int = 0
-
-    @property
-    def total_situations(self) -> int:
-        return self.situations_1v1 + self.situations_1v2 + self.situations_1v3 + self.situations_1v4 + self.situations_1v5
-
-    @property
-    def total_wins(self) -> int:
-        return self.wins_1v1 + self.wins_1v2 + self.wins_1v3 + self.wins_1v4 + self.wins_1v5
-
-
-@dataclass
-class MultiKillStats:
-    """Multi-kill round statistics."""
-    rounds_with_1k: int = 0
-    rounds_with_2k: int = 0
-    rounds_with_3k: int = 0
-    rounds_with_4k: int = 0
-    rounds_with_5k: int = 0  # Ace
-
-    @property
-    def total_multi_kill_rounds(self) -> int:
-        """Rounds with 2+ kills."""
-        return self.rounds_with_2k + self.rounds_with_3k + self.rounds_with_4k + self.rounds_with_5k
-
-
-@dataclass
-class UtilityStats:
-    """Utility (grenade) statistics - Leetify-style comprehensive tracking."""
-    # Flash stats
-    flash_assists: int = 0
-    flashbangs_thrown: int = 0
-    enemies_flashed: int = 0          # Total enemies blinded >1.1s
-    teammates_flashed: int = 0        # Bad - blinding your own team
-    total_blind_time: float = 0.0     # Total seconds enemies were blind
-
-    # HE stats
-    he_thrown: int = 0
-    he_damage: int = 0                # Total damage to enemies
-    he_team_damage: int = 0           # Bad - damage to teammates
-
-    # Molotov/Incendiary stats
-    molotov_thrown: int = 0
-    molotov_damage: int = 0
-    molotov_team_damage: int = 0
-
-    # Smoke stats
-    smokes_thrown: int = 0
-
-    # Unused utility (at death)
-    unused_utility_value: int = 0     # $ value of utility at death
-    deaths_with_utility: int = 0      # Times died with unused utility
-
-    @property
-    def enemies_flashed_per_flash(self) -> float:
-        """Average enemies flashed per flashbang (Leetify metric)."""
-        return self.enemies_flashed / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
-
-    @property
-    def avg_blind_time(self) -> float:
-        """Average blind time per flashbang (seconds)."""
-        return self.total_blind_time / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
-
-    @property
-    def teammates_flashed_per_flash(self) -> float:
-        """Average teammates flashed per flashbang (bad - should be low)."""
-        return self.teammates_flashed / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
-
-    @property
-    def he_damage_per_nade(self) -> float:
-        """Average HE damage per grenade."""
-        return self.he_damage / self.he_thrown if self.he_thrown > 0 else 0.0
-
-    @property
-    def molotov_damage_per_nade(self) -> float:
-        """Average molotov damage per grenade."""
-        return self.molotov_damage / self.molotov_thrown if self.molotov_thrown > 0 else 0.0
-
-    @property
-    def utility_thrown_per_round(self) -> float:
-        """Total utility thrown per round (for quantity rating)."""
-        # This needs to be calculated with rounds_played from PlayerMatchStats
-        return 0.0
-
-
-@dataclass
-class SideStats:
-    """CT-side vs T-side performance breakdown (Leetify/Scope.gg style)."""
-    rounds_played: int = 0
-    kills: int = 0
-    deaths: int = 0
-    assists: int = 0
-    total_damage: int = 0
-    opening_kills: int = 0
-    opening_deaths: int = 0
-
-    @property
-    def kd_ratio(self) -> float:
-        return round(self.kills / self.deaths, 2) if self.deaths > 0 else float(self.kills)
-
-    @property
-    def adr(self) -> float:
-        return round(self.total_damage / self.rounds_played, 1) if self.rounds_played > 0 else 0.0
-
-    @property
-    def kills_per_round(self) -> float:
-        return round(self.kills / self.rounds_played, 2) if self.rounds_played > 0 else 0.0
-
-    @property
-    def opening_success_rate(self) -> float:
-        """% of opening duels won."""
-        total = self.opening_kills + self.opening_deaths
-        return round(self.opening_kills / total * 100, 1) if total > 0 else 0.0
-
-
-@dataclass
-class MistakesStats:
-    """Mistakes tracking (Scope.gg style)."""
-    teammates_flashed: int = 0          # Times you blinded teammates
-    team_damage: int = 0                # Damage dealt to teammates
-    team_kills: int = 0                 # Teamkills
-    deaths_with_utility: int = 0        # Died with unused utility
-    eco_round_deaths: int = 0           # Deaths in eco rounds (when you shouldn't die)
-    unnecessary_peeks: int = 0          # Deaths while team had advantage
-
-    @property
-    def total_mistakes(self) -> int:
-        return (
-            self.teammates_flashed +
-            (1 if self.team_damage > 50 else 0) +
-            self.team_kills * 3 +
-            self.deaths_with_utility
-        )
+    Returns:
+        The converted float value, or the default if conversion fails.
+    """
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 
 @dataclass
@@ -261,9 +110,17 @@ class PlayerMatchStats:
     # Mistakes tracking (Scope.gg style)
     mistakes: MistakesStats = field(default_factory=MistakesStats)
 
+    # Lurk stats (State Machine)
+    lurk: LurkStats = field(default_factory=LurkStats)
+
     # KAST tracking
     kast_rounds: int = 0  # Rounds with Kill/Assist/Survived/Traded
     rounds_survived: int = 0
+
+    # State Machine enhanced stats
+    effective_flashes: int = 0      # Flashes > 2.0 seconds blind duration
+    ineffective_flashes: int = 0    # Flashes < 2.0 seconds
+    utility_adr: float = 0.0        # HE + Molotov damage per round
 
     # Weapon breakdown
     weapon_kills: dict = field(default_factory=dict)
@@ -565,6 +422,15 @@ class DemoAnalyzer:
                 return col
         return None
 
+    def _match_steamid(self, df: pd.DataFrame, col: str, steam_id: int) -> pd.DataFrame:
+        """Match steamid handling type differences (int vs float)."""
+        try:
+            # Convert both to float for comparison to handle int/float mismatch
+            return df[df[col].astype(float) == float(steam_id)]
+        except (ValueError, TypeError):
+            # Fallback to direct comparison
+            return df[df[col] == steam_id]
+
     def _init_column_cache(self) -> None:
         """Initialize column name cache for kills DataFrame."""
         kills_df = self.data.kills_df
@@ -623,6 +489,9 @@ class DemoAnalyzer:
         # Calculate mistakes
         self._calculate_mistakes()
 
+        # Run State Machine for pro-level analytics (Entry/Trade/Lurk)
+        self._run_state_machine()
+
         # Build result
         team_scores = self._calculate_team_scores()
         analysis = MatchAnalysis(
@@ -638,6 +507,7 @@ class DemoAnalyzer:
 
     def _init_player_stats(self) -> None:
         """Initialize PlayerMatchStats for each player."""
+        logger.info(f"Initializing stats for {len(self.data.player_names)} players")
         for steam_id, name in self.data.player_names.items():
             team = self.data.player_teams.get(steam_id, "Unknown")
             self._players[steam_id] = PlayerMatchStats(
@@ -651,16 +521,34 @@ class DemoAnalyzer:
                 total_damage=0,
                 rounds_played=self.data.num_rounds,
             )
+            logger.debug(f"Initialized player: {name} (steamid={steam_id}, team={team})")
 
     def _calculate_basic_stats(self) -> None:
         """Calculate basic K/D/A and damage stats."""
         kills_df = self.data.kills_df
         damages_df = self.data.damages_df
 
+        # Use cached column names for kills
+        att_id_col = self._att_id_col or "attacker_steamid"
+        vic_id_col = self._vic_id_col or "victim_steamid"
+
+        # Find damage columns
+        dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
+        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"]) if not damages_df.empty else None
+
+        # Log DataFrame info for debugging
+        if not kills_df.empty and att_id_col in kills_df.columns:
+            unique_attackers = kills_df[att_id_col].dropna().unique()
+            logger.info(f"DataFrame has {len(unique_attackers)} unique attackers in column '{att_id_col}'")
+            logger.info(f"Player steamids: {list(self._players.keys())[:5]}...")
+            logger.info(f"DataFrame attacker steamids (sample): {list(unique_attackers[:5])}")
+            logger.info(f"Attacker column dtype: {kills_df[att_id_col].dtype}")
+
         for steam_id, player in self._players.items():
-            # Kills
-            if not kills_df.empty and "attacker_steamid" in kills_df.columns:
-                player_kills = kills_df[kills_df["attacker_steamid"] == steam_id]
+            # Kills - use cached column
+            if not kills_df.empty and att_id_col in kills_df.columns:
+                # Convert to same type for comparison (handle float vs int issue)
+                player_kills = kills_df[kills_df[att_id_col].astype(float) == float(steam_id)]
                 player.kills = len(player_kills)
 
                 if "headshot" in kills_df.columns:
@@ -669,25 +557,31 @@ class DemoAnalyzer:
                 if "weapon" in kills_df.columns:
                     player.weapon_kills = player_kills["weapon"].value_counts().to_dict()
 
-            # Deaths
-            if not kills_df.empty and "victim_steamid" in kills_df.columns:
-                player.deaths = len(kills_df[kills_df["victim_steamid"] == steam_id])
+            # Deaths - use cached column (handles user_steamid vs victim_steamid)
+            if not kills_df.empty and vic_id_col in kills_df.columns:
+                player.deaths = len(kills_df[kills_df[vic_id_col].astype(float) == float(steam_id)])
 
             # Assists
             if not kills_df.empty and "assister_steamid" in kills_df.columns:
-                player.assists = len(kills_df[kills_df["assister_steamid"] == steam_id])
+                player.assists = len(kills_df[kills_df["assister_steamid"].astype(float) == float(steam_id)])
 
-            # Damage
-            if not damages_df.empty and "attacker_steamid" in damages_df.columns and "damage" in damages_df.columns:
-                player_dmg = damages_df[damages_df["attacker_steamid"] == steam_id]
-                player.total_damage = int(player_dmg["damage"].sum())
+            # Damage - use dynamic column finding
+            if dmg_att_col and dmg_col:
+                player_dmg = damages_df[damages_df[dmg_att_col].astype(float) == float(steam_id)]
+                player.total_damage = int(player_dmg[dmg_col].sum())
 
             # Flash assists
-            if not kills_df.empty and "flash_assist" in kills_df.columns:
-                player.utility.flash_assists = int(kills_df[
-                    (kills_df.get("assister_steamid") == steam_id) &
+            if not kills_df.empty and "flash_assist" in kills_df.columns and "assister_steamid" in kills_df.columns:
+                flash_assists = kills_df[
+                    (kills_df["assister_steamid"].astype(float) == float(steam_id)) &
                     (kills_df["flash_assist"] == True)
-                ].shape[0]) if "assister_steamid" in kills_df.columns else 0
+                ]
+                player.utility.flash_assists = len(flash_assists)
+
+        # Log results
+        total_kills = sum(p.kills for p in self._players.values())
+        total_deaths = sum(p.deaths for p in self._players.values())
+        logger.info(f"Basic stats calculated: {total_kills} total kills, {total_deaths} total deaths across {len(self._players)} players")
 
     def _calculate_multi_kills(self) -> None:
         """Calculate multi-kill rounds for each player."""
@@ -697,7 +591,9 @@ class DemoAnalyzer:
             return
 
         for steam_id, player in self._players.items():
-            player_kills = kills_df[kills_df[self._att_id_col] == steam_id]
+            player_kills = kills_df[kills_df[self._att_id_col].astype(float) == float(steam_id)]
+            if player_kills.empty:
+                continue
             kills_per_round = player_kills.groupby(self._round_col).size()
 
             player.multi_kills.rounds_with_1k = int((kills_per_round == 1).sum())
@@ -1477,6 +1373,62 @@ class DemoAnalyzer:
                     player.mistakes.teammates_flashed = player.utility.teammates_flashed
 
         logger.info("Calculated mistakes")
+
+    def _run_state_machine(self) -> None:
+        """
+        Run State Machine analysis for pro-level metrics.
+
+        Enhances PlayerMatchStats with:
+        - Entry Kill (from State Machine - more accurate than opening duels)
+        - Trade Kill (with 4-second window and proper killer tracking)
+        - Lurk Kill (distance from team center of mass)
+        - Flash Effectiveness (>2.0s blind duration)
+        - Utility ADR (HE + Molotov damage per round)
+        """
+        try:
+            from opensight.state_machine import StateMachine
+        except ImportError as e:
+            logger.warning(f"State Machine not available: {e}")
+            return
+
+        try:
+            machine = StateMachine(self.data)
+            result = machine.analyze()
+
+            # Merge state machine results into PlayerMatchStats
+            for steam_id, context_stats in result.players.items():
+                if steam_id not in self._players:
+                    continue
+
+                player = self._players[steam_id]
+
+                # Update entry stats (State Machine is more accurate)
+                player.opening_duels.wins = context_stats.entry_kills
+                player.opening_duels.losses = context_stats.entry_deaths
+                player.opening_duels.attempts = context_stats.entry_attempts
+
+                # Update trade stats (State Machine uses tighter 4-second window)
+                player.trades.kills_traded = context_stats.trade_kills
+                player.trades.deaths_traded = context_stats.deaths_traded
+                player.trades.trade_attempts = context_stats.trade_opportunities
+
+                # Add lurk stats
+                player.lurk.kills = context_stats.lurk_kills
+                player.lurk.deaths = context_stats.lurk_deaths
+
+                # Flash effectiveness (>2.0 seconds = effective)
+                player.effective_flashes = context_stats.effective_flashes
+                player.ineffective_flashes = context_stats.ineffective_flashes
+
+                # Utility ADR
+                util_damage = context_stats.he_damage + context_stats.molotov_damage
+                player.utility_adr = round(util_damage / player.rounds_played, 1) if player.rounds_played > 0 else 0.0
+
+            logger.info(f"State Machine complete: {result.total_entry_kills} entries, "
+                       f"{result.total_trade_kills} trades, {result.total_lurk_kills} lurks")
+
+        except Exception as e:
+            logger.warning(f"State Machine analysis failed: {e}")
 
     def _calculate_team_scores(self) -> tuple[int, int]:
         """Calculate team scores from round data."""

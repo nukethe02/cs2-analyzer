@@ -681,8 +681,9 @@ class DemoParser:
             total_damage = 0
             weapon_kills: dict[str, int] = {}
 
+            # Use float comparison to handle int/float mismatch in steamids
             if not kills_df.empty and att_col:
-                player_kills_df = kills_df[kills_df[att_col] == steam_id]
+                player_kills_df = kills_df[kills_df[att_col].astype(float) == float(steam_id)]
                 kills = len(player_kills_df)
                 if hs_col and kills > 0:
                     headshots = int(player_kills_df[hs_col].sum())
@@ -690,13 +691,13 @@ class DemoParser:
                     weapon_kills = player_kills_df[weapon_col].value_counts().to_dict()
 
             if not kills_df.empty and vic_col:
-                deaths = len(kills_df[kills_df[vic_col] == steam_id])
+                deaths = len(kills_df[kills_df[vic_col].astype(float) == float(steam_id)])
 
             if not kills_df.empty and assist_col:
-                assists = len(kills_df[kills_df[assist_col] == steam_id])
+                assists = len(kills_df[kills_df[assist_col].astype(float) == float(steam_id)])
 
             if not damages_df.empty and dmg_att_col and dmg_col:
-                player_dmg = damages_df[damages_df[dmg_att_col] == steam_id]
+                player_dmg = damages_df[damages_df[dmg_att_col].astype(float) == float(steam_id)]
                 total_damage = int(player_dmg[dmg_col].sum())
 
             stats[steam_id] = {

@@ -5,218 +5,157 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenSight - CS2 Analytics</title>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a24;
+            --accent: #00d4ff;
+            --accent-dim: rgba(0, 212, 255, 0.15);
+            --ct-color: #4a90d9;
+            --ct-bg: rgba(74, 144, 217, 0.15);
+            --t-color: #de9b35;
+            --t-bg: rgba(222, 155, 53, 0.15);
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --text-muted: #606070;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border: rgba(255, 255, 255, 0.08);
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
             min-height: 100vh;
-            color: #e4e4e4;
-            padding: 20px;
+            color: var(--text-primary);
+            line-height: 1.5;
         }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 24px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        .header p { color: var(--text-secondary); }
 
         .container {
-            max-width: 1100px;
+            max-width: 1200px;
             margin: 0 auto;
+            padding: 24px 20px;
         }
 
-        header {
+        .upload-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 24px;
+        }
+
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 48px 24px;
             text-align: center;
-            margin-bottom: 40px;
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            color: #00d4ff;
-            margin-bottom: 10px;
-        }
-
-        .subtitle {
-            color: #888;
-            font-size: 1.1rem;
-        }
-
-        .version-badge {
-            display: inline-block;
-            background: rgba(0, 212, 255, 0.2);
-            color: #00d4ff;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            margin-top: 10px;
-        }
-
-        .card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 25px;
-        }
-
-        .card h2 {
-            color: #00d4ff;
-            margin-bottom: 20px;
-            font-size: 1.3rem;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #aaa;
-            font-size: 0.9rem;
-        }
-
-        input[type="text"],
-        input[type="file"] {
-            width: 100%;
-            padding: 12px 15px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            background: rgba(0, 0, 0, 0.3);
-            color: #fff;
-            font-size: 1rem;
-        }
-
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #00d4ff;
-        }
-
-        input[type="file"] {
-            padding: 10px;
-        }
-
-        input[type="file"]::file-selector-button {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            background: #00d4ff;
-            color: #000;
             cursor: pointer;
-            margin-right: 10px;
+            transition: all 0.2s;
+            background: var(--bg-secondary);
         }
 
-        button {
-            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
-            color: #000;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--accent);
+            background: var(--accent-dim);
         }
 
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.3);
-        }
+        .upload-zone h3 { margin-bottom: 8px; color: var(--text-primary); }
+        .upload-zone p { color: var(--text-muted); font-size: 0.9rem; }
 
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
+        input[type="file"] { display: none; }
 
-        .results {
-            margin-top: 20px;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 8px;
+        .loading-overlay {
             display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 10, 15, 0.95);
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
 
-        .results.show {
-            display: block;
+        .loading-overlay.show { display: flex; }
+
+        .spinner {
+            width: 64px;
+            height: 64px;
+            border: 4px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 24px;
         }
 
-        .results h3 {
-            color: #00d4ff;
-            margin-bottom: 15px;
-            font-size: 1.1rem;
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .result-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
+        .loading-text { color: var(--text-secondary); font-size: 1.1rem; }
 
-        .result-item:last-child {
-            border-bottom: none;
-        }
+        .results { display: none; }
+        .results.show { display: block; }
 
-        .result-label {
-            color: #888;
-        }
-
-        .result-value {
-            color: #fff;
-            font-weight: 500;
-        }
-
-        /* Match Info Grid */
-        .match-info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-bottom: 25px;
-        }
-
-        .match-stat {
-            background: rgba(0, 212, 255, 0.1);
-            border: 1px solid rgba(0, 212, 255, 0.2);
-            border-radius: 8px;
-            padding: 15px;
+        .match-header {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
             text-align: center;
         }
 
-        .match-stat-value {
-            font-size: 1.5rem;
+        .map-name { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
+        .match-meta { color: var(--text-muted); margin-bottom: 16px; }
+
+        .score-display {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 24px;
+            font-size: 2rem;
             font-weight: 700;
-            color: #00d4ff;
         }
 
-        .match-stat-label {
-            font-size: 0.8rem;
-            color: #888;
-            margin-top: 5px;
-        }
+        .score-ct { color: var(--ct-color); }
+        .score-t { color: var(--t-color); }
 
-        /* Player Cards */
+        .players-grid { display: grid; gap: 16px; }
+
         .player-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
             border-radius: 12px;
             padding: 20px;
-            margin-bottom: 15px;
         }
 
         .player-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
         }
 
-        .player-name {
-            font-weight: 600;
-            font-size: 1.2rem;
-            color: #fff;
-        }
+        .player-name { font-weight: 600; font-size: 1.1rem; }
 
         .player-team {
             padding: 4px 12px;
@@ -225,360 +164,133 @@
             font-weight: 600;
         }
 
-        .team-ct {
-            background: rgba(93, 121, 174, 0.3);
-            color: #5d79ae;
+        .team-ct { background: var(--ct-bg); color: var(--ct-color); }
+        .team-t { background: var(--t-bg); color: var(--t-color); }
+
+        .rating-badge {
+            background: var(--accent);
+            color: var(--bg-primary);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-weight: 700;
         }
 
-        .team-t {
-            background: rgba(222, 155, 53, 0.3);
-            color: #de9b35;
-        }
-
-        .team-unknown {
-            background: rgba(136, 136, 136, 0.3);
-            color: #888;
-        }
-
-        /* Stats Sections */
-        .stats-section {
-            margin-bottom: 15px;
-        }
-
-        .stats-section-title {
-            font-size: 0.85rem;
-            color: #00d4ff;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .player-stats {
+        .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 12px;
         }
 
         .stat {
             text-align: center;
             padding: 12px 8px;
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-secondary);
             border-radius: 8px;
         }
 
-        .stat-value {
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: #fff;
-        }
+        .stat-value { font-size: 1.2rem; font-weight: 600; }
+        .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
 
-        .stat-label {
-            font-size: 0.7rem;
-            color: #888;
-            margin-top: 4px;
-            text-transform: uppercase;
-        }
+        .stat.highlight { background: var(--accent-dim); border: 1px solid rgba(0, 212, 255, 0.3); }
+        .stat-value.good { color: var(--success); }
+        .stat-value.bad { color: var(--danger); }
 
-        /* Advanced Stats */
-        .advanced-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 10px;
-        }
-
-        .stat.highlight {
-            background: rgba(0, 212, 255, 0.1);
-            border: 1px solid rgba(0, 212, 255, 0.2);
-        }
-
-        .stat.highlight .stat-value {
-            color: #00d4ff;
-        }
-
-        .stat.good .stat-value {
-            color: #4ade80;
-        }
-
-        .stat.warning .stat-value {
-            color: #fbbf24;
-        }
-
-        /* Weapon Stats */
-        .weapon-stats {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .weapon-tag {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 6px 12px;
-            border-radius: 16px;
-            font-size: 0.8rem;
-            color: #ccc;
-        }
-
-        .weapon-tag .weapon-kills {
-            color: #00d4ff;
-            font-weight: 600;
-            margin-left: 4px;
-        }
-
-        /* Tooltip */
-        .tooltip {
-            position: relative;
-            cursor: help;
-        }
-
-        .tooltip::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 8px 12px;
-            background: #1a1a2e;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
-            font-size: 0.75rem;
-            color: #ccc;
-            white-space: nowrap;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s;
-            z-index: 100;
-        }
-
-        .tooltip:hover::after {
-            opacity: 1;
-        }
-
-        .error {
-            background: rgba(255, 50, 50, 0.2);
-            border: 1px solid rgba(255, 50, 50, 0.3);
-            color: #ff6b6b;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-        }
-
-        .loading {
+        .error-box {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            color: var(--danger);
             text-align: center;
-            padding: 40px;
-            color: #888;
-        }
-
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(0, 212, 255, 0.2);
-            border-top-color: #00d4ff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
         }
 
         footer {
             text-align: center;
-            margin-top: 40px;
-            color: #555;
-            font-size: 0.9rem;
+            padding: 32px 20px;
+            color: var(--text-muted);
         }
 
-        footer a {
-            color: #00d4ff;
-            text-decoration: none;
-        }
-
-        /* Info boxes */
-        .info-box {
-            background: rgba(0, 212, 255, 0.1);
-            border: 1px solid rgba(0, 212, 255, 0.2);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-            font-size: 0.9rem;
-            color: #aaa;
-        }
-
-        .info-box strong {
-            color: #00d4ff;
-        }
-
-        /* Responsive */
-        @media (max-width: 600px) {
-            .player-stats, .advanced-stats {
-                grid-template-columns: repeat(3, 1fr);
-            }
-
-            .match-info-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
+        footer a { color: var(--accent); text-decoration: none; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>OpenSight</h1>
-            <p class="subtitle">Local CS2 Analytics - Professional metrics, zero cost</p>
-            <span class="version-badge">v0.2.0 - TTD & Crosshair Placement</span>
-        </header>
+    <header class="header">
+        <h1>OpenSight</h1>
+        <p>Professional CS2 Analytics - Leetify/Scope.gg Style Metrics</p>
+    </header>
 
-        <!-- Share Code Decoder -->
-        <div class="card">
-            <h2>Decode Share Code</h2>
-            <div class="info-box">
-                Enter your CS2 match share code to extract match metadata. Find share codes in-game via the Watch tab or Steam's Personal Game Data.
+    <main class="container">
+        <section class="upload-section">
+            <div class="upload-zone" id="upload-zone">
+                <h3>Drop your .dem file here</h3>
+                <p>or click to browse (supports .dem and .dem.gz)</p>
+                <input type="file" id="demo-file" accept=".dem,.dem.gz">
             </div>
-            <form id="decode-form">
-                <div class="form-group">
-                    <label for="sharecode">CS2 Share Code</label>
-                    <input type="text" id="sharecode" placeholder="CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx" required>
-                </div>
-                <button type="submit">Decode</button>
-            </form>
-            <div id="decode-results" class="results"></div>
-        </div>
+        </section>
 
-        <!-- Demo Analyzer -->
-        <div class="card">
-            <h2>Analyze Demo File</h2>
-            <div class="info-box">
-                Upload a CS2 demo file (.dem) to get comprehensive analytics including <strong>Time to Damage (TTD)</strong> and <strong>Crosshair Placement</strong> metrics. Analysis may take 30-60 seconds for full matches.
-            </div>
-            <form id="analyze-form">
-                <div class="form-group">
-                    <label for="demofile">Upload .dem File</label>
-                    <input type="file" id="demofile" accept=".dem" required>
-                </div>
-                <button type="submit">Analyze Demo</button>
-            </form>
-            <div id="analyze-results" class="results"></div>
-        </div>
+        <div id="results" class="results"></div>
+    </main>
 
-        <footer>
-            <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer">OpenSight</a> | <a href="/about">API Docs</a></p>
-        </footer>
+    <div id="loading" class="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Analyzing demo...</div>
+        <div id="loading-details" style="color: #606070; margin-top: 8px;"></div>
     </div>
 
+    <footer>
+        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer">OpenSight</a></p>
+    </footer>
+
     <script>
-        // Helper to safely parse JSON response
-        async function parseResponse(response) {
-            const text = await response.text();
-            if (!text) return null;
-            try {
-                return JSON.parse(text);
-            } catch {
-                return null;
-            }
-        }
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('demo-file');
+        const loading = document.getElementById('loading');
+        const loadingDetails = document.getElementById('loading-details');
+        const resultsDiv = document.getElementById('results');
 
-        // Format milliseconds nicely
-        function formatMs(ms) {
-            if (ms === null || ms === undefined) return '-';
-            return Math.round(ms) + 'ms';
-        }
+        // Click to upload
+        uploadZone.addEventListener('click', () => fileInput.click());
 
-        // Format degrees
-        function formatDeg(deg) {
-            if (deg === null || deg === undefined) return '-';
-            return deg.toFixed(1) + '°';
-        }
-
-        // Get TTD rating class
-        function getTTDClass(ms) {
-            if (ms === null || ms === undefined) return '';
-            if (ms < 300) return 'good';
-            if (ms > 500) return 'warning';
-            return '';
-        }
-
-        // Get CP rating class
-        function getCPClass(deg) {
-            if (deg === null || deg === undefined) return '';
-            if (deg < 10) return 'good';
-            if (deg > 25) return 'warning';
-            return '';
-        }
-
-        // Get team class
-        function getTeamClass(team) {
-            if (team === 'CT') return 'team-ct';
-            if (team === 'T') return 'team-t';
-            return 'team-unknown';
-        }
-
-        // Decode Share Code
-        document.getElementById('decode-form').addEventListener('submit', async (e) => {
+        // Drag and drop
+        uploadZone.addEventListener('dragover', (e) => {
             e.preventDefault();
-            const code = document.getElementById('sharecode').value.trim();
-            const resultsDiv = document.getElementById('decode-results');
+            uploadZone.classList.add('dragover');
+        });
 
-            resultsDiv.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Decoding...</div>';
-            resultsDiv.classList.add('show');
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
 
-            try {
-                const response = await fetch('/decode', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code })
-                });
-
-                const data = await parseResponse(response);
-
-                if (!response.ok) {
-                    throw new Error(data?.detail || `Server error: ${response.status}`);
-                }
-
-                if (!data) {
-                    throw new Error('Empty response from server');
-                }
-
-                resultsDiv.innerHTML = `
-                    <h3>Decoded Information</h3>
-                    <div class="result-item">
-                        <span class="result-label">Match ID</span>
-                        <span class="result-value">${data.match_id}</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Outcome ID</span>
-                        <span class="result-value">${data.outcome_id}</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Token</span>
-                        <span class="result-value">${data.token}</span>
-                    </div>
-                `;
-            } catch (error) {
-                resultsDiv.innerHTML = `<div class="error">${error.message}</div>`;
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
+                analyzeFile(file);
+            } else {
+                alert('Please upload a .dem or .dem.gz file');
             }
         });
 
-        // Analyze Demo
-        document.getElementById('analyze-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const fileInput = document.getElementById('demofile');
-            const file = fileInput.files[0];
-            const resultsDiv = document.getElementById('analyze-results');
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) analyzeFile(file);
+        });
 
-            if (!file) return;
+        // Escape HTML
+        function esc(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
 
-            const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
-            resultsDiv.innerHTML = `
-                <div class="loading">
-                    <div class="loading-spinner"></div>
-                    <div>Analyzing ${file.name} (${fileSizeMB} MB)</div>
-                    <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
-                        Parsing events and computing TTD/CP metrics...
-                    </div>
-                </div>
-            `;
-            resultsDiv.classList.add('show');
+        // Analyze file
+        async function analyzeFile(file) {
+            const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+            loading.classList.add('show');
+            loadingDetails.textContent = `Processing ${file.name} (${sizeMB} MB)`;
 
             const formData = new FormData();
             formData.append('file', file);
@@ -589,148 +301,93 @@
                     body: formData
                 });
 
-                const data = await parseResponse(response);
+                const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(data?.detail || `Server error: ${response.status}`);
+                    throw new Error(data.detail || 'Analysis failed');
                 }
 
-                if (!data) {
-                    throw new Error('Empty response from server');
-                }
+                renderResults(data);
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error-box">${esc(error.message)}</div>`;
+                resultsDiv.classList.add('show');
+            } finally {
+                loading.classList.remove('show');
+            }
+        }
 
-                // Build match info
-                let html = `
-                    <h3>Match Overview</h3>
-                    <div class="match-info-grid">
-                        <div class="match-stat">
-                            <div class="match-stat-value">${data.demo_info.map || 'Unknown'}</div>
-                            <div class="match-stat-label">Map</div>
+        // Render results
+        function renderResults(data) {
+            const info = data.demo_info || {};
+            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+
+            let html = `
+                <div class="match-header">
+                    <div class="map-name">${esc(info.map) || 'Unknown Map'}</div>
+                    <div class="match-meta">${info.rounds || 0} rounds &bull; ${Math.round(info.duration_minutes || 0)} min &bull; ${info.total_kills || 0} kills</div>
+                    <div class="score-display">
+                        <span class="score-ct">${info.score?.split(' - ')[0] || '0'}</span>
+                        <span>-</span>
+                        <span class="score-t">${info.score?.split(' - ')[1] || '0'}</span>
+                    </div>
+                </div>
+                <div class="players-grid">
+            `;
+
+            for (const player of players) {
+                const s = player.stats || {};
+                const r = player.rating || {};
+                const teamClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
+
+                html += `
+                    <div class="player-card">
+                        <div class="player-header">
+                            <span class="player-name">${esc(player.name) || 'Unknown'}</span>
+                            <span class="player-team ${teamClass}">${esc(player.team) || '?'}</span>
+                            <span class="rating-badge">${(r.hltv_rating || 0).toFixed(2)}</span>
                         </div>
-                        <div class="match-stat">
-                            <div class="match-stat-value">${data.demo_info.rounds || 'N/A'}</div>
-                            <div class="match-stat-label">Rounds</div>
-                        </div>
-                        <div class="match-stat">
-                            <div class="match-stat-value">${Math.round(data.demo_info.duration_minutes || 0)}m</div>
-                            <div class="match-stat-label">Duration</div>
-                        </div>
-                        <div class="match-stat">
-                            <div class="match-stat-value">${data.demo_info.player_count || 0}</div>
-                            <div class="match-stat-label">Players</div>
-                        </div>
-                        <div class="match-stat">
-                            <div class="match-stat-value">${data.demo_info.total_kills || 0}</div>
-                            <div class="match-stat-label">Total Kills</div>
-                        </div>
-                        <div class="match-stat">
-                            <div class="match-stat-value">${data.demo_info.tick_rate || 64}</div>
-                            <div class="match-stat-label">Tick Rate</div>
+                        <div class="stats-grid">
+                            <div class="stat highlight">
+                                <div class="stat-value">${s.kills || 0}</div>
+                                <div class="stat-label">Kills</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${s.deaths || 0}</div>
+                                <div class="stat-label">Deaths</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${s.assists || 0}</div>
+                                <div class="stat-label">Assists</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${s.kd_ratio || '-'}</div>
+                                <div class="stat-label">K/D</div>
+                            </div>
+                            <div class="stat highlight">
+                                <div class="stat-value">${s.adr || 0}</div>
+                                <div class="stat-label">ADR</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${s.headshot_pct || 0}%</div>
+                                <div class="stat-label">HS%</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${r.kast_percentage || 0}%</div>
+                                <div class="stat-label">KAST</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${s.total_damage || 0}</div>
+                                <div class="stat-label">Damage</div>
+                            </div>
                         </div>
                     </div>
-                    <h3>Player Performance</h3>
                 `;
-
-                // Sort players by kills
-                const players = Object.entries(data.players)
-                    .map(([id, p]) => ({ id, ...p }))
-                    .sort((a, b) => (b.stats?.kills || 0) - (a.stats?.kills || 0));
-
-                for (const player of players) {
-                    const stats = player.stats || {};
-                    const advanced = player.advanced || {};
-                    const weapons = player.weapons || [];
-
-                    html += `
-                        <div class="player-card">
-                            <div class="player-header">
-                                <span class="player-name">${player.name || 'Unknown'}</span>
-                                <span class="player-team ${getTeamClass(player.team)}">${player.team || 'Unknown'}</span>
-                            </div>
-
-                            <div class="stats-section">
-                                <div class="stats-section-title">Combat Stats</div>
-                                <div class="player-stats">
-                                    <div class="stat">
-                                        <div class="stat-value">${stats.kills || 0}</div>
-                                        <div class="stat-label">Kills</div>
-                                    </div>
-                                    <div class="stat">
-                                        <div class="stat-value">${stats.deaths || 0}</div>
-                                        <div class="stat-label">Deaths</div>
-                                    </div>
-                                    <div class="stat">
-                                        <div class="stat-value">${stats.assists || 0}</div>
-                                        <div class="stat-label">Assists</div>
-                                    </div>
-                                    <div class="stat">
-                                        <div class="stat-value">${stats.kd_ratio || '-'}</div>
-                                        <div class="stat-label">K/D</div>
-                                    </div>
-                                    <div class="stat">
-                                        <div class="stat-value">${stats.adr || 0}</div>
-                                        <div class="stat-label">ADR</div>
-                                    </div>
-                                    <div class="stat">
-                                        <div class="stat-value">${stats.headshot_pct || 0}%</div>
-                                        <div class="stat-label">HS%</div>
-                                    </div>
-                                    <div class="stat">
-                                        <div class="stat-value">${stats.total_damage || 0}</div>
-                                        <div class="stat-label">Damage</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="stats-section">
-                                <div class="stats-section-title">Advanced Metrics</div>
-                                <div class="advanced-stats">
-                                    <div class="stat highlight tooltip ${getTTDClass(advanced.ttd_median_ms)}" data-tooltip="Time from engagement start to damage. Lower = faster reactions.">
-                                        <div class="stat-value">${formatMs(advanced.ttd_median_ms)}</div>
-                                        <div class="stat-label">TTD (Median)</div>
-                                    </div>
-                                    <div class="stat tooltip" data-tooltip="Average time to damage">
-                                        <div class="stat-value">${formatMs(advanced.ttd_mean_ms)}</div>
-                                        <div class="stat-label">TTD (Mean)</div>
-                                    </div>
-                                    <div class="stat tooltip" data-tooltip="Fastest reaction time">
-                                        <div class="stat-value">${formatMs(advanced.ttd_min_ms)}</div>
-                                        <div class="stat-label">TTD (Best)</div>
-                                    </div>
-                                    <div class="stat highlight tooltip ${getCPClass(advanced.cp_median_error_deg)}" data-tooltip="Degrees off-target when engaging. Lower = better crosshair placement.">
-                                        <div class="stat-value">${formatDeg(advanced.cp_median_error_deg)}</div>
-                                        <div class="stat-label">CP Error</div>
-                                    </div>
-                                    <div class="stat tooltip" data-tooltip="Vertical aim tendency. Negative = aiming too low.">
-                                        <div class="stat-value">${formatDeg(advanced.cp_pitch_bias_deg)}</div>
-                                        <div class="stat-label">Pitch Bias</div>
-                                    </div>
-                                    <div class="stat tooltip" data-tooltip="Kills with instant damage (prediction/prefire)">
-                                        <div class="stat-value">${advanced.prefire_kills || 0}</div>
-                                        <div class="stat-label">Prefires</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            ${weapons.length > 0 ? `
-                                <div class="stats-section">
-                                    <div class="stats-section-title">Weapons Used</div>
-                                    <div class="weapon-stats">
-                                        ${weapons.map(w => `
-                                            <span class="weapon-tag">${w.weapon}<span class="weapon-kills">${w.kills}</span></span>
-                                        `).join('')}
-                                    </div>
-                                </div>
-                            ` : ''}
-                        </div>
-                    `;
-                }
-
-                resultsDiv.innerHTML = html;
-            } catch (error) {
-                resultsDiv.innerHTML = `<div class="error">${error.message}</div>`;
             }
-        });
+
+            html += '</div>';
+            resultsDiv.innerHTML = html;
+            resultsDiv.classList.add('show');
+        }
     </script>
 </body>
 </html>

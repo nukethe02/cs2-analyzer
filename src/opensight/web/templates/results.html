@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis Results{% endblock %}
+
+{% block content %}
+<h1 class="mb-3" style="font-size: 2rem;">
+    <i class="fas fa-chart-bar" style="color: var(--accent-primary);"></i>
+    Analysis Results
+</h1>
+
+<!-- Demo Info -->
+<div class="grid-4 mb-4">
+    <div class="stat-card">
+        <div class="stat-value">{{ demo_info.map }}</div>
+        <div class="stat-label">Map</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ "%.1f"|format(demo_info.duration / 60) }}m</div>
+        <div class="stat-label">Duration</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ demo_info.rounds }}</div>
+        <div class="stat-label">Rounds</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ players|length }}</div>
+        <div class="stat-label">Players</div>
+    </div>
+</div>
+
+<!-- Player Stats Table -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title"><i class="fas fa-users"></i> Player Performance</h2>
+        <span class="text-muted">{{ demo_info.filename }}</span>
+    </div>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Player</th>
+                    <th>Team</th>
+                    <th>K</th>
+                    <th>D</th>
+                    <th>K/D</th>
+                    <th>HS%</th>
+                    <th>DPR</th>
+                    <th>Rating</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for player in players %}
+                <tr class="team-{{ player.team|lower }}">
+                    <td style="font-weight: 600;">{{ player.name }}</td>
+                    <td>
+                        <span style="color: {% if player.team == 'CT' %}var(--ct-color){% else %}var(--t-color){% endif %};">
+                            {{ player.team }}
+                        </span>
+                    </td>
+                    <td>{{ player.kills }}</td>
+                    <td>{{ player.deaths }}</td>
+                    <td>{{ "%.2f"|format(player.kills / [player.deaths, 1]|max) }}</td>
+                    <td>{{ player.hs_percent }}%</td>
+                    <td>{{ player.dpr }}</td>
+                    <td>
+                        <span class="rating-badge {% if player.rating >= 70 %}rating-high{% elif player.rating >= 50 %}rating-medium{% else %}rating-low{% endif %}">
+                            {{ player.rating }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Actions -->
+<div class="mt-4" style="text-align: center;">
+    <a href="{{ url_for('analyze') }}" class="btn btn-primary">
+        <i class="fas fa-upload"></i> Analyze Another Demo
+    </a>
+    <a href="{{ url_for('index') }}" class="btn btn-secondary">
+        <i class="fas fa-home"></i> Back to Dashboard
+    </a>
+</div>
+{% endblock %}
