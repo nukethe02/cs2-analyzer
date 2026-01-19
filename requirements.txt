@@ -11,7 +11,13 @@ polars>=0.20.0  # Fast vector math for State Machine analytics
 rich>=13.0.0
 typer>=0.9.0
 
-# Web application
+# Web application - FastAPI
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+websockets>=11.0.0  # For real-time coaching WebSocket support
+
+# Legacy Flask support
 flask>=3.0.0
 werkzeug>=3.0.0
 gunicorn>=21.0.0
@@ -19,3 +25,22 @@ gunicorn>=21.0.0
 # Export formats
 openpyxl>=3.1.0
 pyyaml>=6.0
+
+# Advanced features dependencies
+# Note: These use only Python standard library for core functionality
+# but optional integrations may require additional packages
+
+# Optional: Speech-to-text for sentiment analysis (install separately if needed)
+# openai-whisper>=20231117
+# azure-cognitiveservices-speech>=1.35.0
+
+# Optional: HLTV scraping for opponent modeling (install separately if needed)
+# beautifulsoup4>=4.12.0
+# httpx>=0.25.0
+
+# Development dependencies (install with: pip install -e ".[dev]")
+# pytest>=7.4.0
+# pytest-cov>=4.1.0
+# pytest-asyncio>=0.21.0
+# ruff>=0.1.0
+# mypy>=1.5.0
