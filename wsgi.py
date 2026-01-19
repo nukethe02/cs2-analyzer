@@ -1,13 +1,13 @@
-"""WSGI entry point for Render deployment."""
+"""
+WSGI entry point for production deployment.
 
-import sys
-from pathlib import Path
+This file is used by WSGI servers like Gunicorn to run the application.
+"""
 
-# Add src directory to Python path
-src_path = Path(__file__).parent / "src"
-sys.path.insert(0, str(src_path))
+from opensight.web.app import create_app
 
-from opensight.api import app
+# Create the application instance
+app = create_app()
 
-# For gunicorn with uvicorn workers
-# Run with: gunicorn wsgi:app -k uvicorn.workers.UvicornWorker
+if __name__ == "__main__":
+    app.run()

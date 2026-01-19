@@ -1,9 +1,19 @@
+# Render.com Blueprint for OpenSight
+# Deploy for free at https://render.com
+
 services:
   - type: web
     name: opensight
     runtime: python
-    buildCommand: pip install -r requirements.txt && pip install -e .
-    startCommand: gunicorn wsgi:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 300
+    plan: free
+    buildCommand: pip install -e ".[all]" && pip install flask gunicorn
+    startCommand: gunicorn --bind 0.0.0.0:$PORT src.opensight.web.app:create_app()
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+    healthCheckPath: /health
+    autoDeploy: true

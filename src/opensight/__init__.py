@@ -1,17 +1,14 @@
 """
 OpenSight - Professional CS2 Demo Analyzer
 
-A universal Counter-Strike 2 demo analysis tool that works with any demo from any source.
-Provides industry-standard metrics (HLTV 2.0 Rating, KAST%, ADR) and multiple output formats.
+A locally-operated analytics system for Counter-Strike 2 that provides
+professional-grade metrics without cloud dependencies.
 
-Usage:
-    from opensight import parse_demo, analyze_demo
-
-    demo = parse_demo("match.dem")
-    analysis = analyze_demo(demo)
-
-    for player in analysis.get_leaderboard():
-        print(f"{player.name}: {player.hltv_rating:.2f}")
+Features:
+- Parse CS2 demo files (.dem) locally
+- Calculate professional-grade performance metrics
+- Monitor replay folders for automatic analysis
+- Export to multiple formats (JSON, CSV, Excel, HTML)
 """
 
 __version__ = "0.2.0"
@@ -59,10 +56,22 @@ def __getattr__(name):
         return analyze_utility
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
+# Export
+from opensight.export import (
+    export_to_json,
+    export_to_excel,
+    export_to_html,
+    export_metrics_to_csv,
+    export_analysis,
+)
 
 __all__ = [
     # Version
     "__version__",
+    # Share code
+    "decode_sharecode",
+    "encode_sharecode",
+    "ShareCodeInfo",
     # Parser
     "DemoParser",
     "DemoData",
