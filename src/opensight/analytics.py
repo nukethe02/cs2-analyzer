@@ -2291,5 +2291,128 @@ def analyze_demo(
     return analyzer.analyze()
 
 
+def get_player_comparison_stats(
+    player_a: PlayerMatchStats,
+    player_b: PlayerMatchStats,
+    normalize: bool = True
+) -> dict:
+    """
+    Generate comparison statistics for two players for radar chart visualization.
+
+    Returns normalized stats (0-100 scale) suitable for radar charts when normalize=True.
+    The axes are:
+    - HLTV Rating (higher is better)
+    - Impact Score (higher is better)
+    - TTD (inverted - lower TTD means faster reactions, so we invert for display)
+    - Headshot % (higher is better)
+    - Utility Damage (HE + Molotov damage, higher is better)
+
+    Args:
+        player_a: First player's match stats
+        player_b: Second player's match stats
+        normalize: If True, normalize values to 0-100 scale
+
+    Returns:
+        Dict with comparison data for both players
+    """
+    def get_ttd_score(player: PlayerMatchStats) -> float:
+        """Calculate TTD score. Lower TTD is better, so we invert it."""
+        ttd = player.ttd_median_ms
+        if ttd is None:
+            return 50.0 if normalize else 0.0  # Default to average if no data
+
+        if normalize:
+            # TTD typically ranges from 100ms (elite) to 600ms (slow)
+            # Invert so that lower (faster) TTD gives higher score
+            # 100ms -> 100 score, 600ms -> 0 score
+            clamped = max(100, min(600, ttd))
+            return round(100 - ((clamped - 100) / 500 * 100), 1)
+        return round(ttd, 1)
+
+    def get_hltv_score(player: PlayerMatchStats) -> float:
+        """Normalize HLTV rating to 0-100 scale."""
+        rating = player.hltv_rating
+        if normalize:
+            # HLTV rating typically ranges from 0.5 to 2.0
+            # Map 0.5 -> 0, 1.0 -> 50, 1.5 -> 100
+            clamped = max(0.5, min(2.0, rating))
+            return round((clamped - 0.5) / 1.5 * 100, 1)
+        return round(rating, 2)
+
+    def get_impact_score(player: PlayerMatchStats) -> float:
+        """Normalize impact rating to 0-100 scale."""
+        impact = player.impact_rating
+        if normalize:
+            # Impact typically ranges from 0.0 to 2.0
+            clamped = max(0.0, min(2.0, impact))
+            return round(clamped / 2.0 * 100, 1)
+        return round(impact, 2)
+
+    def get_hs_score(player: PlayerMatchStats) -> float:
+        """Get headshot percentage (already 0-100)."""
+        return round(player.headshot_percentage, 1)
+
+    def get_utility_damage_score(player: PlayerMatchStats) -> float:
+        """Calculate utility damage score (HE + Molotov damage)."""
+        he_dmg = player.utility.he_damage
+        molotov_dmg = player.utility.molotov_damage
+        total_dmg = he_dmg + molotov_dmg
+
+        if normalize:
+            # Utility damage can vary widely, let's use 0-500 as a typical range
+            # Map 0 -> 0, 250 -> 50, 500+ -> 100
+            clamped = max(0, min(500, total_dmg))
+            return round(clamped / 500 * 100, 1)
+        return total_dmg
+
+    # Calculate stats for both players
+    player_a_stats = {
+        "name": player_a.name,
+        "steam_id": str(player_a.steam_id),
+        "team": player_a.team,
+        "metrics": {
+            "hltv_rating": get_hltv_score(player_a),
+            "impact_score": get_impact_score(player_a),
+            "ttd_score": get_ttd_score(player_a),
+            "headshot_pct": get_hs_score(player_a),
+            "utility_damage": get_utility_damage_score(player_a),
+        },
+        "raw_values": {
+            "hltv_rating": round(player_a.hltv_rating, 2),
+            "impact_rating": round(player_a.impact_rating, 2),
+            "ttd_median_ms": round(player_a.ttd_median_ms, 1) if player_a.ttd_median_ms else None,
+            "headshot_pct": round(player_a.headshot_percentage, 1),
+            "utility_damage": player_a.utility.he_damage + player_a.utility.molotov_damage,
+        }
+    }
+
+    player_b_stats = {
+        "name": player_b.name,
+        "steam_id": str(player_b.steam_id),
+        "team": player_b.team,
+        "metrics": {
+            "hltv_rating": get_hltv_score(player_b),
+            "impact_score": get_impact_score(player_b),
+            "ttd_score": get_ttd_score(player_b),
+            "headshot_pct": get_hs_score(player_b),
+            "utility_damage": get_utility_damage_score(player_b),
+        },
+        "raw_values": {
+            "hltv_rating": round(player_b.hltv_rating, 2),
+            "impact_rating": round(player_b.impact_rating, 2),
+            "ttd_median_ms": round(player_b.ttd_median_ms, 1) if player_b.ttd_median_ms else None,
+            "headshot_pct": round(player_b.headshot_percentage, 1),
+            "utility_damage": player_b.utility.he_damage + player_b.utility.molotov_damage,
+        }
+    }
+
+    return {
+        "labels": ["HLTV Rating", "Impact Score", "TTD (Reaction)", "Headshot %", "Utility Damage"],
+        "player_a": player_a_stats,
+        "player_b": player_b_stats,
+        "normalized": normalize,
+    }
+
+
 # Alias for backward compatibility
 PlayerAnalytics = PlayerMatchStats
