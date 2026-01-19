@@ -505,9 +505,9 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
                 "total_kills": len(data.kills),
                 "total_damage_events": len(data.damages),
                 # Parsing metadata
-                "parse_mode": parse_mode,
-                "cp_sample_rate": cp_sample_rate,
-                "memory_optimized": optimize_memory,
+                "parse_mode": "comprehensive",  # Default mode
+                "cp_sample_rate": 1,  # Default sample rate
+                "memory_optimized": True,  # Default optimization
             },
             "rounds": rounds_data,
             "mvp": None,

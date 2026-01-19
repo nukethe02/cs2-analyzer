@@ -670,41 +670,43 @@ class DemoParser:
         # Parse header
         map_name = "unknown"
         server_name = ""
-        with stage_timer("parse_header"):
-            try:
-                header = parser.parse_header()
-                if isinstance(header, dict):
-                    map_name = header.get("map_name", "unknown")
-                    server_name = header.get("server_name", "")
-                    logger.info(f"Map: {map_name}, Server: {server_name}")
-            except Exception as e:
-                logger.warning(f"Failed to parse header: {e}")
+        header_start = time.time()
+        try:
+            header = parser.parse_header()
+            if isinstance(header, dict):
+                map_name = header.get("map_name", "unknown")
+                server_name = header.get("server_name", "")
+                logger.info(f"Map: {map_name}, Server: {server_name}")
+        except Exception as e:
+            logger.warning(f"Failed to parse header: {e}")
+        logger.debug(f"Header parsing took {time.time() - header_start:.3f}s")
 
         # ===========================================
         # CORE EVENTS - Always parse these
         # ===========================================
+        core_events_start = time.time()
 
-        with stage_timer("parse_core_events"):
-            # Parse kills WITH comprehensive data
-            kills_df = self._parse_event_safe(
-                parser, "player_death",
-                player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z"],
-                other_props=["total_rounds_played"]
-            )
-            if kills_df.empty:
-                # Fallback without player props
-                kills_df = self._parse_event_safe(parser, "player_death")
-            logger.info(f"Parsed {len(kills_df)} kills. Columns: {list(kills_df.columns)[:15]}...")
+        # Parse kills WITH comprehensive data
+        kills_df = self._parse_event_safe(
+            parser, "player_death",
+            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z"],
+            other_props=["total_rounds_played"]
+        )
+        if kills_df.empty:
+            # Fallback without player props
+            kills_df = self._parse_event_safe(parser, "player_death")
+        logger.info(f"Parsed {len(kills_df)} kills. Columns: {list(kills_df.columns)[:15]}...")
 
-            # Parse damages with hitgroup data
-            damages_df = self._parse_event_safe(parser, "player_hurt")
-            logger.info(f"Parsed {len(damages_df)} damage events")
+        # Parse damages with hitgroup data
+        damages_df = self._parse_event_safe(parser, "player_hurt")
+        logger.info(f"Parsed {len(damages_df)} damage events")
 
-            # Parse round events
-            round_end_df = self._parse_event_safe(parser, "round_end")
-            round_start_df = self._parse_event_safe(parser, "round_start")
-            round_freeze_df = self._parse_event_safe(parser, "round_freeze_end")
-            logger.info(f"Parsed {len(round_end_df)} round_end, {len(round_start_df)} round_start events")
+        # Parse round events
+        round_end_df = self._parse_event_safe(parser, "round_end")
+        round_start_df = self._parse_event_safe(parser, "round_start")
+        round_freeze_df = self._parse_event_safe(parser, "round_freeze_end")
+        logger.info(f"Parsed {len(round_end_df)} round_end, {len(round_start_df)} round_start events")
+        logger.debug(f"Core events parsing took {time.time() - core_events_start:.3f}s")
 
         # ===========================================
         # EXTENDED EVENTS - Based on parse mode
@@ -800,9 +802,10 @@ class DemoParser:
                 num_rounds = int(kills_df[round_col].max())
 
         # Extract player info and calculate stats
-        with stage_timer("extract_players"):
-            player_names, player_teams = self._extract_players(kills_df, damages_df)
-            player_stats = self._calculate_stats(kills_df, damages_df, player_names, player_teams, num_rounds)
+        extract_start = time.time()
+        player_names, player_teams = self._extract_players(kills_df, damages_df)
+        player_stats = self._calculate_stats(kills_df, damages_df, player_names, player_teams, num_rounds)
+        logger.debug(f"Player extraction took {time.time() - extract_start:.3f}s")
 
         # Build structured events - CORE
         kills = self._build_kills(kills_df)
