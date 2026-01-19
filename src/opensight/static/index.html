@@ -1065,6 +1065,51 @@
             color: var(--text-muted);
         }
 
+        /* Leaflet Kill Map Popup Styles */
+        .leaflet-popup-content-wrapper {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+        .leaflet-popup-content {
+            margin: 12px 16px;
+            color: #e2e8f0;
+        }
+        .leaflet-popup-tip {
+            background: #1e293b;
+            border: 1px solid #334155;
+        }
+        .leaflet-popup-close-button {
+            color: #64748b !important;
+            font-size: 18px !important;
+            padding: 4px 8px !important;
+        }
+        .leaflet-popup-close-button:hover {
+            color: #e2e8f0 !important;
+        }
+        .leaflet-control-zoom a {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }
+        .leaflet-control-zoom a:hover {
+            background: #334155 !important;
+        }
+        .leaflet-control-scale-line {
+            background: rgba(30, 41, 59, 0.8) !important;
+            border-color: #334155 !important;
+            color: #94a3b8 !important;
+        }
+
+        /* Kill Map container styling */
+        #killmap {
+            z-index: 1;
+        }
+        #killmap .leaflet-container {
+            background: #0f172a;
+        }
+
         /* Grenade Radar Visualization */
         .grenade-radar-container {
             background: var(--bg-card);
@@ -2079,8 +2124,7 @@
 
                     // Initialize heatmap and kill map when tab is shown
                     if (btn.dataset.tab === 'heatmap') {
-                        initHeatmap(data.heatmap_data || {});
-                        initKillMap(data.heatmap_data || {}, info.map || 'unknown', players);
+                        initHeatmap(data.heatmap_data || {}, players);
                     }
 
                     // Initialize replay viewer when tab is shown
