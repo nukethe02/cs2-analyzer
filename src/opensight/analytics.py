@@ -151,10 +151,18 @@ class UtilityStats:
     flash_assists: int = 0
     he_damage: int = 0
     molotov_damage: int = 0
+    molotov_team_damage: int = 0
 
     @property
     def total_utility(self) -> int:
         return self.flashbangs_thrown + self.smokes_thrown + self.he_thrown + self.molotovs_thrown
+
+    @property
+    def enemies_flashed_per_flash(self) -> float:
+        """Average enemies flashed per flashbang thrown."""
+        if self.flashbangs_thrown <= 0:
+            return 0.0
+        return self.enemies_flashed / self.flashbangs_thrown
 
 
 @dataclass
