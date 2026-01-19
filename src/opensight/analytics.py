@@ -380,7 +380,7 @@ class PlayerMatchStats:
         total_utility = (
             self.utility.flashbangs_thrown +
             self.utility.he_thrown +
-            self.utility.molotov_thrown +
+            self.utility.molotovs_thrown +
             self.utility.smokes_thrown
         )
         expected = 3.0 * self.rounds_played
@@ -1361,7 +1361,7 @@ class DemoAnalyzer:
                 if he_thrown > 0:
                     player.utility.he_thrown = he_thrown
                 if molly_thrown > 0:
-                    player.utility.molotov_thrown = molly_thrown
+                    player.utility.molotovs_thrown = molly_thrown
                 if flash_thrown > 0 and player.utility.flashbangs_thrown == 0:
                     player.utility.flashbangs_thrown = flash_thrown
 
@@ -1406,8 +1406,8 @@ class DemoAnalyzer:
                             player.utility.molotov_team_damage = int(team_molly[dmg_col].sum())
                         else:
                             player.utility.molotov_damage = int(molly_dmg[dmg_col].sum())
-                        if player.utility.molotov_thrown == 0:
-                            player.utility.molotov_thrown = max(1, len(set(molly_dmg['tick'])) if 'tick' in molly_dmg.columns else 1)
+                        if player.utility.molotovs_thrown == 0:
+                            player.utility.molotovs_thrown = max(1, len(set(molly_dmg['tick'])) if 'tick' in molly_dmg.columns else 1)
 
         # ===========================================
         # Flash assists from kills (supplement)
