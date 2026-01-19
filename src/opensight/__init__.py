@@ -95,6 +95,29 @@ def __getattr__(name):
         from opensight.sharecode import ShareCodeInfo
         return ShareCodeInfo
 
+    # State Machine (Pro-Level Analytics)
+    elif name == "StateMachine":
+        from opensight.state_machine import StateMachine
+        return StateMachine
+    elif name == "analyze_state":
+        from opensight.state_machine import analyze_state
+        return analyze_state
+    elif name == "get_kill_contexts":
+        from opensight.state_machine import get_kill_contexts
+        return get_kill_contexts
+    elif name == "KillContext":
+        from opensight.state_machine import KillContext
+        return KillContext
+    elif name == "PlayerContextStats":
+        from opensight.state_machine import PlayerContextStats
+        return PlayerContextStats
+    elif name == "StateAnalysisResult":
+        from opensight.state_machine import StateAnalysisResult
+        return StateAnalysisResult
+    elif name == "CrosshairAnalyzer":
+        from opensight.state_machine import CrosshairAnalyzer
+        return CrosshairAnalyzer
+
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
 
@@ -112,6 +135,14 @@ __all__ = [
     "analyze_demo",
     "MatchAnalysis",
     "PlayerMatchStats",
+    # State Machine (Pro-Level Analytics)
+    "StateMachine",
+    "analyze_state",
+    "get_kill_contexts",
+    "KillContext",
+    "PlayerContextStats",
+    "StateAnalysisResult",
+    "CrosshairAnalyzer",
     # Constants
     "DemoSource",
     "GameMode",
