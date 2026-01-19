@@ -162,6 +162,11 @@ def analyze(
     - Crosshair Placement (CP)
     - Kill/Death statistics
     - Damage per round
+
+    Performance options:
+    - --parse-mode minimal: Parse only kills/damages for TTD/CP (faster)
+    - --cp-sample-rate 4: Sample every 4th tick (32 Hz instead of 128 Hz)
+    - --no-optimize: Disable dtype optimization (more memory)
     """
     console.print(f"\n[bold blue]OpenSight[/bold blue] - Analyzing demo...\n")
 
@@ -204,6 +209,8 @@ def analyze(
     info_table.add_row("Duration", f"{data.duration_seconds:.1f} seconds")
     info_table.add_row("Tick Rate", str(data.tick_rate))
     info_table.add_row("Players", str(len(data.player_names)))
+    info_table.add_row("Parse Mode", parse_mode)
+    info_table.add_row("CP Sample Rate", f"1/{cp_sample_rate}" if cp_sample_rate > 1 else "all ticks")
     console.print(info_table)
     console.print()
 

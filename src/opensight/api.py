@@ -16,6 +16,7 @@ Provides:
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 import logging
+import time
 from typing import Optional, List
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
@@ -27,6 +28,13 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Body
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+from opensight.profiling import (
+    TimingCollector,
+    SlowJobLogger,
+    set_timing_collector,
+    DEFAULT_SLOW_THRESHOLD_SECONDS,
+)
 
 __version__ = "0.3.0"
 
@@ -117,7 +125,23 @@ async def decode_share_code(request: ShareCodeRequest):
 
 
 @app.post("/analyze")
-async def analyze_demo(file: UploadFile = File(...)):
+async def analyze_demo(
+    file: UploadFile = File(...),
+    parse_mode: str = Query(
+        default="comprehensive",
+        description="Parsing mode: 'minimal' (TTD/CP only), 'standard' (+accuracy), 'comprehensive' (all events)"
+    ),
+    cp_sample_rate: int = Query(
+        default=1,
+        ge=1,
+        le=128,
+        description="Sample rate for CP calculations (1=all ticks, 4=every 4th tick). Higher = faster/less memory"
+    ),
+    optimize_memory: bool = Query(
+        default=True,
+        description="Optimize DataFrame dtypes to reduce memory usage (~40% reduction)"
+    ),
+):
     """
     Analyze an uploaded CS2 demo file.
 
@@ -127,7 +151,15 @@ async def analyze_demo(file: UploadFile = File(...)):
     - Advanced metrics: TTD (Time to Damage), Crosshair Placement
     - Weapon breakdown
 
+    Performance options:
+    - parse_mode: Use 'minimal' for TTD/CP analysis only (faster)
+    - cp_sample_rate: Use 4 or 8 for long demos to reduce memory
+    - optimize_memory: Enable to use efficient dtypes (recommended)
+
     Accepts .dem and .dem.gz files up to 500MB.
+
+    Query parameters:
+    - include_timing: If true, includes timing breakdown in the response
     """
     # Validate file extension
     if not file.filename:
@@ -141,7 +173,7 @@ async def analyze_demo(file: UploadFile = File(...)):
         )
 
     try:
-        from opensight.parser import DemoParser
+        from opensight.parser import DemoParser, ParseMode
         from opensight.analytics import DemoAnalyzer
     except ImportError as e:
         raise HTTPException(
@@ -150,6 +182,10 @@ async def analyze_demo(file: UploadFile = File(...)):
         )
 
     tmp_path = None
+    timing_collector = None
+    slow_logger = SlowJobLogger(threshold_seconds=DEFAULT_SLOW_THRESHOLD_SECONDS)
+    overall_start = time.perf_counter()
+
     try:
         # Read and validate file size
         content = await file.read()
@@ -174,9 +210,12 @@ async def analyze_demo(file: UploadFile = File(...)):
             tmp.write(content)
             tmp_path = Path(tmp.name)
 
-        # Parse the demo
-        parser = DemoParser(tmp_path)
-        data = parser.parse()
+        # Parse the demo with optimization settings
+        parser = DemoParser(tmp_path, optimize_dtypes=optimize_memory)
+        data = parser.parse(
+            parse_mode=parse_mode,
+            cp_sample_rate=cp_sample_rate,
+        )
 
         # Run advanced analytics
         analyzer = DemoAnalyzer(data)
@@ -210,6 +249,10 @@ async def analyze_demo(file: UploadFile = File(...)):
                 "player_count": len(analysis.players),
                 "total_kills": len(data.kills),
                 "total_damage_events": len(data.damages),
+                # Parsing metadata
+                "parse_mode": parse_mode,
+                "cp_sample_rate": cp_sample_rate,
+                "memory_optimized": optimize_memory,
             },
             "rounds": rounds_data,
             "mvp": None,
@@ -391,7 +434,17 @@ async def analyze_demo(file: UploadFile = File(...)):
         # AI Coaching insights
         result["coaching"] = analysis.coaching_insights
 
-        logger.info(f"Analysis complete: {len(result['players'])} players, {analysis.total_rounds} rounds")
+        # Add timing info if requested
+        if include_timing and timing_collector:
+            timing_collector.finish()
+            stats = timing_collector.get_stats()
+            result["timing"] = stats.summary()
+
+        # Add overall timing regardless of include_timing flag
+        overall_duration = time.perf_counter() - overall_start
+        result["demo_info"]["analysis_time_seconds"] = round(overall_duration, 3)
+
+        logger.info(f"Analysis complete: {len(result['players'])} players, {analysis.total_rounds} rounds, {overall_duration:.2f}s")
         return JSONResponse(content=result)
 
     except HTTPException:
@@ -400,6 +453,10 @@ async def analyze_demo(file: UploadFile = File(...)):
         logger.exception("Analysis failed")
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
     finally:
+        # Clean up timing collector
+        if timing_collector:
+            set_timing_collector(None)
+
         if tmp_path and tmp_path.exists():
             try:
                 tmp_path.unlink()

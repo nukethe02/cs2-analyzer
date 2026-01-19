@@ -29,6 +29,26 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 @dataclass
+class BackendConfig:
+    """Configuration for DataFrame backend (pandas vs polars)."""
+
+    # Use Polars for DataFrame operations (faster, better memory efficiency)
+    use_polars: bool = False
+
+    # Use LazyFrames for large tick data (memory efficient, query optimization)
+    lazy_mode: bool = True
+
+    # Cache format for intermediate results ('parquet', 'feather', 'pickle')
+    # Parquet: Best for archival, cross-language compatibility
+    # Feather: Fastest Python-to-Python IPC
+    cache_format: str = "parquet"
+
+    # Compression for Parquet files ('zstd', 'lz4', 'snappy', 'gzip', None)
+    # zstd: Best balance of compression ratio and speed
+    compression: str = "zstd"
+
+
+@dataclass
 class ParserConfig:
     """Configuration for demo parsing."""
 
@@ -43,6 +63,9 @@ class ParserConfig:
     fallback_to_minimal: bool = True
     cache_parsed_demos: bool = True
     cache_directory: Optional[str] = None
+
+    # Use Polars for DataFrame storage in DemoData (otherwise pandas)
+    use_polars: bool = False
 
 
 @dataclass
@@ -118,6 +141,7 @@ class OpenSightConfig:
     watcher: WatcherConfig = field(default_factory=WatcherConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    backend: BackendConfig = field(default_factory=BackendConfig)
 
     # Version of the config format
     config_version: str = "1.0"
@@ -211,6 +235,13 @@ def load_env_config() -> dict[str, Any]:
         "OPENSIGHT_EXPORT_FORMAT": ("export", "default_format"),
         "OPENSIGHT_TTD_LOOKBACK_MS": ("metrics", "ttd_max_lookback_ms"),
         "OPENSIGHT_TRADE_WINDOW_MS": ("metrics", "trade_window_ms"),
+        # Backend configuration
+        "OPENSIGHT_USE_POLARS": ("backend", "use_polars"),
+        "OPENSIGHT_LAZY_MODE": ("backend", "lazy_mode"),
+        "OPENSIGHT_CACHE_FORMAT": ("backend", "cache_format"),
+        "OPENSIGHT_COMPRESSION": ("backend", "compression"),
+        # Parser backend configuration
+        "OPENSIGHT_PARSER_USE_POLARS": ("parser", "use_polars"),
     }
 
     for env_var, (section, key) in env_mappings.items():
@@ -276,6 +307,11 @@ def dict_to_config(data: dict[str, Any]) -> OpenSightConfig:
         for key, value in data["logging"].items():
             if hasattr(config.logging, key):
                 setattr(config.logging, key, value)
+
+    if "backend" in data:
+        for key, value in data["backend"].items():
+            if hasattr(config.backend, key):
+                setattr(config.backend, key, value)
 
     return config
 
@@ -402,6 +438,7 @@ DEFAULT_CONFIG_YAML = """# OpenSight Configuration
 parser:
   cache_parsed_demos: true
   fallback_to_minimal: true
+  # use_polars: false  # Use Polars for DataFrame storage in DemoData
 
 # Metrics calculation settings
 metrics:
@@ -429,6 +466,17 @@ export:
 logging:
   level: INFO
   # file: /path/to/opensight.log
+
+# DataFrame backend settings
+# Polars offers significant performance benefits for large tick data:
+# - LazyFrames reduce memory usage
+# - Better query optimization
+# - Parallel execution
+backend:
+  use_polars: false  # Set to true to use Polars instead of pandas
+  lazy_mode: true    # Use LazyFrames for large tick data (Polars only)
+  cache_format: parquet  # parquet, feather, or pickle
+  compression: zstd      # zstd, lz4, snappy, gzip (for parquet)
 """
 
 
