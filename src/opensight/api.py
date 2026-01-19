@@ -1130,6 +1130,13 @@ async def delete_custom_metric(metric_id: str):
             raise HTTPException(status_code=404, detail="Metric not found")
 
         return {"status": "deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # =============================================================================
 # Radar Map Endpoints
 # =============================================================================
