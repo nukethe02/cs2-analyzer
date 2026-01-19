@@ -13,7 +13,7 @@ Implements industry-standard metrics:
 - Crosshair Placement
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 import logging
 import math
@@ -78,6 +78,118 @@ class CrosshairPlacementResult:
     pitch_error_deg: float
     yaw_error_deg: float
     round_num: int = 0
+
+
+@dataclass
+class OpeningDuelStats:
+    """Opening duel statistics."""
+    wins: int = 0
+    losses: int = 0
+    attempts: int = 0
+
+    @property
+    def win_rate(self) -> float:
+        return round(self.wins / self.attempts * 100, 1) if self.attempts > 0 else 0.0
+
+
+@dataclass
+class TradeStats:
+    """Trade kill statistics."""
+    kills_traded: int = 0  # Kills that were traded (enemy killed teammate, you killed enemy)
+    deaths_traded: int = 0  # Deaths that were traded (you died, teammate got the kill)
+    trade_attempts: int = 0  # Opportunities to trade
+
+    @property
+    def trade_rate(self) -> float:
+        return round(self.kills_traded / self.trade_attempts * 100, 1) if self.trade_attempts > 0 else 0.0
+
+
+@dataclass
+class ClutchStats:
+    """Clutch situation statistics."""
+    total_situations: int = 0
+    total_wins: int = 0
+    v1_attempts: int = 0
+    v1_wins: int = 0
+    v2_attempts: int = 0
+    v2_wins: int = 0
+    v3_attempts: int = 0
+    v3_wins: int = 0
+    v4_attempts: int = 0
+    v4_wins: int = 0
+    v5_attempts: int = 0
+    v5_wins: int = 0
+
+    @property
+    def win_rate(self) -> float:
+        return round(self.total_wins / self.total_situations * 100, 1) if self.total_situations > 0 else 0.0
+
+
+@dataclass
+class MultiKillStats:
+    """Multi-kill round statistics."""
+    rounds_with_1k: int = 0
+    rounds_with_2k: int = 0
+    rounds_with_3k: int = 0
+    rounds_with_4k: int = 0
+    rounds_with_5k: int = 0
+
+    @property
+    def total_multi_kill_rounds(self) -> int:
+        return self.rounds_with_2k + self.rounds_with_3k + self.rounds_with_4k + self.rounds_with_5k
+
+
+@dataclass
+class UtilityStats:
+    """Utility usage statistics."""
+    flashbangs_thrown: int = 0
+    smokes_thrown: int = 0
+    he_thrown: int = 0
+    molotovs_thrown: int = 0
+    enemies_flashed: int = 0
+    teammates_flashed: int = 0
+    flash_assists: int = 0
+    he_damage: int = 0
+    molotov_damage: int = 0
+
+    @property
+    def total_utility(self) -> int:
+        return self.flashbangs_thrown + self.smokes_thrown + self.he_thrown + self.molotovs_thrown
+
+
+@dataclass
+class SideStats:
+    """Per-side (CT/T) statistics."""
+    kills: int = 0
+    deaths: int = 0
+    assists: int = 0
+    damage: int = 0
+    rounds_played: int = 0
+
+    @property
+    def kd_ratio(self) -> float:
+        return round(self.kills / self.deaths, 2) if self.deaths > 0 else float(self.kills)
+
+    @property
+    def adr(self) -> float:
+        return round(self.damage / self.rounds_played, 1) if self.rounds_played > 0 else 0.0
+
+
+@dataclass
+class MistakesStats:
+    """Mistake tracking (Scope.gg style)."""
+    team_kills: int = 0
+    team_damage: int = 0
+    teammates_flashed: int = 0
+    suicides: int = 0
+
+
+@dataclass
+class LurkStats:
+    """Lurk statistics from State Machine."""
+    kills: int = 0
+    deaths: int = 0
+    rounds_lurking: int = 0
 
 
 @dataclass
@@ -1444,3 +1556,7 @@ def analyze_demo(demo_data: DemoData) -> MatchAnalysis:
     """Convenience function to analyze a parsed demo."""
     analyzer = DemoAnalyzer(demo_data)
     return analyzer.analyze()
+
+
+# Alias for backward compatibility
+PlayerAnalytics = PlayerMatchStats
