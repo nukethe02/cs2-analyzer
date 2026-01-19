@@ -22,7 +22,6 @@ import numpy as np
 import pandas as pd
 
 from opensight.parser import DemoData, KillEvent, DamageEvent, safe_int, safe_str, safe_float
-from opensight.profiling import stage_timer, get_timing_collector
 from opensight.constants import (
     CS2_TICK_RATE,
     TRADE_WINDOW_SECONDS,
@@ -1263,23 +1262,19 @@ class DemoAnalyzer:
         kill_matrix = self._build_kill_matrix()
 
         # Build round timeline
-        with stage_timer("build_round_timeline"):
-            round_timeline = self._build_round_timeline()
+        round_timeline = self._build_round_timeline()
 
         # Extract position data for heatmaps
-        with stage_timer("extract_position_data"):
-            kill_positions, death_positions = self._extract_position_data()
+        kill_positions, death_positions = self._extract_position_data()
 
         # Extract grenade trajectory data for utility visualization
         grenade_positions = []
         grenade_team_stats = {}
         if "utility" in self._requested_metrics:
-            with stage_timer("extract_grenade_trajectories"):
-                grenade_positions, grenade_team_stats = self._extract_grenade_trajectories()
+            grenade_positions, grenade_team_stats = self._extract_grenade_trajectories()
 
         # Generate AI coaching insights
-        with stage_timer("generate_coaching_insights"):
-            coaching_insights = self._generate_coaching_insights()
+        coaching_insights = self._generate_coaching_insights()
 
         # Build result
         team_scores = self._calculate_team_scores()
