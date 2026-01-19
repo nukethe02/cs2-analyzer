@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Team Stats{% endblock %}
+
+{% block content %}
+<h1 class="mb-3" style="font-size: 2rem;">
+    <i class="fas fa-users" style="color: var(--accent-primary);"></i>
+    Team Dashboard
+</h1>
+
+<!-- Team Overview -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title"><i class="fas fa-chart-pie"></i> Getting Started</h2>
+    </div>
+
+    <div style="text-align: center; padding: 3rem;">
+        <div style="font-size: 4rem; margin-bottom: 1.5rem;">📈</div>
+        <h3 style="margin-bottom: 1rem;">Build Your Team Stats</h3>
+        <p class="text-muted" style="max-width: 500px; margin: 0 auto 2rem;">
+            Analyze multiple demo files to build up team statistics over time.
+            Track improvement, identify strengths, and find areas to work on.
+        </p>
+        <a href="{{ url_for('analyze') }}" class="btn btn-primary btn-lg">
+            <i class="fas fa-upload"></i> Analyze Your First Demo
+        </a>
+    </div>
+</div>
+
+<!-- What You'll Get -->
+<h2 class="card-title mb-3"><i class="fas fa-star"></i> Team Analytics Features</h2>
+<div class="grid-3">
+    <div class="card">
+        <div style="text-align: center;">
+            <div style="font-size: 2.5rem; margin-bottom: 1rem;">📊</div>
+            <h4 style="margin-bottom: 0.5rem;">Aggregated Stats</h4>
+            <p class="text-muted">
+                Combined statistics across all analyzed matches for each player
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="text-align: center;">
+            <div style="font-size: 2.5rem; margin-bottom: 1rem;">📈</div>
+            <h4 style="margin-bottom: 0.5rem;">Progress Tracking</h4>
+            <p class="text-muted">
+                See how individual and team performance changes over time
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="text-align: center;">
+            <div style="font-size: 2.5rem; margin-bottom: 1rem;">🎯</div>
+            <h4 style="margin-bottom: 0.5rem;">Role Analysis</h4>
+            <p class="text-muted">
+                Identify player roles based on opening duels, trades, and positions
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="text-align: center;">
+            <div style="font-size: 2.5rem; margin-bottom: 1rem;">🗺️</div>
+            <h4 style="margin-bottom: 0.5rem;">Map Performance</h4>
+            <p class="text-muted">
+                Track win rates and performance on each map
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="text-align: center;">
+            <div style="font-size: 2.5rem; margin-bottom: 1rem;">🤝</div>
+            <h4 style="margin-bottom: 0.5rem;">Team Synergy</h4>
+            <p class="text-muted">
+                Analyze trade success, support plays, and coordination
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="text-align: center;">
+            <div style="font-size: 2.5rem; margin-bottom: 1rem;">⚡</div>
+            <h4 style="margin-bottom: 0.5rem;">Quick Insights</h4>
+            <p class="text-muted">
+                Automatic highlights of strengths and areas to improve
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

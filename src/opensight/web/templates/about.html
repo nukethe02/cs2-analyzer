@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}About{% endblock %}
+
+{% block content %}
+<h1 class="mb-3" style="font-size: 2rem;">
+    <i class="fas fa-info-circle" style="color: var(--accent-primary);"></i>
+    About OpenSight
+</h1>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title"><i class="fas fa-crosshairs"></i> What is OpenSight?</h2>
+        </div>
+        <p class="text-muted">
+            OpenSight is a professional-grade analytics platform for Counter-Strike 2 teams.
+            We provide deep insights into gameplay performance by analyzing demo files locally,
+            ensuring your data stays private and secure.
+        </p>
+        <p class="text-muted mt-2">
+            Whether you're a casual team looking to improve or a competitive squad preparing
+            for tournaments, OpenSight gives you the metrics you need to dominate.
+        </p>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title"><i class="fas fa-lock"></i> Privacy First</h2>
+        </div>
+        <p class="text-muted">
+            Your demo files are processed on-demand and immediately deleted after analysis.
+            We don't store your gameplay data or share it with third parties.
+        </p>
+        <div class="alert alert-success mt-4">
+            <i class="fas fa-shield-alt"></i>
+            All analysis is done server-side with automatic cleanup
+        </div>
+    </div>
+</div>
+
+<!-- Metrics Explained -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h2 class="card-title"><i class="fas fa-chart-bar"></i> Metrics Explained</h2>
+    </div>
+
+    <div class="grid-2">
+        <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+            <h4 style="color: var(--accent-primary); margin-bottom: 0.5rem;">
+                <i class="fas fa-clock"></i> Time to Damage (TTD)
+            </h4>
+            <p class="text-muted">
+                Measures reaction time from when you first see an enemy to when you deal damage.
+                Lower values indicate faster reactions.
+            </p>
+        </div>
+
+        <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+            <h4 style="color: var(--accent-primary); margin-bottom: 0.5rem;">
+                <i class="fas fa-crosshairs"></i> Crosshair Placement (CP)
+            </h4>
+            <p class="text-muted">
+                Analyzes how close your crosshair is to enemy positions before engagements.
+                Higher scores mean better pre-aim habits.
+            </p>
+        </div>
+
+        <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+            <h4 style="color: var(--accent-primary); margin-bottom: 0.5rem;">
+                <i class="fas fa-exchange-alt"></i> Trade Kills
+            </h4>
+            <p class="text-muted">
+                Counts kills that happen within 2 seconds of a teammate dying to the same enemy.
+                Shows team coordination and refrag ability.
+            </p>
+        </div>
+
+        <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+            <h4 style="color: var(--accent-primary); margin-bottom: 0.5rem;">
+                <i class="fas fa-door-open"></i> Opening Duels
+            </h4>
+            <p class="text-muted">
+                Tracks the first kill or death of each round. High opening kill percentage
+                indicates strong entry fragging.
+            </p>
+        </div>
+
+        <div style="padding: 1rem;">
+            <h4 style="color: var(--accent-primary); margin-bottom: 0.5rem;">
+                <i class="fas fa-dollar-sign"></i> Economy Metrics
+            </h4>
+            <p class="text-muted">
+                Analyzes weapon choices, money efficiency, and impact during eco/force rounds.
+            </p>
+        </div>
+
+        <div style="padding: 1rem;">
+            <h4 style="color: var(--accent-primary); margin-bottom: 0.5rem;">
+                <i class="fas fa-star"></i> Overall Rating
+            </h4>
+            <p class="text-muted">
+                A weighted score (0-100) combining K/D, crosshair placement, opening success,
+                and trade effectiveness.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Tech Stack -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h2 class="card-title"><i class="fas fa-code"></i> Built With</h2>
+    </div>
+    <div class="grid-4">
+        <div class="stat-card">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🐍</div>
+            <div class="stat-label">Python</div>
+        </div>
+        <div class="stat-card">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🌶️</div>
+            <div class="stat-label">Flask</div>
+        </div>
+        <div class="stat-card">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🦀</div>
+            <div class="stat-label">demoparser2</div>
+        </div>
+        <div class="stat-card">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">❤️</div>
+            <div class="stat-label">Open Source</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
