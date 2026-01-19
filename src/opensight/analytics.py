@@ -115,31 +115,89 @@ class CrosshairPlacementResult:
 
 @dataclass
 class OpeningDuelStats:
-    """Opening duel statistics."""
+    """Opening duel statistics for entry fragging analysis.
+
+    Entry duels are the first kills of each round, filtered by context:
+    - T-side: Attacker entering/pushing towards a bombsite
+    - CT-side: Defender holding against T push
+
+    Metrics:
+    - win_rate: Entry Success % - How often you win opening duels
+    - entry_kills_total: Raw count of entry kills
+    - entry_ttd_values: TTD specifically for entry kills (reaction time on first contact)
+    """
     wins: int = 0
     losses: int = 0
     attempts: int = 0
+    # Entry-specific tracking
+    entry_ttd_values: list = None  # TTD values for entry kills specifically
+    t_side_entries: int = 0  # Entry kills while on T side (aggressive)
+    ct_side_entries: int = 0  # Entry kills while on CT side (defensive)
+
+    def __post_init__(self):
+        if self.entry_ttd_values is None:
+            self.entry_ttd_values = []
 
     @property
     def win_rate(self) -> float:
+        """Entry Success % - percentage of opening duels won."""
         return round(self.wins / self.attempts * 100, 1) if self.attempts > 0 else 0.0
+
+    @property
+    def entry_ttd_median_ms(self) -> Optional[float]:
+        """Median TTD for entry kills - measures reaction time on first contact."""
+        if self.entry_ttd_values:
+            return float(np.median(self.entry_ttd_values))
+        return None
+
+    @property
+    def entry_ttd_mean_ms(self) -> Optional[float]:
+        """Mean TTD for entry kills."""
+        if self.entry_ttd_values:
+            return float(np.mean(self.entry_ttd_values))
+        return None
 
 
 @dataclass
 class TradeStats:
-    """Trade kill statistics."""
-    kills_traded: int = 0  # Kills that were traded (enemy killed teammate, you killed enemy)
-    deaths_traded: int = 0  # Deaths that were traded (you died, teammate got the kill)
-    trade_attempts: int = 0  # Opportunities to trade
+    """Trade kill statistics - measures how well you avenge teammates.
+
+    Trade Kill: When a teammate is killed, check if you killed the enemy
+    who killed them within 5 seconds.
+
+    Metrics:
+    - trade_rate: Trade Kill % - How often you avenge teammates when opportunity arises
+    - deaths_traded_rate: How often your deaths were avenged by teammates
+    """
+    kills_traded: int = 0  # Kills that avenged a teammate (you killed the enemy who killed teammate)
+    deaths_traded: int = 0  # Your deaths that were avenged by teammates
+    trade_attempts: int = 0  # Opportunities to trade (teammate deaths where you could trade)
+    failed_trades: int = 0  # Trade opportunities where you didn't get the trade
 
     @property
     def trade_rate(self) -> float:
+        """Trade Kill % - How often you avenge your teammates when given the opportunity."""
         return round(self.kills_traded / self.trade_attempts * 100, 1) if self.trade_attempts > 0 else 0.0
+
+    @property
+    def deaths_traded_rate(self) -> float:
+        """Percentage of your deaths that were avenged by teammates."""
+        total_deaths = self.deaths_traded + self.failed_trades
+        return round(self.deaths_traded / total_deaths * 100, 1) if total_deaths > 0 else 0.0
 
 
 @dataclass
 class ClutchStats:
-    """Clutch situation statistics."""
+    """Clutch situation statistics - 1vX scenarios where player is last alive.
+
+    Clutch: Rounds where you were the last player alive on your team
+    facing one or more enemies. Wins are determined by round outcome.
+
+    Metrics:
+    - win_rate: Clutch Won % - Overall clutch success rate
+    - v1_win_rate: Clutch 1v1 % - Success rate in 1v1 clutches
+    - v2_win_rate: Clutch 1v2 % - Success rate in 1v2 clutches
+    """
     total_situations: int = 0
     total_wins: int = 0
     v1_attempts: int = 0
@@ -155,7 +213,33 @@ class ClutchStats:
 
     @property
     def win_rate(self) -> float:
+        """Clutch Won % - Overall clutch success rate across all 1vX situations."""
         return round(self.total_wins / self.total_situations * 100, 1) if self.total_situations > 0 else 0.0
+
+    @property
+    def v1_win_rate(self) -> float:
+        """Clutch 1v1 % - Success rate in 1v1 clutch situations."""
+        return round(self.v1_wins / self.v1_attempts * 100, 1) if self.v1_attempts > 0 else 0.0
+
+    @property
+    def v2_win_rate(self) -> float:
+        """Clutch 1v2 % - Success rate in 1v2 clutch situations."""
+        return round(self.v2_wins / self.v2_attempts * 100, 1) if self.v2_attempts > 0 else 0.0
+
+    @property
+    def v3_win_rate(self) -> float:
+        """Clutch 1v3 % - Success rate in 1v3 clutch situations."""
+        return round(self.v3_wins / self.v3_attempts * 100, 1) if self.v3_attempts > 0 else 0.0
+
+    @property
+    def v4_win_rate(self) -> float:
+        """Clutch 1v4 % - Success rate in 1v4 clutch situations."""
+        return round(self.v4_wins / self.v4_attempts * 100, 1) if self.v4_attempts > 0 else 0.0
+
+    @property
+    def v5_win_rate(self) -> float:
+        """Clutch 1v5 % - Success rate in 1v5 clutch situations."""
+        return round(self.v5_wins / self.v5_attempts * 100, 1) if self.v5_attempts > 0 else 0.0
 
     # Alias properties for API compatibility
     @property
@@ -638,8 +722,38 @@ class PlayerMatchStats:
 
     @property
     def entry_success_rate(self) -> float:
-        """% of opening duels won (entry frag success rate)."""
+        """Entry Success % - percentage of opening duels won."""
         return self.opening_duels.win_rate
+
+    @property
+    def entry_kills_per_round(self) -> float:
+        """Entry Kills per Round - average number of opening kills per round."""
+        return round(self.opening_duels.wins / self.rounds_played, 2) if self.rounds_played > 0 else 0.0
+
+    @property
+    def entry_ttd(self) -> Optional[float]:
+        """Entry TTD - median time to damage on opening kills (ms)."""
+        return self.opening_duels.entry_ttd_median_ms
+
+    @property
+    def trade_kill_rate(self) -> float:
+        """Trade Kill % - how often you avenge your teammates."""
+        return self.trades.trade_rate
+
+    @property
+    def clutch_win_rate(self) -> float:
+        """Clutch Won % - overall success rate in 1vX situations."""
+        return self.clutches.win_rate
+
+    @property
+    def clutch_1v1_rate(self) -> float:
+        """Clutch 1v1 % - success rate in 1v1 clutches."""
+        return self.clutches.v1_win_rate
+
+    @property
+    def clutch_1v2_rate(self) -> float:
+        """Clutch 1v2 % - success rate in 1v2 clutches."""
+        return self.clutches.v2_win_rate
 
 
 @dataclass
@@ -1078,11 +1192,24 @@ class DemoAnalyzer:
             player.multi_kills.rounds_with_5k = int((kills_per_round >= 5).sum())
 
     def _detect_opening_duels(self) -> None:
-        """Detect opening duels (first kill of each round)."""
+        """Detect opening duels (first kill of each round) with Entry TTD tracking.
+
+        Entry duels are the first kills of each round. This method:
+        1. Identifies the first kill of each round
+        2. Calculates Entry TTD (time from first damage to kill for entry frags)
+        3. Tracks T-side vs CT-side entries for context
+        """
         kills_df = self.data.kills_df
+        damages_df = self.data.damages_df
         if kills_df.empty or not self._round_col or not self._att_id_col or not self._vic_id_col:
             logger.info("Skipping opening duels - missing columns")
             return
+
+        # Find damage columns for Entry TTD calculation
+        dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
+        dmg_vic_col = self._find_col(damages_df, self.VIC_ID_COLS) if not damages_df.empty else None
+
+        entry_kills_count = 0
 
         # Get first kill of each round
         for round_num in kills_df[self._round_col].unique():
@@ -1093,17 +1220,61 @@ class DemoAnalyzer:
             first_kill = round_kills.iloc[0]
             attacker_id = safe_int(first_kill.get(self._att_id_col))
             victim_id = safe_int(first_kill.get(self._vic_id_col))
+            kill_tick = safe_int(first_kill.get("tick"))
+
+            # Get attacker side for T/CT classification
+            attacker_side = ""
+            if self._att_side_col and self._att_side_col in kills_df.columns:
+                side_val = first_kill.get(self._att_side_col)
+                if isinstance(side_val, str):
+                    attacker_side = "CT" if "CT" in side_val.upper() else "T" if "T" in side_val.upper() else ""
 
             if attacker_id in self._players:
                 self._players[attacker_id].opening_duels.attempts += 1
                 self._players[attacker_id].opening_duels.wins += 1
+                entry_kills_count += 1
+
+                # Track T-side vs CT-side entries
+                if attacker_side == "T":
+                    self._players[attacker_id].opening_duels.t_side_entries += 1
+                elif attacker_side == "CT":
+                    self._players[attacker_id].opening_duels.ct_side_entries += 1
+
+                # Calculate Entry TTD (time from first damage to kill)
+                if dmg_att_col and dmg_vic_col and not damages_df.empty:
+                    entry_damages = damages_df[
+                        (damages_df[dmg_att_col].astype(float) == float(attacker_id)) &
+                        (damages_df[dmg_vic_col].astype(float) == float(victim_id)) &
+                        (damages_df["tick"] <= kill_tick)
+                    ].sort_values("tick")
+
+                    if not entry_damages.empty:
+                        first_dmg_tick = safe_int(entry_damages.iloc[0]["tick"])
+                        entry_ttd_ticks = kill_tick - first_dmg_tick
+                        entry_ttd_ms = entry_ttd_ticks * self.MS_PER_TICK
+
+                        # Only record reasonable TTD values (0-1500ms)
+                        if 0 < entry_ttd_ms <= self.TTD_MAX_MS:
+                            self._players[attacker_id].opening_duels.entry_ttd_values.append(entry_ttd_ms)
 
             if victim_id in self._players:
                 self._players[victim_id].opening_duels.attempts += 1
                 self._players[victim_id].opening_duels.losses += 1
 
+        logger.info(f"Detected {entry_kills_count} entry kills across {len(kills_df[self._round_col].unique())} rounds")
+
     def _detect_trades(self) -> None:
-        """Detect trade kills (kill within 5 seconds of teammate death)."""
+        """Detect trade kills and track trade opportunities.
+
+        Trade Kill: When a teammate is killed, check if you killed the enemy
+        who killed them within 5 seconds.
+
+        This method tracks:
+        - kills_traded: How many times you avenged a teammate
+        - deaths_traded: How many of your deaths were avenged
+        - trade_attempts: Opportunities to trade (teammate deaths you could respond to)
+        - failed_trades: Trade opportunities you didn't take
+        """
         kills_df = self.data.kills_df
         if kills_df.empty or not self._round_col:
             logger.info("Skipping trade detection - missing round column")
@@ -1114,6 +1285,8 @@ class DemoAnalyzer:
             return
 
         trade_window_ticks = int(TRADE_WINDOW_SECONDS * self.TICK_RATE)
+        total_trades = 0
+        total_opportunities = 0
 
         for round_num in kills_df[self._round_col].unique():
             round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
@@ -1127,43 +1300,82 @@ class DemoAnalyzer:
                 if not victim_id or not killer_id:
                     continue
 
-                # Look for trade (teammate kills the killer within window)
-                # Need attacker_side column for this
+                # Need attacker_side column for trade detection
                 if not self._att_side_col or self._att_side_col not in round_kills.columns:
                     continue
 
+                # Track trade opportunity: When someone dies, their teammates have
+                # an opportunity to trade (kill the enemy who killed them)
+                # Find alive teammates who could potentially trade
+                teammates = [
+                    sid for sid, player in self._players.items()
+                    if player.team == victim_team and sid != victim_id
+                ]
+
+                # Each alive teammate gets a trade opportunity
+                for teammate_id in teammates:
+                    if teammate_id in self._players:
+                        self._players[teammate_id].trades.trade_attempts += 1
+                        total_opportunities += 1
+
+                # Look for trade (teammate kills the killer within window)
                 potential_trades = round_kills[
                     (round_kills["tick"] > kill_tick) &
                     (round_kills["tick"] <= kill_tick + trade_window_ticks) &
-                    (round_kills[self._vic_id_col] == killer_id) &
+                    (round_kills[self._vic_id_col].astype(float) == float(killer_id)) &
                     (round_kills[self._att_side_col] == victim_team)
                 ]
 
                 if not potential_trades.empty:
                     # Trade occurred
                     trader_id = safe_int(potential_trades.iloc[0].get(self._att_id_col))
+                    total_trades += 1
 
                     if victim_id in self._players:
                         self._players[victim_id].trades.deaths_traded += 1
 
                     if trader_id in self._players:
                         self._players[trader_id].trades.kills_traded += 1
+                else:
+                    # Trade opportunity missed - mark the victim's death as not traded
+                    if victim_id in self._players:
+                        self._players[victim_id].trades.failed_trades += 1
+
+        logger.info(f"Detected {total_trades} trades from {total_opportunities} opportunities")
 
     def _detect_clutches(self) -> None:
-        """Detect clutch situations (1vX where player is last alive)."""
-        # This requires tracking alive players per tick, which is complex
-        # For now, we use a simplified heuristic based on kill sequence
+        """Detect clutch situations (1vX where player is last alive) with win tracking.
+
+        Clutch: A round where you were the last player alive on your team
+        facing one or more enemies. Uses round winner data to determine success.
+
+        This method tracks:
+        - total_situations: Total 1vX clutch attempts
+        - total_wins: Clutches won (determined by round outcome)
+        - Per-scenario tracking (1v1, 1v2, etc.) with wins and attempts
+        """
         kills_df = self.data.kills_df
         if kills_df.empty or not self._round_col or not self._vic_id_col or not self._vic_side_col:
             logger.info("Skipping clutch detection - missing columns")
             return
 
+        # Build round winner lookup from rounds data
+        round_winners = {}
+        for round_info in self.data.rounds:
+            round_winners[round_info.round_num] = round_info.winner
+
+        total_clutch_situations = 0
+        total_clutch_wins = 0
+
         for round_num in kills_df[self._round_col].unique():
             round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
-            if len(round_kills) < 5:  # Need enough kills for clutch
+            if len(round_kills) < 4:  # Need at least 4 deaths for a 1vX situation
                 continue
 
-            # Track team deaths
+            # Get round winner (CT or T)
+            round_winner = round_winners.get(int(round_num), "Unknown")
+
+            # Track deaths in order for each team
             ct_deaths = []
             t_deaths = []
 
@@ -1171,48 +1383,104 @@ class DemoAnalyzer:
                 victim_id = safe_int(kill.get(self._vic_id_col))
                 victim_side = safe_str(kill.get(self._vic_side_col))
 
-                if victim_side == "CT":
+                if "CT" in victim_side.upper():
                     ct_deaths.append(victim_id)
-                elif victim_side == "T":
+                elif "T" in victim_side.upper() and "CT" not in victim_side.upper():
                     t_deaths.append(victim_id)
 
-            # Check for clutch scenarios
-            # A player is in a clutch if they're the last alive on their team
-            # and there are enemies still alive
-            for side, deaths in [("CT", ct_deaths), ("T", t_deaths)]:
-                if len(deaths) >= 4:  # 4+ teammates dead = 1vX situation
-                    # Find who was still alive
-                    enemy_side = "T" if side == "CT" else "CT"
-                    enemy_deaths_at_time = 0
+            # Detect clutch situations for each side
+            for side, deaths, enemy_deaths in [("CT", ct_deaths, t_deaths), ("T", t_deaths, ct_deaths)]:
+                if len(deaths) < 4:  # Need 4+ teammates dead for 1vX (5-player team)
+                    continue
 
-                    for idx, death_id in enumerate(deaths):
-                        if idx == 3:  # 4th death = 1v? situation
-                            enemies_alive = 5 - enemy_deaths_at_time
+                # Find players on this team
+                team_players = [
+                    sid for sid, p in self._players.items()
+                    if side in p.team.upper()
+                ]
 
-                            # Find the survivor
-                            team_players = [
-                                sid for sid, p in self._players.items()
-                                if p.team == side and sid not in deaths[:4]
-                            ]
+                if len(team_players) != 5:
+                    continue  # Skip if team size is unexpected
 
-                            for survivor_id in team_players:
-                                if survivor_id in self._players:
-                                    player = self._players[survivor_id]
-                                    if enemies_alive == 1:
-                                        player.clutches.situations_1v1 += 1
-                                    elif enemies_alive == 2:
-                                        player.clutches.situations_1v2 += 1
-                                    elif enemies_alive == 3:
-                                        player.clutches.situations_1v3 += 1
-                                    elif enemies_alive == 4:
-                                        player.clutches.situations_1v4 += 1
-                                    elif enemies_alive == 5:
-                                        player.clutches.situations_1v5 += 1
+                # When 4th teammate dies, the 5th is in a clutch
+                # Count how many enemies were alive at that moment
+                enemies_alive_at_clutch = 5 - len([d for d in enemy_deaths if d in enemy_deaths[:len(deaths)]])
 
-                        # Track enemy deaths
-                        kill_at_idx = round_kills.iloc[idx] if idx < len(round_kills) else None
-                        if kill_at_idx is not None and safe_str(kill_at_idx.get("victim_side")) == enemy_side:
-                            enemy_deaths_at_time += 1
+                # More accurate: count enemy deaths that happened BEFORE 4th teammate death
+                # We look at kill order in the DataFrame
+                fourth_death_idx = -1
+                current_ct_deaths = 0
+                current_t_deaths = 0
+
+                for i, (_, kill) in enumerate(round_kills.iterrows()):
+                    victim_side = safe_str(kill.get(self._vic_side_col))
+                    if "CT" in victim_side.upper():
+                        current_ct_deaths += 1
+                        if side == "CT" and current_ct_deaths == 4:
+                            fourth_death_idx = i
+                            break
+                    elif "T" in victim_side.upper():
+                        current_t_deaths += 1
+                        if side == "T" and current_t_deaths == 4:
+                            fourth_death_idx = i
+                            break
+
+                if fourth_death_idx < 0:
+                    continue
+
+                # Count enemies alive when 4th teammate died
+                if side == "CT":
+                    enemies_alive = 5 - current_t_deaths
+                else:
+                    enemies_alive = 5 - current_ct_deaths
+
+                if enemies_alive < 1 or enemies_alive > 5:
+                    continue
+
+                # Find the survivor (player on this team not in first 4 deaths)
+                first_four_dead = deaths[:4]
+                survivor_id = None
+                for player_id in team_players:
+                    if player_id not in first_four_dead:
+                        survivor_id = player_id
+                        break
+
+                if survivor_id is None or survivor_id not in self._players:
+                    continue
+
+                player = self._players[survivor_id]
+                clutch_won = (round_winner == side)
+
+                # Update totals
+                player.clutches.total_situations += 1
+                total_clutch_situations += 1
+                if clutch_won:
+                    player.clutches.total_wins += 1
+                    total_clutch_wins += 1
+
+                # Update per-scenario stats
+                if enemies_alive == 1:
+                    player.clutches.v1_attempts += 1
+                    if clutch_won:
+                        player.clutches.v1_wins += 1
+                elif enemies_alive == 2:
+                    player.clutches.v2_attempts += 1
+                    if clutch_won:
+                        player.clutches.v2_wins += 1
+                elif enemies_alive == 3:
+                    player.clutches.v3_attempts += 1
+                    if clutch_won:
+                        player.clutches.v3_wins += 1
+                elif enemies_alive == 4:
+                    player.clutches.v4_attempts += 1
+                    if clutch_won:
+                        player.clutches.v4_wins += 1
+                elif enemies_alive == 5:
+                    player.clutches.v5_attempts += 1
+                    if clutch_won:
+                        player.clutches.v5_wins += 1
+
+        logger.info(f"Detected {total_clutch_situations} clutch situations, {total_clutch_wins} won")
 
     def _calculate_kast(self) -> None:
         """Calculate KAST (Kill/Assist/Survived/Traded) for each player."""
@@ -2099,21 +2367,27 @@ class DemoAnalyzer:
         return timeline
 
     def _extract_position_data(self) -> tuple[list, list]:
-        """Extract position data for heatmap visualization."""
+        """Extract position data for heatmap and kill map visualization."""
         kill_positions = []
         death_positions = []
 
         # Extract from KillEvent objects (they have position data)
         for kill in self.data.kills:
             try:
+                att_name = self.data.player_names.get(kill.attacker_steamid, "Unknown")
+                vic_name = self.data.player_names.get(kill.victim_steamid, "Unknown")
+
                 # Attacker position (kill location)
                 if kill.attacker_x is not None and kill.attacker_y is not None:
-                    att_name = self.data.player_names.get(kill.attacker_steamid, "Unknown")
                     kill_positions.append({
                         "x": kill.attacker_x,
                         "y": kill.attacker_y,
                         "z": kill.attacker_z or 0,
                         "player": att_name,
+                        "attacker": att_name,
+                        "victim": vic_name,
+                        "attacker_team": kill.attacker_side,
+                        "victim_team": kill.victim_side,
                         "weapon": kill.weapon,
                         "round": kill.round_num,
                         "headshot": kill.headshot,
@@ -2121,12 +2395,14 @@ class DemoAnalyzer:
 
                 # Victim position (death location)
                 if kill.victim_x is not None and kill.victim_y is not None:
-                    vic_name = self.data.player_names.get(kill.victim_steamid, "Unknown")
                     death_positions.append({
                         "x": kill.victim_x,
                         "y": kill.victim_y,
                         "z": kill.victim_z or 0,
                         "player": vic_name,
+                        "attacker": att_name,
+                        "victim_team": kill.victim_side,
+                        "attacker_team": kill.attacker_side,
                         "round": kill.round_num,
                     })
             except Exception as e:
@@ -2383,6 +2659,129 @@ def analyze_demo(
         use_optimized=use_optimized
     )
     return analyzer.analyze()
+
+
+def get_player_comparison_stats(
+    player_a: PlayerMatchStats,
+    player_b: PlayerMatchStats,
+    normalize: bool = True
+) -> dict:
+    """
+    Generate comparison statistics for two players for radar chart visualization.
+
+    Returns normalized stats (0-100 scale) suitable for radar charts when normalize=True.
+    The axes are:
+    - HLTV Rating (higher is better)
+    - Impact Score (higher is better)
+    - TTD (inverted - lower TTD means faster reactions, so we invert for display)
+    - Headshot % (higher is better)
+    - Utility Damage (HE + Molotov damage, higher is better)
+
+    Args:
+        player_a: First player's match stats
+        player_b: Second player's match stats
+        normalize: If True, normalize values to 0-100 scale
+
+    Returns:
+        Dict with comparison data for both players
+    """
+    def get_ttd_score(player: PlayerMatchStats) -> float:
+        """Calculate TTD score. Lower TTD is better, so we invert it."""
+        ttd = player.ttd_median_ms
+        if ttd is None:
+            return 50.0 if normalize else 0.0  # Default to average if no data
+
+        if normalize:
+            # TTD typically ranges from 100ms (elite) to 600ms (slow)
+            # Invert so that lower (faster) TTD gives higher score
+            # 100ms -> 100 score, 600ms -> 0 score
+            clamped = max(100, min(600, ttd))
+            return round(100 - ((clamped - 100) / 500 * 100), 1)
+        return round(ttd, 1)
+
+    def get_hltv_score(player: PlayerMatchStats) -> float:
+        """Normalize HLTV rating to 0-100 scale."""
+        rating = player.hltv_rating
+        if normalize:
+            # HLTV rating typically ranges from 0.5 to 2.0
+            # Map 0.5 -> 0, 1.0 -> 50, 1.5 -> 100
+            clamped = max(0.5, min(2.0, rating))
+            return round((clamped - 0.5) / 1.5 * 100, 1)
+        return round(rating, 2)
+
+    def get_impact_score(player: PlayerMatchStats) -> float:
+        """Normalize impact rating to 0-100 scale."""
+        impact = player.impact_rating
+        if normalize:
+            # Impact typically ranges from 0.0 to 2.0
+            clamped = max(0.0, min(2.0, impact))
+            return round(clamped / 2.0 * 100, 1)
+        return round(impact, 2)
+
+    def get_hs_score(player: PlayerMatchStats) -> float:
+        """Get headshot percentage (already 0-100)."""
+        return round(player.headshot_percentage, 1)
+
+    def get_utility_damage_score(player: PlayerMatchStats) -> float:
+        """Calculate utility damage score (HE + Molotov damage)."""
+        he_dmg = player.utility.he_damage
+        molotov_dmg = player.utility.molotov_damage
+        total_dmg = he_dmg + molotov_dmg
+
+        if normalize:
+            # Utility damage can vary widely, let's use 0-500 as a typical range
+            # Map 0 -> 0, 250 -> 50, 500+ -> 100
+            clamped = max(0, min(500, total_dmg))
+            return round(clamped / 500 * 100, 1)
+        return total_dmg
+
+    # Calculate stats for both players
+    player_a_stats = {
+        "name": player_a.name,
+        "steam_id": str(player_a.steam_id),
+        "team": player_a.team,
+        "metrics": {
+            "hltv_rating": get_hltv_score(player_a),
+            "impact_score": get_impact_score(player_a),
+            "ttd_score": get_ttd_score(player_a),
+            "headshot_pct": get_hs_score(player_a),
+            "utility_damage": get_utility_damage_score(player_a),
+        },
+        "raw_values": {
+            "hltv_rating": round(player_a.hltv_rating, 2),
+            "impact_rating": round(player_a.impact_rating, 2),
+            "ttd_median_ms": round(player_a.ttd_median_ms, 1) if player_a.ttd_median_ms else None,
+            "headshot_pct": round(player_a.headshot_percentage, 1),
+            "utility_damage": player_a.utility.he_damage + player_a.utility.molotov_damage,
+        }
+    }
+
+    player_b_stats = {
+        "name": player_b.name,
+        "steam_id": str(player_b.steam_id),
+        "team": player_b.team,
+        "metrics": {
+            "hltv_rating": get_hltv_score(player_b),
+            "impact_score": get_impact_score(player_b),
+            "ttd_score": get_ttd_score(player_b),
+            "headshot_pct": get_hs_score(player_b),
+            "utility_damage": get_utility_damage_score(player_b),
+        },
+        "raw_values": {
+            "hltv_rating": round(player_b.hltv_rating, 2),
+            "impact_rating": round(player_b.impact_rating, 2),
+            "ttd_median_ms": round(player_b.ttd_median_ms, 1) if player_b.ttd_median_ms else None,
+            "headshot_pct": round(player_b.headshot_percentage, 1),
+            "utility_damage": player_b.utility.he_damage + player_b.utility.molotov_damage,
+        }
+    }
+
+    return {
+        "labels": ["HLTV Rating", "Impact Score", "TTD (Reaction)", "Headshot %", "Utility Damage"],
+        "player_a": player_a_stats,
+        "player_b": player_b_stats,
+        "normalized": normalize,
+    }
 
 
 # Alias for backward compatibility

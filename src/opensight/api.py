@@ -461,7 +461,7 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
     This runs in a thread pool to avoid blocking the event loop.
     """
     try:
-        from opensight.parser import DemoParser, ParseMode
+        from opensight.parser import DemoParser
         from opensight.analytics import DemoAnalyzer
 
         job_store.update_job(job_id, status=JobStatus.PROCESSING, progress=10)
@@ -508,9 +508,8 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
                 "total_kills": len(data.kills),
                 "total_damage_events": len(data.damages),
                 # Parsing metadata
-                "parse_mode": "comprehensive",  # Default mode
-                "cp_sample_rate": 1,  # Default sample rate
-                "memory_optimized": True,  # Default optimization
+                "parser": "awpy",  # Using awpy library for robust parsing
+                "parse_mode": "comprehensive",  # awpy always parses comprehensively
             },
             "rounds": rounds_data,
             "mvp": None,
