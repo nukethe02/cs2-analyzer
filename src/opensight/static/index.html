@@ -469,18 +469,36 @@
 
     </main>
 
-    <!-- Loading Overlay -->
+    <!-- Loading Overlay with Progress Bar -->
     <div id="loading" class="fixed inset-0 bg-slate-950/95 z-[100] hidden items-center justify-center flex-col">
-        <div class="relative">
-            <!-- Spinning ring -->
-            <div class="w-20 h-20 border-4 border-slate-700 border-t-cyan-400 rounded-full animate-spin"></div>
-            <!-- Inner pulse -->
-            <div class="absolute inset-0 flex items-center justify-center">
-                <div class="w-8 h-8 bg-cyan-400/20 rounded-full animate-ping"></div>
+        <div class="w-full max-w-md px-8">
+            <!-- Logo/Icon -->
+            <div class="flex justify-center mb-6">
+                <div class="relative">
+                    <div id="loading-spinner" class="w-16 h-16 border-4 border-slate-700 border-t-cyan-400 rounded-full animate-spin"></div>
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <div class="w-6 h-6 bg-cyan-400/20 rounded-full animate-ping"></div>
+                    </div>
+                </div>
             </div>
+
+            <!-- Stage Text -->
+            <p id="loading-stage" class="text-center text-lg text-slate-300 mb-2">Analyzing demo...</p>
+
+            <!-- Progress Bar -->
+            <div class="w-full bg-slate-800 rounded-full h-3 mb-2 overflow-hidden">
+                <div id="loading-progress-bar" class="h-full bg-gradient-to-r from-cyan-500 to-cyan-400 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+            </div>
+
+            <!-- Progress Details -->
+            <div class="flex justify-between text-sm text-slate-500">
+                <span id="loading-details"></span>
+                <span id="loading-percent">0%</span>
+            </div>
+
+            <!-- Elapsed Time -->
+            <p id="loading-elapsed" class="text-center text-xs text-slate-600 mt-4"></p>
         </div>
-        <p class="mt-6 text-lg text-slate-300">Analyzing demo...</p>
-        <p id="loading-details" class="mt-2 text-sm text-slate-500"></p>
     </div>
 
     <!-- JavaScript -->
@@ -492,12 +510,18 @@
         const fileInput = document.getElementById('demo-file');
         const loading = document.getElementById('loading');
         const loadingDetails = document.getElementById('loading-details');
+        const loadingStage = document.getElementById('loading-stage');
+        const loadingProgressBar = document.getElementById('loading-progress-bar');
+        const loadingPercent = document.getElementById('loading-percent');
+        const loadingElapsed = document.getElementById('loading-elapsed');
         const uploadSection = document.getElementById('upload-section');
         const resultsOverview = document.getElementById('results-overview');
 
         // Global state
         let analysisData = null;
         let lastUploadedFile = null;  // Store file for Excel export
+        let currentJobId = null;      // Current analysis job ID
+        let pollingInterval = null;   // Polling interval reference
         let charts = {};
 
         // ============================================
@@ -611,21 +635,22 @@
         }
 
         // ============================================
-        // Main Analysis Function
+        // Main Analysis Function (with Polling)
         // ============================================
         async function analyzeFile(file) {
             const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-            loading.classList.remove('hidden');
-            loading.classList.add('flex');
-            loadingDetails.textContent = `Processing ${file.name} (${sizeMB} MB)`;
 
             // Store file for Excel export
             lastUploadedFile = file;
+
+            // Show loading overlay with initial state
+            showLoadingOverlay(`Uploading ${file.name} (${sizeMB} MB)...`, 0);
 
             const formData = new FormData();
             formData.append('file', file);
 
             try {
+                // Step 1: Submit the file for analysis
                 const response = await fetch('/analyze', {
                     method: 'POST',
                     body: formData
@@ -634,19 +659,117 @@
                 const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(data.detail || 'Analysis failed');
+                    throw new Error(data.detail || 'Upload failed');
                 }
 
-                analysisData = data;
-                renderResults(data);
-                showToast('Analysis complete!', 'success');
+                // Step 2: Start polling for status
+                currentJobId = data.job_id;
+                updateLoadingProgress(5, 'Job submitted, starting analysis...');
+                startPolling(data.job_id);
+
             } catch (error) {
+                hideLoadingOverlay();
                 showToast(error.message, 'error');
-            } finally {
-                loading.classList.add('hidden');
-                loading.classList.remove('flex');
             }
         }
+
+        function showLoadingOverlay(stage, progress) {
+            loading.classList.remove('hidden');
+            loading.classList.add('flex');
+            loadingStage.textContent = stage;
+            loadingProgressBar.style.width = `${progress}%`;
+            loadingPercent.textContent = `${progress}%`;
+            loadingDetails.textContent = '';
+            loadingElapsed.textContent = '';
+        }
+
+        function updateLoadingProgress(progress, stage, elapsed = null, details = '') {
+            loadingProgressBar.style.width = `${progress}%`;
+            loadingPercent.textContent = `${progress}%`;
+            if (stage) loadingStage.textContent = stage;
+            if (details) loadingDetails.textContent = details;
+            if (elapsed !== null) {
+                loadingElapsed.textContent = `Elapsed: ${elapsed.toFixed(1)}s`;
+            }
+        }
+
+        function hideLoadingOverlay() {
+            loading.classList.add('hidden');
+            loading.classList.remove('flex');
+            // Reset progress bar
+            loadingProgressBar.style.width = '0%';
+            loadingPercent.textContent = '0%';
+        }
+
+        function startPolling(jobId) {
+            // Clear any existing polling
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+
+            // Poll every 1 second
+            pollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/analyze/${jobId}?include_result=true`);
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'Status check failed');
+                    }
+
+                    // Update progress bar
+                    updateLoadingProgress(
+                        data.progress || 0,
+                        data.stage || 'Processing...',
+                        data.elapsed_seconds,
+                        data.filename ? `Processing: ${data.filename}` : ''
+                    );
+
+                    // Check if completed
+                    if (data.status === 'completed') {
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+                        currentJobId = null;
+
+                        // Hide loading and render results
+                        hideLoadingOverlay();
+
+                        if (data.result) {
+                            analysisData = data.result;
+                            renderResults(data.result);
+                            showToast('Analysis complete!', 'success');
+                        } else {
+                            // Need to fetch full result
+                            const resultResponse = await fetch(`/analyze/${jobId}?include_result=true`);
+                            const resultData = await resultResponse.json();
+                            if (resultData.result) {
+                                analysisData = resultData.result;
+                                renderResults(resultData.result);
+                                showToast('Analysis complete!', 'success');
+                            }
+                        }
+                    } else if (data.status === 'failed') {
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+                        currentJobId = null;
+                        hideLoadingOverlay();
+                        showToast(`Analysis failed: ${data.error || 'Unknown error'}`, 'error');
+                    }
+                    // If still processing, continue polling
+
+                } catch (error) {
+                    console.error('Polling error:', error);
+                    // Don't stop polling on transient errors, but log them
+                }
+            }, 1000);
+        }
+
+        // Clean up polling on page unload
+        window.addEventListener('beforeunload', () => {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+        });
 
         // ============================================
         // Render Results

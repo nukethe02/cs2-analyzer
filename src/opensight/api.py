@@ -86,9 +86,15 @@ class AnalysisJob:
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     progress: int = 0  # 0-100 percentage
+    stage: str = "queued"  # Current processing stage for UI display
 
     def to_status_dict(self) -> Dict[str, Any]:
         """Return status information without full results."""
+        elapsed_seconds = None
+        if self.started_at:
+            end_time = self.completed_at or datetime.now()
+            elapsed_seconds = round((end_time - self.started_at).total_seconds(), 1)
+
         return {
             "job_id": self.job_id,
             "status": self.status.value,
@@ -98,6 +104,8 @@ class AnalysisJob:
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "progress": self.progress,
+            "stage": self.stage,
+            "elapsed_seconds": elapsed_seconds,
             "error": self.error,
             "has_result": self.result is not None,
         }
@@ -138,8 +146,9 @@ class JobStore:
         result: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
         progress: Optional[int] = None,
+        stage: Optional[str] = None,
     ) -> Optional[AnalysisJob]:
-        """Update a job's status and/or result."""
+        """Update a job's status, progress, stage, and/or result."""
         with self._lock:
             job = self._jobs.get(job_id)
             if not job:
@@ -158,6 +167,8 @@ class JobStore:
                 job.error = error
             if progress is not None:
                 job.progress = min(100, max(0, progress))
+            if stage is not None:
+                job.stage = stage
 
             return job
 
@@ -459,27 +470,52 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
     Background worker function that performs demo analysis.
 
     This runs in a thread pool to avoid blocking the event loop.
+    Reports granular progress stages for real-time UI updates.
     """
     try:
         from opensight.parser import DemoParser
         from opensight.analytics import DemoAnalyzer, compute_utility_metrics
 
-        job_store.update_job(job_id, status=JobStatus.PROCESSING, progress=10)
+        # Stage 1: Initialize parsing (5-10%)
+        job_store.update_job(
+            job_id,
+            status=JobStatus.PROCESSING,
+            progress=5,
+            stage="Initializing demo parser..."
+        )
         logger.info(f"Job {job_id}: Starting analysis of {filename}")
 
-        # Parse the demo
+        # Stage 2: Parse demo file (10-40%)
+        job_store.update_job(job_id, progress=10, stage="Parsing demo file...")
         parser = DemoParser(tmp_path)
+
+        job_store.update_job(job_id, progress=15, stage="Reading game events...")
         data = parser.parse()
+
         # Log parsing progress for debugging
-        logger.info(f"Job {job_id}: Parsed {len(data.kills)} kills, {len(data.damages)} damages, {data.num_rounds} rounds")
-        job_store.update_job(job_id, progress=40)
+        num_rounds = data.num_rounds
+        logger.info(f"Job {job_id}: Parsed {len(data.kills)} kills, {len(data.damages)} damages, {num_rounds} rounds")
+        job_store.update_job(
+            job_id,
+            progress=40,
+            stage=f"Parsed {num_rounds} rounds, {len(data.kills)} kills"
+        )
 
-        # Run advanced analytics
+        # Stage 3: Run advanced analytics (40-70%)
+        job_store.update_job(job_id, progress=45, stage="Calculating player metrics...")
         analyzer = DemoAnalyzer(data)
-        analysis = analyzer.analyze()
-        job_store.update_job(job_id, progress=70)
 
-        # Build round-by-round data
+        job_store.update_job(job_id, progress=50, stage="Computing HLTV ratings...")
+        analysis = analyzer.analyze()
+
+        job_store.update_job(
+            job_id,
+            progress=70,
+            stage=f"Analyzed {len(analysis.players)} players"
+        )
+
+        # Stage 4: Build round-by-round data (70-75%)
+        job_store.update_job(job_id, progress=72, stage="Building round data...")
         rounds_data = []
         for round_info in data.rounds:
             round_kills = [k for k in data.kills if k.round_num == round_info.round_num]
@@ -493,7 +529,8 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
                 "round_type": round_info.round_type or "unknown",
             })
 
-        # Build response
+        # Stage 5: Build response (75-90%)
+        job_store.update_job(job_id, progress=75, stage="Building response...")
         result = {
             "demo_info": {
                 "map": analysis.map_name,
@@ -525,7 +562,7 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
                 "rating": mvp.hltv_rating,
             }
 
-        job_store.update_job(job_id, progress=80)
+        job_store.update_job(job_id, progress=80, stage="Processing player statistics...")
 
         # Add player stats with advanced metrics (sorted by rating)
         for player in analysis.get_leaderboard():
@@ -647,7 +684,7 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
                 "weapons": weapon_stats,
             }
 
-        job_store.update_job(job_id, progress=90)
+        job_store.update_job(job_id, progress=90, stage="Generating visualizations...")
 
         # Add enhanced match-level data
         result["round_timeline"] = [
@@ -700,7 +737,13 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
         result["coaching"] = analysis.coaching_insights
 
         # Mark job as completed
-        job_store.update_job(job_id, status=JobStatus.COMPLETED, result=result, progress=100)
+        job_store.update_job(
+            job_id,
+            status=JobStatus.COMPLETED,
+            result=result,
+            progress=100,
+            stage="Analysis complete!"
+        )
         logger.info(f"Job {job_id}: Analysis complete - {len(result['players'])} players, {analysis.total_rounds} rounds")
 
     except Exception as e:
@@ -709,7 +752,12 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
         logger.exception(f"Job {job_id}: Analysis failed")
         # Include traceback in error details for API response
         error_detail = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{tb_str}"
-        job_store.update_job(job_id, status=JobStatus.FAILED, error=error_detail)
+        job_store.update_job(
+            job_id,
+            status=JobStatus.FAILED,
+            error=error_detail,
+            stage="Analysis failed"
+        )
 
     finally:
         # Clean up temp file
