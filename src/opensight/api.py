@@ -371,7 +371,58 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .rating.high { color: #4ade80; }
         .rating.medium { color: #fbbf24; }
         .rating.low { color: #f87171; }
+        /* Tab styles */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid rgba(255,255,255,0.1);
+            padding-bottom: 0.5rem;
+        }
+        .tab-btn {
+            background: rgba(255,255,255,0.05);
+            border: none;
+            color: #888;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem 0.5rem 0 0;
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .tab-btn.active { background: rgba(255,215,0,0.2); color: #ffd700; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        /* Economy chart styles */
+        .chart-container {
+            position: relative;
+            height: 350px;
+            margin-top: 1rem;
+            background: rgba(0,0,0,0.2);
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+        .economy-legend {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .legend-color {
+            width: 20px;
+            height: 4px;
+            border-radius: 2px;
+        }
+        .legend-color.t-side { background: #f59e0b; }
+        .legend-color.ct-side { background: #3b82f6; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
@@ -388,7 +439,35 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <div id="results">
             <div class="result-card" id="match-info"></div>
-            <div class="result-card" id="player-stats"></div>
+
+            <div class="tabs" id="results-tabs">
+                <button class="tab-btn active" data-tab="stats">Player Stats</button>
+                <button class="tab-btn" data-tab="economy">Economy</button>
+            </div>
+
+            <div id="tab-stats" class="tab-content active">
+                <div class="result-card" id="player-stats"></div>
+            </div>
+
+            <div id="tab-economy" class="tab-content">
+                <div class="result-card">
+                    <h2>Round-by-Round Economy</h2>
+                    <p style="color: #888; margin-bottom: 1rem;">Equipment value per round - Identify eco rounds and force buys</p>
+                    <div class="chart-container">
+                        <canvas id="economyChart"></canvas>
+                    </div>
+                    <div class="economy-legend">
+                        <div class="legend-item">
+                            <div class="legend-color t-side"></div>
+                            <span>Terrorists</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color ct-side"></div>
+                            <span>Counter-Terrorists</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -400,11 +479,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const matchInfo = document.getElementById('match-info');
         const playerStats = document.getElementById('player-stats');
 
+        // Chart instance for cleanup
+        let economyChart = null;
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
+
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+            });
+        });
 
         dropZone.addEventListener('click', () => fileInput.click());
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -519,6 +611,115 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
 
             results.classList.add('visible');
+
+            // Create economy chart if data available
+            if (data.economy_history && data.economy_history.length > 0) {
+                createEconomyChart(data.economy_history);
+            }
+        }
+
+        function createEconomyChart(economyData) {
+            // Destroy existing chart if any
+            if (economyChart) {
+                economyChart.destroy();
+            }
+
+            const ctx = document.getElementById('economyChart').getContext('2d');
+
+            const rounds = economyData.map(d => d.round);
+            const tValues = economyData.map(d => d.team_t_val);
+            const ctValues = economyData.map(d => d.team_ct_val);
+
+            economyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: rounds,
+                    datasets: [
+                        {
+                            label: 'Terrorists',
+                            data: tValues,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Counter-Terrorists',
+                            data: ctValues,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: false  // Using custom legend
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#ffd700',
+                            bodyColor: '#fff',
+                            padding: 12,
+                            callbacks: {
+                                title: function(context) {
+                                    return 'Round ' + context[0].label;
+                                },
+                                label: function(context) {
+                                    const idx = context.dataIndex;
+                                    const buyType = context.datasetIndex === 0
+                                        ? economyData[idx].t_buy
+                                        : economyData[idx].ct_buy;
+                                    return context.dataset.label + ': $' +
+                                        context.parsed.y.toLocaleString() +
+                                        ' (' + buyType + ')';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Round',
+                                color: '#888'
+                            },
+                            ticks: { color: '#888' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Equipment Value ($)',
+                                color: '#888'
+                            },
+                            ticks: {
+                                color: '#888',
+                                callback: function(value) {
+                                    return '$' + (value / 1000).toFixed(0) + 'k';
+                                }
+                            },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            min: 0,
+                            max: 50000
+                        }
+                    }
+                }
+            });
         }
     </script>
 </body>
@@ -602,7 +803,7 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         # Import and run analysis (cache miss)
         from opensight.parser import DemoParser
-        from opensight.analytics import DemoAnalyzer, compute_kill_positions, compute_utility_metrics
+        from opensight.analytics import DemoAnalyzer, compute_kill_positions, compute_utility_metrics, calculate_economy_history
 
         # Parse the demo
         logger.info("Starting demo parsing...")
@@ -648,6 +849,9 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         # AI Coaching insights
         response["coaching"] = analysis.coaching_insights
+
+        # Economy history for round-by-round visualization
+        response["economy_history"] = calculate_economy_history(match_data)
 
         # Save to cache for future requests
         save_to_cache(file_hash, response)

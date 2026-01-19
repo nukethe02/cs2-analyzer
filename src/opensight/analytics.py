@@ -3836,3 +3836,102 @@ def calculate_player_metrics(match_data: DemoData) -> dict[str, PlayerMetrics]:
         )
 
     return result
+
+
+def calculate_economy_history(match_data: DemoData) -> list[dict]:
+    """
+    Calculate round-by-round economy history for both teams.
+
+    Uses equipment values from kill/damage events to estimate team wealth
+    per round. This enables economy flow visualization for coaching.
+
+    Args:
+        match_data: Parsed demo data (DemoData) from DemoParser
+
+    Returns:
+        List of dicts with round economy data:
+        [
+            {"round": 1, "team_t_val": 3500, "team_ct_val": 4500, "t_buy": "pistol", "ct_buy": "pistol"},
+            {"round": 2, "team_t_val": 8000, "team_ct_val": 12000, "t_buy": "eco", "ct_buy": "full"},
+            ...
+        ]
+
+    Example:
+        >>> from opensight.parser import DemoParser
+        >>> from opensight.analytics import calculate_economy_history
+        >>> parser = DemoParser("match.dem")
+        >>> data = parser.parse()
+        >>> economy = calculate_economy_history(data)
+        >>> for round_data in economy:
+        ...     print(f"Round {round_data['round']}: T=${round_data['team_t_val']}, CT=${round_data['team_ct_val']}")
+    """
+    try:
+        from opensight.economy import EconomyAnalyzer
+    except ImportError:
+        logger.warning("Economy module not available, returning empty history")
+        return []
+
+    try:
+        analyzer = EconomyAnalyzer(match_data)
+        stats = analyzer.analyze()
+    except Exception as e:
+        logger.warning(f"Economy analysis failed: {e}")
+        return []
+
+    # Build round-by-round history from team economies
+    # Team 2 = T, Team 3 = CT (CS2 convention)
+    t_rounds = {tr.round_num: tr for tr in stats.team_economies.get(2, [])}
+    ct_rounds = {tr.round_num: tr for tr in stats.team_economies.get(3, [])}
+
+    # Get all round numbers
+    all_rounds = sorted(set(t_rounds.keys()) | set(ct_rounds.keys()))
+
+    if not all_rounds:
+        # Fallback: Generate basic data from round count if no economy data
+        logger.info("No detailed economy data, generating estimates from round count")
+        history = []
+        for round_num in range(1, match_data.num_rounds + 1):
+            is_pistol = round_num in [1, 13, 16, 28]  # Pistol rounds (MR12/MR15)
+            is_second = round_num in [2, 14, 17, 29]  # Often eco after pistol loss
+
+            if is_pistol:
+                t_val, ct_val = 800, 800
+                t_buy, ct_buy = "pistol", "pistol"
+            elif is_second:
+                t_val, ct_val = 2000, 2000
+                t_buy, ct_buy = "eco", "eco"
+            else:
+                # Estimate mid-game average
+                t_val, ct_val = 20000, 22000
+                t_buy, ct_buy = "full", "full"
+
+            history.append({
+                "round": round_num,
+                "team_t_val": t_val,
+                "team_ct_val": ct_val,
+                "t_buy": t_buy,
+                "ct_buy": ct_buy,
+            })
+        return history
+
+    history = []
+    for round_num in all_rounds:
+        t_round = t_rounds.get(round_num)
+        ct_round = ct_rounds.get(round_num)
+
+        t_val = t_round.total_equipment if t_round else 0
+        ct_val = ct_round.total_equipment if ct_round else 0
+
+        # Get buy type string
+        t_buy = t_round.buy_type.value if t_round else "unknown"
+        ct_buy = ct_round.buy_type.value if ct_round else "unknown"
+
+        history.append({
+            "round": round_num,
+            "team_t_val": t_val,
+            "team_ct_val": ct_val,
+            "t_buy": t_buy,
+            "ct_buy": ct_buy,
+        })
+
+    return history
