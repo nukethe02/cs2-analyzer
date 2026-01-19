@@ -328,7 +328,7 @@ class MatchData:
     file_path: Path
     map_name: str
     duration_seconds: float
-    tick_rate: int
+    tick_rate: float
     num_rounds: int
     server_name: str = ""
     game_mode: str = ""  # 'competitive', 'premier', 'casual'
@@ -357,6 +357,8 @@ class MatchData:
     rounds_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     grenades_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     bomb_events_df: pd.DataFrame = field(default_factory=pd.DataFrame)
+    smokes_df: pd.DataFrame = field(default_factory=pd.DataFrame)
+    infernos_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     weapon_fires_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     blinds_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     ticks_df: pd.DataFrame | None = None
@@ -504,8 +506,10 @@ class DemoParser:
         weapon_fires = self._build_weapon_fires(shots_df)
 
         # Build smokes and infernos from awpy's dedicated DataFrames
-        smokes = self._build_smokes(demo)
-        infernos = self._build_infernos(demo)
+        smokes_df = demo.smokes.to_pandas() if demo.smokes is not None else pd.DataFrame()
+        infernos_df = demo.infernos.to_pandas() if demo.infernos is not None else pd.DataFrame()
+        smokes = self._build_smokes_from_df(smokes_df)
+        infernos = self._build_infernos_from_df(infernos_df)
 
         # Extract player info
         player_names, player_teams = self._extract_players(kills_df, damages_df)
@@ -544,6 +548,8 @@ class DemoParser:
             rounds_df=rounds_df,
             grenades_df=grenades_df,
             bomb_events_df=bomb_df,
+            smokes_df=smokes_df,
+            infernos_df=infernos_df,
             weapon_fires_df=shots_df,
             ticks_df=ticks_df,
             # Scores
@@ -828,65 +834,57 @@ class DemoParser:
 
         return fires
 
-    def _build_smokes(self, demo: Any) -> list[SmokeEvent]:
+    def _build_smokes_from_df(self, df: pd.DataFrame) -> list[SmokeEvent]:
         """Build SmokeEvent list from awpy smokes DataFrame."""
         smokes = []
-        if demo.smokes is None:
+        if df.empty:
             return smokes
 
-        try:
-            df = demo.smokes.to_pandas()
-            for _, row in df.iterrows():
-                try:
-                    smoke = SmokeEvent(
-                        start_tick=safe_int(row.get("start_tick")),
-                        end_tick=safe_int(row.get("end_tick")),
-                        round_num=safe_int(row.get("round_num", 0)),
-                        thrower_steamid=safe_int(row.get("thrower_steamid")),
-                        thrower_name=safe_str(row.get("thrower_name", "")),
-                        thrower_side=self._normalize_side(row.get("thrower_side")),
-                        x=safe_float(row.get("X")),
-                        y=safe_float(row.get("Y")),
-                        z=safe_float(row.get("Z")),
-                        entity_id=safe_int(row.get("entity_id")) if row.get("entity_id") else None,
-                    )
-                    smokes.append(smoke)
-                except Exception as e:
-                    logger.debug(f"Error parsing smoke event: {e}")
-                    continue
-        except Exception as e:
-            logger.debug(f"Could not parse smokes: {e}")
+        for _, row in df.iterrows():
+            try:
+                smoke = SmokeEvent(
+                    start_tick=safe_int(row.get("start_tick")),
+                    end_tick=safe_int(row.get("end_tick")),
+                    round_num=safe_int(row.get("round_num", 0)),
+                    thrower_steamid=safe_int(row.get("thrower_steamid")),
+                    thrower_name=safe_str(row.get("thrower_name", "")),
+                    thrower_side=self._normalize_side(row.get("thrower_side")),
+                    x=safe_float(row.get("X")),
+                    y=safe_float(row.get("Y")),
+                    z=safe_float(row.get("Z")),
+                    entity_id=safe_int(row.get("entity_id")) if row.get("entity_id") else None,
+                )
+                smokes.append(smoke)
+            except Exception as e:
+                logger.debug(f"Error parsing smoke event: {e}")
+                continue
 
         return smokes
 
-    def _build_infernos(self, demo: Any) -> list[InfernoEvent]:
+    def _build_infernos_from_df(self, df: pd.DataFrame) -> list[InfernoEvent]:
         """Build InfernoEvent list from awpy infernos DataFrame."""
         infernos = []
-        if demo.infernos is None:
+        if df.empty:
             return infernos
 
-        try:
-            df = demo.infernos.to_pandas()
-            for _, row in df.iterrows():
-                try:
-                    inferno = InfernoEvent(
-                        start_tick=safe_int(row.get("start_tick")),
-                        end_tick=safe_int(row.get("end_tick")),
-                        round_num=safe_int(row.get("round_num", 0)),
-                        thrower_steamid=safe_int(row.get("thrower_steamid")),
-                        thrower_name=safe_str(row.get("thrower_name", "")),
-                        thrower_side=self._normalize_side(row.get("thrower_side")),
-                        x=safe_float(row.get("X")),
-                        y=safe_float(row.get("Y")),
-                        z=safe_float(row.get("Z")),
-                        entity_id=safe_int(row.get("entity_id")) if row.get("entity_id") else None,
-                    )
-                    infernos.append(inferno)
-                except Exception as e:
-                    logger.debug(f"Error parsing inferno event: {e}")
-                    continue
-        except Exception as e:
-            logger.debug(f"Could not parse infernos: {e}")
+        for _, row in df.iterrows():
+            try:
+                inferno = InfernoEvent(
+                    start_tick=safe_int(row.get("start_tick")),
+                    end_tick=safe_int(row.get("end_tick")),
+                    round_num=safe_int(row.get("round_num", 0)),
+                    thrower_steamid=safe_int(row.get("thrower_steamid")),
+                    thrower_name=safe_str(row.get("thrower_name", "")),
+                    thrower_side=self._normalize_side(row.get("thrower_side")),
+                    x=safe_float(row.get("X")),
+                    y=safe_float(row.get("Y")),
+                    z=safe_float(row.get("Z")),
+                    entity_id=safe_int(row.get("entity_id")) if row.get("entity_id") else None,
+                )
+                infernos.append(inferno)
+            except Exception as e:
+                logger.debug(f"Error parsing inferno event: {e}")
+                continue
 
         return infernos
 
