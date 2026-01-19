@@ -588,6 +588,56 @@ class MistakesStats:
 
 
 @dataclass
+class AdvancedMetrics:
+    """
+    Advanced coaching metrics inspired by Scope.gg.
+
+    These metrics provide coach-level insights into:
+    - Opening duels: Who gets the first kill of each round
+    - Clutches: 1vX situations and win rates
+    - Trades: How quickly teammates avenge deaths
+
+    Useful for identifying:
+    - Entry fraggers (high opening_kills)
+    - Clutch players (high clutch_win_rate)
+    - Team players (high trade_success_rate)
+    """
+    player_name: str
+    steam_id: int = 0
+
+    # Opening duel metrics
+    opening_kills: int = 0  # First kill of a round
+    opening_deaths: int = 0  # First death of a round
+    opening_success_rate: float = 0.0  # opening_kills / (opening_kills + opening_deaths)
+
+    # Clutch metrics (1vX situations)
+    clutches_1vx_attempted: int = 0  # Total clutch situations faced
+    clutches_1vx_won: int = 0  # Total clutch situations won
+    clutch_win_rate: float = 0.0  # clutches_won / clutches_attempted
+
+    # Trade metrics
+    trade_kills: int = 0  # Kills that avenged a teammate
+    trade_attempts: int = 0  # Opportunities to trade (teammate died, enemy visible)
+    trade_success_rate: float = 0.0  # trade_kills / trade_attempts
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API response."""
+        return {
+            "player_name": self.player_name,
+            "steam_id": str(self.steam_id),
+            "opening_kills": self.opening_kills,
+            "opening_deaths": self.opening_deaths,
+            "opening_success_rate": round(self.opening_success_rate, 1),
+            "clutches_1vx_attempted": self.clutches_1vx_attempted,
+            "clutches_1vx_won": self.clutches_1vx_won,
+            "clutch_win_rate": round(self.clutch_win_rate, 1),
+            "trade_kills": self.trade_kills,
+            "trade_attempts": self.trade_attempts,
+            "trade_success_rate": round(self.trade_success_rate, 1),
+        }
+
+
+@dataclass
 class LurkStats:
     """Lurk statistics from State Machine."""
     kills: int = 0
