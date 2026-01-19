@@ -455,7 +455,7 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         # Import and run analysis
         from opensight.parser import DemoParser
-        from opensight.analytics import DemoAnalyzer
+        from opensight.analytics import DemoAnalyzer, compute_kill_positions
 
         # Parse the demo
         logger.info("Starting demo parsing...")
@@ -484,8 +484,17 @@ async def analyze_demo(file: UploadFile = File(...)):
             "players": players_list,
         }
 
-        logger.info(f"Returning analysis for {len(players_list)} players on {analysis.map_name}")
-        return JSONResponse(content=response)
+        # Kill Map data for radar visualization (detailed kill positions)
+        result["kill_map"] = compute_kill_positions(data)
+
+        # Grenade trajectory data for utility visualization (limit to 1000 positions)
+        result["grenade_data"] = {
+            "positions": analysis.grenade_positions[:1000],
+            "team_stats": analysis.grenade_team_stats,
+        }
+
+        # AI Coaching insights
+        result["coaching"] = analysis.coaching_insights
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is

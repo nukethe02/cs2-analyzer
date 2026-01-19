@@ -164,6 +164,14 @@
                 Heatmaps
             </button>
 
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="killmap">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Kill Map
+            </button>
+
             <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="utility">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
@@ -352,6 +360,136 @@
             </div>
         </section>
 
+        <!-- Kill Map Tab -->
+        <section id="tab-killmap" class="tab-content hidden p-8">
+            <div id="killmap-content" class="max-w-6xl mx-auto">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">Kill Map</h2>
+                        <p class="text-slate-400 mt-1">Visualize kill locations on the radar</p>
+                    </div>
+                </div>
+
+                <div id="killmap-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
+                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <p class="text-slate-500">Upload a demo file to view kill map</p>
+                </div>
+
+                <div id="killmap-display" class="hidden">
+                    <!-- Kill Map controls and radar -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                        <!-- Filters -->
+                        <div class="flex flex-wrap gap-4 mb-6 items-center justify-between">
+                            <div class="flex gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="killmap-show-ct" checked class="w-4 h-4 accent-ct">
+                                    <span class="text-sm text-ct font-medium">CT Kills</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="killmap-show-t" checked class="w-4 h-4 accent-t">
+                                    <span class="text-sm text-t font-medium">T Kills</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="killmap-show-hs" checked class="w-4 h-4 accent-yellow-500">
+                                    <span class="text-sm text-slate-300">Highlight Headshots</span>
+                                </label>
+                            </div>
+                            <div class="flex gap-4">
+                                <select id="killmap-player-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm">
+                                    <option value="all">All Players</option>
+                                </select>
+                                <select id="killmap-round-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm">
+                                    <option value="all">All Rounds</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Map Container -->
+                        <div id="killmap-container" class="relative w-full max-w-4xl mx-auto aspect-square rounded-lg overflow-hidden bg-slate-900">
+                            <!-- Radar background image -->
+                            <div id="killmap-radar" class="absolute inset-0 bg-center bg-contain bg-no-repeat"></div>
+                            <!-- Kill dots overlay -->
+                            <div id="killmap-overlay" class="absolute inset-0"></div>
+                            <!-- Tooltip -->
+                            <div id="killmap-tooltip" class="absolute hidden bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm pointer-events-none z-50 shadow-xl"></div>
+                            <!-- Loading/Error state -->
+                            <div id="killmap-loading" class="absolute inset-0 flex items-center justify-center text-slate-500 hidden">
+                                Loading map...
+                            </div>
+                            <div id="killmap-no-map" class="absolute inset-0 flex items-center justify-center text-slate-500 hidden">
+                                <div class="text-center">
+                                    <svg class="w-12 h-12 mx-auto mb-2 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                                    </svg>
+                                    <p>Map preview not available for this map</p>
+                                    <p class="text-xs mt-1">Kill data is still shown in the table below</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Legend -->
+                        <div class="flex justify-center gap-8 mt-4 text-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-ct shadow-lg shadow-ct/40"></span>
+                                <span class="text-slate-400">CT Kill</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-t shadow-lg shadow-t/40"></span>
+                                <span class="text-slate-400">T Kill</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-yellow-400 ring-2 ring-yellow-300/50"></span>
+                                <span class="text-slate-400">Headshot</span>
+                            </div>
+                        </div>
+
+                        <!-- Stats Summary -->
+                        <div id="killmap-stats" class="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-700">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-ct" id="killmap-ct-kills">0</div>
+                                <div class="text-xs text-slate-500 uppercase">CT Kills</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-t" id="killmap-t-kills">0</div>
+                                <div class="text-xs text-slate-500 uppercase">T Kills</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-yellow-400" id="killmap-headshots">0</div>
+                                <div class="text-xs text-slate-500 uppercase">Headshots</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-slate-300" id="killmap-total">0</div>
+                                <div class="text-xs text-slate-500 uppercase">Total Kills</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Kill List Table -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mt-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Kill Feed</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-slate-400 border-b border-slate-700">
+                                        <th class="text-left py-2 px-3">Round</th>
+                                        <th class="text-left py-2 px-3">Attacker</th>
+                                        <th class="text-left py-2 px-3">Weapon</th>
+                                        <th class="text-left py-2 px-3">Victim</th>
+                                        <th class="text-center py-2 px-3">HS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="killmap-table-body" class="divide-y divide-slate-700/50">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Utility Tab -->
         <section id="tab-utility" class="tab-content hidden p-8">
             <div id="utility-content" class="max-w-6xl mx-auto">
@@ -528,6 +666,7 @@
                 // Initialize tab-specific content if data exists
                 if (analysisData) {
                     if (tab === 'heatmaps') initHeatmap(analysisData.heatmap_data || {});
+                    if (tab === 'killmap') renderKillMapContent();
                 }
             });
         });
@@ -667,6 +806,7 @@
             renderCoachingContent(data.coaching || []);
             renderCompareContent(players);
             renderHeatmapContent();
+            renderKillMapContent();
 
             // Initialize charts
             initCharts(players);
@@ -681,7 +821,7 @@
                     analysisData = null;
 
                     // Reset all placeholders
-                    ['players', 'utility', 'timeline', 'coaching', 'compare', 'heatmap'].forEach(tab => {
+                    ['players', 'utility', 'timeline', 'coaching', 'compare', 'heatmap', 'killmap'].forEach(tab => {
                         const display = document.getElementById(`${tab}-display`);
                         const placeholder = document.getElementById(`${tab}-placeholder`);
                         if (display) display.classList.add('hidden');
@@ -4043,6 +4183,366 @@
         }
 
         // ============================================
+        // Kill Map Visualization
+        // ============================================
+
+        // Map radar image URLs and coordinate transform parameters
+        // Based on CS2 map files - pos_x, pos_y are top-left corner, scale is units per pixel
+        const MAP_CONFIGS = {
+            'de_dust2': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png',
+                pos_x: -2476, pos_y: 3239, scale: 4.4
+            },
+            'de_mirage': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png',
+                pos_x: -3230, pos_y: 1713, scale: 5.0
+            },
+            'de_inferno': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png',
+                pos_x: -2087, pos_y: 3870, scale: 4.9
+            },
+            'de_nuke': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png',
+                pos_x: -3453, pos_y: 2887, scale: 7.0
+            },
+            'de_overpass': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png',
+                pos_x: -4831, pos_y: 1781, scale: 5.2
+            },
+            'de_vertigo': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png',
+                pos_x: -3168, pos_y: 1762, scale: 4.0
+            },
+            'de_ancient': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png',
+                pos_x: -2953, pos_y: 2164, scale: 5.0
+            },
+            'de_anubis': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png',
+                pos_x: -2796, pos_y: 3328, scale: 5.22
+            }
+        };
+
+        // Store current kill map state
+        let killMapState = {
+            kills: [],
+            mapName: '',
+            mapConfig: null,
+            players: []
+        };
+
+        /**
+         * Transform game coordinates to percentage position on the radar image
+         * @param {number} x - Game X coordinate
+         * @param {number} y - Game Y coordinate
+         * @param {object} config - Map configuration with pos_x, pos_y, scale
+         * @returns {object} {x: percent, y: percent} for CSS positioning
+         */
+        function gameToRadarPercent(x, y, config) {
+            // Standard radar image is 1024x1024 pixels
+            const radarSize = 1024;
+
+            // Transform game coordinates to radar pixels
+            // pixel_x = (game_x - pos_x) / scale
+            // pixel_y = (pos_y - game_y) / scale  (Y is inverted)
+            const pixelX = (x - config.pos_x) / config.scale;
+            const pixelY = (config.pos_y - y) / config.scale;
+
+            // Convert to percentage
+            const percentX = (pixelX / radarSize) * 100;
+            const percentY = (pixelY / radarSize) * 100;
+
+            return {
+                x: Math.max(0, Math.min(100, percentX)),
+                y: Math.max(0, Math.min(100, percentY))
+            };
+        }
+
+        /**
+         * Initialize the Kill Map visualization
+         * @param {array} killMapData - Array of kill positions from API
+         * @param {string} mapName - Internal map name (e.g., 'de_dust2')
+         * @param {array} players - Array of player objects for filtering
+         */
+        function initKillMap(killMapData, mapName, players) {
+            const display = document.getElementById('killmap-display');
+            const placeholder = document.getElementById('killmap-placeholder');
+            const radarEl = document.getElementById('killmap-radar');
+            const overlayEl = document.getElementById('killmap-overlay');
+            const loadingEl = document.getElementById('killmap-loading');
+            const noMapEl = document.getElementById('killmap-no-map');
+
+            if (!killMapData || killMapData.length === 0) {
+                placeholder.classList.remove('hidden');
+                display.classList.add('hidden');
+                return;
+            }
+
+            placeholder.classList.add('hidden');
+            display.classList.remove('hidden');
+
+            // Store state
+            killMapState.kills = killMapData;
+            killMapState.mapName = mapName ? mapName.toLowerCase() : '';
+            killMapState.mapConfig = MAP_CONFIGS[killMapState.mapName] || null;
+            killMapState.players = players || [];
+
+            // Populate filters
+            populateKillMapFilters(killMapData, players);
+
+            // Set up map background
+            if (killMapState.mapConfig) {
+                loadingEl.classList.remove('hidden');
+                noMapEl.classList.add('hidden');
+
+                const img = new Image();
+                img.onload = () => {
+                    radarEl.style.backgroundImage = `url('${killMapState.mapConfig.radar_url}')`;
+                    loadingEl.classList.add('hidden');
+                    renderKillDots();
+                };
+                img.onerror = () => {
+                    loadingEl.classList.add('hidden');
+                    noMapEl.classList.remove('hidden');
+                    // Still render kills without background
+                    renderKillDots();
+                };
+                img.src = killMapState.mapConfig.radar_url;
+            } else {
+                // No map config available
+                radarEl.style.backgroundImage = '';
+                noMapEl.classList.remove('hidden');
+                loadingEl.classList.add('hidden');
+                // Still render kills (will use fallback positioning)
+                renderKillDots();
+            }
+
+            // Render the kill table
+            renderKillTable(killMapData);
+
+            // Update stats
+            updateKillMapStats(killMapData);
+
+            // Set up event listeners for filters
+            document.getElementById('killmap-show-ct').onchange = renderKillDots;
+            document.getElementById('killmap-show-t').onchange = renderKillDots;
+            document.getElementById('killmap-show-hs').onchange = renderKillDots;
+            document.getElementById('killmap-player-filter').onchange = renderKillDots;
+            document.getElementById('killmap-round-filter').onchange = renderKillDots;
+        }
+
+        /**
+         * Populate filter dropdowns
+         */
+        function populateKillMapFilters(kills, players) {
+            // Player filter
+            const playerFilter = document.getElementById('killmap-player-filter');
+            playerFilter.innerHTML = '<option value="all">All Players</option>';
+            const playerNames = new Set();
+            kills.forEach(k => {
+                if (k.attacker_name) playerNames.add(k.attacker_name);
+                if (k.victim_name) playerNames.add(k.victim_name);
+            });
+            Array.from(playerNames).sort().forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                playerFilter.appendChild(opt);
+            });
+
+            // Round filter
+            const roundFilter = document.getElementById('killmap-round-filter');
+            roundFilter.innerHTML = '<option value="all">All Rounds</option>';
+            const rounds = new Set(kills.map(k => k.round_num).filter(r => r > 0));
+            Array.from(rounds).sort((a, b) => a - b).forEach(round => {
+                const opt = document.createElement('option');
+                opt.value = round;
+                opt.textContent = `Round ${round}`;
+                roundFilter.appendChild(opt);
+            });
+        }
+
+        /**
+         * Get filtered kills based on current filter settings
+         */
+        function getFilteredKills() {
+            const showCT = document.getElementById('killmap-show-ct').checked;
+            const showT = document.getElementById('killmap-show-t').checked;
+            const playerFilter = document.getElementById('killmap-player-filter').value;
+            const roundFilter = document.getElementById('killmap-round-filter').value;
+
+            return killMapState.kills.filter(k => {
+                // Team filter
+                const team = k.attacker_team?.toUpperCase() || '';
+                if (team === 'CT' && !showCT) return false;
+                if (team === 'T' && !showT) return false;
+
+                // Player filter
+                if (playerFilter !== 'all') {
+                    if (k.attacker_name !== playerFilter && k.victim_name !== playerFilter) {
+                        return false;
+                    }
+                }
+
+                // Round filter
+                if (roundFilter !== 'all' && k.round_num !== parseInt(roundFilter)) {
+                    return false;
+                }
+
+                return true;
+            });
+        }
+
+        /**
+         * Render kill dots on the map overlay
+         */
+        function renderKillDots() {
+            const overlayEl = document.getElementById('killmap-overlay');
+            const highlightHS = document.getElementById('killmap-show-hs').checked;
+            overlayEl.innerHTML = '';
+
+            const filteredKills = getFilteredKills();
+
+            filteredKills.forEach((kill, index) => {
+                const dot = document.createElement('div');
+                dot.className = 'absolute w-3 h-3 rounded-full cursor-pointer transition-transform hover:scale-150 hover:z-20';
+
+                // Position
+                let position;
+                if (killMapState.mapConfig && kill.x != null && kill.y != null) {
+                    position = gameToRadarPercent(kill.x, kill.y, killMapState.mapConfig);
+                } else {
+                    // Fallback: spread kills across the map area
+                    position = {
+                        x: 10 + (index % 10) * 8,
+                        y: 10 + Math.floor(index / 10) * 8
+                    };
+                }
+
+                dot.style.left = `${position.x}%`;
+                dot.style.top = `${position.y}%`;
+                dot.style.transform = 'translate(-50%, -50%)';
+
+                // Color based on attacker team
+                const team = kill.attacker_team?.toUpperCase() || '';
+                if (team === 'CT') {
+                    dot.classList.add('bg-ct');
+                    dot.style.boxShadow = '0 0 6px rgba(74, 144, 217, 0.8)';
+                } else if (team === 'T') {
+                    dot.classList.add('bg-t');
+                    dot.style.boxShadow = '0 0 6px rgba(222, 155, 53, 0.8)';
+                } else {
+                    dot.classList.add('bg-slate-400');
+                }
+
+                // Headshot highlight
+                if (kill.is_headshot && highlightHS) {
+                    dot.classList.add('ring-2', 'ring-yellow-400', 'ring-offset-1', 'ring-offset-transparent');
+                }
+
+                // Tooltip on hover
+                dot.addEventListener('mouseenter', (e) => showKillTooltip(e, kill));
+                dot.addEventListener('mouseleave', hideKillTooltip);
+
+                overlayEl.appendChild(dot);
+            });
+
+            // Update stats for filtered data
+            updateKillMapStats(filteredKills);
+        }
+
+        /**
+         * Show tooltip for a kill dot
+         */
+        function showKillTooltip(e, kill) {
+            const tooltip = document.getElementById('killmap-tooltip');
+            const rect = e.target.getBoundingClientRect();
+            const containerRect = document.getElementById('killmap-container').getBoundingClientRect();
+
+            tooltip.innerHTML = `
+                <div class="font-medium">${esc(kill.attacker_name)} <span class="text-slate-400">&#8594;</span> ${esc(kill.victim_name)}</div>
+                <div class="text-xs text-slate-400 mt-1">
+                    <span class="text-cyan-400">${esc(kill.weapon)}</span>
+                    ${kill.is_headshot ? '<span class="text-yellow-400 ml-1">&#9733; HS</span>' : ''}
+                    ${kill.round_num ? `<span class="ml-2">R${kill.round_num}</span>` : ''}
+                </div>
+            `;
+
+            // Position tooltip above the dot
+            const x = rect.left - containerRect.left + rect.width / 2;
+            const y = rect.top - containerRect.top - 10;
+
+            tooltip.style.left = `${x}px`;
+            tooltip.style.top = `${y}px`;
+            tooltip.style.transform = 'translate(-50%, -100%)';
+            tooltip.classList.remove('hidden');
+        }
+
+        /**
+         * Hide the kill tooltip
+         */
+        function hideKillTooltip() {
+            const tooltip = document.getElementById('killmap-tooltip');
+            tooltip.classList.add('hidden');
+        }
+
+        /**
+         * Update kill map statistics display
+         */
+        function updateKillMapStats(kills) {
+            const ctKills = kills.filter(k => k.attacker_team?.toUpperCase() === 'CT').length;
+            const tKills = kills.filter(k => k.attacker_team?.toUpperCase() === 'T').length;
+            const headshots = kills.filter(k => k.is_headshot).length;
+
+            document.getElementById('killmap-ct-kills').textContent = ctKills;
+            document.getElementById('killmap-t-kills').textContent = tKills;
+            document.getElementById('killmap-headshots').textContent = headshots;
+            document.getElementById('killmap-total').textContent = kills.length;
+        }
+
+        /**
+         * Render the kill feed table
+         */
+        function renderKillTable(kills) {
+            const tbody = document.getElementById('killmap-table-body');
+            tbody.innerHTML = '';
+
+            // Show most recent kills first, limit to 100
+            const sortedKills = [...kills].reverse().slice(0, 100);
+
+            sortedKills.forEach(kill => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-700/30 transition-colors';
+
+                const attackerTeamClass = kill.attacker_team?.toUpperCase() === 'CT' ? 'text-ct' : 'text-t';
+                const victimTeamClass = kill.victim_team?.toUpperCase() === 'CT' ? 'text-ct' : 'text-t';
+
+                tr.innerHTML = `
+                    <td class="py-2 px-3 text-slate-400">${kill.round_num || '-'}</td>
+                    <td class="py-2 px-3 ${attackerTeamClass} font-medium">${esc(kill.attacker_name)}</td>
+                    <td class="py-2 px-3 text-cyan-400 font-mono text-xs">${esc(kill.weapon)}</td>
+                    <td class="py-2 px-3 ${victimTeamClass}">${esc(kill.victim_name)}</td>
+                    <td class="py-2 px-3 text-center">${kill.is_headshot ? '<span class="text-yellow-400">&#9733;</span>' : ''}</td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        /**
+         * Render Kill Map content (called from renderResults)
+         */
+        function renderKillMapContent() {
+            if (!analysisData) return;
+
+            const killMapData = analysisData.kill_map || [];
+            const mapName = analysisData.demo_info?.map || '';
+            const players = Object.entries(analysisData.players || {}).map(([id, p]) => ({ id, ...p }));
+
+            initKillMap(killMapData, mapName, players);
+        }
+
+        // ============================================
         // Export Functions
         // ============================================
         function exportJSON(data) {
@@ -4087,7 +4587,7 @@
         // Keyboard Shortcuts
         // ============================================
         document.addEventListener('keydown', (e) => {
-            const tabs = ['overview', 'heatmaps', 'utility', 'compare', 'players', 'timeline', 'coaching'];
+            const tabs = ['overview', 'heatmaps', 'killmap', 'utility', 'compare', 'players', 'timeline', 'coaching'];
             const num = parseInt(e.key);
             if (num >= 1 && num <= tabs.length) {
                 const tabBtn = document.querySelector(`[data-tab="${tabs[num - 1]}"]`);

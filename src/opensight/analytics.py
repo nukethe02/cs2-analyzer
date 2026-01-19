@@ -86,6 +86,86 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def compute_kill_positions(match_data) -> list[dict]:
+    """
+    Compute kill positions for Kill Map visualization.
+
+    Extracts kill data from match_data.kills for plotting on map radar images.
+    Uses victim position as the kill location (where the player died).
+
+    Args:
+        match_data: MatchData or DemoData object with kills list and player_names dict.
+
+    Returns:
+        List of dicts with kill information:
+        - attacker_name: Name of the player who got the kill
+        - victim_name: Name of the player who died
+        - attacker_team: Team of attacker ("CT" or "T")
+        - victim_team: Team of victim ("CT" or "T")
+        - weapon: Weapon used for the kill
+        - is_headshot: Whether it was a headshot
+        - x: X coordinate (victim position)
+        - y: Y coordinate (victim position)
+        - z: Z coordinate (victim position)
+        - round_num: Round number when the kill occurred
+    """
+    kill_positions = []
+
+    # Handle both DemoData (with kills list) and MatchData
+    kills = getattr(match_data, 'kills', [])
+    player_names = getattr(match_data, 'player_names', {})
+
+    for kill in kills:
+        try:
+            # Get player names
+            attacker_name = player_names.get(kill.attacker_steamid, kill.attacker_name or "Unknown")
+            victim_name = player_names.get(kill.victim_steamid, kill.victim_name or "Unknown")
+
+            # Use victim position as the kill location (where the death occurred)
+            x = kill.victim_x if kill.victim_x is not None else kill.attacker_x
+            y = kill.victim_y if kill.victim_y is not None else kill.attacker_y
+            z = kill.victim_z if kill.victim_z is not None else (kill.attacker_z or 0)
+
+            if x is None or y is None:
+                continue
+
+            # Determine attacker team from side info
+            attacker_team = "Unknown"
+            if hasattr(kill, 'attacker_side') and kill.attacker_side:
+                side = str(kill.attacker_side).upper()
+                if "CT" in side:
+                    attacker_team = "CT"
+                elif "T" in side and "CT" not in side:
+                    attacker_team = "T"
+
+            victim_team = "Unknown"
+            if hasattr(kill, 'victim_side') and kill.victim_side:
+                side = str(kill.victim_side).upper()
+                if "CT" in side:
+                    victim_team = "CT"
+                elif "T" in side and "CT" not in side:
+                    victim_team = "T"
+
+            kill_positions.append({
+                "attacker_name": attacker_name,
+                "victim_name": victim_name,
+                "attacker_team": attacker_team,
+                "victim_team": victim_team,
+                "weapon": kill.weapon or "Unknown",
+                "is_headshot": bool(kill.headshot),
+                "x": float(x),
+                "y": float(y),
+                "z": float(z) if z else 0.0,
+                "round_num": kill.round_num or 0,
+            })
+        except Exception as e:
+            logger.debug(f"Error extracting kill position: {e}")
+            continue
+
+    logger.info(f"Computed {len(kill_positions)} kill positions for Kill Map")
+    return kill_positions
+
+
 @dataclass
 class TTDResult:
     """Time to Damage result for a single engagement."""
