@@ -37,12 +37,19 @@ logger = logging.getLogger(__name__)
 class OpeningDuelStats:
     """Opening duel (first kill of round) statistics."""
     attempts: int = 0       # Times player was in first duel
-    wins: int = 0           # Times player got first kill
-    losses: int = 0         # Times player was first death
+    wins: int = 0           # Times player got first kill (Entry Kills)
+    losses: int = 0         # Times player was first death (Entry Deaths)
 
     @property
     def win_rate(self) -> float:
         return (self.wins / self.attempts * 100) if self.attempts > 0 else 0.0
+
+
+@dataclass
+class LurkStats:
+    """Lurk statistics (kills/deaths when far from team)."""
+    kills: int = 0          # Kills while lurking (>1500 units from team)
+    deaths: int = 0         # Deaths while lurking
 
 
 @dataclass
@@ -261,9 +268,17 @@ class PlayerMatchStats:
     # Mistakes tracking (Scope.gg style)
     mistakes: MistakesStats = field(default_factory=MistakesStats)
 
+    # Lurk stats (State Machine)
+    lurk: LurkStats = field(default_factory=LurkStats)
+
     # KAST tracking
     kast_rounds: int = 0  # Rounds with Kill/Assist/Survived/Traded
     rounds_survived: int = 0
+
+    # State Machine enhanced stats
+    effective_flashes: int = 0      # Flashes > 2.0 seconds blind duration
+    ineffective_flashes: int = 0    # Flashes < 2.0 seconds
+    utility_adr: float = 0.0        # HE + Molotov damage per round
 
     # Weapon breakdown
     weapon_kills: dict = field(default_factory=dict)
@@ -631,6 +646,9 @@ class DemoAnalyzer:
 
         # Calculate mistakes
         self._calculate_mistakes()
+
+        # Run State Machine for pro-level analytics (Entry/Trade/Lurk)
+        self._run_state_machine()
 
         # Build result
         team_scores = self._calculate_team_scores()
@@ -1513,6 +1531,62 @@ class DemoAnalyzer:
                     player.mistakes.teammates_flashed = player.utility.teammates_flashed
 
         logger.info("Calculated mistakes")
+
+    def _run_state_machine(self) -> None:
+        """
+        Run State Machine analysis for pro-level metrics.
+
+        Enhances PlayerMatchStats with:
+        - Entry Kill (from State Machine - more accurate than opening duels)
+        - Trade Kill (with 4-second window and proper killer tracking)
+        - Lurk Kill (distance from team center of mass)
+        - Flash Effectiveness (>2.0s blind duration)
+        - Utility ADR (HE + Molotov damage per round)
+        """
+        try:
+            from opensight.state_machine import StateMachine
+        except ImportError as e:
+            logger.warning(f"State Machine not available: {e}")
+            return
+
+        try:
+            machine = StateMachine(self.data)
+            result = machine.analyze()
+
+            # Merge state machine results into PlayerMatchStats
+            for steam_id, context_stats in result.players.items():
+                if steam_id not in self._players:
+                    continue
+
+                player = self._players[steam_id]
+
+                # Update entry stats (State Machine is more accurate)
+                player.opening_duels.wins = context_stats.entry_kills
+                player.opening_duels.losses = context_stats.entry_deaths
+                player.opening_duels.attempts = context_stats.entry_attempts
+
+                # Update trade stats (State Machine uses tighter 4-second window)
+                player.trades.kills_traded = context_stats.trade_kills
+                player.trades.deaths_traded = context_stats.deaths_traded
+                player.trades.trade_attempts = context_stats.trade_opportunities
+
+                # Add lurk stats
+                player.lurk.kills = context_stats.lurk_kills
+                player.lurk.deaths = context_stats.lurk_deaths
+
+                # Flash effectiveness (>2.0 seconds = effective)
+                player.effective_flashes = context_stats.effective_flashes
+                player.ineffective_flashes = context_stats.ineffective_flashes
+
+                # Utility ADR
+                util_damage = context_stats.he_damage + context_stats.molotov_damage
+                player.utility_adr = round(util_damage / player.rounds_played, 1) if player.rounds_played > 0 else 0.0
+
+            logger.info(f"State Machine complete: {result.total_entry_kills} entries, "
+                       f"{result.total_trade_kills} trades, {result.total_lurk_kills} lurks")
+
+        except Exception as e:
+            logger.warning(f"State Machine analysis failed: {e}")
 
     def _calculate_team_scores(self) -> tuple[int, int]:
         """Calculate team scores from round data."""
