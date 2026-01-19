@@ -99,6 +99,101 @@ async def health():
     return {"status": "ok", "version": __version__}
 
 
+@app.get("/readiness")
+async def readiness():
+    """
+    Readiness check endpoint for Kubernetes/container orchestration.
+
+    Checks:
+    - Disk space: Sufficient free space in temp directory (>100MB)
+    - Temp dir writable: Can create and delete temporary files
+    - Heavy deps: Core dependencies (demoparser2, pandas, numpy) importable
+
+    Returns 200 if all checks pass, 503 if any check fails.
+    This prevents routing traffic to containers that aren't fully ready.
+    """
+    import tempfile
+    import shutil
+    import os
+
+    checks = {
+        "disk_space": {"status": "unknown", "details": None},
+        "temp_writable": {"status": "unknown", "details": None},
+        "dependencies": {"status": "unknown", "details": {}},
+    }
+    all_ready = True
+
+    # Check 1: Disk space (need at least 100MB free for temp files during demo processing)
+    try:
+        temp_dir = tempfile.gettempdir()
+        disk_usage = shutil.disk_usage(temp_dir)
+        free_mb = disk_usage.free / (1024 * 1024)
+        required_mb = 100
+
+        if free_mb >= required_mb:
+            checks["disk_space"]["status"] = "ok"
+            checks["disk_space"]["details"] = f"{free_mb:.0f}MB free"
+        else:
+            checks["disk_space"]["status"] = "fail"
+            checks["disk_space"]["details"] = f"Only {free_mb:.0f}MB free, need {required_mb}MB"
+            all_ready = False
+    except Exception as e:
+        checks["disk_space"]["status"] = "fail"
+        checks["disk_space"]["details"] = str(e)
+        all_ready = False
+
+    # Check 2: Temp directory writable
+    try:
+        temp_dir = tempfile.gettempdir()
+        test_file = os.path.join(temp_dir, f"opensight_readiness_test_{os.getpid()}.tmp")
+
+        # Try to write and read back
+        with open(test_file, "w") as f:
+            f.write("test")
+        with open(test_file, "r") as f:
+            content = f.read()
+        os.remove(test_file)
+
+        if content == "test":
+            checks["temp_writable"]["status"] = "ok"
+            checks["temp_writable"]["details"] = temp_dir
+        else:
+            checks["temp_writable"]["status"] = "fail"
+            checks["temp_writable"]["details"] = "Read/write verification failed"
+            all_ready = False
+    except Exception as e:
+        checks["temp_writable"]["status"] = "fail"
+        checks["temp_writable"]["details"] = str(e)
+        all_ready = False
+
+    # Check 3: Heavy dependencies importable
+    heavy_deps = ["demoparser2", "pandas", "numpy"]
+    dep_status = {}
+
+    for dep in heavy_deps:
+        try:
+            __import__(dep)
+            dep_status[dep] = "ok"
+        except ImportError as e:
+            dep_status[dep] = f"fail: {str(e)}"
+            all_ready = False
+
+    checks["dependencies"]["details"] = dep_status
+    checks["dependencies"]["status"] = "ok" if all(v == "ok" for v in dep_status.values()) else "fail"
+
+    # Build response
+    response = {
+        "ready": all_ready,
+        "version": __version__,
+        "checks": checks,
+    }
+
+    if all_ready:
+        return JSONResponse(content=response, status_code=200)
+    else:
+        return JSONResponse(content=response, status_code=503)
+
+
 @app.post("/decode", response_model=ShareCodeResponse)
 async def decode_share_code(request: ShareCodeRequest):
     """Decode a CS2 share code to extract match metadata."""
