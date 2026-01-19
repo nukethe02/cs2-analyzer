@@ -462,7 +462,7 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
     """
     try:
         from opensight.parser import DemoParser
-        from opensight.analytics import DemoAnalyzer
+        from opensight.analytics import DemoAnalyzer, compute_utility_metrics
 
         job_store.update_job(job_id, status=JobStatus.PROCESSING, progress=10)
         logger.info(f"Job {job_id}: Starting analysis of {filename}")
@@ -596,16 +596,21 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
                 "utility": {
                     "flash_assists": player.utility.flash_assists,
                     "flashbangs_thrown": player.utility.flashbangs_thrown,
+                    "smokes_thrown": player.utility.smokes_thrown,
                     "enemies_flashed": player.utility.enemies_flashed,
                     "teammates_flashed": player.utility.teammates_flashed,
                     "enemies_flashed_per_flash": round(player.utility.enemies_flashed_per_flash, 2),
                     "avg_blind_time": round(player.utility.avg_blind_time, 2),
+                    "total_blind_time": round(player.utility.total_blind_time, 2),
                     "he_thrown": player.utility.he_thrown,
                     "he_damage": player.utility.he_damage,
                     "he_team_damage": player.utility.he_team_damage,
                     "he_damage_per_nade": round(player.utility.he_damage_per_nade, 1),
                     "molotov_thrown": player.utility.molotov_thrown,
                     "molotov_damage": player.utility.molotov_damage,
+                    "molotov_team_damage": player.utility.molotov_team_damage,
+                    "total_utility": player.utility.total_utility,
+                    "total_utility_damage": player.utility.he_damage + player.utility.molotov_damage,
                     "utility_quantity_rating": player.utility_quantity_rating,
                     "utility_quality_rating": player.utility_quality_rating,
                 },
@@ -684,6 +689,12 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
             "positions": analysis.grenade_positions[:1000],
             "team_stats": analysis.grenade_team_stats,
         }
+
+        # Utility stats per player (Scope.gg style nade stats)
+        utility_metrics = compute_utility_metrics(data)
+        result["utility_stats"] = [
+            metrics.to_dict() for metrics in utility_metrics.values()
+        ]
 
         # AI Coaching insights
         result["coaching"] = analysis.coaching_insights

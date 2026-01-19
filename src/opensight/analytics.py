@@ -396,6 +396,85 @@ class UtilityStats:
 
 
 @dataclass
+class UtilityMetrics:
+    """
+    Per-player utility usage metrics (Scope.gg style).
+
+    This dataclass provides a comprehensive view of each player's utility usage,
+    including grenade counts, utility damage, and flash effectiveness.
+    """
+    player_name: str
+    player_steamid: int
+    team: str = ""
+
+    # Grenade counts
+    smokes_thrown: int = 0
+    flashes_thrown: int = 0
+    he_thrown: int = 0
+    molotovs_thrown: int = 0
+
+    # Utility effectiveness
+    total_utility_damage: float = 0.0  # HE + Molotov damage to enemies
+    flashes_enemies_total: int = 0     # Number of enemy players flashed (>1.1s blind)
+    flashes_teammates_total: int = 0   # Number of teammates flashed (mistake tracking)
+    flash_assists: int = 0             # Kills on enemies player flashed
+    total_blind_time: float = 0.0      # Total seconds enemies were blinded
+
+    # Per-grenade efficiency metrics
+    he_damage: int = 0
+    molotov_damage: int = 0
+
+    @property
+    def total_utility_thrown(self) -> int:
+        """Total grenades thrown."""
+        return self.smokes_thrown + self.flashes_thrown + self.he_thrown + self.molotovs_thrown
+
+    @property
+    def enemies_flashed_per_flash(self) -> float:
+        """Average enemies flashed per flashbang."""
+        if self.flashes_thrown <= 0:
+            return 0.0
+        return self.flashes_enemies_total / self.flashes_thrown
+
+    @property
+    def he_damage_per_nade(self) -> float:
+        """Average HE damage per grenade."""
+        if self.he_thrown <= 0:
+            return 0.0
+        return self.he_damage / self.he_thrown
+
+    @property
+    def molotov_damage_per_nade(self) -> float:
+        """Average molotov damage per grenade."""
+        if self.molotovs_thrown <= 0:
+            return 0.0
+        return self.molotov_damage / self.molotovs_thrown
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API serialization."""
+        return {
+            "player_name": self.player_name,
+            "player_steamid": str(self.player_steamid),
+            "team": self.team,
+            "smokes_thrown": self.smokes_thrown,
+            "flashes_thrown": self.flashes_thrown,
+            "he_thrown": self.he_thrown,
+            "molotovs_thrown": self.molotovs_thrown,
+            "total_utility_thrown": self.total_utility_thrown,
+            "total_utility_damage": round(self.total_utility_damage, 1),
+            "flashes_enemies_total": self.flashes_enemies_total,
+            "flashes_teammates_total": self.flashes_teammates_total,
+            "flash_assists": self.flash_assists,
+            "total_blind_time": round(self.total_blind_time, 2),
+            "enemies_flashed_per_flash": round(self.enemies_flashed_per_flash, 2),
+            "he_damage": self.he_damage,
+            "he_damage_per_nade": round(self.he_damage_per_nade, 1),
+            "molotov_damage": self.molotov_damage,
+            "molotov_damage_per_nade": round(self.molotov_damage_per_nade, 1),
+        }
+
+
+@dataclass
 class SideStats:
     """Per-side (CT/T) statistics."""
     kills: int = 0
@@ -2629,6 +2708,190 @@ class DemoAnalyzer:
         ct_wins = sum(1 for r in self.data.rounds if r.winner == "CT")
         t_wins = sum(1 for r in self.data.rounds if r.winner == "T")
         return (ct_wins, t_wins)
+
+
+def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
+    """
+    Compute utility usage metrics for all players from match data.
+
+    This function provides a standalone way to extract utility statistics
+    similar to Scope.gg's nade stats, using awpy's grenade, smoke, inferno,
+    and blind data.
+
+    Args:
+        match_data: Parsed demo data (MatchData/DemoData) from DemoParser
+
+    Returns:
+        Dictionary mapping steam_id (as string) to UtilityMetrics for each player
+
+    Example:
+        >>> from opensight.parser import parse_demo
+        >>> from opensight.analytics import compute_utility_metrics
+        >>> data = parse_demo("match.dem")
+        >>> utility_stats = compute_utility_metrics(data)
+        >>> for steam_id, metrics in utility_stats.items():
+        ...     print(f"{metrics.player_name}: {metrics.total_utility_thrown} grenades")
+    """
+    result: dict[str, UtilityMetrics] = {}
+
+    # Initialize metrics for all known players
+    for steam_id, name in match_data.player_names.items():
+        team = match_data.player_teams.get(steam_id, "Unknown")
+        result[str(steam_id)] = UtilityMetrics(
+            player_name=name,
+            player_steamid=steam_id,
+            team=team,
+        )
+
+    # ===========================================
+    # Count grenades from grenades list
+    # ===========================================
+    if hasattr(match_data, 'grenades') and match_data.grenades:
+        for grenade in match_data.grenades:
+            steam_id = str(grenade.player_steamid)
+            if steam_id not in result:
+                # Player not in player_names, add them
+                result[steam_id] = UtilityMetrics(
+                    player_name=grenade.player_name,
+                    player_steamid=grenade.player_steamid,
+                    team=grenade.player_side,
+                )
+
+            grenade_type = grenade.grenade_type.lower()
+
+            # Count by grenade type (awpy uses grenade_type field)
+            if 'smoke' in grenade_type:
+                result[steam_id].smokes_thrown += 1
+            elif 'flash' in grenade_type:
+                result[steam_id].flashes_thrown += 1
+            elif 'hegrenade' in grenade_type or 'he_grenade' in grenade_type:
+                result[steam_id].he_thrown += 1
+            elif 'molotov' in grenade_type or 'incgrenade' in grenade_type or 'incendiary' in grenade_type:
+                result[steam_id].molotovs_thrown += 1
+
+    # ===========================================
+    # Count smokes from smokes list (more accurate count)
+    # ===========================================
+    if hasattr(match_data, 'smokes') and match_data.smokes:
+        # Reset smoke counts and use smoke events for more accurate tracking
+        for steam_id in result:
+            result[steam_id].smokes_thrown = 0
+
+        for smoke in match_data.smokes:
+            steam_id = str(smoke.thrower_steamid)
+            if steam_id in result:
+                result[steam_id].smokes_thrown += 1
+
+    # ===========================================
+    # Count molotovs from infernos list (more accurate count)
+    # ===========================================
+    if hasattr(match_data, 'infernos') and match_data.infernos:
+        # Reset molotov counts and use inferno events for more accurate tracking
+        for steam_id in result:
+            result[steam_id].molotovs_thrown = 0
+
+        for inferno in match_data.infernos:
+            steam_id = str(inferno.thrower_steamid)
+            if steam_id in result:
+                result[steam_id].molotovs_thrown += 1
+
+    # ===========================================
+    # Process blind events for flash effectiveness
+    # ===========================================
+    if hasattr(match_data, 'blinds') and match_data.blinds:
+        for blind in match_data.blinds:
+            steam_id = str(blind.attacker_steamid)
+            if steam_id not in result:
+                continue
+
+            # Only count significant blinds (>1.1 seconds per Leetify standard)
+            if blind.blind_duration >= 1.1:
+                if blind.is_teammate:
+                    result[steam_id].flashes_teammates_total += 1
+                else:
+                    result[steam_id].flashes_enemies_total += 1
+
+            # Accumulate total blind time for enemies only
+            if not blind.is_teammate:
+                result[steam_id].total_blind_time += blind.blind_duration
+
+    # ===========================================
+    # Calculate utility damage from damages DataFrame
+    # ===========================================
+    damages_df = match_data.damages_df
+    if not damages_df.empty:
+        # Find column names (different parsers use different names)
+        att_col = None
+        for col in ["attacker_steamid", "attacker", "att_steamid"]:
+            if col in damages_df.columns:
+                att_col = col
+                break
+
+        weapon_col = "weapon" if "weapon" in damages_df.columns else None
+        dmg_col = None
+        for col in ["dmg_health", "damage", "dmg"]:
+            if col in damages_df.columns:
+                dmg_col = col
+                break
+
+        att_side_col = None
+        for col in ["attacker_side", "attacker_team"]:
+            if col in damages_df.columns:
+                att_side_col = col
+                break
+
+        vic_side_col = None
+        for col in ["victim_side", "victim_team"]:
+            if col in damages_df.columns:
+                vic_side_col = col
+                break
+
+        if att_col and weapon_col and dmg_col:
+            he_weapons = ["hegrenade", "he_grenade", "grenade_he", "hegrenade_projectile"]
+            molly_weapons = ["molotov", "incgrenade", "inferno", "molotov_projectile", "incendiary"]
+
+            for steam_id, metrics in result.items():
+                steam_id_int = int(steam_id)
+                player_dmg = damages_df[damages_df[att_col] == steam_id_int]
+
+                # HE damage
+                he_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(he_weapons)]
+                if not he_dmg.empty:
+                    if att_side_col and vic_side_col:
+                        # Only count enemy damage
+                        enemy_he = he_dmg[he_dmg[att_side_col] != he_dmg[vic_side_col]]
+                        metrics.he_damage = int(enemy_he[dmg_col].sum())
+                    else:
+                        metrics.he_damage = int(he_dmg[dmg_col].sum())
+
+                # Molotov damage
+                molly_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(molly_weapons)]
+                if not molly_dmg.empty:
+                    if att_side_col and vic_side_col:
+                        # Only count enemy damage
+                        enemy_molly = molly_dmg[molly_dmg[att_side_col] != molly_dmg[vic_side_col]]
+                        metrics.molotov_damage = int(enemy_molly[dmg_col].sum())
+                    else:
+                        metrics.molotov_damage = int(molly_dmg[dmg_col].sum())
+
+                # Total utility damage
+                metrics.total_utility_damage = float(metrics.he_damage + metrics.molotov_damage)
+
+    # ===========================================
+    # Count flash assists from kills DataFrame
+    # ===========================================
+    kills_df = match_data.kills_df
+    if not kills_df.empty and "assister_steamid" in kills_df.columns and "flash_assist" in kills_df.columns:
+        for steam_id, metrics in result.items():
+            steam_id_int = int(steam_id)
+            flash_assists = kills_df[
+                (kills_df["assister_steamid"] == steam_id_int) &
+                (kills_df["flash_assist"] == True)
+            ]
+            metrics.flash_assists = len(flash_assists)
+
+    logger.info(f"Computed utility metrics for {len(result)} players")
+    return result
 
 
 def analyze_demo(
