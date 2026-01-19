@@ -657,10 +657,18 @@ class DemoAnalyzer:
         kills_df = self.data.kills_df
         damages_df = self.data.damages_df
 
+        # Use cached column names for kills
+        att_id_col = self._att_id_col or "attacker_steamid"
+        vic_id_col = self._vic_id_col or "victim_steamid"
+
+        # Find damage columns
+        dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
+        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"]) if not damages_df.empty else None
+
         for steam_id, player in self._players.items():
-            # Kills
-            if not kills_df.empty and "attacker_steamid" in kills_df.columns:
-                player_kills = kills_df[kills_df["attacker_steamid"] == steam_id]
+            # Kills - use cached column
+            if not kills_df.empty and att_id_col in kills_df.columns:
+                player_kills = kills_df[kills_df[att_id_col] == steam_id]
                 player.kills = len(player_kills)
 
                 if "headshot" in kills_df.columns:
@@ -669,25 +677,26 @@ class DemoAnalyzer:
                 if "weapon" in kills_df.columns:
                     player.weapon_kills = player_kills["weapon"].value_counts().to_dict()
 
-            # Deaths
-            if not kills_df.empty and "victim_steamid" in kills_df.columns:
-                player.deaths = len(kills_df[kills_df["victim_steamid"] == steam_id])
+            # Deaths - use cached column (handles user_steamid vs victim_steamid)
+            if not kills_df.empty and vic_id_col in kills_df.columns:
+                player.deaths = len(kills_df[kills_df[vic_id_col] == steam_id])
 
             # Assists
             if not kills_df.empty and "assister_steamid" in kills_df.columns:
                 player.assists = len(kills_df[kills_df["assister_steamid"] == steam_id])
 
-            # Damage
-            if not damages_df.empty and "attacker_steamid" in damages_df.columns and "damage" in damages_df.columns:
-                player_dmg = damages_df[damages_df["attacker_steamid"] == steam_id]
-                player.total_damage = int(player_dmg["damage"].sum())
+            # Damage - use dynamic column finding
+            if dmg_att_col and dmg_col:
+                player_dmg = damages_df[damages_df[dmg_att_col] == steam_id]
+                player.total_damage = int(player_dmg[dmg_col].sum())
 
             # Flash assists
-            if not kills_df.empty and "flash_assist" in kills_df.columns:
-                player.utility.flash_assists = int(kills_df[
-                    (kills_df.get("assister_steamid") == steam_id) &
+            if not kills_df.empty and "flash_assist" in kills_df.columns and "assister_steamid" in kills_df.columns:
+                flash_assists = kills_df[
+                    (kills_df["assister_steamid"] == steam_id) &
                     (kills_df["flash_assist"] == True)
-                ].shape[0]) if "assister_steamid" in kills_df.columns else 0
+                ]
+                player.utility.flash_assists = len(flash_assists)
 
     def _calculate_multi_kills(self) -> None:
         """Calculate multi-kill rounds for each player."""
