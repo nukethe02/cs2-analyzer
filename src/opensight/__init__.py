@@ -150,6 +150,48 @@ def __getattr__(name):
     elif name == "FeedbackDatabase":
         from opensight.feedback import FeedbackDatabase
         return FeedbackDatabase
+
+    # DataFrame Backend (Polars optimization)
+    elif name == "get_backend":
+        from opensight.backend import get_backend
+        return get_backend
+    elif name == "DataFrameBackend":
+        from opensight.backend import DataFrameBackend
+        return DataFrameBackend
+    elif name == "PandasBackend":
+        from opensight.backend import PandasBackend
+        return PandasBackend
+    elif name == "PolarsBackend":
+        from opensight.backend import PolarsBackend
+        return PolarsBackend
+    elif name == "PolarsLazyBackend":
+        from opensight.backend import PolarsLazyBackend
+        return PolarsLazyBackend
+    elif name == "save_dataframe":
+        from opensight.backend import save_dataframe
+        return save_dataframe
+    elif name == "load_dataframe":
+        from opensight.backend import load_dataframe
+        return load_dataframe
+    elif name == "convert_dataframe":
+        from opensight.backend import convert_dataframe
+        return convert_dataframe
+    elif name == "is_polars_available":
+        from opensight.backend import is_polars_available
+        return is_polars_available
+    elif name == "benchmark_backends":
+        from opensight.backend import benchmark_backends
+        return benchmark_backends
+    elif name == "BackendConfig":
+        from opensight.backend import BackendConfig
+        return BackendConfig
+    elif name == "set_backend_config":
+        from opensight.backend import set_backend_config
+        return set_backend_config
+    elif name == "get_backend_config":
+        from opensight.backend import get_backend_config
+        return get_backend_config
+
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
 # Export
@@ -205,4 +247,18 @@ __all__ = [
     # Collaboration
     "CollaborationManager",
     "create_collaboration_session",
+    # DataFrame Backend (Polars optimization)
+    "get_backend",
+    "DataFrameBackend",
+    "PandasBackend",
+    "PolarsBackend",
+    "PolarsLazyBackend",
+    "save_dataframe",
+    "load_dataframe",
+    "convert_dataframe",
+    "is_polars_available",
+    "benchmark_backends",
+    "BackendConfig",
+    "set_backend_config",
+    "get_backend_config",
 ]
