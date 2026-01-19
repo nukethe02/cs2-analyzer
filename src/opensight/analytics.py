@@ -2264,15 +2264,15 @@ class DemoAnalyzer:
             for steam_id, player in self._players.items():
                 player_grenades = [g for g in self.data.grenades if g.player_steamid == steam_id]
 
-                # Count by type
+                # Count by type (grenade_type is sufficient - no event_type on GrenadeEvent)
                 player.utility.smokes_thrown = len([g for g in player_grenades
-                    if 'smoke' in g.grenade_type.lower() and g.event_type == 'thrown'])
+                    if 'smoke' in g.grenade_type.lower()])
                 he_thrown = len([g for g in player_grenades
                     if 'hegrenade' in g.grenade_type.lower() or 'he_grenade' in g.grenade_type.lower()])
                 molly_thrown = len([g for g in player_grenades
                     if 'molotov' in g.grenade_type.lower() or 'incendiary' in g.grenade_type.lower()])
                 flash_thrown = len([g for g in player_grenades
-                    if 'flash' in g.grenade_type.lower() and g.event_type == 'thrown'])
+                    if 'flash' in g.grenade_type.lower()])
 
                 # Only update if we got data (don't overwrite with 0 if no grenades events)
                 if he_thrown > 0:
