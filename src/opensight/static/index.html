@@ -801,12 +801,135 @@
                     </div>
                 </div>
 
+                <!-- Advanced Stats Table (Scope.gg style) -->
+                ${renderAdvancedStatsSection(data.advanced_stats || [])}
+
                 <!-- Player Cards Grid -->
                 <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Player Performance</h3>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     ${players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0)).map(p => renderPlayerCard(p)).join('')}
                 </div>
             `;
+        }
+
+        // ============================================
+        // Advanced Stats Section (Scope.gg style)
+        // ============================================
+        function renderAdvancedStatsSection(advancedStats) {
+            if (!advancedStats || advancedStats.length === 0) {
+                return '';
+            }
+
+            // Sort by opening success rate descending
+            const sorted = [...advancedStats].sort((a, b) =>
+                (b.opening_success_rate || 0) - (a.opening_success_rate || 0)
+            );
+
+            return `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-8">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-white">Advanced Stats</h3>
+                            <p class="text-xs text-slate-400">Coach-level metrics: Entry duels, Clutches, Trades</p>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-slate-700">
+                                    <th class="text-left py-3 px-4 text-slate-400 font-medium">Player</th>
+                                    <th class="text-center py-3 px-2 text-slate-400 font-medium" title="First kills of the round">
+                                        <span class="hidden lg:inline">Opening</span> Kills
+                                    </th>
+                                    <th class="text-center py-3 px-2 text-slate-400 font-medium" title="First deaths of the round">
+                                        <span class="hidden lg:inline">Opening</span> Deaths
+                                    </th>
+                                    <th class="text-center py-3 px-2 text-slate-400 font-medium" title="Opening Kill Success Rate">
+                                        Entry %
+                                    </th>
+                                    <th class="text-center py-3 px-2 text-slate-400 font-medium" title="1vX clutch situations attempted">
+                                        Clutch <span class="hidden lg:inline">Attempts</span>
+                                    </th>
+                                    <th class="text-center py-3 px-2 text-slate-400 font-medium" title="1vX clutch situations won">
+                                        Clutch <span class="hidden lg:inline">Wins</span>
+                                    </th>
+                                    <th class="text-center py-3 px-2 text-slate-400 font-medium" title="Clutch Win Rate">
+                                        Clutch %
+                                    </th>
+                                    <th class="text-center py-3 px-2 text-slate-400 font-medium" title="Kills that avenged a teammate">
+                                        Trade <span class="hidden lg:inline">Kills</span>
+                                    </th>
+                                    <th class="text-center py-3 px-2 text-slate-400 font-medium" title="Trade Success Rate">
+                                        Trade %
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${sorted.map(stat => renderAdvancedStatsRow(stat)).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-slate-700/50">
+                        <p class="text-xs text-slate-500">
+                            <span class="text-slate-400 font-medium">Entry %:</span> Success rate in first duels of each round |
+                            <span class="text-slate-400 font-medium">Clutch %:</span> Win rate in 1vX situations |
+                            <span class="text-slate-400 font-medium">Trade %:</span> How often you avenge teammates within 5 seconds
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAdvancedStatsRow(stat) {
+            const openingSuccessClass = getAdvancedStatColor(stat.opening_success_rate, { elite: 60, good: 50, avg: 40 });
+            const clutchWinClass = getAdvancedStatColor(stat.clutch_win_rate, { elite: 40, good: 25, avg: 10 });
+            const tradeSuccessClass = getAdvancedStatColor(stat.trade_success_rate, { elite: 15, good: 10, avg: 5 });
+
+            return `
+                <tr class="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
+                    <td class="py-3 px-4">
+                        <span class="font-medium text-slate-200">${esc(stat.player_name)}</span>
+                    </td>
+                    <td class="text-center py-3 px-2">
+                        <span class="font-mono data-value text-green-400">${stat.opening_kills || 0}</span>
+                    </td>
+                    <td class="text-center py-3 px-2">
+                        <span class="font-mono data-value text-red-400">${stat.opening_deaths || 0}</span>
+                    </td>
+                    <td class="text-center py-3 px-2">
+                        <span class="font-mono data-value ${openingSuccessClass}">${formatNumber(stat.opening_success_rate, 1)}%</span>
+                    </td>
+                    <td class="text-center py-3 px-2">
+                        <span class="font-mono data-value text-slate-300">${stat.clutches_1vx_attempted || 0}</span>
+                    </td>
+                    <td class="text-center py-3 px-2">
+                        <span class="font-mono data-value text-yellow-400">${stat.clutches_1vx_won || 0}</span>
+                    </td>
+                    <td class="text-center py-3 px-2">
+                        <span class="font-mono data-value ${clutchWinClass}">${formatNumber(stat.clutch_win_rate, 1)}%</span>
+                    </td>
+                    <td class="text-center py-3 px-2">
+                        <span class="font-mono data-value text-cyan-400">${stat.trade_kills || 0}</span>
+                    </td>
+                    <td class="text-center py-3 px-2">
+                        <span class="font-mono data-value ${tradeSuccessClass}">${formatNumber(stat.trade_success_rate, 1)}%</span>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function getAdvancedStatColor(value, thresholds) {
+            if (value >= thresholds.elite) return 'text-yellow-400';  // Elite - gold
+            if (value >= thresholds.good) return 'text-green-400';    // Good - green
+            if (value >= thresholds.avg) return 'text-slate-300';     // Average - neutral
+            return 'text-red-400';                                     // Below average - red
         }
 
         .matrix-table td.highlight {

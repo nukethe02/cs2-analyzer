@@ -429,6 +429,56 @@ class MistakesStats:
 
 
 @dataclass
+class AdvancedMetrics:
+    """
+    Advanced coaching metrics inspired by Scope.gg.
+
+    These metrics provide coach-level insights into:
+    - Opening duels: Who gets the first kill of each round
+    - Clutches: 1vX situations and win rates
+    - Trades: How quickly teammates avenge deaths
+
+    Useful for identifying:
+    - Entry fraggers (high opening_kills)
+    - Clutch players (high clutch_win_rate)
+    - Team players (high trade_success_rate)
+    """
+    player_name: str
+    steam_id: int = 0
+
+    # Opening duel metrics
+    opening_kills: int = 0  # First kill of a round
+    opening_deaths: int = 0  # First death of a round
+    opening_success_rate: float = 0.0  # opening_kills / (opening_kills + opening_deaths)
+
+    # Clutch metrics (1vX situations)
+    clutches_1vx_attempted: int = 0  # Total clutch situations faced
+    clutches_1vx_won: int = 0  # Total clutch situations won
+    clutch_win_rate: float = 0.0  # clutches_won / clutches_attempted
+
+    # Trade metrics
+    trade_kills: int = 0  # Kills that avenged a teammate
+    trade_attempts: int = 0  # Opportunities to trade (teammate died, enemy visible)
+    trade_success_rate: float = 0.0  # trade_kills / trade_attempts
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API response."""
+        return {
+            "player_name": self.player_name,
+            "steam_id": str(self.steam_id),
+            "opening_kills": self.opening_kills,
+            "opening_deaths": self.opening_deaths,
+            "opening_success_rate": round(self.opening_success_rate, 1),
+            "clutches_1vx_attempted": self.clutches_1vx_attempted,
+            "clutches_1vx_won": self.clutches_1vx_won,
+            "clutch_win_rate": round(self.clutch_win_rate, 1),
+            "trade_kills": self.trade_kills,
+            "trade_attempts": self.trade_attempts,
+            "trade_success_rate": round(self.trade_success_rate, 1),
+        }
+
+
+@dataclass
 class LurkStats:
     """Lurk statistics from State Machine."""
     kills: int = 0
@@ -2786,3 +2836,243 @@ def get_player_comparison_stats(
 
 # Alias for backward compatibility
 PlayerAnalytics = PlayerMatchStats
+
+
+# =============================================================================
+# Standalone Advanced Metrics Computation (Scope.gg style)
+# =============================================================================
+
+def compute_advanced_metrics(match_data: DemoData) -> dict[int, AdvancedMetrics]:
+    """
+    Compute advanced coaching metrics from match data.
+
+    This standalone function computes Scope.gg-style metrics:
+    - Opening kills/deaths per round
+    - Clutch situations (1vX) and win rates
+    - Trade kills and success rates
+
+    Args:
+        match_data: Parsed match data from DemoParser
+
+    Returns:
+        Dictionary mapping steam_id -> AdvancedMetrics for each player
+
+    Example:
+        from opensight.parser import DemoParser
+        from opensight.analytics import compute_advanced_metrics
+
+        parser = DemoParser("demo.dem")
+        data = parser.parse()
+        metrics = compute_advanced_metrics(data)
+
+        for steam_id, m in metrics.items():
+            print(f"{m.player_name}: {m.opening_success_rate}% opening, "
+                  f"{m.clutch_win_rate}% clutch, {m.trade_success_rate}% trade")
+    """
+    # Initialize metrics for each player
+    metrics: dict[int, AdvancedMetrics] = {}
+    for steam_id, name in match_data.player_names.items():
+        metrics[steam_id] = AdvancedMetrics(
+            player_name=name,
+            steam_id=steam_id,
+        )
+
+    # Constants
+    TICK_RATE = CS2_TICK_RATE
+    TRADE_WINDOW_TICKS = int(TRADE_WINDOW_SECONDS * TICK_RATE)
+
+    # Build round info lookup
+    round_info_map: dict[int, Any] = {}
+    for r in match_data.rounds:
+        round_info_map[r.round_num] = r
+
+    kills_df = match_data.kills_df
+    if kills_df.empty:
+        logger.warning("No kills data available for advanced metrics computation")
+        return metrics
+
+    # Find column names
+    round_col = None
+    for col in ["round_num", "total_rounds_played", "round"]:
+        if col in kills_df.columns:
+            round_col = col
+            break
+
+    att_id_col = None
+    for col in ["attacker_steamid", "attacker_steam_id"]:
+        if col in kills_df.columns:
+            att_id_col = col
+            break
+
+    vic_id_col = None
+    for col in ["victim_steamid", "user_steamid", "victim_steam_id"]:
+        if col in kills_df.columns:
+            vic_id_col = col
+            break
+
+    att_side_col = None
+    for col in ["attacker_side", "attacker_team_name", "attacker_team"]:
+        if col in kills_df.columns:
+            att_side_col = col
+            break
+
+    vic_side_col = None
+    for col in ["victim_side", "user_team_name", "victim_team"]:
+        if col in kills_df.columns:
+            vic_side_col = col
+            break
+
+    if not round_col or not att_id_col or not vic_id_col:
+        logger.warning(f"Missing required columns for advanced metrics: "
+                      f"round={round_col}, att={att_id_col}, vic={vic_id_col}")
+        return metrics
+
+    # =========================================================================
+    # Opening Duels: First kill of each round
+    # =========================================================================
+    for round_num in kills_df[round_col].unique():
+        round_kills = kills_df[kills_df[round_col] == round_num].sort_values("tick")
+        if round_kills.empty:
+            continue
+
+        first_kill = round_kills.iloc[0]
+        attacker_id = safe_int(first_kill.get(att_id_col))
+        victim_id = safe_int(first_kill.get(vic_id_col))
+
+        if attacker_id in metrics:
+            metrics[attacker_id].opening_kills += 1
+
+        if victim_id in metrics:
+            metrics[victim_id].opening_deaths += 1
+
+    # Calculate opening success rates
+    for steam_id, m in metrics.items():
+        total_opening = m.opening_kills + m.opening_deaths
+        if total_opening > 0:
+            m.opening_success_rate = (m.opening_kills / total_opening) * 100
+
+    # =========================================================================
+    # Clutch Detection: 1vX situations
+    # =========================================================================
+    if vic_side_col:
+        for round_num in kills_df[round_col].unique():
+            round_kills = kills_df[kills_df[round_col] == round_num].sort_values("tick")
+            if len(round_kills) < 4:
+                continue
+
+            # Get round winner
+            round_winner = "Unknown"
+            round_key = int(round_num)
+            if round_key in round_info_map:
+                round_winner = round_info_map[round_key].winner
+
+            # Track deaths per team
+            ct_deaths = []
+            t_deaths = []
+
+            for _, kill in round_kills.iterrows():
+                victim_id = safe_int(kill.get(vic_id_col))
+                victim_side = safe_str(kill.get(vic_side_col))
+
+                if "CT" in victim_side.upper():
+                    ct_deaths.append(victim_id)
+                elif "T" in victim_side.upper() and "CT" not in victim_side.upper():
+                    t_deaths.append(victim_id)
+
+            # Check for clutch situations on each side
+            for side, deaths in [("CT", ct_deaths), ("T", t_deaths)]:
+                if len(deaths) < 4:
+                    continue
+
+                # Find players on this team
+                team_players = [
+                    sid for sid, name in match_data.player_names.items()
+                    if match_data.player_teams.get(sid, "") == side or
+                       side in match_data.player_teams.get(sid, "")
+                ]
+
+                if len(team_players) < 5:
+                    continue
+
+                # Find the survivor
+                first_four_dead = deaths[:4]
+                survivor_id = None
+                for player_id in team_players:
+                    if player_id not in first_four_dead:
+                        survivor_id = player_id
+                        break
+
+                if survivor_id is None or survivor_id not in metrics:
+                    continue
+
+                # Count enemies alive when clutch started
+                if side == "CT":
+                    enemies_alive = 5 - len([d for d in t_deaths if t_deaths.index(d) < 4 if d in t_deaths])
+                else:
+                    enemies_alive = 5 - len([d for d in ct_deaths if ct_deaths.index(d) < 4 if d in ct_deaths])
+
+                # Simpler: count based on when 4th teammate died
+                enemy_deaths_before = len(t_deaths if side == "CT" else ct_deaths)
+                enemies_at_clutch = max(1, 5 - enemy_deaths_before)
+
+                if enemies_at_clutch >= 1:
+                    metrics[survivor_id].clutches_1vx_attempted += 1
+                    if round_winner == side:
+                        metrics[survivor_id].clutches_1vx_won += 1
+
+    # Calculate clutch win rates
+    for steam_id, m in metrics.items():
+        if m.clutches_1vx_attempted > 0:
+            m.clutch_win_rate = (m.clutches_1vx_won / m.clutches_1vx_attempted) * 100
+
+    # =========================================================================
+    # Trade Detection: Killing enemy who killed teammate within 5 seconds
+    # =========================================================================
+    if att_side_col and vic_side_col:
+        for round_num in kills_df[round_col].unique():
+            round_kills = kills_df[kills_df[round_col] == round_num].sort_values("tick")
+
+            for idx, kill in round_kills.iterrows():
+                victim_id = safe_int(kill.get(vic_id_col))
+                victim_team = safe_str(kill.get(vic_side_col))
+                killer_id = safe_int(kill.get(att_id_col))
+                kill_tick = safe_int(kill.get("tick"))
+
+                if not victim_id or not killer_id:
+                    continue
+
+                # Track trade opportunity for teammates
+                for steam_id, m in metrics.items():
+                    player_team = match_data.player_teams.get(steam_id, "")
+                    # Same team as victim and not the victim themselves
+                    if steam_id != victim_id and player_team and (
+                        player_team == victim_team or victim_team in player_team or player_team in victim_team
+                    ):
+                        m.trade_attempts += 1
+
+                # Look for trade kill
+                potential_trades = round_kills[
+                    (round_kills["tick"] > kill_tick) &
+                    (round_kills["tick"] <= kill_tick + TRADE_WINDOW_TICKS) &
+                    (round_kills[vic_id_col].astype(float) == float(killer_id))
+                ]
+
+                if not potential_trades.empty:
+                    # Check if trader is on same team as original victim
+                    trade_kill = potential_trades.iloc[0]
+                    trader_id = safe_int(trade_kill.get(att_id_col))
+                    trader_team = safe_str(trade_kill.get(att_side_col)) if att_side_col else ""
+
+                    # Verify trader is on victim's team
+                    if trader_id in metrics and (
+                        trader_team == victim_team or victim_team in trader_team or trader_team in victim_team
+                    ):
+                        metrics[trader_id].trade_kills += 1
+
+    # Calculate trade success rates
+    for steam_id, m in metrics.items():
+        if m.trade_attempts > 0:
+            m.trade_success_rate = (m.trade_kills / m.trade_attempts) * 100
+
+    logger.info(f"Computed advanced metrics for {len(metrics)} players")
+    return metrics

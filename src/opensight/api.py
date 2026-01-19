@@ -462,7 +462,7 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
     """
     try:
         from opensight.parser import DemoParser
-        from opensight.analytics import DemoAnalyzer
+        from opensight.analytics import DemoAnalyzer, compute_advanced_metrics
 
         job_store.update_job(job_id, status=JobStatus.PROCESSING, progress=10)
         logger.info(f"Job {job_id}: Starting analysis of {filename}")
@@ -684,6 +684,12 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
             "positions": analysis.grenade_positions[:1000],
             "team_stats": analysis.grenade_team_stats,
         }
+
+        # Compute advanced coaching metrics (Scope.gg style)
+        advanced_metrics = compute_advanced_metrics(data)
+        result["advanced_stats"] = [
+            metrics.to_dict() for metrics in advanced_metrics.values()
+        ]
 
         # AI Coaching insights
         result["coaching"] = analysis.coaching_insights
