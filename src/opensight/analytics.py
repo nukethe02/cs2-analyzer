@@ -2690,8 +2690,8 @@ class DemoAnalyzer:
         # Process grenade events to get positions (detonation points)
         if hasattr(self.data, 'grenades') and self.data.grenades:
             for grenade in self.data.grenades:
-                # Only include detonation events with valid positions
-                if grenade.event_type == "detonate" and grenade.x is not None and grenade.y is not None:
+                # Only include grenades with valid positions
+                if grenade.x is not None and grenade.y is not None:
                     grenade_type = grenade.grenade_type.lower()
                     thrower_team = self.data.player_teams.get(grenade.player_steamid, "Unknown")
 
@@ -2710,21 +2710,20 @@ class DemoAnalyzer:
                     }
                     grenade_positions.append(position)
 
-                # Count grenades for team stats
-                if grenade.event_type == "thrown":
-                    thrower_team = self.data.player_teams.get(grenade.player_steamid, "Unknown")
-                    if thrower_team in team_stats:
-                        grenade_type = grenade.grenade_type.lower()
-                        team_stats[thrower_team]["total_utility"] += 1
+                # Count grenades for team stats (count each grenade once)
+                thrower_team = self.data.player_teams.get(grenade.player_steamid, "Unknown")
+                if thrower_team in team_stats:
+                    grenade_type = grenade.grenade_type.lower()
+                    team_stats[thrower_team]["total_utility"] += 1
 
-                        if "flash" in grenade_type:
-                            team_stats[thrower_team]["flashbangs"] += 1
-                        elif "smoke" in grenade_type:
-                            team_stats[thrower_team]["smokes"] += 1
-                        elif "molotov" in grenade_type or "inc" in grenade_type:
-                            team_stats[thrower_team]["molotovs"] += 1
-                        elif "hegrenade" in grenade_type:
-                            team_stats[thrower_team]["he_grenades"] += 1
+                    if "flash" in grenade_type:
+                        team_stats[thrower_team]["flashbangs"] += 1
+                    elif "smoke" in grenade_type:
+                        team_stats[thrower_team]["smokes"] += 1
+                    elif "molotov" in grenade_type or "inc" in grenade_type:
+                        team_stats[thrower_team]["molotovs"] += 1
+                    elif "hegrenade" in grenade_type:
+                        team_stats[thrower_team]["he_grenades"] += 1
 
         # Count enemies flashed from blinds data
         if hasattr(self.data, 'blinds') and self.data.blinds:
