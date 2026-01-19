@@ -18,6 +18,11 @@ from tempfile import NamedTemporaryFile
 import logging
 from typing import Optional, List
 
+from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from typing import Optional, List, Any
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Body
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -502,10 +507,629 @@ async def about():
             "leetify": "Aim Rating, Utility Rating, and detailed flash stats follow Leetify methodology",
             "scope_gg": "Mistakes tracking and side-based stats follow Scope.gg methodology",
             "hltv": "HLTV 2.0 Rating formula and KAST% calculation",
+        },
+        "advanced_features": {
+            "coaching": "/coaching/* - Adaptive AI coaching with reinforcement learning",
+            "patterns": "/patterns/* - Temporal pattern analysis for recurring mistakes",
+            "opponent": "/opponent/* - Opponent modeling with HLTV integration",
+            "playbook": "/playbook/* - Team playbook generation",
+            "realtime": "/realtime/* - Real-time coaching mode with WebSocket",
+            "sentiment": "/sentiment/* - Sentiment analysis for voice comms",
+            "metrics": "/metrics/* - Custom metric builder",
+            "collaboration": "/collab/* - Multi-user collaborative analysis",
         }
     }
 
 
+# ============================================================================
+# Request/Response Models for Advanced Features
+# ============================================================================
+
+class PlayerProfileRequest(BaseModel):
+    steamid: str
+    name: Optional[str] = None
+    rank: Optional[str] = None
+    role: Optional[str] = None
+    map_pool: Optional[List[str]] = None
+
+
+class CoachingInsightsRequest(BaseModel):
+    steamid: str
+    player_stats: dict
+    map_name: Optional[str] = None
+
+
+class PatternAnalysisRequest(BaseModel):
+    steamid: str
+    demo_id: str
+    demo_data: dict
+    player_stats: dict
+
+
+class OpponentAnalysisRequest(BaseModel):
+    steamid: str
+    demo_data: dict
+    player_stats: dict
+
+
+class PlaybookRequest(BaseModel):
+    team_name: str
+    team_steamids: List[str]
+    demo_data: dict
+
+
+class RealtimeSessionRequest(BaseModel):
+    focus_player: Optional[str] = None
+    focus_team: str = "ct"
+
+
+class GameStateUpdate(BaseModel):
+    session_id: str
+    state_update: dict
+
+
+class SentimentAnalysisRequest(BaseModel):
+    messages: List[dict]
+    team_steamids: List[str]
+    demo_data: dict
+
+
+class SingleMessageRequest(BaseModel):
+    text: str
+
+
+class CustomMetricRequest(BaseModel):
+    name: str
+    formula: str
+    description: Optional[str] = ""
+    metric_type: Optional[str] = "scalar"
+    unit: Optional[str] = ""
+    higher_is_better: Optional[bool] = True
+    benchmarks: Optional[List[float]] = None
+
+
+class MetricCalculationRequest(BaseModel):
+    metric_id: Optional[str] = None
+    player_stats: dict
+
+
+class CollabSessionRequest(BaseModel):
+    demo_id: str
+    demo_name: str
+    map_name: str
+    creator_id: str
+    creator_name: str
+    title: Optional[str] = ""
+    description: Optional[str] = ""
+    is_public: Optional[bool] = False
+    password: Optional[str] = None
+
+
+class JoinSessionRequest(BaseModel):
+    session_id: str
+    user_id: str
+    username: str
+    password: Optional[str] = None
+
+
+class AnnotationRequest(BaseModel):
+    session_id: str
+    user_id: str
+    annotation_type: str
+    category: str
+    tick: int
+    round_num: int
+    text: Optional[str] = ""
+    target_player: Optional[str] = None
+    position: Optional[List[float]] = None
+    drawing_data: Optional[dict] = None
+    tags: Optional[List[str]] = None
+    is_private: Optional[bool] = False
+
+
+# ============================================================================
+# Adaptive AI Coaching Endpoints
+# ============================================================================
+
+@app.post("/coaching/profile")
+async def update_player_profile(request: PlayerProfileRequest):
+    """Update or create a player profile for coaching."""
+    try:
+        from opensight.coaching import get_coach, PlayerRank, PlayerRole
+
+        coach = get_coach()
+
+        rank = None
+        role = None
+
+        if request.rank:
+            try:
+                rank = PlayerRank[request.rank.upper()]
+            except KeyError:
+                pass
+
+        if request.role:
+            try:
+                role = PlayerRole(request.role.lower())
+            except ValueError:
+                pass
+
+        profile = coach.update_profile(
+            steamid=request.steamid,
+            name=request.name or "",
+            rank=rank,
+            role=role,
+            map_pool=request.map_pool
+        )
+
+        return profile.to_dict()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/coaching/profile/{steamid}")
+async def get_player_profile(steamid: str):
+    """Get a player's coaching profile."""
+    try:
+        from opensight.coaching import get_coach
+
+        coach = get_coach()
+        profile = coach.get_profile(steamid)
+        return profile.to_dict()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/coaching/insights")
+async def generate_coaching_insights(request: CoachingInsightsRequest):
+    """Generate personalized coaching insights for a player."""
+    try:
+        from opensight.coaching import generate_coaching_insights
+
+        insights = generate_coaching_insights(
+            player_stats=request.player_stats,
+            steamid=request.steamid,
+            map_name=request.map_name or ""
+        )
+
+        return {"insights": insights}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/coaching/practice-plan/{steamid}")
+async def get_practice_plan(steamid: str, duration_minutes: int = 30):
+    """Generate a personalized practice plan."""
+    try:
+        from opensight.coaching import get_practice_plan
+
+        plan = get_practice_plan(steamid, duration_minutes)
+        return plan
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/coaching/suggest-role")
+async def suggest_player_role(request: CoachingInsightsRequest):
+    """Suggest optimal role based on player statistics."""
+    try:
+        from opensight.coaching import suggest_player_role, PlayerRank
+
+        rank = PlayerRank.GOLD_NOVA_MASTER
+        if "rank" in request.player_stats:
+            try:
+                rank = PlayerRank[request.player_stats["rank"].upper()]
+            except (KeyError, AttributeError):
+                pass
+
+        suggestion = suggest_player_role(request.player_stats, rank)
+        return suggestion
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Temporal Pattern Analysis Endpoints
+# ============================================================================
+
+@app.post("/patterns/analyze")
+async def analyze_patterns(request: PatternAnalysisRequest):
+    """Analyze a demo for mistake patterns."""
+    try:
+        from opensight.patterns import analyze_demo_patterns
+
+        mistakes = analyze_demo_patterns(
+            steamid=request.steamid,
+            demo_id=request.demo_id,
+            demo_data=request.demo_data,
+            player_stats=request.player_stats
+        )
+
+        return {"mistakes_detected": mistakes}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/patterns/{steamid}")
+async def get_recurring_patterns(steamid: str, min_occurrences: int = 3):
+    """Get recurring patterns for a player."""
+    try:
+        from opensight.patterns import get_player_patterns
+
+        patterns = get_player_patterns(steamid, min_occurrences)
+        return {"patterns": patterns}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/patterns/report/{steamid}")
+async def get_pattern_report(steamid: str):
+    """Get a comprehensive pattern report for a player."""
+    try:
+        from opensight.patterns import get_pattern_report
+
+        report = get_pattern_report(steamid)
+        return report
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Opponent Modeling Endpoints
+# ============================================================================
+
+@app.post("/opponent/analyze")
+async def analyze_opponent(request: OpponentAnalysisRequest):
+    """Analyze an opponent from demo data."""
+    try:
+        from opensight.opponent import analyze_opponent
+
+        profile = analyze_opponent(
+            steamid=request.steamid,
+            demo_data=request.demo_data,
+            player_stats=request.player_stats
+        )
+
+        return profile
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/opponent/scouting/{steamid}")
+async def get_scouting_report(steamid: str):
+    """Get a scouting report for an opponent."""
+    try:
+        from opensight.opponent import get_scouting_report
+
+        report = get_scouting_report(steamid)
+        return report
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/opponent/counter-tactics/{steamid}")
+async def get_counter_tactics(steamid: str, map_name: Optional[str] = None):
+    """Get counter-tactics for an opponent."""
+    try:
+        from opensight.opponent import get_counter_tactics
+
+        tactics = get_counter_tactics(steamid, map_name)
+        return {"tactics": tactics}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Team Playbook Generation Endpoints
+# ============================================================================
+
+@app.post("/playbook/analyze")
+async def analyze_team_demo(request: PlaybookRequest):
+    """Analyze a team demo and add to playbook."""
+    try:
+        from opensight.playbook import analyze_team_demo
+
+        result = analyze_team_demo(
+            demo_data=request.demo_data,
+            team_steamids=request.team_steamids,
+            team_name=request.team_name
+        )
+
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/playbook/{team_name}")
+async def get_playbook(team_name: str):
+    """Get team playbook."""
+    try:
+        from opensight.playbook import get_playbook
+
+        playbook = get_playbook(team_name)
+        return playbook
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/playbook/report/{team_name}")
+async def get_playbook_report(team_name: str):
+    """Get comprehensive playbook report."""
+    try:
+        from opensight.playbook import get_playbook_report
+
+        report = get_playbook_report(team_name)
+        return report
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/playbook/export/{team_name}")
+async def export_playbook(team_name: str, format: str = "json"):
+    """Export playbook in specified format."""
+    try:
+        from opensight.playbook import export_playbook
+
+        content = export_playbook(team_name, format)
+
+        if format == "markdown":
+            return HTMLResponse(content=f"<pre>{content}</pre>")
+
+        return JSONResponse(content={"content": content})
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Real-Time Coaching Endpoints
+# ============================================================================
+
+@app.post("/realtime/session")
+async def create_realtime_session(request: RealtimeSessionRequest):
+    """Create a new real-time coaching session."""
+    try:
+        from opensight.realtime import create_coaching_session
+
+        session_info = create_coaching_session(
+            focus_player=request.focus_player,
+            focus_team=request.focus_team
+        )
+
+        return session_info
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/realtime/update")
+async def update_realtime_state(request: GameStateUpdate):
+    """Update game state and get alerts."""
+    try:
+        from opensight.realtime import update_game_state
+
+        alerts = update_game_state(
+            session_id=request.session_id,
+            state_update=request.state_update
+        )
+
+        return {"alerts": alerts}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/realtime/session/{session_id}")
+async def get_realtime_session(session_id: str):
+    """Get real-time session information."""
+    try:
+        from opensight.realtime import get_session_info
+
+        info = get_session_info(session_id)
+        if not info:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        return info
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/realtime/session/{session_id}")
+async def end_realtime_session(session_id: str):
+    """End a real-time coaching session."""
+    try:
+        from opensight.realtime import end_coaching_session
+
+        stats = end_coaching_session(session_id)
+        return stats or {"status": "not_found"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Sentiment Analysis Endpoints
+# ============================================================================
+
+@app.post("/sentiment/analyze")
+async def analyze_team_sentiment(request: SentimentAnalysisRequest):
+    """Analyze team morale from voice communications."""
+    try:
+        from opensight.sentiment import analyze_team_morale
+
+        report = analyze_team_morale(
+            messages=request.messages,
+            team_steamids=request.team_steamids,
+            demo_data=request.demo_data
+        )
+
+        return report
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/sentiment/message")
+async def analyze_single_message(request: SingleMessageRequest):
+    """Analyze sentiment of a single message."""
+    try:
+        from opensight.sentiment import analyze_single_message
+
+        result = analyze_single_message(request.text)
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/sentiment/chat")
+async def analyze_chat_log(request: SentimentAnalysisRequest):
+    """Analyze text chat log for sentiment."""
+    try:
+        from opensight.sentiment import analyze_chat_log
+
+        result = analyze_chat_log(
+            chat_messages=request.messages,
+            team_steamids=request.team_steamids
+        )
+
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Custom Metric Builder Endpoints
+# ============================================================================
+
+@app.post("/metrics/create")
+async def create_custom_metric(request: CustomMetricRequest):
+    """Create a new custom metric."""
+    try:
+        from opensight.custom_metrics import create_custom_metric, MetricType
+
+        benchmarks = None
+        if request.benchmarks and len(request.benchmarks) == 3:
+            benchmarks = tuple(request.benchmarks)
+
+        metric = create_custom_metric(
+            name=request.name,
+            formula=request.formula,
+            description=request.description or "",
+            metric_type=MetricType(request.metric_type or "scalar"),
+            unit=request.unit or "",
+            higher_is_better=request.higher_is_better if request.higher_is_better is not None else True,
+            benchmarks=benchmarks
+        )
+
+        return metric
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/metrics/list")
+async def list_custom_metrics():
+    """List all custom metrics."""
+    try:
+        from opensight.custom_metrics import list_custom_metrics
+
+        metrics = list_custom_metrics()
+        return {"metrics": metrics}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/metrics/variables")
+async def list_metric_variables():
+    """List all available variables for formulas."""
+    try:
+        from opensight.custom_metrics import list_available_variables
+
+        variables = list_available_variables()
+        return {"variables": variables}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/metrics/calculate")
+async def calculate_metrics(request: MetricCalculationRequest):
+    """Calculate custom metrics for a player."""
+    try:
+        from opensight.custom_metrics import calculate_custom_metrics, calculate_metric
+
+        if request.metric_id:
+            result = calculate_metric(request.metric_id, request.player_stats)
+            return result
+        else:
+            results = calculate_custom_metrics(request.player_stats)
+            return {"results": results}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/metrics/validate")
+async def validate_formula(formula: str):
+    """Validate a metric formula."""
+    try:
+        from opensight.custom_metrics import validate_formula
+
+        result = validate_formula(formula)
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/metrics/install-presets")
+async def install_preset_metrics():
+    """Install all preset metrics."""
+    try:
+        from opensight.custom_metrics import install_preset_metrics
+
+        metrics = install_preset_metrics()
+        return {"installed": metrics}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/metrics/{metric_id}")
+async def delete_custom_metric(metric_id: str):
+    """Delete a custom metric."""
+    try:
+        from opensight.custom_metrics import get_builder
+
+        builder = get_builder()
+        success = builder.delete_metric(metric_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Metric not found")
+
+        return {"status": "deleted"}
 # =============================================================================
 # Radar Map Endpoints
 # =============================================================================
@@ -852,6 +1476,176 @@ async def generate_replay_data(
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Collaborative Analysis Endpoints
+# ============================================================================
+
+@app.post("/collab/session")
+async def create_collab_session(request: CollabSessionRequest):
+    """Create a new collaborative analysis session."""
+    try:
+        from opensight.collaboration import create_collaboration_session
+
+        session = create_collaboration_session(
+            demo_id=request.demo_id,
+            demo_name=request.demo_name,
+            map_name=request.map_name,
+            creator_id=request.creator_id,
+            creator_name=request.creator_name,
+            title=request.title or "",
+            description=request.description or "",
+            is_public=request.is_public or False,
+            password=request.password
+        )
+
+        return session
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/collab/join")
+async def join_collab_session(request: JoinSessionRequest):
+    """Join a collaborative session."""
+    try:
+        from opensight.collaboration import join_collaboration_session
+
+        result = join_collaboration_session(
+            session_id=request.session_id,
+            user_id=request.user_id,
+            username=request.username,
+            password=request.password
+        )
+
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/collab/leave/{session_id}/{user_id}")
+async def leave_collab_session(session_id: str, user_id: str):
+    """Leave a collaborative session."""
+    try:
+        from opensight.collaboration import get_manager
+
+        manager = get_manager()
+        success = manager.leave_session(session_id, user_id)
+
+        return {"status": "left" if success else "not_found"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/collab/annotate")
+async def add_collab_annotation(request: AnnotationRequest):
+    """Add an annotation to a collaborative session."""
+    try:
+        from opensight.collaboration import add_annotation
+
+        position = tuple(request.position) if request.position else None
+
+        result = add_annotation(
+            session_id=request.session_id,
+            user_id=request.user_id,
+            annotation_type=request.annotation_type,
+            category=request.category,
+            tick=request.tick,
+            round_num=request.round_num,
+            text=request.text or "",
+            target_player=request.target_player,
+            position=position,
+            drawing_data=request.drawing_data,
+            tags=request.tags,
+            is_private=request.is_private or False
+        )
+
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/collab/annotations/{session_id}/{user_id}")
+async def get_collab_annotations(session_id: str, user_id: str, round_num: Optional[int] = None):
+    """Get annotations from a collaborative session."""
+    try:
+        from opensight.collaboration import get_session_annotations
+
+        annotations = get_session_annotations(session_id, user_id, round_num)
+        return {"annotations": annotations}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/collab/sessions")
+async def list_collab_sessions(user_id: Optional[str] = None):
+    """List available collaborative sessions."""
+    try:
+        from opensight.collaboration import list_sessions
+
+        sessions = list_sessions(user_id)
+        return {"sessions": sessions}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/collab/session/{session_id}")
+async def get_collab_session(session_id: str):
+    """Get a collaborative session by ID."""
+    try:
+        from opensight.collaboration import get_manager
+
+        manager = get_manager()
+        session = manager.get_session(session_id)
+
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        return session.to_dict()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/collab/export/{session_id}")
+async def export_collab_session(session_id: str, format: str = "json"):
+    """Export collaborative session annotations."""
+    try:
+        from opensight.collaboration import export_session
+
+        content = export_session(session_id, format)
+
+        if not content:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        if format == "markdown":
+            return HTMLResponse(content=f"<pre>{content}</pre>")
+
+        return JSONResponse(content={"content": content})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
         logger.exception("Replay generation failed")
         raise HTTPException(status_code=500, detail=f"Replay generation failed: {str(e)}")
     finally:

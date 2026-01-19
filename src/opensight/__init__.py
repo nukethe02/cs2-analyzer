@@ -54,6 +54,71 @@ def __getattr__(name):
     elif name == "analyze_utility":
         from opensight.utility import analyze_utility
         return analyze_utility
+
+    # Advanced AI Coaching
+    elif name == "AdaptiveCoach":
+        from opensight.coaching import AdaptiveCoach
+        return AdaptiveCoach
+    elif name == "generate_coaching_insights":
+        from opensight.coaching import generate_coaching_insights
+        return generate_coaching_insights
+
+    # Temporal Pattern Analysis
+    elif name == "PatternAggregator":
+        from opensight.patterns import PatternAggregator
+        return PatternAggregator
+    elif name == "analyze_demo_patterns":
+        from opensight.patterns import analyze_demo_patterns
+        return analyze_demo_patterns
+
+    # Opponent Modeling
+    elif name == "OpponentModeler":
+        from opensight.opponent import OpponentModeler
+        return OpponentModeler
+    elif name == "get_scouting_report":
+        from opensight.opponent import get_scouting_report
+        return get_scouting_report
+
+    # Team Playbook
+    elif name == "PlaybookGenerator":
+        from opensight.playbook import PlaybookGenerator
+        return PlaybookGenerator
+    elif name == "analyze_team_demo":
+        from opensight.playbook import analyze_team_demo
+        return analyze_team_demo
+
+    # Real-time Coaching
+    elif name == "RealtimeCoachingSession":
+        from opensight.realtime import RealtimeCoachingSession
+        return RealtimeCoachingSession
+    elif name == "create_coaching_session":
+        from opensight.realtime import create_coaching_session
+        return create_coaching_session
+
+    # Sentiment Analysis
+    elif name == "CommunicationAnalyzer":
+        from opensight.sentiment import CommunicationAnalyzer
+        return CommunicationAnalyzer
+    elif name == "analyze_team_morale":
+        from opensight.sentiment import analyze_team_morale
+        return analyze_team_morale
+
+    # Custom Metrics
+    elif name == "CustomMetricBuilder":
+        from opensight.custom_metrics import CustomMetricBuilder
+        return CustomMetricBuilder
+    elif name == "create_custom_metric":
+        from opensight.custom_metrics import create_custom_metric
+        return create_custom_metric
+
+    # Collaboration
+    elif name == "CollaborationManager":
+        from opensight.collaboration import CollaborationManager
+        return CollaborationManager
+    elif name == "create_collaboration_session":
+        from opensight.collaboration import create_collaboration_session
+        return create_collaboration_session
+
     # New modules
     elif name == "ParallelDemoAnalyzer":
         from opensight.parallel import ParallelDemoAnalyzer
@@ -116,4 +181,28 @@ __all__ = [
     "analyze_combat",
     "UtilityAnalyzer",
     "analyze_utility",
+    # Advanced AI Coaching
+    "AdaptiveCoach",
+    "generate_coaching_insights",
+    # Temporal Pattern Analysis
+    "PatternAggregator",
+    "analyze_demo_patterns",
+    # Opponent Modeling
+    "OpponentModeler",
+    "get_scouting_report",
+    # Team Playbook
+    "PlaybookGenerator",
+    "analyze_team_demo",
+    # Real-time Coaching
+    "RealtimeCoachingSession",
+    "create_coaching_session",
+    # Sentiment Analysis
+    "CommunicationAnalyzer",
+    "analyze_team_morale",
+    # Custom Metrics
+    "CustomMetricBuilder",
+    "create_custom_metric",
+    # Collaboration
+    "CollaborationManager",
+    "create_collaboration_session",
 ]
