@@ -858,16 +858,6 @@ class DemoAnalyzer:
         """
         logger.info(f"Starting professional analysis (metrics: {self._requested_metrics})...")
 
-        # Record metrics being calculated for timing collector
-        collector = get_timing_collector()
-        if collector:
-            collector.add_metric("basic_stats")
-            collector.add_metric("ttd")
-            collector.add_metric("crosshair_placement")
-            collector.add_metric("utility")
-            collector.add_metric("economy")
-            collector.add_metric("combat")
-
         # Initialize column name cache
         self._init_column_cache()
 
