@@ -21,9 +21,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, TYPE_CHECKING
 import logging
+import time
 
 import pandas as pd
 import numpy as np
+
+from opensight.profiling import stage_timer, get_timing_collector
 
 # Type checking imports
 if TYPE_CHECKING:
@@ -409,45 +412,58 @@ class DemoParser:
     def _parse_with_demoparser2(self, include_ticks: bool = False, comprehensive: bool = True) -> DemoData:
         """Parse using demoparser2 with comprehensive event extraction."""
         logger.info(f"Parsing demo: {self.demo_path}")
-        parser = Demoparser2(str(self.demo_path))
-        self._parser = parser
+
+        # Record file info for timing collector
+        collector = get_timing_collector()
+        if collector:
+            try:
+                file_size = self.demo_path.stat().st_size
+                collector.set_file_info(path=str(self.demo_path), size_bytes=file_size)
+            except Exception:
+                pass
+
+        with stage_timer("parser_init"):
+            parser = Demoparser2(str(self.demo_path))
+            self._parser = parser
 
         # Parse header
         map_name = "unknown"
         server_name = ""
-        try:
-            header = parser.parse_header()
-            if isinstance(header, dict):
-                map_name = header.get("map_name", "unknown")
-                server_name = header.get("server_name", "")
-                logger.info(f"Map: {map_name}, Server: {server_name}")
-        except Exception as e:
-            logger.warning(f"Failed to parse header: {e}")
+        with stage_timer("parse_header"):
+            try:
+                header = parser.parse_header()
+                if isinstance(header, dict):
+                    map_name = header.get("map_name", "unknown")
+                    server_name = header.get("server_name", "")
+                    logger.info(f"Map: {map_name}, Server: {server_name}")
+            except Exception as e:
+                logger.warning(f"Failed to parse header: {e}")
 
         # ===========================================
         # CORE EVENTS - Always parse these
         # ===========================================
 
-        # Parse kills WITH comprehensive data
-        kills_df = self._parse_event_safe(
-            parser, "player_death",
-            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z"],
-            other_props=["total_rounds_played"]
-        )
-        if kills_df.empty:
-            # Fallback without player props
-            kills_df = self._parse_event_safe(parser, "player_death")
-        logger.info(f"Parsed {len(kills_df)} kills. Columns: {list(kills_df.columns)[:15]}...")
+        with stage_timer("parse_core_events"):
+            # Parse kills WITH comprehensive data
+            kills_df = self._parse_event_safe(
+                parser, "player_death",
+                player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z"],
+                other_props=["total_rounds_played"]
+            )
+            if kills_df.empty:
+                # Fallback without player props
+                kills_df = self._parse_event_safe(parser, "player_death")
+            logger.info(f"Parsed {len(kills_df)} kills. Columns: {list(kills_df.columns)[:15]}...")
 
-        # Parse damages with hitgroup data
-        damages_df = self._parse_event_safe(parser, "player_hurt")
-        logger.info(f"Parsed {len(damages_df)} damage events")
+            # Parse damages with hitgroup data
+            damages_df = self._parse_event_safe(parser, "player_hurt")
+            logger.info(f"Parsed {len(damages_df)} damage events")
 
-        # Parse round events
-        round_end_df = self._parse_event_safe(parser, "round_end")
-        round_start_df = self._parse_event_safe(parser, "round_start")
-        round_freeze_df = self._parse_event_safe(parser, "round_freeze_end")
-        logger.info(f"Parsed {len(round_end_df)} round_end, {len(round_start_df)} round_start events")
+            # Parse round events
+            round_end_df = self._parse_event_safe(parser, "round_end")
+            round_start_df = self._parse_event_safe(parser, "round_start")
+            round_freeze_df = self._parse_event_safe(parser, "round_freeze_end")
+            logger.info(f"Parsed {len(round_end_df)} round_end, {len(round_start_df)} round_start events")
 
         # ===========================================
         # EXTENDED EVENTS - For comprehensive analysis
@@ -466,46 +482,51 @@ class DemoParser:
         bomb_exploded_df = pd.DataFrame()
 
         if comprehensive:
-            # Weapon fire events (for accuracy tracking)
-            weapon_fires_df = self._parse_event_safe(
-                parser, "weapon_fire",
-                player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z", "is_scoped"]
-            )
-            if weapon_fires_df.empty:
-                weapon_fires_df = self._parse_event_safe(parser, "weapon_fire")
-            logger.info(f"Parsed {len(weapon_fires_df)} weapon_fire events (for accuracy)")
+            with stage_timer("parse_extended_events"):
+                # Weapon fire events (for accuracy tracking)
+                weapon_fires_df = self._parse_event_safe(
+                    parser, "weapon_fire",
+                    player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z", "is_scoped"]
+                )
+                if weapon_fires_df.empty:
+                    weapon_fires_df = self._parse_event_safe(parser, "weapon_fire")
+                logger.info(f"Parsed {len(weapon_fires_df)} weapon_fire events (for accuracy)")
 
-            # Player blind events (flash effectiveness)
-            blinds_df = self._parse_event_safe(parser, "player_blind")
-            logger.info(f"Parsed {len(blinds_df)} player_blind events")
+                # Player blind events (flash effectiveness)
+                blinds_df = self._parse_event_safe(parser, "player_blind")
+                logger.info(f"Parsed {len(blinds_df)} player_blind events")
 
-            # Grenade events
-            grenades_thrown_df = self._parse_event_safe(parser, "grenade_thrown")
-            flash_det_df = self._parse_event_safe(parser, "flashbang_detonate")
-            he_det_df = self._parse_event_safe(parser, "hegrenade_detonate")
-            smoke_det_df = self._parse_event_safe(parser, "smokegrenade_detonate")
-            molly_det_df = self._parse_event_safe(parser, "molotov_detonate")
-            inferno_start_df = self._parse_event_safe(parser, "inferno_startburn")
-            inferno_end_df = self._parse_event_safe(parser, "inferno_expire")
-            logger.info(f"Parsed grenades: {len(grenades_thrown_df)} thrown, {len(flash_det_df)} flash, {len(he_det_df)} HE, {len(smoke_det_df)} smoke, {len(molly_det_df)} molly")
+                # Grenade events
+                grenades_thrown_df = self._parse_event_safe(parser, "grenade_thrown")
+                flash_det_df = self._parse_event_safe(parser, "flashbang_detonate")
+                he_det_df = self._parse_event_safe(parser, "hegrenade_detonate")
+                smoke_det_df = self._parse_event_safe(parser, "smokegrenade_detonate")
+                molly_det_df = self._parse_event_safe(parser, "molotov_detonate")
+                inferno_start_df = self._parse_event_safe(parser, "inferno_startburn")
+                inferno_end_df = self._parse_event_safe(parser, "inferno_expire")
+                logger.info(f"Parsed grenades: {len(grenades_thrown_df)} thrown, {len(flash_det_df)} flash, {len(he_det_df)} HE, {len(smoke_det_df)} smoke, {len(molly_det_df)} molly")
 
-            # Bomb events
-            bomb_planted_df = self._parse_event_safe(parser, "bomb_planted")
-            bomb_defused_df = self._parse_event_safe(parser, "bomb_defused")
-            bomb_exploded_df = self._parse_event_safe(parser, "bomb_exploded")
-            logger.info(f"Parsed bomb events: {len(bomb_planted_df)} plants, {len(bomb_defused_df)} defuses, {len(bomb_exploded_df)} explosions")
+                # Bomb events
+                bomb_planted_df = self._parse_event_safe(parser, "bomb_planted")
+                bomb_defused_df = self._parse_event_safe(parser, "bomb_defused")
+                bomb_exploded_df = self._parse_event_safe(parser, "bomb_exploded")
+                logger.info(f"Parsed bomb events: {len(bomb_planted_df)} plants, {len(bomb_defused_df)} defuses, {len(bomb_exploded_df)} explosions")
 
         # ===========================================
         # TICK DATA - Optional detailed tracking
         # ===========================================
         ticks_df = None
         if include_ticks:
-            try:
-                ticks_df = parser.parse_ticks(self.PLAYER_PROPS)
-                if ticks_df is not None and not ticks_df.empty:
-                    logger.info(f"Parsed {len(ticks_df)} tick entries")
-            except Exception as e:
-                logger.warning(f"Failed to parse ticks: {e}")
+            with stage_timer("parse_tick_data"):
+                try:
+                    ticks_df = parser.parse_ticks(self.PLAYER_PROPS)
+                    if ticks_df is not None and not ticks_df.empty:
+                        logger.info(f"Parsed {len(ticks_df)} tick entries")
+                        # Record tick count for timing collector
+                        if collector:
+                            collector.set_file_info(tick_count=len(ticks_df))
+                except Exception as e:
+                    logger.warning(f"Failed to parse ticks: {e}")
 
         # Calculate duration
         tick_rate = 64
@@ -524,19 +545,21 @@ class DemoParser:
                 num_rounds = int(kills_df[round_col].max())
 
         # Extract player info and calculate stats
-        player_names, player_teams = self._extract_players(kills_df, damages_df)
-        player_stats = self._calculate_stats(kills_df, damages_df, player_names, player_teams, num_rounds)
+        with stage_timer("extract_players"):
+            player_names, player_teams = self._extract_players(kills_df, damages_df)
+            player_stats = self._calculate_stats(kills_df, damages_df, player_names, player_teams, num_rounds)
 
         # Build structured events - CORE
-        kills = self._build_kills(kills_df)
-        damages = self._build_damages(damages_df)
-        rounds = self._build_rounds(round_end_df, round_start_df, round_freeze_df)
+        with stage_timer("build_structured_events"):
+            kills = self._build_kills(kills_df)
+            damages = self._build_damages(damages_df)
+            rounds = self._build_rounds(round_end_df, round_start_df, round_freeze_df)
 
-        # Build structured events - EXTENDED
-        weapon_fires = self._build_weapon_fires(weapon_fires_df) if comprehensive else []
-        blinds = self._build_blinds(blinds_df, player_teams) if comprehensive else []
-        grenades = self._build_grenades(grenades_thrown_df, flash_det_df, he_det_df, smoke_det_df, molly_det_df) if comprehensive else []
-        bomb_events = self._build_bomb_events(bomb_planted_df, bomb_defused_df, bomb_exploded_df) if comprehensive else []
+            # Build structured events - EXTENDED
+            weapon_fires = self._build_weapon_fires(weapon_fires_df) if comprehensive else []
+            blinds = self._build_blinds(blinds_df, player_teams) if comprehensive else []
+            grenades = self._build_grenades(grenades_thrown_df, flash_det_df, he_det_df, smoke_det_df, molly_det_df) if comprehensive else []
+            bomb_events = self._build_bomb_events(bomb_planted_df, bomb_defused_df, bomb_exploded_df) if comprehensive else []
 
         # Merge grenade DataFrames for easier analysis
         grenades_df = pd.concat([

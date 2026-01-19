@@ -16,6 +16,7 @@ Provides:
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 import logging
+import time
 from typing import Optional, List
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
@@ -27,6 +28,13 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Body
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+from opensight.profiling import (
+    TimingCollector,
+    SlowJobLogger,
+    set_timing_collector,
+    DEFAULT_SLOW_THRESHOLD_SECONDS,
+)
 
 __version__ = "0.3.0"
 
@@ -117,7 +125,10 @@ async def decode_share_code(request: ShareCodeRequest):
 
 
 @app.post("/analyze")
-async def analyze_demo(file: UploadFile = File(...)):
+async def analyze_demo(
+    file: UploadFile = File(...),
+    include_timing: bool = Query(False, description="Include timing breakdown in response"),
+):
     """
     Analyze an uploaded CS2 demo file.
 
@@ -128,6 +139,9 @@ async def analyze_demo(file: UploadFile = File(...)):
     - Weapon breakdown
 
     Accepts .dem and .dem.gz files up to 500MB.
+
+    Query parameters:
+    - include_timing: If true, includes timing breakdown in the response
     """
     # Validate file extension
     if not file.filename:
@@ -150,6 +164,10 @@ async def analyze_demo(file: UploadFile = File(...)):
         )
 
     tmp_path = None
+    timing_collector = None
+    slow_logger = SlowJobLogger(threshold_seconds=DEFAULT_SLOW_THRESHOLD_SECONDS)
+    overall_start = time.perf_counter()
+
     try:
         # Read and validate file size
         content = await file.read()
@@ -167,20 +185,33 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         logger.info(f"Analyzing demo: {file.filename} ({file_size_mb:.1f} MB)")
 
-        # Save uploaded file temporarily
-        # Use appropriate suffix based on file type
-        suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
-        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
+        # Set up timing collector if timing is requested
+        if include_timing:
+            timing_collector = TimingCollector()
+            timing_collector.start()
+            timing_collector.set_file_info(path=file.filename, size_bytes=file_size_bytes)
+            set_timing_collector(timing_collector)
 
-        # Parse the demo
-        parser = DemoParser(tmp_path)
-        data = parser.parse()
+        with slow_logger.track(
+            file_path=file.filename,
+            file_size_bytes=file_size_bytes
+        ):
+            # Save uploaded file temporarily
+            # Use appropriate suffix based on file type
+            suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
+            with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = Path(tmp.name)
 
-        # Run advanced analytics
-        analyzer = DemoAnalyzer(data)
-        analysis = analyzer.analyze()
+            # Parse the demo
+            parser = DemoParser(tmp_path)
+            data = parser.parse()
+            slow_logger.add_metric("parsing")
+
+            # Run advanced analytics
+            analyzer = DemoAnalyzer(data)
+            analysis = analyzer.analyze()
+            slow_logger.add_metric("analytics")
 
         # Build round-by-round data
         rounds_data = []
@@ -391,7 +422,17 @@ async def analyze_demo(file: UploadFile = File(...)):
         # AI Coaching insights
         result["coaching"] = analysis.coaching_insights
 
-        logger.info(f"Analysis complete: {len(result['players'])} players, {analysis.total_rounds} rounds")
+        # Add timing info if requested
+        if include_timing and timing_collector:
+            timing_collector.finish()
+            stats = timing_collector.get_stats()
+            result["timing"] = stats.summary()
+
+        # Add overall timing regardless of include_timing flag
+        overall_duration = time.perf_counter() - overall_start
+        result["demo_info"]["analysis_time_seconds"] = round(overall_duration, 3)
+
+        logger.info(f"Analysis complete: {len(result['players'])} players, {analysis.total_rounds} rounds, {overall_duration:.2f}s")
         return JSONResponse(content=result)
 
     except HTTPException:
@@ -400,6 +441,10 @@ async def analyze_demo(file: UploadFile = File(...)):
         logger.exception("Analysis failed")
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
     finally:
+        # Clean up timing collector
+        if timing_collector:
+            set_timing_collector(None)
+
         if tmp_path and tmp_path.exists():
             try:
                 tmp_path.unlink()
