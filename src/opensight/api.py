@@ -462,7 +462,7 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
     """
     try:
         from opensight.parser import DemoParser
-        from opensight.analytics import DemoAnalyzer
+        from opensight.analytics import DemoAnalyzer, compute_kill_positions
 
         job_store.update_job(job_id, status=JobStatus.PROCESSING, progress=10)
         logger.info(f"Job {job_id}: Starting analysis of {filename}")
@@ -678,6 +678,9 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
             "kill_positions": analysis.kill_positions[:500],
             "death_positions": analysis.death_positions[:500],
         }
+
+        # Kill Map data for radar visualization (detailed kill positions)
+        result["kill_map"] = compute_kill_positions(data)
 
         # Grenade trajectory data for utility visualization (limit to 1000 positions)
         result["grenade_data"] = {
