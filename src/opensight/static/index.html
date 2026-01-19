@@ -1405,10 +1405,7 @@
                 const teamClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
                 const ratingClass = getRatingClass(r.hltv_rating);
 
-            const teamClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
-            const ratingClass = getRatingClass(r.hltv_rating);
-
-            return `
+                return `
                 <div class="player-card fade-in" data-player-id="${player.id}">
                     <div class="player-main">
                         <div class="player-header">
