@@ -22,6 +22,13 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from opensight import __version__
 from opensight.sharecode import decode_sharecode, ShareCodeInfo
 from opensight.parser import DemoParser, DemoData
+from opensight.profiling import (
+    TimingCollector,
+    SlowJobLogger,
+    Profiler,
+    set_timing_collector,
+    DEFAULT_SLOW_THRESHOLD_SECONDS,
+)
 from opensight.metrics import (
     calculate_ttd,
     calculate_crosshair_placement,
@@ -106,6 +113,22 @@ def analyze(
         "-m",
         help="Metrics to calculate: all, ttd, cp, engagement, economy, utility, trades, opening"
     ),
+    timing: bool = typer.Option(
+        False,
+        "--timing",
+        "-t",
+        help="Show timing breakdown for each analysis stage"
+    ),
+    profile: bool = typer.Option(
+        False,
+        "--profile",
+        help="Enable cProfile profiling and show hotspots"
+    ),
+    slow_threshold: float = typer.Option(
+        DEFAULT_SLOW_THRESHOLD_SECONDS,
+        "--slow-threshold",
+        help="Threshold in seconds for logging slow jobs (default: 60)"
+    ),
 ) -> None:
     """
     Analyze a CS2 demo file and display metrics.
@@ -115,78 +138,129 @@ def analyze(
     - Crosshair Placement (CP)
     - Kill/Death statistics
     - Damage per round
+
+    Use --timing to show a breakdown of time spent in each analysis stage.
+    Use --profile to enable cProfile and show CPU hotspots.
     """
     console.print(f"\n[bold blue]OpenSight[/bold blue] - Analyzing demo...\n")
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        # Parse the demo
-        task = progress.add_task("Parsing demo file...", total=None)
-        try:
-            parser = DemoParser(demo_path)
-            data = parser.parse()
-        except Exception as e:
-            console.print(f"[red]Error parsing demo:[/red] {e}")
-            raise typer.Exit(1)
+    # Set up timing collector
+    timing_collector: Optional[TimingCollector] = None
+    if timing:
+        timing_collector = TimingCollector()
+        timing_collector.start()
+        set_timing_collector(timing_collector)
 
-        progress.update(task, description="Demo parsed successfully!")
+    # Set up slow job logger
+    slow_logger = SlowJobLogger(threshold_seconds=slow_threshold)
 
-    # Display basic info
-    info_table = Table(title="Demo Information", show_header=False)
-    info_table.add_column("Property", style="cyan")
-    info_table.add_column("Value", style="green")
-    info_table.add_row("Map", data.map_name)
-    info_table.add_row("Duration", f"{data.duration_seconds:.1f} seconds")
-    info_table.add_row("Tick Rate", str(data.tick_rate))
-    info_table.add_row("Players", str(len(data.player_names)))
-    console.print(info_table)
-    console.print()
+    # Set up profiler
+    profiler: Optional[Profiler] = None
+    if profile:
+        profiler = Profiler(sort_by="cumulative")
+        profiler.start()
 
-    # Filter by player if specified
-    steam_id: Optional[int] = None
-    if player:
-        # Try to find player by name or Steam ID
-        try:
-            steam_id = int(player)
-        except ValueError:
-            # Search by name
-            for sid, name in data.player_names.items():
-                if player.lower() in name.lower():
-                    steam_id = sid
-                    break
-            if steam_id is None:
-                console.print(f"[yellow]Warning:[/yellow] Player '{player}' not found")
+    try:
+        # Get file info for slow job tracking
+        file_size = demo_path.stat().st_size
 
-    # Calculate and display metrics
-    if metrics in ("all", "engagement"):
-        _display_engagement_metrics(data, steam_id)
+        with slow_logger.track(
+            file_path=str(demo_path),
+            file_size_bytes=file_size
+        ):
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                # Parse the demo
+                task = progress.add_task("Parsing demo file...", total=None)
+                try:
+                    parser = DemoParser(demo_path)
+                    data = parser.parse()
+                    slow_logger.add_metric("parsing")
+                except Exception as e:
+                    console.print(f"[red]Error parsing demo:[/red] {e}")
+                    raise typer.Exit(1)
 
-    if metrics in ("all", "ttd"):
-        _display_ttd_metrics(data, steam_id)
+                progress.update(task, description="Demo parsed successfully!")
 
-    if metrics in ("all", "cp"):
-        _display_cp_metrics(data, steam_id)
+            # Display basic info
+            info_table = Table(title="Demo Information", show_header=False)
+            info_table.add_column("Property", style="cyan")
+            info_table.add_column("Value", style="green")
+            info_table.add_row("Map", data.map_name)
+            info_table.add_row("Duration", f"{data.duration_seconds:.1f} seconds")
+            info_table.add_row("Tick Rate", str(data.tick_rate))
+            info_table.add_row("Players", str(len(data.player_names)))
+            console.print(info_table)
+            console.print()
 
-    if metrics in ("all", "economy"):
-        _display_economy_metrics(data, steam_id)
+            # Filter by player if specified
+            steam_id: Optional[int] = None
+            if player:
+                # Try to find player by name or Steam ID
+                try:
+                    steam_id = int(player)
+                except ValueError:
+                    # Search by name
+                    for sid, name in data.player_names.items():
+                        if player.lower() in name.lower():
+                            steam_id = sid
+                            break
+                    if steam_id is None:
+                        console.print(f"[yellow]Warning:[/yellow] Player '{player}' not found")
 
-    if metrics in ("all", "utility"):
-        _display_utility_metrics(data, steam_id)
+            # Calculate and display metrics
+            if metrics in ("all", "engagement"):
+                _display_engagement_metrics(data, steam_id)
+                slow_logger.add_metric("engagement")
 
-    if metrics in ("all", "trades"):
-        _display_trade_metrics(data, steam_id)
+            if metrics in ("all", "ttd"):
+                _display_ttd_metrics(data, steam_id)
+                slow_logger.add_metric("ttd")
 
-    if metrics in ("all", "opening"):
-        _display_opening_metrics(data, steam_id)
+            if metrics in ("all", "cp"):
+                _display_cp_metrics(data, steam_id)
+                slow_logger.add_metric("crosshair_placement")
 
-    # Export if requested
-    if output:
-        comprehensive = calculate_comprehensive_metrics(data, steam_id)
-        export_analysis(data, comprehensive, output)
-        console.print(f"\n[green]Results exported to:[/green] {output}")
+            if metrics in ("all", "economy"):
+                _display_economy_metrics(data, steam_id)
+                slow_logger.add_metric("economy")
+
+            if metrics in ("all", "utility"):
+                _display_utility_metrics(data, steam_id)
+                slow_logger.add_metric("utility")
+
+            if metrics in ("all", "trades"):
+                _display_trade_metrics(data, steam_id)
+                slow_logger.add_metric("trades")
+
+            if metrics in ("all", "opening"):
+                _display_opening_metrics(data, steam_id)
+                slow_logger.add_metric("opening")
+
+            # Export if requested
+            if output:
+                comprehensive = calculate_comprehensive_metrics(data, steam_id)
+                export_analysis(data, comprehensive, output)
+                console.print(f"\n[green]Results exported to:[/green] {output}")
+
+    finally:
+        # Stop profiler and show results
+        if profiler:
+            profiler.stop()
+            console.print("\n[bold yellow]Profiling Results (Top 20 Hotspots)[/bold yellow]")
+            console.print(profiler.get_stats_string(limit=20))
+
+        # Finish timing and show results
+        if timing_collector:
+            timing_collector.finish()
+            stats = timing_collector.get_stats()
+            console.print(f"\n{stats.format_report()}")
+
+        # Clean up global timing collector
+        set_timing_collector(None)
 
 
 def _display_engagement_metrics(data: DemoData, steam_id: Optional[int]) -> None:
