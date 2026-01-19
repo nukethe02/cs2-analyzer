@@ -2,7 +2,8 @@
 # Install with: pip install -r requirements.txt
 
 # Core dependencies
-demoparser2>=0.9.0
+# awpy is the primary demo parser - handles edge cases like warmup, overtime robustly
+# awpy uses demoparser2 as its backend for fast Rust-based parsing
 awpy>=2.0.0
 watchdog>=3.0.0
 numpy>=1.24.0
