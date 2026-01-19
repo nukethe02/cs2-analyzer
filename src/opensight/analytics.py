@@ -13,8 +13,8 @@ Implements industry-standard metrics:
 - Crosshair Placement
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
+from typing import Any, Optional
 import logging
 import math
 
@@ -102,113 +102,21 @@ class MultiKillStats:
         return self.rounds_with_2k + self.rounds_with_3k + self.rounds_with_4k + self.rounds_with_5k
 
 
-@dataclass
-class UtilityStats:
-    """Utility (grenade) statistics - Leetify-style comprehensive tracking."""
-    # Flash stats
-    flash_assists: int = 0
-    flashbangs_thrown: int = 0
-    enemies_flashed: int = 0          # Total enemies blinded >1.1s
-    teammates_flashed: int = 0        # Bad - blinding your own team
-    total_blind_time: float = 0.0     # Total seconds enemies were blind
+    Args:
+        value: The value to convert.
+        default: The default value to return if conversion fails.
 
-    # HE stats
-    he_thrown: int = 0
-    he_damage: int = 0                # Total damage to enemies
-    he_team_damage: int = 0           # Bad - damage to teammates
-
-    # Molotov/Incendiary stats
-    molotov_thrown: int = 0
-    molotov_damage: int = 0
-    molotov_team_damage: int = 0
-
-    # Smoke stats
-    smokes_thrown: int = 0
-
-    # Unused utility (at death)
-    unused_utility_value: int = 0     # $ value of utility at death
-    deaths_with_utility: int = 0      # Times died with unused utility
-
-    @property
-    def enemies_flashed_per_flash(self) -> float:
-        """Average enemies flashed per flashbang (Leetify metric)."""
-        return self.enemies_flashed / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
-
-    @property
-    def avg_blind_time(self) -> float:
-        """Average blind time per flashbang (seconds)."""
-        return self.total_blind_time / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
-
-    @property
-    def teammates_flashed_per_flash(self) -> float:
-        """Average teammates flashed per flashbang (bad - should be low)."""
-        return self.teammates_flashed / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
-
-    @property
-    def he_damage_per_nade(self) -> float:
-        """Average HE damage per grenade."""
-        return self.he_damage / self.he_thrown if self.he_thrown > 0 else 0.0
-
-    @property
-    def molotov_damage_per_nade(self) -> float:
-        """Average molotov damage per grenade."""
-        return self.molotov_damage / self.molotov_thrown if self.molotov_thrown > 0 else 0.0
-
-    @property
-    def utility_thrown_per_round(self) -> float:
-        """Total utility thrown per round (for quantity rating)."""
-        # This needs to be calculated with rounds_played from PlayerMatchStats
-        return 0.0
-
-
-@dataclass
-class SideStats:
-    """CT-side vs T-side performance breakdown (Leetify/Scope.gg style)."""
-    rounds_played: int = 0
-    kills: int = 0
-    deaths: int = 0
-    assists: int = 0
-    total_damage: int = 0
-    opening_kills: int = 0
-    opening_deaths: int = 0
-
-    @property
-    def kd_ratio(self) -> float:
-        return round(self.kills / self.deaths, 2) if self.deaths > 0 else float(self.kills)
-
-    @property
-    def adr(self) -> float:
-        return round(self.total_damage / self.rounds_played, 1) if self.rounds_played > 0 else 0.0
-
-    @property
-    def kills_per_round(self) -> float:
-        return round(self.kills / self.rounds_played, 2) if self.rounds_played > 0 else 0.0
-
-    @property
-    def opening_success_rate(self) -> float:
-        """% of opening duels won."""
-        total = self.opening_kills + self.opening_deaths
-        return round(self.opening_kills / total * 100, 1) if total > 0 else 0.0
-
-
-@dataclass
-class MistakesStats:
-    """Mistakes tracking (Scope.gg style)."""
-    teammates_flashed: int = 0          # Times you blinded teammates
-    team_damage: int = 0                # Damage dealt to teammates
-    team_kills: int = 0                 # Teamkills
-    deaths_with_utility: int = 0        # Died with unused utility
-    eco_round_deaths: int = 0           # Deaths in eco rounds (when you shouldn't die)
-    unnecessary_peeks: int = 0          # Deaths while team had advantage
-
-    @property
-    def total_mistakes(self) -> int:
-        return (
-            self.teammates_flashed +
-            (1 if self.team_damage > 50 else 0) +
-            self.team_kills * 3 +
-            self.deaths_with_utility
-        )
+    Returns:
+        The converted float value, or the default if conversion fails.
+    """
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 
 @dataclass
@@ -580,6 +488,15 @@ class DemoAnalyzer:
                 return col
         return None
 
+    def _match_steamid(self, df: pd.DataFrame, col: str, steam_id: int) -> pd.DataFrame:
+        """Match steamid handling type differences (int vs float)."""
+        try:
+            # Convert both to float for comparison to handle int/float mismatch
+            return df[df[col].astype(float) == float(steam_id)]
+        except (ValueError, TypeError):
+            # Fallback to direct comparison
+            return df[df[col] == steam_id]
+
     def _init_column_cache(self) -> None:
         """Initialize column name cache for kills DataFrame."""
         kills_df = self.data.kills_df
@@ -656,6 +573,7 @@ class DemoAnalyzer:
 
     def _init_player_stats(self) -> None:
         """Initialize PlayerMatchStats for each player."""
+        logger.info(f"Initializing stats for {len(self.data.player_names)} players")
         for steam_id, name in self.data.player_names.items():
             team = self.data.player_teams.get(steam_id, "Unknown")
             self._players[steam_id] = PlayerMatchStats(
@@ -669,16 +587,34 @@ class DemoAnalyzer:
                 total_damage=0,
                 rounds_played=self.data.num_rounds,
             )
+            logger.debug(f"Initialized player: {name} (steamid={steam_id}, team={team})")
 
     def _calculate_basic_stats(self) -> None:
         """Calculate basic K/D/A and damage stats."""
         kills_df = self.data.kills_df
         damages_df = self.data.damages_df
 
+        # Use cached column names for kills
+        att_id_col = self._att_id_col or "attacker_steamid"
+        vic_id_col = self._vic_id_col or "victim_steamid"
+
+        # Find damage columns
+        dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
+        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"]) if not damages_df.empty else None
+
+        # Log DataFrame info for debugging
+        if not kills_df.empty and att_id_col in kills_df.columns:
+            unique_attackers = kills_df[att_id_col].dropna().unique()
+            logger.info(f"DataFrame has {len(unique_attackers)} unique attackers in column '{att_id_col}'")
+            logger.info(f"Player steamids: {list(self._players.keys())[:5]}...")
+            logger.info(f"DataFrame attacker steamids (sample): {list(unique_attackers[:5])}")
+            logger.info(f"Attacker column dtype: {kills_df[att_id_col].dtype}")
+
         for steam_id, player in self._players.items():
-            # Kills
-            if not kills_df.empty and "attacker_steamid" in kills_df.columns:
-                player_kills = kills_df[kills_df["attacker_steamid"] == steam_id]
+            # Kills - use cached column
+            if not kills_df.empty and att_id_col in kills_df.columns:
+                # Convert to same type for comparison (handle float vs int issue)
+                player_kills = kills_df[kills_df[att_id_col].astype(float) == float(steam_id)]
                 player.kills = len(player_kills)
 
                 if "headshot" in kills_df.columns:
@@ -687,25 +623,31 @@ class DemoAnalyzer:
                 if "weapon" in kills_df.columns:
                     player.weapon_kills = player_kills["weapon"].value_counts().to_dict()
 
-            # Deaths
-            if not kills_df.empty and "victim_steamid" in kills_df.columns:
-                player.deaths = len(kills_df[kills_df["victim_steamid"] == steam_id])
+            # Deaths - use cached column (handles user_steamid vs victim_steamid)
+            if not kills_df.empty and vic_id_col in kills_df.columns:
+                player.deaths = len(kills_df[kills_df[vic_id_col].astype(float) == float(steam_id)])
 
             # Assists
             if not kills_df.empty and "assister_steamid" in kills_df.columns:
-                player.assists = len(kills_df[kills_df["assister_steamid"] == steam_id])
+                player.assists = len(kills_df[kills_df["assister_steamid"].astype(float) == float(steam_id)])
 
-            # Damage
-            if not damages_df.empty and "attacker_steamid" in damages_df.columns and "damage" in damages_df.columns:
-                player_dmg = damages_df[damages_df["attacker_steamid"] == steam_id]
-                player.total_damage = int(player_dmg["damage"].sum())
+            # Damage - use dynamic column finding
+            if dmg_att_col and dmg_col:
+                player_dmg = damages_df[damages_df[dmg_att_col].astype(float) == float(steam_id)]
+                player.total_damage = int(player_dmg[dmg_col].sum())
 
             # Flash assists
-            if not kills_df.empty and "flash_assist" in kills_df.columns:
-                player.utility.flash_assists = int(kills_df[
-                    (kills_df.get("assister_steamid") == steam_id) &
+            if not kills_df.empty and "flash_assist" in kills_df.columns and "assister_steamid" in kills_df.columns:
+                flash_assists = kills_df[
+                    (kills_df["assister_steamid"].astype(float) == float(steam_id)) &
                     (kills_df["flash_assist"] == True)
-                ].shape[0]) if "assister_steamid" in kills_df.columns else 0
+                ]
+                player.utility.flash_assists = len(flash_assists)
+
+        # Log results
+        total_kills = sum(p.kills for p in self._players.values())
+        total_deaths = sum(p.deaths for p in self._players.values())
+        logger.info(f"Basic stats calculated: {total_kills} total kills, {total_deaths} total deaths across {len(self._players)} players")
 
     def _calculate_multi_kills(self) -> None:
         """Calculate multi-kill rounds for each player."""
@@ -715,7 +657,9 @@ class DemoAnalyzer:
             return
 
         for steam_id, player in self._players.items():
-            player_kills = kills_df[kills_df[self._att_id_col] == steam_id]
+            player_kills = kills_df[kills_df[self._att_id_col].astype(float) == float(steam_id)]
+            if player_kills.empty:
+                continue
             kills_per_round = player_kills.groupby(self._round_col).size()
 
             player.multi_kills.rounds_with_1k = int((kills_per_round == 1).sum())

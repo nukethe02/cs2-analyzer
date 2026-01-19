@@ -15,6 +15,11 @@ from pydantic import BaseModel
 
 __version__ = "0.2.0"
 
+# Security constants
+MAX_FILE_SIZE_MB = 500  # Maximum demo file size in MB
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+ALLOWED_EXTENSIONS = (".dem", ".dem.gz")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -81,10 +86,20 @@ async def analyze_demo(file: UploadFile = File(...)):
     - Basic stats: Kills, Deaths, Assists, K/D, ADR, HS%
     - Professional metrics: HLTV 2.0 Rating, KAST%, Impact
     - Advanced metrics: TTD (Time to Damage), Crosshair Placement
-    - Detailed breakdowns: Opening duels, trades, clutches, multi-kills
+    - Weapon breakdown
+
+    Accepts .dem and .dem.gz files up to 500MB.
     """
-    if not file.filename or not file.filename.endswith(".dem"):
-        raise HTTPException(status_code=400, detail="File must be a .dem file")
+    # Validate file extension
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    filename_lower = file.filename.lower()
+    if not filename_lower.endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
+        )
 
     try:
         from opensight.parser import DemoParser
@@ -97,14 +112,28 @@ async def analyze_demo(file: UploadFile = File(...)):
 
     tmp_path = None
     try:
+        # Read and validate file size
+        content = await file.read()
+        file_size_bytes = len(content)
+        file_size_mb = file_size_bytes / (1024 * 1024)
+
+        if file_size_bytes > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB"
+            )
+
+        if file_size_bytes == 0:
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+        logger.info(f"Analyzing demo: {file.filename} ({file_size_mb:.1f} MB)")
+
         # Save uploaded file temporarily
-        with NamedTemporaryFile(suffix=".dem", delete=False) as tmp:
-            content = await file.read()
+        # Use appropriate suffix based on file type
+        suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
+        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(content)
             tmp_path = Path(tmp.name)
-
-        file_size_mb = len(content) / (1024 * 1024)
-        logger.info(f"Analyzing demo: {file.filename} ({file_size_mb:.1f} MB)")
 
         # Parse the demo
         parser = DemoParser(tmp_path)
@@ -272,7 +301,8 @@ async def analyze_demo(file: UploadFile = File(...)):
         if tmp_path and tmp_path.exists():
             try:
                 tmp_path.unlink()
-            except:
+            except OSError:
+                # Ignore cleanup errors - temp file will be cleaned up by OS
                 pass
 
 

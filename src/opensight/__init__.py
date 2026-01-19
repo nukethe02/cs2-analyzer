@@ -1,55 +1,48 @@
 """
 OpenSight - Professional CS2 Demo Analyzer
 
-A universal Counter-Strike 2 demo analysis tool that works with any demo from any source.
-Provides industry-standard metrics (HLTV 2.0 Rating, KAST%, ADR) and multiple output formats.
+A locally-operated analytics system for Counter-Strike 2 that provides
+professional-grade metrics without cloud dependencies.
 
-Usage:
-    from opensight import parse_demo, analyze_demo
-
-    demo = parse_demo("match.dem")
-    analysis = analyze_demo(demo)
-
-    for player in analysis.get_leaderboard():
-        print(f"{player.name}: {player.hltv_rating:.2f}")
+Features:
+- Parse CS2 demo files (.dem) locally
+- Calculate professional-grade performance metrics
+- Monitor replay folders for automatic analysis
+- Export to multiple formats (JSON, CSV, Excel, HTML)
 """
 
 __version__ = "0.2.0"
 __author__ = "OpenSight Contributors"
 
+# Core functionality
+from opensight.sharecode import decode_sharecode, encode_sharecode, ShareCodeInfo
+from opensight.parser import DemoParser, DemoData, parse_demo, PlayerState
+from opensight.watcher import ReplayWatcher, DemoFileEvent, watch_replays
 
-def __getattr__(name):
-    """Lazy import for heavy dependencies."""
-    # Parser
-    if name == "DemoParser":
-        from opensight.parser import DemoParser
-        return DemoParser
-    elif name == "DemoData":
-        from opensight.parser import DemoData
-        return DemoData
-    elif name == "parse_demo":
-        from opensight.parser import parse_demo
-        return parse_demo
-    elif name == "KillEvent":
-        from opensight.parser import KillEvent
-        return KillEvent
-    elif name == "DamageEvent":
-        from opensight.parser import DamageEvent
-        return DamageEvent
-
-    # Analytics
-    elif name == "DemoAnalyzer":
-        from opensight.analytics import DemoAnalyzer
-        return DemoAnalyzer
-    elif name == "analyze_demo":
-        from opensight.analytics import analyze_demo
-        return analyze_demo
-    elif name == "MatchAnalysis":
-        from opensight.analytics import MatchAnalysis
-        return MatchAnalysis
-    elif name == "PlayerMatchStats":
-        from opensight.analytics import PlayerMatchStats
-        return PlayerMatchStats
+# Metrics
+from opensight.metrics import (
+    # Core metrics
+    calculate_ttd,
+    calculate_crosshair_placement,
+    calculate_engagement_metrics,
+    # Extended metrics
+    calculate_economy_metrics,
+    calculate_utility_metrics,
+    calculate_positioning_metrics,
+    calculate_trade_metrics,
+    calculate_opening_metrics,
+    calculate_comprehensive_metrics,
+    # Result dataclasses
+    TTDResult,
+    CrosshairPlacementResult,
+    EngagementMetrics,
+    EconomyMetrics,
+    UtilityMetrics,
+    PositioningMetrics,
+    TradeMetrics,
+    OpeningDuelMetrics,
+    ComprehensivePlayerMetrics,
+)
 
     # Constants
     elif name == "DemoSource":
@@ -120,10 +113,22 @@ def __getattr__(name):
 
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
+# Export
+from opensight.export import (
+    export_to_json,
+    export_to_excel,
+    export_to_html,
+    export_metrics_to_csv,
+    export_analysis,
+)
 
 __all__ = [
     # Version
     "__version__",
+    # Share code
+    "decode_sharecode",
+    "encode_sharecode",
+    "ShareCodeInfo",
     # Parser
     "DemoParser",
     "DemoData",
@@ -152,11 +157,9 @@ __all__ = [
     "DemoMetadata",
     "detect_demo_metadata",
     # Export
-    "export_demo",
-    "export_json",
-    "export_csv",
-    "export_excel",
-    # Sharecode
-    "decode_sharecode",
-    "ShareCodeInfo",
+    "export_to_json",
+    "export_to_excel",
+    "export_to_html",
+    "export_metrics_to_csv",
+    "export_analysis",
 ]

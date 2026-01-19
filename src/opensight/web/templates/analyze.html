@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Analyze Demo{% endblock %}
+
+{% block content %}
+<h1 class="mb-3" style="font-size: 2rem;">
+    <i class="fas fa-chart-line" style="color: var(--accent-primary);"></i>
+    Analyze Demo
+</h1>
+
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title"><i class="fas fa-upload"></i> Upload Demo File</h2>
+    </div>
+
+    <form action="{{ url_for('analyze') }}" method="POST" enctype="multipart/form-data" id="uploadForm">
+        <div class="file-upload" id="dropZone">
+            <input type="file" name="demo_file" id="demoFile" accept=".dem" style="display: none;" required>
+            <div class="file-upload-icon">
+                <i class="fas fa-cloud-upload-alt"></i>
+            </div>
+            <div class="file-upload-text">
+                <strong>Click to upload</strong> or drag and drop
+            </div>
+            <div class="file-upload-hint">
+                CS2 Demo files only (.dem) • Max 500MB
+            </div>
+            <div id="fileName" style="margin-top: 1rem; color: var(--accent-secondary); font-weight: 600; display: none;"></div>
+        </div>
+
+        <div class="mt-4" style="text-align: center;">
+            <button type="submit" class="btn btn-primary btn-lg" id="analyzeBtn" disabled>
+                <i class="fas fa-cog"></i> Analyze Demo
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Tips -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h2 class="card-title"><i class="fas fa-lightbulb"></i> Tips</h2>
+    </div>
+    <div class="grid-2">
+        <div>
+            <h4 style="margin-bottom: 0.5rem; color: var(--accent-secondary);">
+                <i class="fas fa-folder"></i> Finding Demo Files
+            </h4>
+            <p class="text-muted">
+                CS2 demos are stored in:<br>
+                <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
+                    Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays/
+                </code>
+            </p>
+        </div>
+        <div>
+            <h4 style="margin-bottom: 0.5rem; color: var(--accent-secondary);">
+                <i class="fas fa-download"></i> Download Matches
+            </h4>
+            <p class="text-muted">
+                Use the share code on the "Your Matches" page in CS2 to download demos from past games.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('demoFile');
+    const fileName = document.getElementById('fileName');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const uploadForm = document.getElementById('uploadForm');
+
+    // Click to upload
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    // File selected
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            const file = e.target.files[0];
+            fileName.textContent = `Selected: ${file.name}`;
+            fileName.style.display = 'block';
+            analyzeBtn.disabled = false;
+        }
+    });
+
+    // Drag and drop
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].name.endsWith('.dem')) {
+            fileInput.files = files;
+            fileName.textContent = `Selected: ${files[0].name}`;
+            fileName.style.display = 'block';
+            analyzeBtn.disabled = false;
+        }
+    });
+
+    // Form submit loading state
+    uploadForm.addEventListener('submit', () => {
+        analyzeBtn.disabled = true;
+        analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+    });
+</script>
+{% endblock %}
