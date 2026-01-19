@@ -707,6 +707,139 @@
             accent-color: var(--accent);
         }
 
+        /* Grenade Radar Visualization */
+        .grenade-radar-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 24px;
+        }
+
+        .grenade-radar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .grenade-radar-header h3 {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin: 0;
+        }
+
+        .grenade-controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .grenade-player-select {
+            padding: 8px 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            min-width: 180px;
+        }
+
+        .grenade-player-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .grenade-filter-btn {
+            padding: 8px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .grenade-filter-btn:hover { background: var(--bg-card-hover); }
+        .grenade-filter-btn.active {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .grenade-filter-btn .grenade-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .grenade-dot-flash { background: #f1c40f; }
+        .grenade-dot-smoke { background: #9b59b6; }
+        .grenade-dot-molotov { background: #e67e22; }
+        .grenade-dot-he { background: #e74c3c; }
+
+        .grenade-radar-canvas {
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 1;
+            margin: 0 auto;
+            display: block;
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+
+        .grenade-legend {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .grenade-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .grenade-stats-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .grenade-stat-item {
+            text-align: center;
+            padding: 10px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .grenade-stat-value {
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+
+        .grenade-stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
         /* Coaching Panel */
         .coaching-panel {
             background: var(--bg-card);
@@ -1662,36 +1795,91 @@
                 acc.heDamage += u.he_damage || 0;
                 acc.molotovThrown += u.molotov_thrown || 0;
                 acc.molotovDamage += u.molotov_damage || 0;
+                acc.smokesThrown += u.smokes_thrown || 0;
                 acc.flashAssists += u.flash_assists || 0;
                 return acc;
-            }, { flashesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, flashAssists: 0 });
+            }, { flashesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, smokesThrown: 0, flashAssists: 0 });
+
+            // Calculate flash efficiency
+            const flashEfficiency = totals.flashesThrown > 0
+                ? (totals.enemiesFlashed / totals.flashesThrown).toFixed(2)
+                : '0.00';
 
             return `
                 <div class="utility-grid">
                     <div class="utility-card">
                         <div class="utility-icon">&#128165;</div>
-                        <div class="utility-value" style="color: var(--accent);">${totals.flashesThrown}</div>
+                        <div class="utility-value" style="color: #f1c40f;">${totals.flashesThrown}</div>
                         <div class="utility-label">Flashbangs Thrown</div>
-                        <div class="utility-sub">${totals.enemiesFlashed} enemies blinded</div>
+                        <div class="utility-sub">${totals.enemiesFlashed} enemies blinded (${flashEfficiency}/flash)</div>
+                    </div>
+                    <div class="utility-card">
+                        <div class="utility-icon">&#128168;</div>
+                        <div class="utility-value" style="color: #9b59b6;">${totals.smokesThrown}</div>
+                        <div class="utility-label">Smokes Thrown</div>
+                        <div class="utility-sub">Vision control utility</div>
                     </div>
                     <div class="utility-card">
                         <div class="utility-icon">&#128163;</div>
-                        <div class="utility-value" style="color: var(--danger);">${totals.heDamage}</div>
+                        <div class="utility-value" style="color: #e74c3c;">${totals.heDamage}</div>
                         <div class="utility-label">HE Grenade Damage</div>
                         <div class="utility-sub">${totals.heThrown} grenades thrown</div>
                     </div>
                     <div class="utility-card">
                         <div class="utility-icon">&#128293;</div>
-                        <div class="utility-value" style="color: var(--warning);">${totals.molotovDamage}</div>
+                        <div class="utility-value" style="color: #e67e22;">${totals.molotovDamage}</div>
                         <div class="utility-label">Molotov Damage</div>
                         <div class="utility-sub">${totals.molotovThrown} molotovs thrown</div>
                     </div>
-                    <div class="utility-card">
-                        <div class="utility-icon">&#127775;</div>
-                        <div class="utility-value" style="color: var(--success);">${totals.flashAssists}</div>
-                        <div class="utility-label">Flash Assists</div>
-                        <div class="utility-sub">${totals.teammatesFlashed} teammates flashed</div>
+                </div>
+
+                <!-- Grenade Radar Visualization -->
+                <div class="grenade-radar-container">
+                    <div class="grenade-radar-header">
+                        <h3>Grenade Landing Positions</h3>
+                        <div class="grenade-controls">
+                            <select id="grenade-player-select" class="grenade-player-select">
+                                <option value="all">All Players</option>
+                                ${players.map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${esc(p.team)})</option>`).join('')}
+                            </select>
+                            <button class="grenade-filter-btn active" data-type="flash">
+                                <span class="grenade-dot grenade-dot-flash"></span>
+                                Flash
+                            </button>
+                            <button class="grenade-filter-btn active" data-type="smoke">
+                                <span class="grenade-dot grenade-dot-smoke"></span>
+                                Smoke
+                            </button>
+                            <button class="grenade-filter-btn active" data-type="molotov">
+                                <span class="grenade-dot grenade-dot-molotov"></span>
+                                Molotov
+                            </button>
+                            <button class="grenade-filter-btn active" data-type="he">
+                                <span class="grenade-dot grenade-dot-he"></span>
+                                HE
+                            </button>
+                        </div>
                     </div>
+                    <canvas id="grenade-radar-canvas" class="grenade-radar-canvas"></canvas>
+                    <div class="grenade-legend">
+                        <div class="grenade-legend-item">
+                            <span class="grenade-dot grenade-dot-flash"></span>
+                            <span>Flashbang</span>
+                        </div>
+                        <div class="grenade-legend-item">
+                            <span class="grenade-dot grenade-dot-smoke"></span>
+                            <span>Smoke</span>
+                        </div>
+                        <div class="grenade-legend-item">
+                            <span class="grenade-dot grenade-dot-molotov"></span>
+                            <span>Molotov/Incendiary</span>
+                        </div>
+                        <div class="grenade-legend-item">
+                            <span class="grenade-dot grenade-dot-he"></span>
+                            <span>HE Grenade</span>
+                        </div>
+                    </div>
+                    <div id="grenade-stats-summary" class="grenade-stats-summary"></div>
                 </div>
 
                 <h3 style="margin: 32px 0 16px; color: var(--text-secondary);">Utility by Player</h3>
@@ -1710,34 +1898,47 @@
                     </div>
                 </div>
 
-                <h3 style="margin: 32px 0 16px; color: var(--text-secondary);">Utility Ratings</h3>
+                <h3 style="margin: 32px 0 16px; color: var(--text-secondary);">Flashbang Efficiency</h3>
                 <div class="players-grid">
-                    ${players.sort((a, b) => (b.rating?.utility_rating || 0) - (a.rating?.utility_rating || 0)).map(p => `
+                    ${players.sort((a, b) => {
+                        const aEff = (a.utility?.flashbangs_thrown > 0) ? a.utility.enemies_flashed / a.utility.flashbangs_thrown : 0;
+                        const bEff = (b.utility?.flashbangs_thrown > 0) ? b.utility.enemies_flashed / b.utility.flashbangs_thrown : 0;
+                        return bEff - aEff;
+                    }).map(p => {
+                        const flashEff = (p.utility?.flashbangs_thrown > 0)
+                            ? (p.utility.enemies_flashed / p.utility.flashbangs_thrown).toFixed(2)
+                            : '0.00';
+                        const effClass = flashEff >= 0.7 ? 'good' : flashEff >= 0.4 ? 'warning' : 'bad';
+                        return `
                         <div class="player-card fade-in" style="padding: 20px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                                 <span class="player-name">${esc(p.name)}</span>
-                                <span class="rating-badge" style="background: var(--success);">${formatNumber(p.rating?.utility_rating, 0)}</span>
+                                <span class="rating-badge" style="background: var(--${effClass === 'good' ? 'success' : effClass === 'warning' ? 'warning' : 'danger'});">${flashEff}/flash</span>
                             </div>
-                            <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+                            <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
                                 <div class="stat">
                                     <div class="stat-value">${p.utility?.flashbangs_thrown || 0}</div>
                                     <div class="stat-label">Flashes</div>
                                 </div>
                                 <div class="stat">
-                                    <div class="stat-value">${p.utility?.enemies_flashed || 0}</div>
-                                    <div class="stat-label">Blinded</div>
+                                    <div class="stat-value ${effClass}">${p.utility?.enemies_flashed || 0}</div>
+                                    <div class="stat-label">Enemies</div>
                                 </div>
                                 <div class="stat">
-                                    <div class="stat-value">${p.utility?.he_damage || 0}</div>
-                                    <div class="stat-label">HE Dmg</div>
+                                    <div class="stat-value">${p.utility?.teammates_flashed || 0}</div>
+                                    <div class="stat-label">Teammates</div>
                                 </div>
                                 <div class="stat">
-                                    <div class="stat-value">${p.utility?.molotov_damage || 0}</div>
-                                    <div class="stat-label">Molly Dmg</div>
+                                    <div class="stat-value">${p.utility?.smokes_thrown || 0}</div>
+                                    <div class="stat-label">Smokes</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${(p.utility?.molotovs_thrown || 0) + (p.utility?.he_thrown || 0)}</div>
+                                    <div class="stat-label">HE/Molly</div>
                                 </div>
                             </div>
                         </div>
-                    `).join('')}
+                    `}).join('')}
                 </div>
             `;
         }
@@ -1803,7 +2004,11 @@
                         setTimeout(() => initAdvancedCharts(Object.entries(analysisData.players).map(([id, p]) => ({ id, ...p }))), 100);
                     }
                     if (tabId === 'utility' && analysisData) {
-                        setTimeout(() => initUtilityCharts(Object.entries(analysisData.players).map(([id, p]) => ({ id, ...p }))), 100);
+                        const players = Object.entries(analysisData.players).map(([id, p]) => ({ id, ...p }));
+                        setTimeout(() => {
+                            initUtilityCharts(players);
+                            initGrenadeRadar(analysisData.grenade_data, players);
+                        }, 100);
                     }
                 });
             });
@@ -2299,6 +2504,190 @@
                     }
                 });
             }
+        }
+
+        // Grenade Radar Visualization
+        let grenadeRadarState = {
+            selectedPlayer: 'all',
+            filters: { flash: true, smoke: true, molotov: true, he: true }
+        };
+
+        function initGrenadeRadar(grenadeData, players) {
+            const canvas = document.getElementById('grenade-radar-canvas');
+            if (!canvas || !grenadeData) return;
+
+            const ctx = canvas.getContext('2d');
+            const positions = grenadeData.positions || [];
+            const teamStats = grenadeData.team_stats || {};
+
+            // Grenade type colors
+            const grenadeColors = {
+                'flashbang': '#f1c40f',
+                'smokegrenade': '#9b59b6',
+                'molotov': '#e67e22',
+                'incgrenade': '#e67e22',
+                'hegrenade': '#e74c3c',
+                'decoy': '#95a5a6'
+            };
+
+            // Helper function to match grenade type to filter
+            function matchFilter(type) {
+                const t = type.toLowerCase();
+                if (t.includes('flash')) return 'flash';
+                if (t.includes('smoke')) return 'smoke';
+                if (t.includes('molotov') || t.includes('inc')) return 'molotov';
+                if (t.includes('hegrenade')) return 'he';
+                return null;
+            }
+
+            // Render function
+            function renderGrenadeRadar() {
+                const width = canvas.width;
+                const height = canvas.height;
+
+                // Clear canvas
+                ctx.fillStyle = '#12121a';
+                ctx.fillRect(0, 0, width, height);
+
+                // Draw grid
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 10; i++) {
+                    const pos = (i / 10) * width;
+                    ctx.beginPath();
+                    ctx.moveTo(pos, 0);
+                    ctx.lineTo(pos, height);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, pos);
+                    ctx.lineTo(width, pos);
+                    ctx.stroke();
+                }
+
+                // Draw "Map Radar" placeholder text
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.font = '24px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Map Radar View', width / 2, 30);
+                ctx.font = '12px sans-serif';
+                ctx.fillText('Grenade positions shown as dots', width / 2, 50);
+
+                // Filter and render grenade positions
+                const filtered = positions.filter(p => {
+                    // Player filter
+                    if (grenadeRadarState.selectedPlayer !== 'all') {
+                        if (p.thrower_steamid !== grenadeRadarState.selectedPlayer) return false;
+                    }
+
+                    // Type filter
+                    const filterType = matchFilter(p.grenade_type);
+                    if (!filterType) return false;
+                    if (!grenadeRadarState.filters[filterType]) return false;
+
+                    return true;
+                });
+
+                // Normalize positions to canvas coordinates
+                // Find min/max for scaling
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                positions.forEach(p => {
+                    if (p.x != null) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); }
+                    if (p.y != null) { minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
+                });
+
+                const rangeX = maxX - minX || 1;
+                const rangeY = maxY - minY || 1;
+                const padding = 40;
+                const drawWidth = width - padding * 2;
+                const drawHeight = height - padding * 2;
+
+                // Draw each grenade position
+                filtered.forEach(pos => {
+                    if (pos.x == null || pos.y == null) return;
+
+                    // Scale to canvas
+                    const x = padding + ((pos.x - minX) / rangeX) * drawWidth;
+                    const y = padding + ((pos.y - minY) / rangeY) * drawHeight;
+
+                    // Get color
+                    const color = grenadeColors[pos.grenade_type.toLowerCase()] || pos.color || '#ffffff';
+
+                    // Draw dot
+                    ctx.beginPath();
+                    ctx.arc(x, y, 6, 0, Math.PI * 2);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                });
+
+                // Update stats summary
+                updateGrenadeStats(filtered, teamStats);
+            }
+
+            // Update stats summary
+            function updateGrenadeStats(filtered, teamStats) {
+                const summaryDiv = document.getElementById('grenade-stats-summary');
+                if (!summaryDiv) return;
+
+                const counts = { flash: 0, smoke: 0, molotov: 0, he: 0 };
+                filtered.forEach(p => {
+                    const t = matchFilter(p.grenade_type);
+                    if (t) counts[t]++;
+                });
+
+                summaryDiv.innerHTML = `
+                    <div class="grenade-stat-item">
+                        <div class="grenade-stat-value" style="color: #f1c40f;">${counts.flash}</div>
+                        <div class="grenade-stat-label">Flashbangs</div>
+                    </div>
+                    <div class="grenade-stat-item">
+                        <div class="grenade-stat-value" style="color: #9b59b6;">${counts.smoke}</div>
+                        <div class="grenade-stat-label">Smokes</div>
+                    </div>
+                    <div class="grenade-stat-item">
+                        <div class="grenade-stat-value" style="color: #e67e22;">${counts.molotov}</div>
+                        <div class="grenade-stat-label">Molotovs</div>
+                    </div>
+                    <div class="grenade-stat-item">
+                        <div class="grenade-stat-value" style="color: #e74c3c;">${counts.he}</div>
+                        <div class="grenade-stat-label">HE Grenades</div>
+                    </div>
+                    <div class="grenade-stat-item">
+                        <div class="grenade-stat-value">${filtered.length}</div>
+                        <div class="grenade-stat-label">Total Shown</div>
+                    </div>
+                `;
+            }
+
+            // Set up canvas size
+            canvas.width = 600;
+            canvas.height = 600;
+
+            // Set up event listeners
+            const playerSelect = document.getElementById('grenade-player-select');
+            if (playerSelect) {
+                playerSelect.addEventListener('change', (e) => {
+                    grenadeRadarState.selectedPlayer = e.target.value;
+                    renderGrenadeRadar();
+                });
+            }
+
+            // Filter buttons
+            document.querySelectorAll('.grenade-filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const type = btn.dataset.type;
+                    if (type && type in grenadeRadarState.filters) {
+                        grenadeRadarState.filters[type] = !grenadeRadarState.filters[type];
+                        btn.classList.toggle('active', grenadeRadarState.filters[type]);
+                        renderGrenadeRadar();
+                    }
+                });
+            });
+
+            // Initial render
+            renderGrenadeRadar();
         }
 
         // Render Timeline Tab

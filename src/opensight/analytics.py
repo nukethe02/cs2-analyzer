@@ -687,6 +687,10 @@ class MatchAnalysis:
     kill_positions: list[dict] = field(default_factory=list)
     death_positions: list[dict] = field(default_factory=list)
 
+    # Grenade trajectory data for utility visualization
+    grenade_positions: list[dict] = field(default_factory=list)
+    grenade_team_stats: dict[str, dict] = field(default_factory=dict)
+
     # AI Coaching insights
     coaching_insights: list[dict] = field(default_factory=list)
 
@@ -943,6 +947,13 @@ class DemoAnalyzer:
         with stage_timer("extract_position_data"):
             kill_positions, death_positions = self._extract_position_data()
 
+        # Extract grenade trajectory data for utility visualization
+        grenade_positions = []
+        grenade_team_stats = {}
+        if "utility" in self._requested_metrics:
+            with stage_timer("extract_grenade_trajectories"):
+                grenade_positions, grenade_team_stats = self._extract_grenade_trajectories()
+
         # Generate AI coaching insights
         with stage_timer("generate_coaching_insights"):
             coaching_insights = self._generate_coaching_insights()
@@ -961,6 +972,8 @@ class DemoAnalyzer:
             team_opening_rates=combat_stats.get("opening_rates", {}),
             kill_positions=kill_positions,
             death_positions=death_positions,
+            grenade_positions=grenade_positions,
+            grenade_team_stats=grenade_team_stats,
             coaching_insights=coaching_insights,
         )
 
@@ -2122,6 +2135,87 @@ class DemoAnalyzer:
 
         logger.info(f"Extracted {len(kill_positions)} kill positions, {len(death_positions)} death positions")
         return kill_positions, death_positions
+
+    def _extract_grenade_trajectories(self) -> tuple[list, dict]:
+        """
+        Extract grenade trajectory data for utility visualization.
+
+        Returns:
+            Tuple of (grenade_positions, team_stats) where:
+            - grenade_positions: List of dicts with position and metadata
+            - team_stats: Dict with team-level utility statistics
+        """
+        from opensight.trajectory import GRENADE_COLORS, GRENADE_CSS_CLASSES
+
+        grenade_positions = []
+        team_stats = {
+            "CT": {
+                "total_utility": 0,
+                "flashbangs": 0,
+                "smokes": 0,
+                "molotovs": 0,
+                "he_grenades": 0,
+                "enemies_flashed": 0,
+            },
+            "T": {
+                "total_utility": 0,
+                "flashbangs": 0,
+                "smokes": 0,
+                "molotovs": 0,
+                "he_grenades": 0,
+                "enemies_flashed": 0,
+            },
+        }
+
+        # Process grenade events to get positions (detonation points)
+        if hasattr(self.data, 'grenades') and self.data.grenades:
+            for grenade in self.data.grenades:
+                # Only include detonation events with valid positions
+                if grenade.event_type == "detonate" and grenade.x is not None and grenade.y is not None:
+                    grenade_type = grenade.grenade_type.lower()
+                    thrower_team = self.data.player_teams.get(grenade.player_steamid, "Unknown")
+
+                    position = {
+                        "x": grenade.x,
+                        "y": grenade.y,
+                        "z": grenade.z or 0,
+                        "grenade_type": grenade_type,
+                        "thrower_steamid": str(grenade.player_steamid),
+                        "thrower_name": self.data.player_names.get(grenade.player_steamid, "Unknown"),
+                        "thrower_team": thrower_team,
+                        "round_num": grenade.round_num,
+                        "tick": grenade.tick,
+                        "color": GRENADE_COLORS.get(grenade_type, "#ffffff"),
+                        "css_class": GRENADE_CSS_CLASSES.get(grenade_type, "grenade-unknown"),
+                    }
+                    grenade_positions.append(position)
+
+                # Count grenades for team stats
+                if grenade.event_type == "thrown":
+                    thrower_team = self.data.player_teams.get(grenade.player_steamid, "Unknown")
+                    if thrower_team in team_stats:
+                        grenade_type = grenade.grenade_type.lower()
+                        team_stats[thrower_team]["total_utility"] += 1
+
+                        if "flash" in grenade_type:
+                            team_stats[thrower_team]["flashbangs"] += 1
+                        elif "smoke" in grenade_type:
+                            team_stats[thrower_team]["smokes"] += 1
+                        elif "molotov" in grenade_type or "inc" in grenade_type:
+                            team_stats[thrower_team]["molotovs"] += 1
+                        elif "hegrenade" in grenade_type:
+                            team_stats[thrower_team]["he_grenades"] += 1
+
+        # Count enemies flashed from blinds data
+        if hasattr(self.data, 'blinds') and self.data.blinds:
+            for blind in self.data.blinds:
+                if not blind.is_teammate and blind.blind_duration >= 1.1:
+                    attacker_team = self.data.player_teams.get(blind.attacker_steamid, "Unknown")
+                    if attacker_team in team_stats:
+                        team_stats[attacker_team]["enemies_flashed"] += 1
+
+        logger.info(f"Extracted {len(grenade_positions)} grenade positions")
+        return grenade_positions, team_stats
 
     def _generate_coaching_insights(self) -> list:
         """Generate AI-powered coaching insights based on player performance."""
