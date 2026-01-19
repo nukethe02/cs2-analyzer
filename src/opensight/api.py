@@ -679,6 +679,12 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
             "death_positions": analysis.death_positions[:500],
         }
 
+        # Grenade trajectory data for utility visualization (limit to 1000 positions)
+        result["grenade_data"] = {
+            "positions": analysis.grenade_positions[:1000],
+            "team_stats": analysis.grenade_team_stats,
+        }
+
         # AI Coaching insights
         result["coaching"] = analysis.coaching_insights
 
