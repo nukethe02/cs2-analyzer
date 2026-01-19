@@ -127,7 +127,20 @@ async def decode_share_code(request: ShareCodeRequest):
 @app.post("/analyze")
 async def analyze_demo(
     file: UploadFile = File(...),
-    include_timing: bool = Query(False, description="Include timing breakdown in response"),
+    parse_mode: str = Query(
+        default="comprehensive",
+        description="Parsing mode: 'minimal' (TTD/CP only), 'standard' (+accuracy), 'comprehensive' (all events)"
+    ),
+    cp_sample_rate: int = Query(
+        default=1,
+        ge=1,
+        le=128,
+        description="Sample rate for CP calculations (1=all ticks, 4=every 4th tick). Higher = faster/less memory"
+    ),
+    optimize_memory: bool = Query(
+        default=True,
+        description="Optimize DataFrame dtypes to reduce memory usage (~40% reduction)"
+    ),
 ):
     """
     Analyze an uploaded CS2 demo file.
@@ -137,6 +150,11 @@ async def analyze_demo(
     - Professional metrics: HLTV 2.0 Rating, KAST%, Impact
     - Advanced metrics: TTD (Time to Damage), Crosshair Placement
     - Weapon breakdown
+
+    Performance options:
+    - parse_mode: Use 'minimal' for TTD/CP analysis only (faster)
+    - cp_sample_rate: Use 4 or 8 for long demos to reduce memory
+    - optimize_memory: Enable to use efficient dtypes (recommended)
 
     Accepts .dem and .dem.gz files up to 500MB.
 
@@ -155,7 +173,7 @@ async def analyze_demo(
         )
 
     try:
-        from opensight.parser import DemoParser
+        from opensight.parser import DemoParser, ParseMode
         from opensight.analytics import DemoAnalyzer
     except ImportError as e:
         raise HTTPException(
@@ -185,33 +203,23 @@ async def analyze_demo(
 
         logger.info(f"Analyzing demo: {file.filename} ({file_size_mb:.1f} MB)")
 
-        # Set up timing collector if timing is requested
-        if include_timing:
-            timing_collector = TimingCollector()
-            timing_collector.start()
-            timing_collector.set_file_info(path=file.filename, size_bytes=file_size_bytes)
-            set_timing_collector(timing_collector)
+        # Save uploaded file temporarily
+        # Use appropriate suffix based on file type
+        suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
+        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
 
-        with slow_logger.track(
-            file_path=file.filename,
-            file_size_bytes=file_size_bytes
-        ):
-            # Save uploaded file temporarily
-            # Use appropriate suffix based on file type
-            suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
-            with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                tmp.write(content)
-                tmp_path = Path(tmp.name)
+        # Parse the demo with optimization settings
+        parser = DemoParser(tmp_path, optimize_dtypes=optimize_memory)
+        data = parser.parse(
+            parse_mode=parse_mode,
+            cp_sample_rate=cp_sample_rate,
+        )
 
-            # Parse the demo
-            parser = DemoParser(tmp_path)
-            data = parser.parse()
-            slow_logger.add_metric("parsing")
-
-            # Run advanced analytics
-            analyzer = DemoAnalyzer(data)
-            analysis = analyzer.analyze()
-            slow_logger.add_metric("analytics")
+        # Run advanced analytics
+        analyzer = DemoAnalyzer(data)
+        analysis = analyzer.analyze()
 
         # Build round-by-round data
         rounds_data = []
@@ -241,6 +249,10 @@ async def analyze_demo(
                 "player_count": len(analysis.players),
                 "total_kills": len(data.kills),
                 "total_damage_events": len(data.damages),
+                # Parsing metadata
+                "parse_mode": parse_mode,
+                "cp_sample_rate": cp_sample_rate,
+                "memory_optimized": optimize_memory,
             },
             "rounds": rounds_data,
             "mvp": None,
