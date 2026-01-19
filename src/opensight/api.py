@@ -27,6 +27,7 @@ import uuid
 import threading
 from functools import lru_cache
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Query, Body
@@ -469,6 +470,8 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
         # Parse the demo
         parser = DemoParser(tmp_path)
         data = parser.parse()
+        # Log parsing progress for debugging
+        logger.info(f"Job {job_id}: Parsed {len(data.kills)} kills, {len(data.damages)} damages, {data.num_rounds} rounds")
         job_store.update_job(job_id, progress=40)
 
         # Run advanced analytics
@@ -685,8 +688,12 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
         logger.info(f"Job {job_id}: Analysis complete - {len(result['players'])} players, {analysis.total_rounds} rounds")
 
     except Exception as e:
+        # Log full traceback for debugging in production
+        tb_str = traceback.format_exc()
         logger.exception(f"Job {job_id}: Analysis failed")
-        job_store.update_job(job_id, status=JobStatus.FAILED, error=str(e))
+        # Include traceback in error details for API response
+        error_detail = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{tb_str}"
+        job_store.update_job(job_id, status=JobStatus.FAILED, error=error_detail)
 
     finally:
         # Clean up temp file
