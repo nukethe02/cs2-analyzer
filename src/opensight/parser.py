@@ -15,13 +15,19 @@ This parser aims to extract the same level of detail you would get
 from watching the entire demo and taking comprehensive notes.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 import logging
 
 import pandas as pd
 import numpy as np
+
+# Type checking imports
+if TYPE_CHECKING:
+    from demoparser2 import DemoParser as Demoparser2
 
 # Try demoparser2 first (more control over what data we extract)
 try:
@@ -1177,3 +1183,7 @@ def parse_demo(demo_path: str | Path, include_ticks: bool = False, comprehensive
     """
     parser = DemoParser(demo_path)
     return parser.parse(include_ticks=include_ticks, comprehensive=comprehensive)
+
+
+# Alias for backward compatibility
+PlayerState = PlayerRoundSnapshot

@@ -13,7 +13,7 @@ Implements industry-standard metrics:
 - Crosshair Placement
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 import logging
 import math
@@ -31,6 +31,21 @@ from opensight.constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Import economy and combat modules for integration
+try:
+    from opensight.economy import EconomyAnalyzer, EconomyStats, PlayerEconomyProfile, BuyType
+    HAS_ECONOMY = True
+except ImportError:
+    HAS_ECONOMY = False
+    logger.debug("Economy module not available")
+
+try:
+    from opensight.combat import CombatAnalyzer, CombatAnalysisResult, PlayerCombatStats
+    HAS_COMBAT = True
+except ImportError:
+    HAS_COMBAT = False
+    logger.debug("Combat module not available")
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:
@@ -78,6 +93,245 @@ class CrosshairPlacementResult:
     pitch_error_deg: float
     yaw_error_deg: float
     round_num: int = 0
+
+
+@dataclass
+class OpeningDuelStats:
+    """Opening duel statistics."""
+    wins: int = 0
+    losses: int = 0
+    attempts: int = 0
+
+    @property
+    def win_rate(self) -> float:
+        return round(self.wins / self.attempts * 100, 1) if self.attempts > 0 else 0.0
+
+
+@dataclass
+class TradeStats:
+    """Trade kill statistics."""
+    kills_traded: int = 0  # Kills that were traded (enemy killed teammate, you killed enemy)
+    deaths_traded: int = 0  # Deaths that were traded (you died, teammate got the kill)
+    trade_attempts: int = 0  # Opportunities to trade
+
+    @property
+    def trade_rate(self) -> float:
+        return round(self.kills_traded / self.trade_attempts * 100, 1) if self.trade_attempts > 0 else 0.0
+
+
+@dataclass
+class ClutchStats:
+    """Clutch situation statistics."""
+    total_situations: int = 0
+    total_wins: int = 0
+    v1_attempts: int = 0
+    v1_wins: int = 0
+    v2_attempts: int = 0
+    v2_wins: int = 0
+    v3_attempts: int = 0
+    v3_wins: int = 0
+    v4_attempts: int = 0
+    v4_wins: int = 0
+    v5_attempts: int = 0
+    v5_wins: int = 0
+
+    @property
+    def win_rate(self) -> float:
+        return round(self.total_wins / self.total_situations * 100, 1) if self.total_situations > 0 else 0.0
+
+    # Alias properties for API compatibility
+    @property
+    def situations_1v1(self) -> int:
+        return self.v1_attempts
+
+    @situations_1v1.setter
+    def situations_1v1(self, value: int) -> None:
+        self.v1_attempts = value
+
+    @property
+    def wins_1v1(self) -> int:
+        return self.v1_wins
+
+    @wins_1v1.setter
+    def wins_1v1(self, value: int) -> None:
+        self.v1_wins = value
+
+    @property
+    def situations_1v2(self) -> int:
+        return self.v2_attempts
+
+    @situations_1v2.setter
+    def situations_1v2(self, value: int) -> None:
+        self.v2_attempts = value
+
+    @property
+    def wins_1v2(self) -> int:
+        return self.v2_wins
+
+    @wins_1v2.setter
+    def wins_1v2(self, value: int) -> None:
+        self.v2_wins = value
+
+    @property
+    def situations_1v3(self) -> int:
+        return self.v3_attempts
+
+    @situations_1v3.setter
+    def situations_1v3(self, value: int) -> None:
+        self.v3_attempts = value
+
+    @property
+    def wins_1v3(self) -> int:
+        return self.v3_wins
+
+    @wins_1v3.setter
+    def wins_1v3(self, value: int) -> None:
+        self.v3_wins = value
+
+    @property
+    def situations_1v4(self) -> int:
+        return self.v4_attempts
+
+    @situations_1v4.setter
+    def situations_1v4(self, value: int) -> None:
+        self.v4_attempts = value
+
+    @property
+    def wins_1v4(self) -> int:
+        return self.v4_wins
+
+    @wins_1v4.setter
+    def wins_1v4(self, value: int) -> None:
+        self.v4_wins = value
+
+    @property
+    def situations_1v5(self) -> int:
+        return self.v5_attempts
+
+    @situations_1v5.setter
+    def situations_1v5(self, value: int) -> None:
+        self.v5_attempts = value
+
+    @property
+    def wins_1v5(self) -> int:
+        return self.v5_wins
+
+    @wins_1v5.setter
+    def wins_1v5(self, value: int) -> None:
+        self.v5_wins = value
+
+
+@dataclass
+class MultiKillStats:
+    """Multi-kill round statistics."""
+    rounds_with_1k: int = 0
+    rounds_with_2k: int = 0
+    rounds_with_3k: int = 0
+    rounds_with_4k: int = 0
+    rounds_with_5k: int = 0
+
+    @property
+    def total_multi_kill_rounds(self) -> int:
+        return self.rounds_with_2k + self.rounds_with_3k + self.rounds_with_4k + self.rounds_with_5k
+
+
+@dataclass
+class UtilityStats:
+    """Utility usage statistics."""
+    flashbangs_thrown: int = 0
+    smokes_thrown: int = 0
+    he_thrown: int = 0
+    molotovs_thrown: int = 0
+    enemies_flashed: int = 0
+    teammates_flashed: int = 0
+    flash_assists: int = 0
+    he_damage: int = 0
+    he_team_damage: int = 0
+    molotov_damage: int = 0
+    molotov_team_damage: int = 0
+    total_blind_time: float = 0.0  # Total seconds enemies were blinded
+
+    @property
+    def total_utility(self) -> int:
+        return self.flashbangs_thrown + self.smokes_thrown + self.he_thrown + self.molotovs_thrown
+
+    @property
+    def enemies_flashed_per_flash(self) -> float:
+        """Average enemies flashed per flashbang thrown."""
+        if self.flashbangs_thrown <= 0:
+            return 0.0
+        return self.enemies_flashed / self.flashbangs_thrown
+
+    @property
+    def teammates_flashed_per_flash(self) -> float:
+        """Average teammates flashed per flashbang thrown (bad)."""
+        if self.flashbangs_thrown <= 0:
+            return 0.0
+        return self.teammates_flashed / self.flashbangs_thrown
+
+    @property
+    def avg_blind_time(self) -> float:
+        """Average blind time per enemy flashed."""
+        if self.enemies_flashed <= 0:
+            return 0.0
+        return self.total_blind_time / self.enemies_flashed
+
+    @property
+    def he_damage_per_nade(self) -> float:
+        """Average HE damage per grenade."""
+        if self.he_thrown <= 0:
+            return 0.0
+        return self.he_damage / self.he_thrown
+
+    # Backwards compatibility alias
+    @property
+    def molotov_thrown(self) -> int:
+        return self.molotovs_thrown
+
+    @molotov_thrown.setter
+    def molotov_thrown(self, value: int) -> None:
+        self.molotovs_thrown = value
+
+
+@dataclass
+class SideStats:
+    """Per-side (CT/T) statistics."""
+    kills: int = 0
+    deaths: int = 0
+    assists: int = 0
+    damage: int = 0
+    rounds_played: int = 0
+
+    @property
+    def kd_ratio(self) -> float:
+        return round(self.kills / self.deaths, 2) if self.deaths > 0 else float(self.kills)
+
+    @property
+    def adr(self) -> float:
+        return round(self.damage / self.rounds_played, 1) if self.rounds_played > 0 else 0.0
+
+
+@dataclass
+class MistakesStats:
+    """Mistake tracking (Scope.gg style)."""
+    team_kills: int = 0
+    team_damage: int = 0
+    teammates_flashed: int = 0
+    suicides: int = 0
+
+    @property
+    def total_mistakes(self) -> int:
+        """Total mistake score (weighted)."""
+        # Team kills are worst, team damage next, flashes last
+        return (self.team_kills * 10) + (self.team_damage // 10) + self.teammates_flashed + (self.suicides * 5)
+
+
+@dataclass
+class LurkStats:
+    """Lurk statistics from State Machine."""
+    kills: int = 0
+    deaths: int = 0
+    rounds_lurking: int = 0
 
 
 @dataclass
@@ -136,6 +390,18 @@ class PlayerMatchStats:
     shots_fired: int = 0
     shots_hit: int = 0
     headshot_hits: int = 0  # Hits to head (not just kills)
+
+    # Economy stats (integrated from economy module)
+    avg_equipment_value: float = 0.0
+    eco_rounds: int = 0
+    force_rounds: int = 0
+    full_buy_rounds: int = 0
+    damage_per_dollar: float = 0.0
+    kills_per_dollar: float = 0.0
+
+    # Combat stats (integrated from combat module)
+    trade_kill_time_avg_ms: float = 0.0
+    untraded_deaths: int = 0
 
     # Derived properties
     @property
@@ -268,7 +534,7 @@ class PlayerMatchStats:
         total_utility = (
             self.utility.flashbangs_thrown +
             self.utility.he_thrown +
-            self.utility.molotov_thrown +
+            self.utility.molotovs_thrown +
             self.utility.smokes_thrown
         )
         expected = 3.0 * self.rounds_played
@@ -359,6 +625,32 @@ class PlayerMatchStats:
 
 
 @dataclass
+class RoundTimeline:
+    """Timeline entry for a single round."""
+    round_num: int
+    winner: str  # "CT" or "T"
+    win_reason: str  # "elimination", "bomb_exploded", "bomb_defused", "time"
+    ct_score: int
+    t_score: int
+    first_kill_player: str = ""
+    first_death_player: str = ""
+    mvp_player: str = ""
+    buy_type_ct: str = ""
+    buy_type_t: str = ""
+    clutch_player: str = ""
+    clutch_scenario: str = ""
+
+
+@dataclass
+class KillMatrixEntry:
+    """Entry in kill matrix showing who killed whom."""
+    attacker_name: str
+    victim_name: str
+    count: int
+    weapons: list[str] = field(default_factory=list)
+
+
+@dataclass
 class MatchAnalysis:
     """Complete analysis of a match."""
     players: dict[int, PlayerMatchStats]
@@ -366,6 +658,19 @@ class MatchAnalysis:
     team2_score: int
     total_rounds: int
     map_name: str
+
+    # Enhanced data (integrated from other modules)
+    round_timeline: list[RoundTimeline] = field(default_factory=list)
+    kill_matrix: list[KillMatrixEntry] = field(default_factory=list)
+    team_trade_rates: dict[str, float] = field(default_factory=dict)
+    team_opening_rates: dict[str, float] = field(default_factory=dict)
+
+    # Position data for heatmaps (list of {x, y, player, event_type})
+    kill_positions: list[dict] = field(default_factory=list)
+    death_positions: list[dict] = field(default_factory=list)
+
+    # AI Coaching insights
+    coaching_insights: list[dict] = field(default_factory=list)
 
     def get_leaderboard(self, sort_by: str = "hltv_rating") -> list[PlayerMatchStats]:
         """Get players sorted by specified metric (descending)."""
@@ -384,6 +689,14 @@ class MatchAnalysis:
         """Get match MVP (highest rated player)."""
         leaderboard = self.get_leaderboard()
         return leaderboard[0] if leaderboard else None
+
+    def get_kill_matrix_for_player(self, player_name: str) -> dict[str, int]:
+        """Get kills this player got against each opponent."""
+        return {e.victim_name: e.count for e in self.kill_matrix if e.attacker_name == player_name}
+
+    def get_death_matrix_for_player(self, player_name: str) -> dict[str, int]:
+        """Get deaths this player suffered from each opponent."""
+        return {e.attacker_name: e.count for e in self.kill_matrix if e.victim_name == player_name}
 
 
 class DemoAnalyzer:
@@ -492,6 +805,24 @@ class DemoAnalyzer:
         # Run State Machine for pro-level analytics (Entry/Trade/Lurk)
         self._run_state_machine()
 
+        # Integrate Economy Module
+        economy_stats = self._integrate_economy()
+
+        # Integrate Combat Module
+        combat_stats = self._integrate_combat()
+
+        # Build kill matrix
+        kill_matrix = self._build_kill_matrix()
+
+        # Build round timeline
+        round_timeline = self._build_round_timeline()
+
+        # Extract position data for heatmaps
+        kill_positions, death_positions = self._extract_position_data()
+
+        # Generate AI coaching insights
+        coaching_insights = self._generate_coaching_insights()
+
         # Build result
         team_scores = self._calculate_team_scores()
         analysis = MatchAnalysis(
@@ -500,6 +831,13 @@ class DemoAnalyzer:
             team2_score=team_scores[1],
             total_rounds=self.data.num_rounds,
             map_name=self.data.map_name,
+            round_timeline=round_timeline,
+            kill_matrix=kill_matrix,
+            team_trade_rates=combat_stats.get("trade_rates", {}),
+            team_opening_rates=combat_stats.get("opening_rates", {}),
+            kill_positions=kill_positions,
+            death_positions=death_positions,
+            coaching_insights=coaching_insights,
         )
 
         logger.info(f"Analysis complete. {len(self._players)} players analyzed.")
@@ -1249,7 +1587,7 @@ class DemoAnalyzer:
                 if he_thrown > 0:
                     player.utility.he_thrown = he_thrown
                 if molly_thrown > 0:
-                    player.utility.molotov_thrown = molly_thrown
+                    player.utility.molotovs_thrown = molly_thrown
                 if flash_thrown > 0 and player.utility.flashbangs_thrown == 0:
                     player.utility.flashbangs_thrown = flash_thrown
 
@@ -1294,8 +1632,8 @@ class DemoAnalyzer:
                             player.utility.molotov_team_damage = int(team_molly[dmg_col].sum())
                         else:
                             player.utility.molotov_damage = int(molly_dmg[dmg_col].sum())
-                        if player.utility.molotov_thrown == 0:
-                            player.utility.molotov_thrown = max(1, len(set(molly_dmg['tick'])) if 'tick' in molly_dmg.columns else 1)
+                        if player.utility.molotovs_thrown == 0:
+                            player.utility.molotovs_thrown = max(1, len(set(molly_dmg['tick'])) if 'tick' in molly_dmg.columns else 1)
 
         # ===========================================
         # Flash assists from kills (supplement)
@@ -1430,6 +1768,323 @@ class DemoAnalyzer:
         except Exception as e:
             logger.warning(f"State Machine analysis failed: {e}")
 
+    def _integrate_economy(self) -> dict:
+        """Integrate economy module data into player stats."""
+        if not HAS_ECONOMY:
+            logger.debug("Economy module not available, skipping integration")
+            return {}
+
+        try:
+            economy_analyzer = EconomyAnalyzer(self.data)
+            economy_stats = economy_analyzer.analyze()
+
+            # Merge economy data into player stats
+            for steam_id, player in self._players.items():
+                profile = economy_analyzer.get_player_profile(steam_id)
+                if profile:
+                    player.avg_equipment_value = profile.avg_equipment_value
+                    player.eco_rounds = profile.eco_rounds
+                    player.force_rounds = profile.force_rounds
+                    player.full_buy_rounds = profile.full_buy_rounds
+                    player.damage_per_dollar = profile.damage_per_dollar
+                    player.kills_per_dollar = profile.kills_per_dollar
+
+            logger.info(f"Economy integration complete: {economy_stats.rounds_analyzed} rounds")
+            return {
+                "avg_equipment": economy_stats.avg_equipment_value,
+                "damage_per_dollar": economy_stats.damage_per_dollar,
+            }
+        except Exception as e:
+            logger.warning(f"Economy integration failed: {e}")
+            return {}
+
+    def _integrate_combat(self) -> dict:
+        """Integrate combat module data into player stats."""
+        if not HAS_COMBAT:
+            logger.debug("Combat module not available, skipping integration")
+            return {}
+
+        try:
+            combat_analyzer = CombatAnalyzer(self.data)
+            combat_stats = combat_analyzer.analyze()
+
+            # Merge combat data into player stats
+            for steam_id, player in self._players.items():
+                if steam_id in combat_stats.player_stats:
+                    cs = combat_stats.player_stats[steam_id]
+                    player.trade_kill_time_avg_ms = cs.trade_kill_time_avg_ms
+                    player.untraded_deaths = cs.untraded_deaths
+
+            # Build team-level stats
+            trade_rates = {
+                "CT": combat_stats.team_trade_rate.get(3, 0.0),
+                "T": combat_stats.team_trade_rate.get(2, 0.0),
+            }
+            opening_rates = {
+                "CT": combat_stats.team_opening_win_rate.get(3, 0.0),
+                "T": combat_stats.team_opening_win_rate.get(2, 0.0),
+            }
+
+            logger.info(f"Combat integration complete: {len(combat_stats.trade_kills)} trades, "
+                       f"{len(combat_stats.opening_duels)} opening duels")
+            return {
+                "trade_rates": trade_rates,
+                "opening_rates": opening_rates,
+            }
+        except Exception as e:
+            logger.warning(f"Combat integration failed: {e}")
+            return {}
+
+    def _build_kill_matrix(self) -> list:
+        """Build kill matrix showing who killed whom and how often."""
+        kills_df = self.data.kills_df
+        if kills_df.empty or not self._att_id_col or not self._vic_id_col:
+            return []
+
+        matrix_entries = []
+        weapon_col = self._find_col(kills_df, ["weapon"])
+
+        # Group by attacker-victim pairs
+        try:
+            grouped = kills_df.groupby([self._att_id_col, self._vic_id_col])
+
+            for (att_id, vic_id), group in grouped:
+                att_id = safe_int(att_id)
+                vic_id = safe_int(vic_id)
+
+                if att_id == 0 or vic_id == 0:
+                    continue
+
+                att_name = self.data.player_names.get(att_id, "Unknown")
+                vic_name = self.data.player_names.get(vic_id, "Unknown")
+
+                weapons = []
+                if weapon_col:
+                    weapons = group[weapon_col].value_counts().head(3).index.tolist()
+
+                matrix_entries.append(KillMatrixEntry(
+                    attacker_name=att_name,
+                    victim_name=vic_name,
+                    count=len(group),
+                    weapons=weapons,
+                ))
+
+            logger.info(f"Built kill matrix with {len(matrix_entries)} entries")
+        except Exception as e:
+            logger.warning(f"Kill matrix building failed: {e}")
+
+        return matrix_entries
+
+    def _build_round_timeline(self) -> list:
+        """Build round-by-round timeline with key events."""
+        timeline = []
+
+        if not self.data.rounds:
+            return timeline
+
+        kills_df = self.data.kills_df
+
+        for round_info in self.data.rounds:
+            try:
+                round_num = round_info.round_num
+                winner = round_info.winner or "Unknown"
+                win_reason = round_info.win_reason or "unknown"
+
+                # Get first kill of round
+                first_kill_player = ""
+                first_death_player = ""
+                if not kills_df.empty and self._round_col and self._att_id_col and self._vic_id_col:
+                    round_kills = kills_df[kills_df[self._round_col] == round_num]
+                    if not round_kills.empty:
+                        round_kills = round_kills.sort_values("tick")
+                        first = round_kills.iloc[0]
+                        att_id = safe_int(first.get(self._att_id_col))
+                        vic_id = safe_int(first.get(self._vic_id_col))
+                        first_kill_player = self.data.player_names.get(att_id, "")
+                        first_death_player = self.data.player_names.get(vic_id, "")
+
+                timeline.append(RoundTimeline(
+                    round_num=round_num,
+                    winner=winner,
+                    win_reason=win_reason,
+                    ct_score=round_info.ct_score,
+                    t_score=round_info.t_score,
+                    first_kill_player=first_kill_player,
+                    first_death_player=first_death_player,
+                ))
+            except Exception as e:
+                logger.debug(f"Error building timeline for round: {e}")
+                continue
+
+        logger.info(f"Built round timeline with {len(timeline)} rounds")
+        return timeline
+
+    def _extract_position_data(self) -> tuple[list, list]:
+        """Extract position data for heatmap visualization."""
+        kill_positions = []
+        death_positions = []
+
+        # Extract from KillEvent objects (they have position data)
+        for kill in self.data.kills:
+            try:
+                # Attacker position (kill location)
+                if kill.attacker_x is not None and kill.attacker_y is not None:
+                    att_name = self.data.player_names.get(kill.attacker_steamid, "Unknown")
+                    kill_positions.append({
+                        "x": kill.attacker_x,
+                        "y": kill.attacker_y,
+                        "z": kill.attacker_z or 0,
+                        "player": att_name,
+                        "weapon": kill.weapon,
+                        "round": kill.round_num,
+                        "headshot": kill.headshot,
+                    })
+
+                # Victim position (death location)
+                if kill.victim_x is not None and kill.victim_y is not None:
+                    vic_name = self.data.player_names.get(kill.victim_steamid, "Unknown")
+                    death_positions.append({
+                        "x": kill.victim_x,
+                        "y": kill.victim_y,
+                        "z": kill.victim_z or 0,
+                        "player": vic_name,
+                        "round": kill.round_num,
+                    })
+            except Exception as e:
+                logger.debug(f"Error extracting position: {e}")
+                continue
+
+        logger.info(f"Extracted {len(kill_positions)} kill positions, {len(death_positions)} death positions")
+        return kill_positions, death_positions
+
+    def _generate_coaching_insights(self) -> list:
+        """Generate AI-powered coaching insights based on player performance."""
+        insights = []
+
+        for steam_id, player in self._players.items():
+            player_insights = []
+
+            # HLTV Rating insights
+            if player.hltv_rating < 0.8:
+                player_insights.append({
+                    "type": "warning",
+                    "category": "overall",
+                    "message": f"Low overall rating ({player.hltv_rating:.2f}). Focus on fundamentals.",
+                    "priority": "high",
+                })
+            elif player.hltv_rating > 1.3:
+                player_insights.append({
+                    "type": "positive",
+                    "category": "overall",
+                    "message": f"Excellent performance ({player.hltv_rating:.2f}). Keep it up!",
+                    "priority": "low",
+                })
+
+            # TTD insights (reaction time)
+            if player.ttd_median_ms:
+                if player.ttd_median_ms > 500:
+                    player_insights.append({
+                        "type": "warning",
+                        "category": "aim",
+                        "message": f"Slow time-to-damage ({player.ttd_median_ms:.0f}ms). Consider aim training.",
+                        "priority": "medium",
+                    })
+                elif player.ttd_median_ms < 200:
+                    player_insights.append({
+                        "type": "positive",
+                        "category": "aim",
+                        "message": f"Fast reactions ({player.ttd_median_ms:.0f}ms TTD)!",
+                        "priority": "low",
+                    })
+
+            # Crosshair placement insights
+            if player.cp_median_error_deg:
+                if player.cp_median_error_deg > 15:
+                    player_insights.append({
+                        "type": "warning",
+                        "category": "aim",
+                        "message": f"Poor crosshair placement ({player.cp_median_error_deg:.1f}° error). Keep crosshair at head level.",
+                        "priority": "high",
+                    })
+                elif player.cp_median_error_deg < 5:
+                    player_insights.append({
+                        "type": "positive",
+                        "category": "aim",
+                        "message": f"Excellent crosshair placement ({player.cp_median_error_deg:.1f}°)!",
+                        "priority": "low",
+                    })
+
+            # Trade insights
+            if player.untraded_deaths > player.deaths * 0.6 and player.deaths > 3:
+                player_insights.append({
+                    "type": "warning",
+                    "category": "positioning",
+                    "message": f"Too many untraded deaths ({player.untraded_deaths}/{player.deaths}). Stay closer to teammates.",
+                    "priority": "medium",
+                })
+
+            # Utility insights
+            if player.utility.total_utility < player.rounds_played * 1.5 and player.rounds_played >= 10:
+                player_insights.append({
+                    "type": "warning",
+                    "category": "utility",
+                    "message": f"Low utility usage ({player.utility.total_utility} thrown in {player.rounds_played} rounds). Buy and use more grenades.",
+                    "priority": "medium",
+                })
+
+            if player.utility.teammates_flashed > 5:
+                player_insights.append({
+                    "type": "mistake",
+                    "category": "utility",
+                    "message": f"Flashed teammates {player.utility.teammates_flashed} times. Communicate flash usage.",
+                    "priority": "high",
+                })
+
+            # Opening duel insights
+            if player.opening_duels.attempts >= 5:
+                if player.opening_duels.win_rate < 30:
+                    player_insights.append({
+                        "type": "warning",
+                        "category": "duels",
+                        "message": f"Low opening duel win rate ({player.opening_duels.win_rate:.0f}%). Reconsider early aggression.",
+                        "priority": "medium",
+                    })
+                elif player.opening_duels.win_rate > 70:
+                    player_insights.append({
+                        "type": "positive",
+                        "category": "duels",
+                        "message": f"Dominant entry fragging ({player.opening_duels.win_rate:.0f}% win rate)!",
+                        "priority": "low",
+                    })
+
+            # KAST insights
+            if player.kast_percentage < 60 and player.rounds_played >= 10:
+                player_insights.append({
+                    "type": "warning",
+                    "category": "impact",
+                    "message": f"Low KAST ({player.kast_percentage:.0f}%). Try to have more round impact.",
+                    "priority": "medium",
+                })
+
+            # Team damage insights
+            if player.mistakes.team_damage > 100:
+                player_insights.append({
+                    "type": "mistake",
+                    "category": "mistakes",
+                    "message": f"High team damage ({player.mistakes.team_damage}). Be more careful with grenades and fire.",
+                    "priority": "high",
+                })
+
+            if player_insights:
+                insights.append({
+                    "steam_id": str(steam_id),
+                    "player_name": player.name,
+                    "insights": player_insights,
+                })
+
+        logger.info(f"Generated coaching insights for {len(insights)} players")
+        return insights
+
     def _calculate_team_scores(self) -> tuple[int, int]:
         """Calculate team scores from round data."""
         if not self.data.rounds:
@@ -1444,3 +2099,7 @@ def analyze_demo(demo_data: DemoData) -> MatchAnalysis:
     """Convenience function to analyze a parsed demo."""
     analyzer = DemoAnalyzer(demo_data)
     return analyzer.analyze()
+
+
+# Alias for backward compatibility
+PlayerAnalytics = PlayerMatchStats

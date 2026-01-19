@@ -11,7 +11,7 @@ Features:
 - Export to multiple formats (JSON, CSV, Excel, HTML)
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "OpenSight Contributors"
 
 
@@ -54,6 +54,37 @@ def __getattr__(name):
     elif name == "analyze_utility":
         from opensight.utility import analyze_utility
         return analyze_utility
+    # New modules
+    elif name == "ParallelDemoAnalyzer":
+        from opensight.parallel import ParallelDemoAnalyzer
+        return ParallelDemoAnalyzer
+    elif name == "analyze_batch":
+        from opensight.parallel import analyze_batch
+        return analyze_batch
+    elif name == "CoordinateTransformer":
+        from opensight.radar import CoordinateTransformer
+        return CoordinateTransformer
+    elif name == "RadarDataGenerator":
+        from opensight.radar import RadarDataGenerator
+        return RadarDataGenerator
+    elif name == "ReplayGenerator":
+        from opensight.replay import ReplayGenerator
+        return ReplayGenerator
+    elif name == "HLTVClient":
+        from opensight.hltv import HLTVClient
+        return HLTVClient
+    elif name == "MatchEnricher":
+        from opensight.hltv import MatchEnricher
+        return MatchEnricher
+    elif name == "DemoCache":
+        from opensight.cache import DemoCache
+        return DemoCache
+    elif name == "CachedAnalyzer":
+        from opensight.cache import CachedAnalyzer
+        return CachedAnalyzer
+    elif name == "FeedbackDatabase":
+        from opensight.feedback import FeedbackDatabase
+        return FeedbackDatabase
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
 # Export

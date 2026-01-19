@@ -87,10 +87,10 @@ class TestCrosshairPlacementResult:
 
 
 class TestPlayerAnalytics:
-    """Tests for PlayerAnalytics dataclass."""
+    """Tests for PlayerAnalytics (PlayerMatchStats) dataclass."""
 
     def test_player_analytics_creation(self):
-        """PlayerAnalytics can be created with required fields."""
+        """PlayerAnalytics (PlayerMatchStats) can be created with required fields."""
         analytics = PlayerAnalytics(
             steam_id=12345,
             name="Player1",
@@ -98,25 +98,17 @@ class TestPlayerAnalytics:
             kills=15,
             deaths=10,
             assists=5,
-            adr=85.5,
-            hs_percent=45.0,
-            ttd_median_ms=350.0,
-            ttd_mean_ms=380.0,
-            ttd_min_ms=200.0,
-            ttd_max_ms=800.0,
-            ttd_std_ms=120.0,
-            ttd_count=10,
-            prefire_count=2,
-            cp_median_error_deg=4.5,
-            cp_mean_error_deg=5.2,
-            cp_pitch_bias_deg=-0.5,
+            headshots=7,
+            total_damage=1280,
+            rounds_played=15,
             weapon_kills={"ak47": 8, "awp": 5, "usp_silencer": 2},
             ttd_values=[300.0, 350.0, 400.0],
             cp_values=[3.0, 4.5, 6.0],
+            prefire_count=2,
         )
         assert analytics.steam_id == 12345
         assert analytics.kills == 15
-        assert analytics.adr == 85.5
+        assert analytics.adr == 85.3  # 1280/15 rounded
         assert analytics.weapon_kills["ak47"] == 8
 
 

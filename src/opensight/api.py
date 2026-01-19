@@ -2,18 +2,28 @@
 OpenSight Web API
 
 FastAPI application for CS2 demo analysis with professional-grade metrics.
+
+Provides:
+- Demo analysis with HLTV 2.0 Rating, KAST%, TTD, Crosshair Placement
+- Batch analysis with parallel processing
+- 2D replay data generation
+- Radar map coordinate transformation
+- HLTV integration for pro player detection
+- Caching for faster repeated analysis
+- Community feedback system
 """
 
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 import logging
+from typing import Optional, List
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Body
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Security constants
 MAX_FILE_SIZE_MB = 500  # Maximum demo file size in MB
@@ -39,6 +49,30 @@ class ShareCodeResponse(BaseModel):
     match_id: int
     outcome_id: int
     token: int
+
+
+class FeedbackRequest(BaseModel):
+    """Request model for submitting feedback."""
+    demo_hash: str = Field(..., description="Hash of the demo file")
+    player_steam_id: str = Field(..., description="Steam ID of the player")
+    metric_name: str = Field(..., description="Name of the metric being rated")
+    rating: int = Field(..., ge=1, le=5, description="Rating from 1-5")
+    comment: Optional[str] = Field(None, description="Optional comment")
+    correction_value: Optional[float] = Field(None, description="Optional corrected value")
+
+
+class CoachingFeedbackRequest(BaseModel):
+    """Request model for coaching feedback."""
+    demo_hash: str
+    insight_id: str
+    was_helpful: bool
+    correction: Optional[str] = None
+
+
+class RadarRequest(BaseModel):
+    """Request model for radar coordinate transformation."""
+    map_name: str
+    positions: List[dict] = Field(..., description="List of {x, y, z} game coordinates")
 
 
 # Get the static files directory
@@ -303,8 +337,54 @@ async def analyze_demo(file: UploadFile = File(...)):
                     "teammates_flashed": player.mistakes.teammates_flashed,
                     "total_mistakes": player.mistakes.total_mistakes,
                 },
+                "economy": {
+                    "avg_equipment_value": round(player.avg_equipment_value, 0),
+                    "eco_rounds": player.eco_rounds,
+                    "force_rounds": player.force_rounds,
+                    "full_buy_rounds": player.full_buy_rounds,
+                    "damage_per_dollar": round(player.damage_per_dollar, 4) if player.damage_per_dollar else 0,
+                    "kills_per_dollar": round(player.kills_per_dollar, 6) if player.kills_per_dollar else 0,
+                },
                 "weapons": weapon_stats,
             }
+
+        # Add enhanced match-level data
+        result["round_timeline"] = [
+            {
+                "round_num": r.round_num,
+                "winner": r.winner,
+                "win_reason": r.win_reason,
+                "ct_score": r.ct_score,
+                "t_score": r.t_score,
+                "first_kill": r.first_kill_player,
+                "first_death": r.first_death_player,
+            }
+            for r in analysis.round_timeline
+        ]
+
+        result["kill_matrix"] = [
+            {
+                "attacker": e.attacker_name,
+                "victim": e.victim_name,
+                "count": e.count,
+                "weapons": e.weapons,
+            }
+            for e in analysis.kill_matrix
+        ]
+
+        result["team_stats"] = {
+            "trade_rates": analysis.team_trade_rates,
+            "opening_rates": analysis.team_opening_rates,
+        }
+
+        # Position data for heatmaps (only first 500 to avoid huge response)
+        result["heatmap_data"] = {
+            "kill_positions": analysis.kill_positions[:500],
+            "death_positions": analysis.death_positions[:500],
+        }
+
+        # AI Coaching insights
+        result["coaching"] = analysis.coaching_insights
 
         logger.info(f"Analysis complete: {len(result['players'])} players, {analysis.total_rounds} rounds")
         return JSONResponse(content=result)
@@ -424,3 +504,359 @@ async def about():
             "hltv": "HLTV 2.0 Rating formula and KAST% calculation",
         }
     }
+
+
+# =============================================================================
+# Radar Map Endpoints
+# =============================================================================
+
+@app.get("/maps")
+async def list_maps():
+    """List all available maps with radar support."""
+    try:
+        from opensight.radar import MAP_DATA
+        return {
+            "maps": [
+                {
+                    "internal_name": name,
+                    "display_name": data["name"],
+                    "has_radar": True,
+                }
+                for name, data in MAP_DATA.items()
+            ]
+        }
+    except ImportError:
+        return {"maps": [], "error": "Radar module not available"}
+
+
+@app.get("/maps/{map_name}")
+async def get_map_info(map_name: str):
+    """Get map metadata and radar information."""
+    try:
+        from opensight.radar import get_map_metadata, RadarImageManager
+
+        metadata = get_map_metadata(map_name)
+        if not metadata:
+            raise HTTPException(status_code=404, detail=f"Map not found: {map_name}")
+
+        manager = RadarImageManager()
+        radar_url = manager.get_radar_url(map_name)
+
+        return {
+            "name": metadata.name,
+            "internal_name": metadata.internal_name,
+            "pos_x": metadata.pos_x,
+            "pos_y": metadata.pos_y,
+            "scale": metadata.scale,
+            "radar_url": radar_url,
+            "z_cutoff": metadata.z_cutoff,
+            "has_multiple_levels": metadata.z_cutoff is not None,
+        }
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Radar module not available: {e}")
+
+
+@app.post("/radar/transform")
+async def transform_coordinates(request: RadarRequest):
+    """Transform game coordinates to radar pixel coordinates."""
+    try:
+        from opensight.radar import CoordinateTransformer
+
+        transformer = CoordinateTransformer(request.map_name)
+        results = []
+
+        for pos in request.positions:
+            x = pos.get("x", 0)
+            y = pos.get("y", 0)
+            z = pos.get("z", 0)
+            radar_pos = transformer.game_to_radar(x, y, z)
+            results.append({
+                "game": {"x": x, "y": y, "z": z},
+                "radar": {"x": round(radar_pos.x, 1), "y": round(radar_pos.y, 1)},
+                "is_upper_level": transformer.is_upper_level(z),
+            })
+
+        return {
+            "map_name": request.map_name,
+            "positions": results,
+        }
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Radar module not available: {e}")
+
+
+# =============================================================================
+# HLTV Integration Endpoints
+# =============================================================================
+
+@app.get("/hltv/rankings")
+async def get_hltv_rankings(top_n: int = Query(default=10, le=30)):
+    """Get current world team rankings (cached data)."""
+    try:
+        from opensight.hltv import HLTVClient
+        client = HLTVClient()
+        return {"rankings": client.get_world_rankings(top_n)}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}")
+
+
+@app.get("/hltv/map/{map_name}")
+async def get_hltv_map_stats(map_name: str):
+    """Get map statistics from HLTV data."""
+    try:
+        from opensight.hltv import get_map_statistics
+        stats = get_map_statistics(map_name)
+        if not stats:
+            raise HTTPException(status_code=404, detail=f"No stats for map: {map_name}")
+        return stats
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}")
+
+
+@app.get("/hltv/player/search")
+async def search_hltv_player(nickname: str = Query(..., min_length=2)):
+    """Search for a player by nickname."""
+    try:
+        from opensight.hltv import HLTVClient
+        client = HLTVClient()
+        return {"results": client.search_player(nickname)}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}")
+
+
+@app.post("/hltv/enrich")
+async def enrich_analysis(analysis_data: dict = Body(...)):
+    """Enrich analysis data with HLTV information."""
+    try:
+        from opensight.hltv import enrich_match_analysis
+        return enrich_match_analysis(analysis_data)
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}")
+
+
+# =============================================================================
+# Cache Management Endpoints
+# =============================================================================
+
+@app.get("/cache/stats")
+async def get_cache_stats():
+    """Get cache statistics."""
+    try:
+        from opensight.cache import get_cache_stats
+        return get_cache_stats()
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}")
+
+
+@app.post("/cache/clear")
+async def clear_cache():
+    """Clear all cached analysis data."""
+    try:
+        from opensight.cache import clear_cache
+        clear_cache()
+        return {"status": "ok", "message": "Cache cleared"}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}")
+
+
+# =============================================================================
+# Community Feedback Endpoints
+# =============================================================================
+
+@app.post("/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    """Submit feedback on analysis accuracy."""
+    try:
+        from opensight.feedback import FeedbackDatabase
+        db = FeedbackDatabase()
+        entry_id = db.add_feedback(
+            demo_hash=request.demo_hash,
+            player_steam_id=request.player_steam_id,
+            metric_name=request.metric_name,
+            rating=request.rating,
+            comment=request.comment,
+            correction_value=request.correction_value,
+        )
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
+
+
+@app.post("/feedback/coaching")
+async def submit_coaching_feedback(request: CoachingFeedbackRequest):
+    """Submit feedback on coaching insights."""
+    try:
+        from opensight.feedback import FeedbackDatabase
+        db = FeedbackDatabase()
+        entry_id = db.add_coaching_feedback(
+            demo_hash=request.demo_hash,
+            insight_id=request.insight_id,
+            was_helpful=request.was_helpful,
+            correction=request.correction,
+        )
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
+
+
+@app.get("/feedback/stats")
+async def get_feedback_stats():
+    """Get feedback statistics for model improvement."""
+    try:
+        from opensight.feedback import FeedbackDatabase
+        db = FeedbackDatabase()
+        return db.get_stats()
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
+
+
+# =============================================================================
+# Parallel Batch Analysis Endpoints
+# =============================================================================
+
+@app.get("/parallel/status")
+async def get_parallel_status():
+    """Get parallel processing capabilities."""
+    try:
+        from opensight.parallel import get_system_info, DEFAULT_WORKERS, MAX_WORKERS
+        import multiprocessing
+
+        return {
+            "available": True,
+            "cpu_count": multiprocessing.cpu_count(),
+            "default_workers": DEFAULT_WORKERS,
+            "max_workers": MAX_WORKERS,
+            "system_info": get_system_info(),
+        }
+    except ImportError as e:
+        return {
+            "available": False,
+            "error": str(e),
+        }
+
+
+# =============================================================================
+# 2D Replay Data Endpoints
+# =============================================================================
+
+@app.post("/replay/generate")
+async def generate_replay_data(
+    file: UploadFile = File(...),
+    sample_rate: int = Query(default=16, ge=1, le=128, description="Extract every Nth tick"),
+):
+    """
+    Generate 2D replay data from a demo file.
+
+    This extracts player positions and game state at regular intervals
+    for use in 2D replay visualization.
+    """
+    # Validate file extension
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    filename_lower = file.filename.lower()
+    if not filename_lower.endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File must be a .dem or .dem.gz file"
+        )
+
+    try:
+        from opensight.parser import DemoParser
+        from opensight.replay import ReplayGenerator
+        from opensight.radar import CoordinateTransformer
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Replay module not available: {e}")
+
+    tmp_path = None
+    try:
+        content = await file.read()
+        file_size_bytes = len(content)
+
+        if file_size_bytes > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(status_code=413, detail="File too large")
+
+        if file_size_bytes == 0:
+            raise HTTPException(status_code=400, detail="Empty file")
+
+        suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
+        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
+        # Parse demo
+        parser = DemoParser(tmp_path)
+        data = parser.parse()
+
+        # Generate replay data
+        generator = ReplayGenerator(data, sample_rate=sample_rate)
+        replay = generator.generate_full_replay()
+
+        # Get coordinate transformer for radar positions
+        transformer = CoordinateTransformer(data.map_name)
+
+        # Convert to response format
+        frames = []
+        for frame in replay.frames[:10000]:  # Limit frames to prevent huge response
+            frame_data = {
+                "tick": frame.tick,
+                "round": frame.round_num,
+                "time_in_round": round(frame.time_in_round, 2),
+                "players": [],
+                "bomb": None,
+            }
+
+            for player in frame.players:
+                radar_pos = transformer.game_to_radar(player.x, player.y, player.z)
+                frame_data["players"].append({
+                    "steam_id": str(player.steam_id),
+                    "name": player.name,
+                    "team": player.team,
+                    "x": round(radar_pos.x, 1),
+                    "y": round(radar_pos.y, 1),
+                    "yaw": round(player.yaw, 1),
+                    "health": player.health,
+                    "armor": player.armor,
+                    "is_alive": player.is_alive,
+                    "weapon": player.active_weapon,
+                })
+
+            if frame.bomb:
+                bomb_pos = transformer.game_to_radar(frame.bomb.x, frame.bomb.y, frame.bomb.z)
+                frame_data["bomb"] = {
+                    "x": round(bomb_pos.x, 1),
+                    "y": round(bomb_pos.y, 1),
+                    "state": frame.bomb.state.value if hasattr(frame.bomb.state, 'value') else frame.bomb.state,
+                }
+
+            frames.append(frame_data)
+
+        return {
+            "map_name": replay.map_name,
+            "total_ticks": replay.total_ticks,
+            "tick_rate": replay.tick_rate,
+            "sample_rate": sample_rate,
+            "total_frames": len(replay.frames),
+            "frames_returned": len(frames),
+            "rounds": [
+                {
+                    "round_num": r.round_num,
+                    "start_tick": r.start_tick,
+                    "end_tick": r.end_tick,
+                    "winner": r.winner,
+                }
+                for r in replay.rounds
+            ],
+            "frames": frames,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Replay generation failed")
+        raise HTTPException(status_code=500, detail=f"Replay generation failed: {str(e)}")
+    finally:
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
