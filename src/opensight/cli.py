@@ -21,7 +21,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from opensight import __version__
 from opensight.sharecode import decode_sharecode, ShareCodeInfo
-from opensight.parser import DemoParser, DemoData
+from opensight.parser import DemoParser, DemoData, ParseMode, ParserBackend
 from opensight.metrics import (
     calculate_ttd,
     calculate_crosshair_placement,
@@ -106,6 +106,21 @@ def analyze(
         "-m",
         help="Metrics to calculate: all, ttd, cp, engagement, economy, utility, trades, opening"
     ),
+    parse_mode: str = typer.Option(
+        "comprehensive",
+        "--parse-mode",
+        help="Parsing mode: minimal (TTD/CP only), standard (+accuracy), comprehensive (all events)"
+    ),
+    cp_sample_rate: int = typer.Option(
+        1,
+        "--cp-sample-rate",
+        help="Sample rate for CP (1=all ticks, 4=every 4th). Higher = faster but less precise"
+    ),
+    no_optimize: bool = typer.Option(
+        False,
+        "--no-optimize",
+        help="Disable memory optimization (use default dtypes)"
+    ),
 ) -> None:
     """
     Analyze a CS2 demo file and display metrics.
@@ -115,6 +130,11 @@ def analyze(
     - Crosshair Placement (CP)
     - Kill/Death statistics
     - Damage per round
+
+    Performance options:
+    - --parse-mode minimal: Parse only kills/damages for TTD/CP (faster)
+    - --cp-sample-rate 4: Sample every 4th tick (32 Hz instead of 128 Hz)
+    - --no-optimize: Disable dtype optimization (more memory)
     """
     console.print(f"\n[bold blue]OpenSight[/bold blue] - Analyzing demo...\n")
 
@@ -123,11 +143,15 @@ def analyze(
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
-        # Parse the demo
-        task = progress.add_task("Parsing demo file...", total=None)
+        # Parse the demo with optimization settings
+        mode_str = f" (mode={parse_mode}, cp_rate={cp_sample_rate})"
+        task = progress.add_task(f"Parsing demo file{mode_str}...", total=None)
         try:
-            parser = DemoParser(demo_path)
-            data = parser.parse()
+            parser = DemoParser(demo_path, optimize_dtypes=not no_optimize)
+            data = parser.parse(
+                parse_mode=parse_mode,
+                cp_sample_rate=cp_sample_rate,
+            )
         except Exception as e:
             console.print(f"[red]Error parsing demo:[/red] {e}")
             raise typer.Exit(1)
@@ -142,6 +166,8 @@ def analyze(
     info_table.add_row("Duration", f"{data.duration_seconds:.1f} seconds")
     info_table.add_row("Tick Rate", str(data.tick_rate))
     info_table.add_row("Players", str(len(data.player_names)))
+    info_table.add_row("Parse Mode", parse_mode)
+    info_table.add_row("CP Sample Rate", f"1/{cp_sample_rate}" if cp_sample_rate > 1 else "all ticks")
     console.print(info_table)
     console.print()
 

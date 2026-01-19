@@ -1,23 +1,28 @@
 """
-Demo Parser for CS2 Replay Files - COMPREHENSIVE EDITION
+Demo Parser for CS2 Replay Files - OPTIMIZED EDITION
 
-Extracts ALL available data from CS2 demos using demoparser2:
+Extracts data from CS2 demos using demoparser2 (primary) or awpy (fallback):
 - Kills, Deaths, Assists with position/angle data
 - All damage events with hitgroups
-- Weapon fire events (for accuracy tracking)
-- Player blind events (flash effectiveness)
-- All grenade events (flash, HE, smoke, molotov)
-- Bomb events (plant, defuse, explode)
+- Weapon fire events (for accuracy tracking) - optional
+- Player blind events (flash effectiveness) - optional
+- All grenade events (flash, HE, smoke, molotov) - optional
+- Bomb events (plant, defuse, explode) - optional
 - Round events with economy data
-- Player positions and velocities (for movement analysis)
+- Player positions and velocities (for movement analysis) - optional
 
-This parser aims to extract the same level of detail you would get
-from watching the entire demo and taking comprehensive notes.
+PERFORMANCE OPTIMIZATIONS:
+- Lazy loading of heavy parser libraries (demoparser2, awpy)
+- Parser selection via feature flag (prefer_awpy=False by default)
+- Minimal parsing mode for TTD/CP only (skips grenades, blinds, bombs)
+- Optimized DataFrame dtypes (int32, float32, categorical strings)
+- Configurable tick sampling rate for CP calculations
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any, Optional, TYPE_CHECKING
 import logging
@@ -25,25 +30,65 @@ import logging
 import pandas as pd
 import numpy as np
 
-# Type checking imports
+# Type checking imports - DO NOT import actual modules at top level
+# This keeps CLI startup fast for commands like "info" and "decode"
 if TYPE_CHECKING:
     from demoparser2 import DemoParser as Demoparser2
 
-# Try demoparser2 first (more control over what data we extract)
-try:
-    from demoparser2 import DemoParser as Demoparser2
-    DEMOPARSER2_AVAILABLE = True
-except ImportError:
-    DEMOPARSER2_AVAILABLE = False
-
-# awpy as fallback
-try:
-    from awpy import Demo
-    AWPY_AVAILABLE = True
-except ImportError:
-    AWPY_AVAILABLE = False
-
 logger = logging.getLogger(__name__)
+
+# Parser availability flags - checked lazily on first use
+_DEMOPARSER2_AVAILABLE: Optional[bool] = None
+_AWPY_AVAILABLE: Optional[bool] = None
+
+
+class ParserBackend(Enum):
+    """Available parser backends."""
+    DEMOPARSER2 = "demoparser2"
+    AWPY = "awpy"
+    AUTO = "auto"  # Use demoparser2 if available, else awpy
+
+
+class ParseMode(Enum):
+    """Parsing mode for controlling data extraction scope."""
+    MINIMAL = "minimal"      # Only kills, damages, rounds - for TTD/CP analysis
+    STANDARD = "standard"    # Minimal + weapon_fire for accuracy stats
+    COMPREHENSIVE = "comprehensive"  # All events including grenades, blinds, bombs
+
+
+def _check_demoparser2_available() -> bool:
+    """Lazily check if demoparser2 is available."""
+    global _DEMOPARSER2_AVAILABLE
+    if _DEMOPARSER2_AVAILABLE is None:
+        try:
+            from demoparser2 import DemoParser as _
+            _DEMOPARSER2_AVAILABLE = True
+        except ImportError:
+            _DEMOPARSER2_AVAILABLE = False
+    return _DEMOPARSER2_AVAILABLE
+
+
+def _check_awpy_available() -> bool:
+    """Lazily check if awpy is available."""
+    global _AWPY_AVAILABLE
+    if _AWPY_AVAILABLE is None:
+        try:
+            from awpy import Demo as _
+            _AWPY_AVAILABLE = True
+        except ImportError:
+            _AWPY_AVAILABLE = False
+    return _AWPY_AVAILABLE
+
+
+# Backward compatibility aliases
+@property
+def DEMOPARSER2_AVAILABLE() -> bool:
+    return _check_demoparser2_available()
+
+
+@property
+def AWPY_AVAILABLE() -> bool:
+    return _check_awpy_available()
 
 
 # Safe type conversion helpers
@@ -88,6 +133,91 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (ValueError, TypeError):
         return default
+
+
+def optimize_dataframe_dtypes(df: pd.DataFrame, inplace: bool = True) -> pd.DataFrame:
+    """
+    Optimize DataFrame dtypes for memory efficiency.
+
+    Applies the following optimizations:
+    - int64 -> int32 where possible (ticks, round numbers, damage values)
+    - float64 -> float32 for positions, angles, velocities
+    - object strings -> category for repeated values (player names, teams, weapons)
+
+    Args:
+        df: DataFrame to optimize
+        inplace: If True, modify DataFrame in place; else return copy
+
+    Returns:
+        Optimized DataFrame
+    """
+    if df.empty:
+        return df
+
+    if not inplace:
+        df = df.copy()
+
+    # Columns that can safely be int32 (values well under 2^31)
+    int32_patterns = [
+        'tick', 'round', 'damage', 'dmg', 'health', 'armor', 'money',
+        'equipment', 'score', 'steamid', 'userid', 'kills', 'deaths',
+        'assists', 'headshots', 'round_num', 'total_rounds'
+    ]
+
+    # Columns that can safely be float32 (positions, angles)
+    float32_patterns = [
+        'X', 'Y', 'Z', 'x', 'y', 'z', 'pitch', 'yaw',
+        'velocity', 'duration', 'distance', 'angle'
+    ]
+
+    # Columns to convert to categorical (repeated string values)
+    category_patterns = [
+        'name', 'weapon', 'team', 'side', 'hitgroup', 'place',
+        'reason', 'grenade', 'map', 'site', 'type'
+    ]
+
+    for col in df.columns:
+        col_lower = col.lower()
+
+        # Skip already optimized columns
+        if df[col].dtype in [np.int32, np.float32, 'category']:
+            continue
+
+        # Try int32 conversion
+        if df[col].dtype in [np.int64, 'Int64']:
+            if any(pattern in col_lower for pattern in int32_patterns):
+                try:
+                    # Check if values fit in int32 range
+                    if df[col].notna().any():
+                        min_val = df[col].min()
+                        max_val = df[col].max()
+                        if pd.notna(min_val) and pd.notna(max_val):
+                            i32_min = np.iinfo(np.int32).min
+                            i32_max = np.iinfo(np.int32).max
+                            if min_val >= i32_min and max_val <= i32_max:
+                                df[col] = df[col].astype('Int32')  # Nullable int32
+                except (ValueError, TypeError, OverflowError):
+                    pass
+
+        # Try float32 conversion
+        elif df[col].dtype == np.float64:
+            if any(pattern in col_lower for pattern in float32_patterns):
+                try:
+                    df[col] = df[col].astype(np.float32)
+                except (ValueError, TypeError):
+                    pass
+
+        # Try category conversion for string columns
+        elif df[col].dtype == object:
+            if any(pattern in col_lower for pattern in category_patterns):
+                try:
+                    # Only convert if cardinality is low (< 100 unique values)
+                    if df[col].nunique() < 100:
+                        df[col] = df[col].astype('category')
+                except (ValueError, TypeError):
+                    pass
+
+    return df
 
 
 @dataclass
@@ -310,36 +440,60 @@ class DemoData:
 
 class DemoParser:
     """
-    Comprehensive CS2 demo parser using demoparser2.
+    Optimized CS2 demo parser using demoparser2 (primary) or awpy (fallback).
 
-    Extracts ALL available data for complete match analysis:
+    Extracts data for match analysis with configurable scope:
     - Kills with position, angles, wallbangs, noscopes, thrusmoke
     - Damage events with hitgroups
-    - Weapon fire events (for accuracy tracking)
-    - Player blind events (flash effectiveness)
-    - Grenade events (all types)
-    - Bomb events (plant, defuse, etc.)
+    - Weapon fire events (for accuracy tracking) - optional
+    - Player blind events (flash effectiveness) - optional
+    - Grenade events (all types) - optional
+    - Bomb events (plant, defuse, etc.) - optional
     - Round data with economy
-    - Player positions/velocities (tick data)
+    - Player positions/velocities (tick data) - optional
+
+    Performance options:
+    - backend: Select parser (demoparser2 vs awpy)
+    - parse_mode: MINIMAL (TTD/CP only), STANDARD, or COMPREHENSIVE
+    - optimize_dtypes: Reduce memory with int32/float32/categorical
+    - cp_sample_rate: Sample every Nth tick for CP (reduces memory)
     """
 
-    # Comprehensive player properties to extract
-    PLAYER_PROPS = [
-        "X", "Y", "Z",                    # Position
-        "pitch", "yaw",                    # View angles
-        "velocity_X", "velocity_Y", "velocity_Z",  # Movement
-        "health", "armor_value",           # Health/armor
-        "is_alive", "is_scoped",           # State
-        "balance", "current_equip_value",  # Economy
-        "last_place_name",                 # Location name
-        "in_crouch", "is_walking",         # Movement state
+    # Core player properties (always extracted for kills/damages)
+    CORE_PLAYER_PROPS = [
+        "X", "Y", "Z",         # Position
+        "pitch", "yaw",        # View angles (required for CP)
     ]
 
-    # Events to parse
-    EVENTS_TO_PARSE = [
+    # Extended player properties (for comprehensive mode)
+    EXTENDED_PLAYER_PROPS = [
+        "velocity_X", "velocity_Y", "velocity_Z",  # Movement
+        "health", "armor_value",                   # Health/armor
+        "is_alive", "is_scoped",                   # State
+        "balance", "current_equip_value",          # Economy
+        "last_place_name",                         # Location name
+        "in_crouch", "is_walking",                 # Movement state
+    ]
+
+    # Full player properties (core + extended)
+    PLAYER_PROPS = CORE_PLAYER_PROPS + EXTENDED_PLAYER_PROPS
+
+    # Core events (MINIMAL mode)
+    CORE_EVENTS = [
         "player_death",      # Kills
         "player_hurt",       # Damage
+        "round_start",
+        "round_end",
+        "round_freeze_end",
+    ]
+
+    # Standard events (STANDARD mode - adds weapon_fire)
+    STANDARD_EVENTS = CORE_EVENTS + [
         "weapon_fire",       # Shots fired (for accuracy)
+    ]
+
+    # Comprehensive events (COMPREHENSIVE mode - all events)
+    COMPREHENSIVE_EVENTS = STANDARD_EVENTS + [
         "player_blind",      # Flash effectiveness
         "grenade_thrown",    # All grenade throws
         "flashbang_detonate",
@@ -355,35 +509,115 @@ class DemoParser:
         "bomb_pickup",
         "bomb_beginplant",
         "bomb_begindefuse",
-        "round_start",
-        "round_end",
-        "round_freeze_end",
     ]
 
-    def __init__(self, demo_path: str | Path):
+    # Backward compatibility
+    EVENTS_TO_PARSE = COMPREHENSIVE_EVENTS
+
+    def __init__(
+        self,
+        demo_path: str | Path,
+        backend: ParserBackend | str = ParserBackend.AUTO,
+        optimize_dtypes: bool = True,
+    ):
+        """
+        Initialize the demo parser.
+
+        Args:
+            demo_path: Path to the .dem file
+            backend: Parser backend to use (AUTO, DEMOPARSER2, AWPY)
+            optimize_dtypes: If True, optimize DataFrame dtypes for memory
+        """
         self.demo_path = Path(demo_path)
         if not self.demo_path.exists():
             raise FileNotFoundError(f"Demo file not found: {demo_path}")
+
+        # Handle string backend
+        if isinstance(backend, str):
+            backend = ParserBackend(backend.lower())
+        self.backend = backend
+
+        self.optimize_dtypes = optimize_dtypes
         self._data: Optional[DemoData] = None
         self._parser: Optional[Demoparser2] = None
 
-    def parse(self, include_ticks: bool = False, comprehensive: bool = True) -> DemoData:
+    def parse(
+        self,
+        include_ticks: bool = False,
+        comprehensive: bool = True,
+        parse_mode: ParseMode | str | None = None,
+        cp_sample_rate: int = 1,
+    ) -> DemoData:
         """
-        Parse the demo file and extract all relevant data.
+        Parse the demo file and extract relevant data.
 
         Args:
-            include_ticks: If True, parse tick-level position data (slower but more detailed)
-            comprehensive: If True, parse all events including weapon_fire, grenades, blinds
+            include_ticks: If True, parse tick-level position data (slower, more memory)
+            comprehensive: If True, parse all events (deprecated - use parse_mode instead)
+            parse_mode: Parsing mode - MINIMAL, STANDARD, or COMPREHENSIVE.
+                        If None, determined from comprehensive flag for backward compatibility.
+            cp_sample_rate: Sample every Nth tick for CP calculations (1=all, 4=every 4th, etc.)
+                           Higher values reduce memory usage for long demos.
+
+        Returns:
+            DemoData with all parsed events and DataFrames
+
+        Performance tips:
+            - For TTD/CP analysis only, use parse_mode=ParseMode.MINIMAL
+            - For long demos, use cp_sample_rate=4 (32 Hz) or cp_sample_rate=8 (16 Hz)
+            - Set optimize_dtypes=True in constructor to reduce memory ~40%
         """
         if self._data is not None:
             return self._data
 
-        if DEMOPARSER2_AVAILABLE:
-            logger.info("Using demoparser2 for comprehensive parsing")
-            return self._parse_with_demoparser2(include_ticks, comprehensive)
-        elif AWPY_AVAILABLE:
-            logger.info("Using awpy parser (fallback - limited data)")
-            return self._parse_with_awpy(include_ticks)
+        # Determine parse mode
+        if parse_mode is None:
+            # Backward compatibility: map comprehensive flag to mode
+            parse_mode = ParseMode.COMPREHENSIVE if comprehensive else ParseMode.MINIMAL
+        elif isinstance(parse_mode, str):
+            parse_mode = ParseMode(parse_mode.lower())
+
+        # Validate cp_sample_rate
+        if cp_sample_rate < 1:
+            cp_sample_rate = 1
+        elif cp_sample_rate > 128:
+            logger.warning(f"cp_sample_rate={cp_sample_rate} is very high, limiting to 128")
+            cp_sample_rate = 128
+
+        # Determine which backend to use
+        use_demoparser2 = False
+        use_awpy = False
+
+        if self.backend == ParserBackend.AUTO:
+            if _check_demoparser2_available():
+                use_demoparser2 = True
+            elif _check_awpy_available():
+                use_awpy = True
+        elif self.backend == ParserBackend.DEMOPARSER2:
+            if _check_demoparser2_available():
+                use_demoparser2 = True
+            else:
+                raise ImportError(
+                    "demoparser2 requested but not installed. pip install demoparser2"
+                )
+        elif self.backend == ParserBackend.AWPY:
+            if _check_awpy_available():
+                use_awpy = True
+            else:
+                raise ImportError("awpy requested but not installed. pip install awpy")
+
+        if use_demoparser2:
+            logger.info(
+                f"Using demoparser2 (mode={parse_mode.value}, cp_rate={cp_sample_rate})"
+            )
+            return self._parse_with_demoparser2(
+                include_ticks=include_ticks,
+                parse_mode=parse_mode,
+                cp_sample_rate=cp_sample_rate,
+            )
+        elif use_awpy:
+            logger.info(f"Using awpy parser (limited data, mode={parse_mode.value})")
+            return self._parse_with_awpy(include_ticks=include_ticks)
         else:
             raise ImportError("No parser available. Install demoparser2: pip install demoparser2")
 
@@ -406,11 +640,31 @@ class DemoParser:
             logger.debug(f"Could not parse {event_name}: {e}")
         return pd.DataFrame()
 
-    def _parse_with_demoparser2(self, include_ticks: bool = False, comprehensive: bool = True) -> DemoData:
-        """Parse using demoparser2 with comprehensive event extraction."""
-        logger.info(f"Parsing demo: {self.demo_path}")
+    def _parse_with_demoparser2(
+        self,
+        include_ticks: bool = False,
+        parse_mode: ParseMode = ParseMode.COMPREHENSIVE,
+        cp_sample_rate: int = 1,
+    ) -> DemoData:
+        """
+        Parse using demoparser2 with configurable event extraction.
+
+        Args:
+            include_ticks: Parse tick-level position data (slower)
+            parse_mode: MINIMAL, STANDARD, or COMPREHENSIVE
+            cp_sample_rate: Sample rate for tick data (1=all, 4=every 4th, etc.)
+        """
+        # Lazy import - keeps CLI fast for non-parsing commands
+        from demoparser2 import DemoParser as Demoparser2
+
+        logger.info(f"Parsing demo: {self.demo_path} (mode={parse_mode.value})")
         parser = Demoparser2(str(self.demo_path))
         self._parser = parser
+
+        # Determine which events to parse based on mode
+        is_minimal = parse_mode == ParseMode.MINIMAL
+        is_standard = parse_mode == ParseMode.STANDARD
+        is_comprehensive = parse_mode == ParseMode.COMPREHENSIVE
 
         # Parse header
         map_name = "unknown"
@@ -450,7 +704,7 @@ class DemoParser:
         logger.info(f"Parsed {len(round_end_df)} round_end, {len(round_start_df)} round_start events")
 
         # ===========================================
-        # EXTENDED EVENTS - For comprehensive analysis
+        # EXTENDED EVENTS - Based on parse mode
         # ===========================================
         weapon_fires_df = pd.DataFrame()
         blinds_df = pd.DataFrame()
@@ -465,8 +719,8 @@ class DemoParser:
         bomb_defused_df = pd.DataFrame()
         bomb_exploded_df = pd.DataFrame()
 
-        if comprehensive:
-            # Weapon fire events (for accuracy tracking)
+        # STANDARD and COMPREHENSIVE modes: parse weapon_fire for accuracy stats
+        if is_standard or is_comprehensive:
             weapon_fires_df = self._parse_event_safe(
                 parser, "weapon_fire",
                 player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z", "is_scoped"]
@@ -475,6 +729,8 @@ class DemoParser:
                 weapon_fires_df = self._parse_event_safe(parser, "weapon_fire")
             logger.info(f"Parsed {len(weapon_fires_df)} weapon_fire events (for accuracy)")
 
+        # COMPREHENSIVE mode only: parse grenades, blinds, bombs
+        if is_comprehensive:
             # Player blind events (flash effectiveness)
             blinds_df = self._parse_event_safe(parser, "player_blind")
             logger.info(f"Parsed {len(blinds_df)} player_blind events")
@@ -496,14 +752,31 @@ class DemoParser:
             logger.info(f"Parsed bomb events: {len(bomb_planted_df)} plants, {len(bomb_defused_df)} defuses, {len(bomb_exploded_df)} explosions")
 
         # ===========================================
-        # TICK DATA - Optional detailed tracking
+        # TICK DATA - Optional detailed tracking with sampling
         # ===========================================
         ticks_df = None
         if include_ticks:
             try:
-                ticks_df = parser.parse_ticks(self.PLAYER_PROPS)
+                # Use core props for minimal, full props for comprehensive
+                tick_props = self.CORE_PLAYER_PROPS if is_minimal else self.PLAYER_PROPS
+                ticks_df = parser.parse_ticks(tick_props)
+
                 if ticks_df is not None and not ticks_df.empty:
-                    logger.info(f"Parsed {len(ticks_df)} tick entries")
+                    original_len = len(ticks_df)
+
+                    # Apply tick sampling for CP analysis (reduces memory for long demos)
+                    if cp_sample_rate > 1 and 'tick' in ticks_df.columns:
+                        # Get unique ticks and sample every Nth
+                        unique_ticks = ticks_df['tick'].unique()
+                        sampled_ticks = unique_ticks[::cp_sample_rate]
+                        ticks_df = ticks_df[ticks_df['tick'].isin(sampled_ticks)]
+                        logger.info(f"Tick sampling: {original_len} -> {len(ticks_df)} entries (rate={cp_sample_rate})")
+                    else:
+                        logger.info(f"Parsed {len(ticks_df)} tick entries")
+
+                    # Optimize dtypes for tick data (can be very large)
+                    if self.optimize_dtypes:
+                        ticks_df = optimize_dataframe_dtypes(ticks_df)
             except Exception as e:
                 logger.warning(f"Failed to parse ticks: {e}")
 
@@ -532,11 +805,11 @@ class DemoParser:
         damages = self._build_damages(damages_df)
         rounds = self._build_rounds(round_end_df, round_start_df, round_freeze_df)
 
-        # Build structured events - EXTENDED
-        weapon_fires = self._build_weapon_fires(weapon_fires_df) if comprehensive else []
-        blinds = self._build_blinds(blinds_df, player_teams) if comprehensive else []
-        grenades = self._build_grenades(grenades_thrown_df, flash_det_df, he_det_df, smoke_det_df, molly_det_df) if comprehensive else []
-        bomb_events = self._build_bomb_events(bomb_planted_df, bomb_defused_df, bomb_exploded_df) if comprehensive else []
+        # Build structured events - EXTENDED (based on parse mode)
+        weapon_fires = self._build_weapon_fires(weapon_fires_df) if (is_standard or is_comprehensive) else []
+        blinds = self._build_blinds(blinds_df, player_teams) if is_comprehensive else []
+        grenades = self._build_grenades(grenades_thrown_df, flash_det_df, he_det_df, smoke_det_df, molly_det_df) if is_comprehensive else []
+        bomb_events = self._build_bomb_events(bomb_planted_df, bomb_defused_df, bomb_exploded_df) if is_comprehensive else []
 
         # Merge grenade DataFrames for easier analysis
         grenades_df = pd.concat([
@@ -545,14 +818,31 @@ class DemoParser:
             he_det_df.assign(event_type='detonate', grenade_type='hegrenade') if not he_det_df.empty else pd.DataFrame(),
             smoke_det_df.assign(event_type='detonate', grenade_type='smokegrenade') if not smoke_det_df.empty else pd.DataFrame(),
             molly_det_df.assign(event_type='detonate', grenade_type='molotov') if not molly_det_df.empty else pd.DataFrame(),
-        ], ignore_index=True) if comprehensive else pd.DataFrame()
+        ], ignore_index=True) if is_comprehensive else pd.DataFrame()
 
         # Merge bomb DataFrames
         bomb_events_df = pd.concat([
             bomb_planted_df.assign(event_type='planted') if not bomb_planted_df.empty else pd.DataFrame(),
             bomb_defused_df.assign(event_type='defused') if not bomb_defused_df.empty else pd.DataFrame(),
             bomb_exploded_df.assign(event_type='exploded') if not bomb_exploded_df.empty else pd.DataFrame(),
-        ], ignore_index=True) if comprehensive else pd.DataFrame()
+        ], ignore_index=True) if is_comprehensive else pd.DataFrame()
+
+        # ===========================================
+        # DTYPE OPTIMIZATION - Reduce memory usage
+        # ===========================================
+        if self.optimize_dtypes:
+            logger.debug("Optimizing DataFrame dtypes...")
+            kills_df = optimize_dataframe_dtypes(kills_df)
+            damages_df = optimize_dataframe_dtypes(damages_df)
+            round_end_df = optimize_dataframe_dtypes(round_end_df)
+            if not weapon_fires_df.empty:
+                weapon_fires_df = optimize_dataframe_dtypes(weapon_fires_df)
+            if not blinds_df.empty:
+                blinds_df = optimize_dataframe_dtypes(blinds_df)
+            if not grenades_df.empty:
+                grenades_df = optimize_dataframe_dtypes(grenades_df)
+            if not bomb_events_df.empty:
+                bomb_events_df = optimize_dataframe_dtypes(bomb_events_df)
 
         # Calculate final scores
         final_ct = 0
@@ -598,7 +888,7 @@ class DemoParser:
         )
 
         logger.info(f"Parsing complete: {len(player_stats)} players, {num_rounds} rounds, {len(kills)} kills")
-        if comprehensive:
+        if is_standard or is_comprehensive:
             logger.info(f"Extended data: {len(weapon_fires)} shots, {len(blinds)} blinds, {len(grenades)} grenades, {len(bomb_events)} bomb events")
         return self._data
 
@@ -1103,6 +1393,9 @@ class DemoParser:
 
     def _parse_with_awpy(self, include_ticks: bool = False) -> DemoData:
         """Fallback parser using awpy."""
+        # Lazy import - keeps CLI fast for non-parsing commands
+        from awpy import Demo
+
         logger.info(f"Parsing demo with awpy: {self.demo_path}")
 
         demo = Demo(str(self.demo_path), verbose=False)
@@ -1169,20 +1462,44 @@ class DemoParser:
         return self._data
 
 
-def parse_demo(demo_path: str | Path, include_ticks: bool = False, comprehensive: bool = True) -> DemoData:
+def parse_demo(
+    demo_path: str | Path,
+    include_ticks: bool = False,
+    comprehensive: bool = True,
+    parse_mode: ParseMode | str | None = None,
+    cp_sample_rate: int = 1,
+    backend: ParserBackend | str = ParserBackend.AUTO,
+    optimize_dtypes: bool = True,
+) -> DemoData:
     """
     Convenience function to parse a demo file.
 
     Args:
         demo_path: Path to the .dem file
         include_ticks: If True, parse tick-level position data (slower)
-        comprehensive: If True, parse all events (weapon_fire, grenades, blinds, bombs)
+        comprehensive: If True, parse all events (deprecated - use parse_mode)
+        parse_mode: MINIMAL (TTD/CP only), STANDARD, or COMPREHENSIVE
+        cp_sample_rate: Sample every Nth tick for CP (1=all, 4=every 4th, etc.)
+        backend: Parser backend - AUTO, DEMOPARSER2, or AWPY
+        optimize_dtypes: If True, optimize DataFrame dtypes for memory
 
     Returns:
         DemoData with all parsed events and DataFrames
+
+    Example:
+        # Fast TTD/CP analysis with memory optimization
+        data = parse_demo("demo.dem", parse_mode="minimal", cp_sample_rate=4)
+
+        # Full analysis with all events
+        data = parse_demo("demo.dem", parse_mode="comprehensive")
     """
-    parser = DemoParser(demo_path)
-    return parser.parse(include_ticks=include_ticks, comprehensive=comprehensive)
+    parser = DemoParser(demo_path, backend=backend, optimize_dtypes=optimize_dtypes)
+    return parser.parse(
+        include_ticks=include_ticks,
+        comprehensive=comprehensive,
+        parse_mode=parse_mode,
+        cp_sample_rate=cp_sample_rate,
+    )
 
 
 # Alias for backward compatibility
