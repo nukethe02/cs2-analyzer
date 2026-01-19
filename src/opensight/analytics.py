@@ -33,8 +33,74 @@ from opensight.constants import (
 logger = logging.getLogger(__name__)
 
 
-def safe_float(value: Any, default: float = 0.0) -> float:
-    """Safely convert a value to float, returning default on failure.
+@dataclass
+class OpeningDuelStats:
+    """Opening duel (first kill of round) statistics."""
+    attempts: int = 0       # Times player was in first duel
+    wins: int = 0           # Times player got first kill (Entry Kills)
+    losses: int = 0         # Times player was first death (Entry Deaths)
+
+    @property
+    def win_rate(self) -> float:
+        return (self.wins / self.attempts * 100) if self.attempts > 0 else 0.0
+
+
+@dataclass
+class LurkStats:
+    """Lurk statistics (kills/deaths when far from team)."""
+    kills: int = 0          # Kills while lurking (>1500 units from team)
+    deaths: int = 0         # Deaths while lurking
+
+
+@dataclass
+class TradeStats:
+    """Trade kill statistics."""
+    kills_traded: int = 0       # Times player traded a teammate
+    deaths_traded: int = 0      # Times player was traded by teammate
+    trade_attempts: int = 0     # Opportunities to trade
+
+    @property
+    def trade_success_rate(self) -> float:
+        return (self.kills_traded / self.trade_attempts * 100) if self.trade_attempts > 0 else 0.0
+
+
+@dataclass
+class ClutchStats:
+    """Clutch situation statistics."""
+    situations_1v1: int = 0
+    wins_1v1: int = 0
+    situations_1v2: int = 0
+    wins_1v2: int = 0
+    situations_1v3: int = 0
+    wins_1v3: int = 0
+    situations_1v4: int = 0
+    wins_1v4: int = 0
+    situations_1v5: int = 0
+    wins_1v5: int = 0
+
+    @property
+    def total_situations(self) -> int:
+        return self.situations_1v1 + self.situations_1v2 + self.situations_1v3 + self.situations_1v4 + self.situations_1v5
+
+    @property
+    def total_wins(self) -> int:
+        return self.wins_1v1 + self.wins_1v2 + self.wins_1v3 + self.wins_1v4 + self.wins_1v5
+
+
+@dataclass
+class MultiKillStats:
+    """Multi-kill round statistics."""
+    rounds_with_1k: int = 0
+    rounds_with_2k: int = 0
+    rounds_with_3k: int = 0
+    rounds_with_4k: int = 0
+    rounds_with_5k: int = 0  # Ace
+
+    @property
+    def total_multi_kill_rounds(self) -> int:
+        """Rounds with 2+ kills."""
+        return self.rounds_with_2k + self.rounds_with_3k + self.rounds_with_4k + self.rounds_with_5k
+
 
     Args:
         value: The value to convert.

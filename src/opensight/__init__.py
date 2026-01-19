@@ -44,13 +44,74 @@ from opensight.metrics import (
     ComprehensivePlayerMetrics,
 )
 
-# Configuration
-from opensight.config import (
-    OpenSightConfig,
-    load_config,
-    get_config,
-    set_config,
-)
+    # Constants
+    elif name == "DemoSource":
+        from opensight.constants import DemoSource
+        return DemoSource
+    elif name == "GameMode":
+        from opensight.constants import GameMode
+        return GameMode
+    elif name == "DemoType":
+        from opensight.constants import DemoType
+        return DemoType
+    elif name == "CS2_TICK_RATE":
+        from opensight.constants import CS2_TICK_RATE
+        return CS2_TICK_RATE
+
+    # Detection
+    elif name == "DemoMetadata":
+        from opensight.detection import DemoMetadata
+        return DemoMetadata
+    elif name == "detect_demo_metadata":
+        from opensight.detection import detect_demo_metadata
+        return detect_demo_metadata
+
+    # Export
+    elif name == "export_demo":
+        from opensight.export import export_demo
+        return export_demo
+    elif name == "export_json":
+        from opensight.export import export_json
+        return export_json
+    elif name == "export_csv":
+        from opensight.export import export_csv
+        return export_csv
+    elif name == "export_excel":
+        from opensight.export import export_excel
+        return export_excel
+
+    # Sharecode
+    elif name == "decode_sharecode":
+        from opensight.sharecode import decode_sharecode
+        return decode_sharecode
+    elif name == "ShareCodeInfo":
+        from opensight.sharecode import ShareCodeInfo
+        return ShareCodeInfo
+
+    # State Machine (Pro-Level Analytics)
+    elif name == "StateMachine":
+        from opensight.state_machine import StateMachine
+        return StateMachine
+    elif name == "analyze_state":
+        from opensight.state_machine import analyze_state
+        return analyze_state
+    elif name == "get_kill_contexts":
+        from opensight.state_machine import get_kill_contexts
+        return get_kill_contexts
+    elif name == "KillContext":
+        from opensight.state_machine import KillContext
+        return KillContext
+    elif name == "PlayerContextStats":
+        from opensight.state_machine import PlayerContextStats
+        return PlayerContextStats
+    elif name == "StateAnalysisResult":
+        from opensight.state_machine import StateAnalysisResult
+        return StateAnalysisResult
+    elif name == "CrosshairAnalyzer":
+        from opensight.state_machine import CrosshairAnalyzer
+        return CrosshairAnalyzer
+
+    raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
 # Export
 from opensight.export import (
@@ -72,37 +133,29 @@ __all__ = [
     "DemoParser",
     "DemoData",
     "parse_demo",
-    "PlayerState",
-    # Watcher
-    "ReplayWatcher",
-    "DemoFileEvent",
-    "watch_replays",
-    # Core metrics
-    "calculate_ttd",
-    "calculate_crosshair_placement",
-    "calculate_engagement_metrics",
-    # Extended metrics
-    "calculate_economy_metrics",
-    "calculate_utility_metrics",
-    "calculate_positioning_metrics",
-    "calculate_trade_metrics",
-    "calculate_opening_metrics",
-    "calculate_comprehensive_metrics",
-    # Result types
-    "TTDResult",
-    "CrosshairPlacementResult",
-    "EngagementMetrics",
-    "EconomyMetrics",
-    "UtilityMetrics",
-    "PositioningMetrics",
-    "TradeMetrics",
-    "OpeningDuelMetrics",
-    "ComprehensivePlayerMetrics",
-    # Configuration
-    "OpenSightConfig",
-    "load_config",
-    "get_config",
-    "set_config",
+    "KillEvent",
+    "DamageEvent",
+    # Analytics
+    "DemoAnalyzer",
+    "analyze_demo",
+    "MatchAnalysis",
+    "PlayerMatchStats",
+    # State Machine (Pro-Level Analytics)
+    "StateMachine",
+    "analyze_state",
+    "get_kill_contexts",
+    "KillContext",
+    "PlayerContextStats",
+    "StateAnalysisResult",
+    "CrosshairAnalyzer",
+    # Constants
+    "DemoSource",
+    "GameMode",
+    "DemoType",
+    "CS2_TICK_RATE",
+    # Detection
+    "DemoMetadata",
+    "detect_demo_metadata",
     # Export
     "export_to_json",
     "export_to_excel",
