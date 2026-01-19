@@ -119,6 +119,23 @@ def __getattr__(name):
         from opensight.collaboration import create_collaboration_session
         return create_collaboration_session
 
+    # Profiling
+    elif name == "TimingCollector":
+        from opensight.profiling import TimingCollector
+        return TimingCollector
+    elif name == "SlowJobLogger":
+        from opensight.profiling import SlowJobLogger
+        return SlowJobLogger
+    elif name == "Profiler":
+        from opensight.profiling import Profiler
+        return Profiler
+    elif name == "stage_timer":
+        from opensight.profiling import stage_timer
+        return stage_timer
+    elif name == "create_timing_context":
+        from opensight.profiling import create_timing_context
+        return create_timing_context
+
     # New modules
     elif name == "ParallelDemoAnalyzer":
         from opensight.parallel import ParallelDemoAnalyzer
@@ -205,4 +222,10 @@ __all__ = [
     # Collaboration
     "CollaborationManager",
     "create_collaboration_session",
+    # Profiling
+    "TimingCollector",
+    "SlowJobLogger",
+    "Profiler",
+    "stage_timer",
+    "create_timing_context",
 ]

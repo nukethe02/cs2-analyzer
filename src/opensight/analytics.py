@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 from opensight.parser import DemoData, KillEvent, DamageEvent, safe_int, safe_str, safe_float
+from opensight.profiling import stage_timer, get_timing_collector
 from opensight.constants import (
     CS2_TICK_RATE,
     TRADE_WINDOW_SECONDS,
@@ -760,68 +761,98 @@ class DemoAnalyzer:
         """Run full analysis and return match analysis."""
         logger.info("Starting professional analysis...")
 
+        # Record metrics being calculated for timing collector
+        collector = get_timing_collector()
+        if collector:
+            collector.add_metric("basic_stats")
+            collector.add_metric("ttd")
+            collector.add_metric("crosshair_placement")
+            collector.add_metric("utility")
+            collector.add_metric("economy")
+            collector.add_metric("combat")
+
         # Initialize column name cache
         self._init_column_cache()
 
         # Initialize player stats
-        self._init_player_stats()
+        with stage_timer("init_player_stats"):
+            self._init_player_stats()
 
         # Calculate basic stats
-        self._calculate_basic_stats()
+        with stage_timer("calculate_basic_stats"):
+            self._calculate_basic_stats()
 
         # Calculate multi-kill rounds
-        self._calculate_multi_kills()
+        with stage_timer("calculate_multi_kills"):
+            self._calculate_multi_kills()
 
         # Detect opening duels
-        self._detect_opening_duels()
+        with stage_timer("detect_opening_duels"):
+            self._detect_opening_duels()
 
         # Detect trade kills
-        self._detect_trades()
+        with stage_timer("detect_trades"):
+            self._detect_trades()
 
         # Detect clutches
-        self._detect_clutches()
+        with stage_timer("detect_clutches"):
+            self._detect_clutches()
 
         # Calculate KAST
-        self._calculate_kast()
+        with stage_timer("calculate_kast"):
+            self._calculate_kast()
 
         # Compute TTD
-        self._compute_ttd()
+        with stage_timer("compute_ttd"):
+            self._compute_ttd()
 
         # Compute crosshair placement
-        self._compute_crosshair_placement()
+        with stage_timer("compute_crosshair_placement"):
+            self._compute_crosshair_placement()
 
         # Calculate side-based stats (CT vs T)
-        self._calculate_side_stats()
+        with stage_timer("calculate_side_stats"):
+            self._calculate_side_stats()
 
         # Calculate utility stats
-        self._calculate_utility_stats()
+        with stage_timer("calculate_utility_stats"):
+            self._calculate_utility_stats()
 
         # Calculate accuracy stats (from weapon_fire events)
-        self._calculate_accuracy_stats()
+        with stage_timer("calculate_accuracy_stats"):
+            self._calculate_accuracy_stats()
 
         # Calculate mistakes
-        self._calculate_mistakes()
+        with stage_timer("calculate_mistakes"):
+            self._calculate_mistakes()
 
         # Run State Machine for pro-level analytics (Entry/Trade/Lurk)
-        self._run_state_machine()
+        with stage_timer("run_state_machine"):
+            self._run_state_machine()
 
         # Integrate Economy Module
-        economy_stats = self._integrate_economy()
+        with stage_timer("integrate_economy"):
+            economy_stats = self._integrate_economy()
 
         # Integrate Combat Module
-        combat_stats = self._integrate_combat()
+        with stage_timer("integrate_combat"):
+            combat_stats = self._integrate_combat()
 
         # Build kill matrix
-        kill_matrix = self._build_kill_matrix()
+        with stage_timer("build_kill_matrix"):
+            kill_matrix = self._build_kill_matrix()
 
         # Build round timeline
-        round_timeline = self._build_round_timeline()
+        with stage_timer("build_round_timeline"):
+            round_timeline = self._build_round_timeline()
 
         # Extract position data for heatmaps
-        kill_positions, death_positions = self._extract_position_data()
+        with stage_timer("extract_position_data"):
+            kill_positions, death_positions = self._extract_position_data()
 
         # Generate AI coaching insights
-        coaching_insights = self._generate_coaching_insights()
+        with stage_timer("generate_coaching_insights"):
+            coaching_insights = self._generate_coaching_insights()
 
         # Build result
         team_scores = self._calculate_team_scores()
