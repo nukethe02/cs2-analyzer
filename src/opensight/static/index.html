@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenSight - CS2 Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -11,8 +12,10 @@
             --bg-primary: #0a0a0f;
             --bg-secondary: #12121a;
             --bg-card: #1a1a24;
+            --bg-card-hover: #22222e;
             --accent: #00d4ff;
             --accent-dim: rgba(0, 212, 255, 0.15);
+            --accent-glow: rgba(0, 212, 255, 0.4);
             --ct-color: #4a90d9;
             --ct-bg: rgba(74, 144, 217, 0.15);
             --t-color: #de9b35;
@@ -21,9 +24,13 @@
             --text-secondary: #a0a0b0;
             --text-muted: #606070;
             --success: #22c55e;
+            --success-bg: rgba(34, 197, 94, 0.15);
             --warning: #f59e0b;
+            --warning-bg: rgba(245, 158, 11, 0.15);
             --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.15);
             --border: rgba(255, 255, 255, 0.08);
+            --border-light: rgba(255, 255, 255, 0.12);
         }
 
         body {
@@ -35,26 +42,30 @@
         }
 
         .header {
-            background: var(--bg-secondary);
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
             border-bottom: 1px solid var(--border);
-            padding: 24px 20px;
+            padding: 32px 20px;
             text-align: center;
         }
 
         .header h1 {
-            font-size: 2rem;
-            color: var(--accent);
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--accent) 0%, #00ff88 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             margin-bottom: 8px;
         }
 
-        .header p { color: var(--text-secondary); }
+        .header p { color: var(--text-secondary); font-size: 1.1rem; }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 24px 20px;
         }
 
+        /* Upload Section */
         .upload-section {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -69,20 +80,22 @@
             padding: 48px 24px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s;
             background: var(--bg-secondary);
         }
 
         .upload-zone:hover, .upload-zone.dragover {
             border-color: var(--accent);
             background: var(--accent-dim);
+            box-shadow: 0 0 30px var(--accent-glow);
         }
 
-        .upload-zone h3 { margin-bottom: 8px; color: var(--text-primary); }
+        .upload-zone h3 { margin-bottom: 8px; color: var(--text-primary); font-size: 1.3rem; }
         .upload-zone p { color: var(--text-muted); font-size: 0.9rem; }
 
         input[type="file"] { display: none; }
 
+        /* Loading Overlay */
         .loading-overlay {
             display: none;
             position: fixed;
@@ -110,40 +123,157 @@
 
         .loading-text { color: var(--text-secondary); font-size: 1.1rem; }
 
+        /* Results */
         .results { display: none; }
         .results.show { display: block; }
 
+        /* Match Header */
         .match-header {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 16px;
-            padding: 24px;
+            padding: 32px;
             margin-bottom: 24px;
             text-align: center;
         }
 
-        .map-name { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
-        .match-meta { color: var(--text-muted); margin-bottom: 16px; }
+        .map-name { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+        .match-meta { color: var(--text-muted); margin-bottom: 20px; font-size: 1rem; }
 
         .score-display {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 24px;
-            font-size: 2rem;
+            gap: 32px;
+            font-size: 3rem;
             font-weight: 700;
+            margin-bottom: 24px;
         }
 
         .score-ct { color: var(--ct-color); }
         .score-t { color: var(--t-color); }
+        .score-separator { color: var(--text-muted); font-weight: 400; }
 
-        .players-grid { display: grid; gap: 16px; }
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--accent);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-primary);
+            border-color: var(--accent);
+        }
+
+        .btn-primary:hover {
+            background: #00b8e0;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .tab:hover { background: var(--bg-card-hover); }
+
+        .tab.active {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Charts Section */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .chart-card h3 {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+
+        /* Player Cards */
+        .players-grid {
+            display: grid;
+            gap: 16px;
+        }
 
         .player-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        .player-card:hover {
+            border-color: var(--border-light);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .player-card.expanded .player-details { display: block; }
+        .player-card.expanded .expand-icon { transform: rotate(180deg); }
+
+        .player-main {
             padding: 20px;
+            cursor: pointer;
         }
 
         .player-header {
@@ -151,8 +281,12 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--border);
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .player-name { font-weight: 600; font-size: 1.1rem; }
@@ -160,12 +294,19 @@
         .player-team {
             padding: 4px 12px;
             border-radius: 4px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             font-weight: 600;
+            text-transform: uppercase;
         }
 
         .team-ct { background: var(--ct-bg); color: var(--ct-color); }
         .team-t { background: var(--t-bg); color: var(--t-color); }
+
+        .player-badges {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
 
         .rating-badge {
             background: var(--accent);
@@ -173,12 +314,25 @@
             padding: 6px 14px;
             border-radius: 6px;
             font-weight: 700;
+            font-size: 0.95rem;
         }
 
+        .rating-badge.elite { background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%); }
+        .rating-badge.good { background: var(--success); }
+        .rating-badge.average { background: var(--warning); color: var(--bg-primary); }
+        .rating-badge.poor { background: var(--danger); }
+
+        .expand-icon {
+            color: var(--text-muted);
+            transition: transform 0.2s;
+            font-size: 1.2rem;
+        }
+
+        /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
+            gap: 10px;
         }
 
         .stat {
@@ -186,44 +340,284 @@
             padding: 12px 8px;
             background: var(--bg-secondary);
             border-radius: 8px;
+            transition: all 0.2s;
         }
 
-        .stat-value { font-size: 1.2rem; font-weight: 600; }
-        .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
+        .stat:hover { background: var(--bg-card-hover); }
+
+        .stat-value { font-size: 1.25rem; font-weight: 600; }
+        .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; letter-spacing: 0.3px; }
 
         .stat.highlight { background: var(--accent-dim); border: 1px solid rgba(0, 212, 255, 0.3); }
         .stat-value.good { color: var(--success); }
+        .stat-value.warning { color: var(--warning); }
         .stat-value.bad { color: var(--danger); }
+        .stat-value.elite { color: #ffd700; }
 
-        .error-box {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
+        /* Player Details (Expandable) */
+        .player-details {
+            display: none;
+            border-top: 1px solid var(--border);
+            padding: 20px;
+            background: var(--bg-secondary);
+        }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .detail-section {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .detail-section h4 {
+            font-size: 0.85rem;
+            color: var(--accent);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .detail-row:last-child { border-bottom: none; }
+
+        .detail-label { color: var(--text-muted); }
+        .detail-value { font-weight: 500; }
+
+        /* Progress Bars */
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease-out;
+        }
+
+        .progress-fill.accent { background: var(--accent); }
+        .progress-fill.success { background: var(--success); }
+        .progress-fill.warning { background: var(--warning); }
+        .progress-fill.danger { background: var(--danger); }
+
+        /* Benchmark Comparison */
+        .benchmark-row {
+            margin-bottom: 16px;
+        }
+
+        .benchmark-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .benchmark-label { color: var(--text-muted); font-size: 0.85rem; }
+        .benchmark-value { font-weight: 600; }
+        .benchmark-rank { font-size: 0.8rem; color: var(--accent); }
+
+        /* Utility Dashboard */
+        .utility-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .utility-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
             border-radius: 12px;
             padding: 20px;
+            text-align: center;
+        }
+
+        .utility-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .utility-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .utility-label {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .utility-sub {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+
+        /* Round Timeline */
+        .round-timeline {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            overflow-x: auto;
+        }
+
+        .round-timeline h3 {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            text-transform: uppercase;
+        }
+
+        .timeline-container {
+            display: flex;
+            gap: 4px;
+            min-width: max-content;
+        }
+
+        .round-marker {
+            width: 32px;
+            height: 48px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .round-marker:hover {
+            transform: scale(1.1);
+        }
+
+        .round-marker.ct-win { background: var(--ct-bg); color: var(--ct-color); border: 1px solid var(--ct-color); }
+        .round-marker.t-win { background: var(--t-bg); color: var(--t-color); border: 1px solid var(--t-color); }
+
+        /* Leaderboard Table */
+        .leaderboard {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .leaderboard table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .leaderboard th {
+            background: var(--bg-secondary);
+            padding: 14px 12px;
+            text-align: left;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+
+        .leaderboard th:hover { color: var(--accent); }
+
+        .leaderboard td {
+            padding: 14px 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .leaderboard tr:hover td {
+            background: var(--bg-secondary);
+        }
+
+        /* Error Box */
+        .error-box {
+            background: var(--danger-bg);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 24px;
             color: var(--danger);
             text-align: center;
         }
 
+        /* Footer */
         footer {
             text-align: center;
             padding: 32px 20px;
             color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            margin-top: 48px;
         }
 
         footer a { color: var(--accent); text-decoration: none; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .score-display { font-size: 2rem; gap: 16px; }
+            .tabs { overflow-x: auto; flex-wrap: nowrap; }
+            .stats-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+
+        /* Tooltip */
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+
+        .tooltip:hover::after { opacity: 1; }
     </style>
 </head>
 <body>
     <header class="header">
         <h1>OpenSight</h1>
-        <p>Professional CS2 Analytics - Leetify/Scope.gg Style Metrics</p>
+        <p>Professional CS2 Analytics - Leetify & Scope.gg Style Metrics</p>
     </header>
 
     <main class="container">
-        <section class="upload-section">
+        <section class="upload-section" id="upload-section">
             <div class="upload-zone" id="upload-zone">
                 <h3>Drop your .dem file here</h3>
-                <p>or click to browse (supports .dem and .dem.gz)</p>
+                <p>or click to browse (supports .dem and .dem.gz up to 500MB)</p>
                 <input type="file" id="demo-file" accept=".dem,.dem.gz">
             </div>
         </section>
@@ -238,20 +632,25 @@
     </div>
 
     <footer>
-        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer">OpenSight</a></p>
+        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer" target="_blank">OpenSight</a> - Local CS2 Analytics</p>
     </footer>
 
     <script>
+        // DOM Elements
         const uploadZone = document.getElementById('upload-zone');
         const fileInput = document.getElementById('demo-file');
         const loading = document.getElementById('loading');
         const loadingDetails = document.getElementById('loading-details');
         const resultsDiv = document.getElementById('results');
+        const uploadSection = document.getElementById('upload-section');
 
-        // Click to upload
+        // Global state
+        let analysisData = null;
+        let charts = {};
+
+        // Event Listeners
         uploadZone.addEventListener('click', () => fileInput.click());
 
-        // Drag and drop
         uploadZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadZone.classList.add('dragover');
@@ -272,13 +671,12 @@
             }
         });
 
-        // File input change
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) analyzeFile(file);
         });
 
-        // Escape HTML
+        // Utility Functions
         function esc(text) {
             if (text === null || text === undefined) return '';
             const div = document.createElement('div');
@@ -286,7 +684,49 @@
             return div.innerHTML;
         }
 
-        // Analyze file
+        function formatNumber(num, decimals = 1) {
+            if (num === null || num === undefined) return '-';
+            return Number(num).toFixed(decimals);
+        }
+
+        function getRatingClass(rating) {
+            if (rating >= 1.3) return 'elite';
+            if (rating >= 1.1) return 'good';
+            if (rating >= 0.9) return 'average';
+            return 'poor';
+        }
+
+        function getStatClass(value, thresholds) {
+            if (value >= thresholds.elite) return 'elite';
+            if (value >= thresholds.good) return 'good';
+            if (value >= thresholds.warning) return 'warning';
+            return 'bad';
+        }
+
+        function getBenchmarkPercentile(value, metric) {
+            const benchmarks = {
+                hltv_rating: { min: 0.5, max: 1.8, avg: 1.0 },
+                adr: { min: 40, max: 120, avg: 75 },
+                kast: { min: 40, max: 90, avg: 70 },
+                aim_rating: { min: 20, max: 80, avg: 50 },
+                utility_rating: { min: 20, max: 80, avg: 50 },
+                ttd: { min: 150, max: 600, avg: 350, inverted: true },
+                cp: { min: 3, max: 25, avg: 12, inverted: true }
+            };
+
+            const b = benchmarks[metric];
+            if (!b) return 50;
+
+            let percentile;
+            if (b.inverted) {
+                percentile = 100 - ((value - b.min) / (b.max - b.min) * 100);
+            } else {
+                percentile = ((value - b.min) / (b.max - b.min) * 100);
+            }
+            return Math.max(0, Math.min(100, percentile));
+        }
+
+        // Main Analysis Function
         async function analyzeFile(file) {
             const sizeMB = (file.size / 1024 / 1024).toFixed(1);
             loading.classList.add('show');
@@ -307,86 +747,1057 @@
                     throw new Error(data.detail || 'Analysis failed');
                 }
 
+                analysisData = data;
                 renderResults(data);
             } catch (error) {
-                resultsDiv.innerHTML = `<div class="error-box">${esc(error.message)}</div>`;
+                resultsDiv.innerHTML = `<div class="error-box"><strong>Error:</strong> ${esc(error.message)}</div>`;
                 resultsDiv.classList.add('show');
             } finally {
                 loading.classList.remove('show');
             }
         }
 
-        // Render results
+        // Main Render Function
         function renderResults(data) {
             const info = data.demo_info || {};
             const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            const ctPlayers = players.filter(p => p.team === 'CT');
+            const tPlayers = players.filter(p => p.team === 'T');
+
+            // Hide upload section
+            uploadSection.style.display = 'none';
 
             let html = `
-                <div class="match-header">
-                    <div class="map-name">${esc(info.map) || 'Unknown Map'}</div>
-                    <div class="match-meta">${info.rounds || 0} rounds &bull; ${Math.round(info.duration_minutes || 0)} min &bull; ${info.total_kills || 0} kills</div>
-                    <div class="score-display">
-                        <span class="score-ct">${info.score?.split(' - ')[0] || '0'}</span>
-                        <span>-</span>
-                        <span class="score-t">${info.score?.split(' - ')[1] || '0'}</span>
-                    </div>
+                ${renderMatchHeader(info, data.mvp)}
+
+                <div class="tabs">
+                    <div class="tab active" data-tab="overview">Overview</div>
+                    <div class="tab" data-tab="players">Players</div>
+                    <div class="tab" data-tab="charts">Charts</div>
+                    <div class="tab" data-tab="utility">Utility</div>
+                    <div class="tab" data-tab="leaderboard">Leaderboard</div>
                 </div>
-                <div class="players-grid">
+
+                <div id="tab-overview" class="tab-content active">
+                    ${renderOverviewTab(players, info)}
+                </div>
+
+                <div id="tab-players" class="tab-content">
+                    ${renderPlayersTab(ctPlayers, tPlayers)}
+                </div>
+
+                <div id="tab-charts" class="tab-content">
+                    ${renderChartsTab()}
+                </div>
+
+                <div id="tab-utility" class="tab-content">
+                    ${renderUtilityTab(players)}
+                </div>
+
+                <div id="tab-leaderboard" class="tab-content">
+                    ${renderLeaderboardTab(players)}
+                </div>
             `;
 
-            for (const player of players) {
-                const s = player.stats || {};
-                const r = player.rating || {};
-                const teamClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
+            resultsDiv.innerHTML = html;
+            resultsDiv.classList.add('show');
 
-                html += `
-                    <div class="player-card">
+            // Initialize event listeners and charts
+            initTabs();
+            initPlayerCards();
+            initCharts(players);
+            initExportButtons(data);
+        }
+
+        // Render Functions
+        function renderMatchHeader(info, mvp) {
+            const scores = (info.score || '0 - 0').split(' - ');
+            return `
+                <div class="match-header fade-in">
+                    <div class="map-name">${esc(info.map) || 'Unknown Map'}</div>
+                    <div class="match-meta">
+                        ${info.rounds || 0} rounds &bull;
+                        ${Math.round(info.duration_minutes || 0)} minutes &bull;
+                        ${info.total_kills || 0} kills &bull;
+                        ${info.player_count || 0} players
+                    </div>
+                    <div class="score-display">
+                        <span class="score-ct" title="Counter-Terrorists">${scores[0] || '0'}</span>
+                        <span class="score-separator">:</span>
+                        <span class="score-t" title="Terrorists">${scores[1] || '0'}</span>
+                    </div>
+                    ${mvp ? `
+                        <div style="color: var(--text-muted); margin-bottom: 20px;">
+                            MVP: <strong style="color: var(--accent);">${esc(mvp.name)}</strong>
+                            (${formatNumber(mvp.rating, 2)} rating)
+                        </div>
+                    ` : ''}
+                    <div class="action-buttons">
+                        <button class="btn" id="btn-new-analysis">
+                            <span>+</span> New Analysis
+                        </button>
+                        <button class="btn" id="btn-export-json">
+                            <span>{ }</span> Export JSON
+                        </button>
+                        <button class="btn" id="btn-export-csv">
+                            <span>CSV</span> Export CSV
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderOverviewTab(players, info) {
+            // Get rounds data from global analysisData
+            const rounds = analysisData?.rounds || [];
+
+            return `
+                ${rounds.length > 0 ? `
+                <div class="round-timeline">
+                    <h3>Round Timeline</h3>
+                    <div class="timeline-container">
+                        ${rounds.map(r => `
+                            <div class="round-marker ${r.winner === 'CT' ? 'ct-win' : 't-win'}"
+                                 title="Round ${r.round_num}: ${r.winner} win (${r.reason || 'unknown'})">
+                                ${r.round_num}
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div style="display: flex; gap: 24px; margin-top: 12px; color: var(--text-muted); font-size: 0.85rem;">
+                        <span><span style="color: var(--ct-color);">&#9632;</span> CT Wins: ${rounds.filter(r => r.winner === 'CT').length}</span>
+                        <span><span style="color: var(--t-color);">&#9632;</span> T Wins: ${rounds.filter(r => r.winner === 'T').length}</span>
+                    </div>
+                </div>
+                ` : ''}
+
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>Player Ratings</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-ratings"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Kills & Deaths</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-kd"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>ADR Comparison</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-adr"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Aim & Utility Ratings</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-composite"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="players-grid">
+                    ${players.map(p => renderPlayerCard(p, true)).join('')}
+                </div>
+            `;
+        }
+
+        function renderPlayersTab(ctPlayers, tPlayers) {
+            return `
+                <h3 style="color: var(--ct-color); margin-bottom: 16px;">Counter-Terrorists</h3>
+                <div class="players-grid" style="margin-bottom: 32px;">
+                    ${ctPlayers.map(p => renderPlayerCard(p, false)).join('')}
+                </div>
+
+                <h3 style="color: var(--t-color); margin-bottom: 16px;">Terrorists</h3>
+                <div class="players-grid">
+                    ${tPlayers.map(p => renderPlayerCard(p, false)).join('')}
+                </div>
+            `;
+        }
+
+        function renderPlayerCard(player, compact = false) {
+            const s = player.stats || {};
+            const r = player.rating || {};
+            const d = player.duels || {};
+            const c = player.clutches || {};
+            const mk = player.multi_kills || {};
+            const adv = player.advanced || {};
+            const util = player.utility || {};
+            const side = player.side_stats || {};
+            const mistakes = player.mistakes || {};
+
+            const teamClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
+            const ratingClass = getRatingClass(r.hltv_rating);
+
+            return `
+                <div class="player-card fade-in" data-player-id="${player.id}">
+                    <div class="player-main">
                         <div class="player-header">
-                            <span class="player-name">${esc(player.name) || 'Unknown'}</span>
-                            <span class="player-team ${teamClass}">${esc(player.team) || '?'}</span>
-                            <span class="rating-badge">${(r.hltv_rating || 0).toFixed(2)}</span>
+                            <div class="player-info">
+                                <span class="player-name">${esc(player.name) || 'Unknown'}</span>
+                                <span class="player-team ${teamClass}">${esc(player.team) || '?'}</span>
+                            </div>
+                            <div class="player-badges">
+                                <span class="rating-badge ${ratingClass}" title="HLTV 2.0 Rating">
+                                    ${formatNumber(r.hltv_rating, 2)}
+                                </span>
+                                <span class="expand-icon">&#9660;</span>
+                            </div>
                         </div>
                         <div class="stats-grid">
-                            <div class="stat highlight">
+                            <div class="stat highlight tooltip" data-tooltip="Total Kills">
                                 <div class="stat-value">${s.kills || 0}</div>
                                 <div class="stat-label">Kills</div>
                             </div>
-                            <div class="stat">
+                            <div class="stat tooltip" data-tooltip="Total Deaths">
                                 <div class="stat-value">${s.deaths || 0}</div>
                                 <div class="stat-label">Deaths</div>
                             </div>
-                            <div class="stat">
+                            <div class="stat tooltip" data-tooltip="Kill Assists">
                                 <div class="stat-value">${s.assists || 0}</div>
                                 <div class="stat-label">Assists</div>
                             </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.kd_ratio || '-'}</div>
+                            <div class="stat tooltip" data-tooltip="Kill/Death Ratio">
+                                <div class="stat-value ${(s.kd_ratio || 0) >= 1 ? 'good' : 'bad'}">${s.kd_ratio || '-'}</div>
                                 <div class="stat-label">K/D</div>
                             </div>
-                            <div class="stat highlight">
-                                <div class="stat-value">${s.adr || 0}</div>
+                            <div class="stat highlight tooltip" data-tooltip="Average Damage per Round">
+                                <div class="stat-value ${getStatClass(s.adr || 0, {elite: 90, good: 75, warning: 60})}">${s.adr || 0}</div>
                                 <div class="stat-label">ADR</div>
                             </div>
-                            <div class="stat">
+                            <div class="stat tooltip" data-tooltip="Headshot Percentage">
                                 <div class="stat-value">${s.headshot_pct || 0}%</div>
                                 <div class="stat-label">HS%</div>
                             </div>
-                            <div class="stat">
-                                <div class="stat-value">${r.kast_percentage || 0}%</div>
+                            <div class="stat tooltip" data-tooltip="Kill/Assist/Survived/Traded %">
+                                <div class="stat-value ${getStatClass(r.kast_percentage || 0, {elite: 80, good: 70, warning: 60})}">${formatNumber(r.kast_percentage, 0)}%</div>
                                 <div class="stat-label">KAST</div>
                             </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.total_damage || 0}</div>
-                                <div class="stat-label">Damage</div>
+                            <div class="stat tooltip" data-tooltip="Impact Rating">
+                                <div class="stat-value">${formatNumber(r.impact_rating, 2)}</div>
+                                <div class="stat-label">Impact</div>
                             </div>
                         </div>
                     </div>
-                `;
+
+                    <div class="player-details">
+                        <div class="details-grid">
+                            <!-- Advanced Aim Stats -->
+                            <div class="detail-section">
+                                <h4>Aim Performance</h4>
+                                <div class="benchmark-row">
+                                    <div class="benchmark-header">
+                                        <span class="benchmark-label">Aim Rating</span>
+                                        <span class="benchmark-value">${formatNumber(r.aim_rating, 0)}/100</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill accent" style="width: ${r.aim_rating || 0}%"></div>
+                                    </div>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Time to Damage (Median)</span>
+                                    <span class="detail-value">${adv.ttd_median_ms ? formatNumber(adv.ttd_median_ms, 0) + 'ms' : '-'}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Crosshair Placement</span>
+                                    <span class="detail-value">${adv.cp_median_error_deg ? formatNumber(adv.cp_median_error_deg, 1) + '°' : '-'}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Prefire Kills</span>
+                                    <span class="detail-value">${adv.prefire_kills || 0}</span>
+                                </div>
+                            </div>
+
+                            <!-- Utility Stats -->
+                            <div class="detail-section">
+                                <h4>Utility Usage</h4>
+                                <div class="benchmark-row">
+                                    <div class="benchmark-header">
+                                        <span class="benchmark-label">Utility Rating</span>
+                                        <span class="benchmark-value">${formatNumber(r.utility_rating, 0)}/100</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill success" style="width: ${r.utility_rating || 0}%"></div>
+                                    </div>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Enemies Flashed</span>
+                                    <span class="detail-value">${util.enemies_flashed || 0} (${formatNumber(util.enemies_flashed_per_flash, 2)}/flash)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">HE Damage</span>
+                                    <span class="detail-value">${util.he_damage || 0} (${formatNumber(util.he_damage_per_nade, 1)}/nade)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Molotov Damage</span>
+                                    <span class="detail-value">${util.molotov_damage || 0}</span>
+                                </div>
+                            </div>
+
+                            <!-- Duels & Clutches -->
+                            <div class="detail-section">
+                                <h4>Duels & Clutches</h4>
+                                <div class="detail-row">
+                                    <span class="detail-label">Opening Duels</span>
+                                    <span class="detail-value ${(d.opening_win_rate || 0) >= 50 ? 'good' : 'bad'}">${d.opening_wins || 0}W / ${d.opening_losses || 0}L (${formatNumber(d.opening_win_rate, 0)}%)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Trade Kills</span>
+                                    <span class="detail-value">${d.kills_traded || 0}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Clutches Won</span>
+                                    <span class="detail-value">${c.total_wins || 0} / ${c.total_situations || 0}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Multi-Kills</span>
+                                    <span class="detail-value">2k: ${mk.rounds_with_2k || 0} | 3k: ${mk.rounds_with_3k || 0} | 4k: ${mk.rounds_with_4k || 0} | 5k: ${mk.rounds_with_5k || 0}</span>
+                                </div>
+                            </div>
+
+                            <!-- Side Performance -->
+                            <div class="detail-section">
+                                <h4>Side Performance</h4>
+                                <div class="detail-row">
+                                    <span class="detail-label" style="color: var(--ct-color);">CT Side</span>
+                                    <span class="detail-value">${side.ct?.kills || 0}K / ${side.ct?.deaths || 0}D (${formatNumber(side.ct?.adr, 0)} ADR)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label" style="color: var(--t-color);">T Side</span>
+                                    <span class="detail-value">${side.t?.kills || 0}K / ${side.t?.deaths || 0}D (${formatNumber(side.t?.adr, 0)} ADR)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Survival Rate</span>
+                                    <span class="detail-value">${formatNumber(r.survival_rate, 0)}%</span>
+                                </div>
+                            </div>
+
+                            <!-- Weapons -->
+                            <div class="detail-section">
+                                <h4>Top Weapons</h4>
+                                ${(player.weapons || []).slice(0, 5).map(w => `
+                                    <div class="detail-row">
+                                        <span class="detail-label">${esc(w.weapon)}</span>
+                                        <span class="detail-value">${w.kills} kills</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+
+                            <!-- Mistakes -->
+                            <div class="detail-section">
+                                <h4>Mistakes</h4>
+                                <div class="detail-row">
+                                    <span class="detail-label">Team Kills</span>
+                                    <span class="detail-value ${(mistakes.team_kills || 0) > 0 ? 'bad' : ''}">${mistakes.team_kills || 0}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Team Damage</span>
+                                    <span class="detail-value">${mistakes.team_damage || 0}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Teammates Flashed</span>
+                                    <span class="detail-value">${mistakes.teammates_flashed || 0}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderChartsTab() {
+            return `
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>HLTV Rating Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-rating-dist"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Time to Damage (TTD)</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-ttd"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Crosshair Placement</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-cp"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Opening Duel Win Rate</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-opening"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>KAST Percentage</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-kast"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Headshot Percentage</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-hs"></canvas>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderUtilityTab(players) {
+            // Calculate team totals
+            const totals = players.reduce((acc, p) => {
+                const u = p.utility || {};
+                acc.flashesThrown += u.flashbangs_thrown || 0;
+                acc.enemiesFlashed += u.enemies_flashed || 0;
+                acc.teammatesFlashed += u.teammates_flashed || 0;
+                acc.heThrown += u.he_thrown || 0;
+                acc.heDamage += u.he_damage || 0;
+                acc.molotovThrown += u.molotov_thrown || 0;
+                acc.molotovDamage += u.molotov_damage || 0;
+                acc.flashAssists += u.flash_assists || 0;
+                return acc;
+            }, { flashesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, flashAssists: 0 });
+
+            return `
+                <div class="utility-grid">
+                    <div class="utility-card">
+                        <div class="utility-icon">&#128165;</div>
+                        <div class="utility-value" style="color: var(--accent);">${totals.flashesThrown}</div>
+                        <div class="utility-label">Flashbangs Thrown</div>
+                        <div class="utility-sub">${totals.enemiesFlashed} enemies blinded</div>
+                    </div>
+                    <div class="utility-card">
+                        <div class="utility-icon">&#128163;</div>
+                        <div class="utility-value" style="color: var(--danger);">${totals.heDamage}</div>
+                        <div class="utility-label">HE Grenade Damage</div>
+                        <div class="utility-sub">${totals.heThrown} grenades thrown</div>
+                    </div>
+                    <div class="utility-card">
+                        <div class="utility-icon">&#128293;</div>
+                        <div class="utility-value" style="color: var(--warning);">${totals.molotovDamage}</div>
+                        <div class="utility-label">Molotov Damage</div>
+                        <div class="utility-sub">${totals.molotovThrown} molotovs thrown</div>
+                    </div>
+                    <div class="utility-card">
+                        <div class="utility-icon">&#127775;</div>
+                        <div class="utility-value" style="color: var(--success);">${totals.flashAssists}</div>
+                        <div class="utility-label">Flash Assists</div>
+                        <div class="utility-sub">${totals.teammatesFlashed} teammates flashed</div>
+                    </div>
+                </div>
+
+                <h3 style="margin: 32px 0 16px; color: var(--text-secondary);">Utility by Player</h3>
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>Flash Effectiveness</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-flash"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Grenade Damage</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-nade-damage"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 style="margin: 32px 0 16px; color: var(--text-secondary);">Utility Ratings</h3>
+                <div class="players-grid">
+                    ${players.sort((a, b) => (b.rating?.utility_rating || 0) - (a.rating?.utility_rating || 0)).map(p => `
+                        <div class="player-card fade-in" style="padding: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <span class="player-name">${esc(p.name)}</span>
+                                <span class="rating-badge" style="background: var(--success);">${formatNumber(p.rating?.utility_rating, 0)}</span>
+                            </div>
+                            <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+                                <div class="stat">
+                                    <div class="stat-value">${p.utility?.flashbangs_thrown || 0}</div>
+                                    <div class="stat-label">Flashes</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${p.utility?.enemies_flashed || 0}</div>
+                                    <div class="stat-label">Blinded</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${p.utility?.he_damage || 0}</div>
+                                    <div class="stat-label">HE Dmg</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${p.utility?.molotov_damage || 0}</div>
+                                    <div class="stat-label">Molly Dmg</div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderLeaderboardTab(players) {
+            return `
+                <div class="leaderboard">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Player</th>
+                                <th>Team</th>
+                                <th data-sort="rating">Rating</th>
+                                <th data-sort="kills">K</th>
+                                <th data-sort="deaths">D</th>
+                                <th data-sort="assists">A</th>
+                                <th data-sort="kd">K/D</th>
+                                <th data-sort="adr">ADR</th>
+                                <th data-sort="hs">HS%</th>
+                                <th data-sort="kast">KAST</th>
+                                <th data-sort="aim">Aim</th>
+                                <th data-sort="util">Util</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${players.map((p, i) => `
+                                <tr>
+                                    <td>${i + 1}</td>
+                                    <td><strong>${esc(p.name)}</strong></td>
+                                    <td><span class="player-team ${p.team === 'CT' ? 'team-ct' : 'team-t'}">${p.team}</span></td>
+                                    <td><span class="rating-badge ${getRatingClass(p.rating?.hltv_rating)}" style="padding: 4px 10px; font-size: 0.85rem;">${formatNumber(p.rating?.hltv_rating, 2)}</span></td>
+                                    <td>${p.stats?.kills || 0}</td>
+                                    <td>${p.stats?.deaths || 0}</td>
+                                    <td>${p.stats?.assists || 0}</td>
+                                    <td class="${(p.stats?.kd_ratio || 0) >= 1 ? 'good' : 'bad'}">${p.stats?.kd_ratio || '-'}</td>
+                                    <td>${p.stats?.adr || 0}</td>
+                                    <td>${p.stats?.headshot_pct || 0}%</td>
+                                    <td>${formatNumber(p.rating?.kast_percentage, 0)}%</td>
+                                    <td>${formatNumber(p.rating?.aim_rating, 0)}</td>
+                                    <td>${formatNumber(p.rating?.utility_rating, 0)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // Initialize Functions
+        function initTabs() {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+                    tab.classList.add('active');
+                    const tabId = tab.dataset.tab;
+                    document.getElementById(`tab-${tabId}`).classList.add('active');
+
+                    // Initialize charts when switching to charts tab
+                    if (tabId === 'charts' && analysisData) {
+                        setTimeout(() => initAdvancedCharts(Object.entries(analysisData.players).map(([id, p]) => ({ id, ...p }))), 100);
+                    }
+                    if (tabId === 'utility' && analysisData) {
+                        setTimeout(() => initUtilityCharts(Object.entries(analysisData.players).map(([id, p]) => ({ id, ...p }))), 100);
+                    }
+                });
+            });
+        }
+
+        function initPlayerCards() {
+            document.querySelectorAll('.player-card').forEach(card => {
+                const main = card.querySelector('.player-main');
+                if (main) {
+                    main.addEventListener('click', () => {
+                        card.classList.toggle('expanded');
+                    });
+                }
+            });
+        }
+
+        function initExportButtons(data) {
+            document.getElementById('btn-new-analysis')?.addEventListener('click', () => {
+                resultsDiv.classList.remove('show');
+                resultsDiv.innerHTML = '';
+                uploadSection.style.display = 'block';
+                fileInput.value = '';
+            });
+
+            document.getElementById('btn-export-json')?.addEventListener('click', () => {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                downloadBlob(blob, `opensight-analysis-${Date.now()}.json`);
+            });
+
+            document.getElementById('btn-export-csv')?.addEventListener('click', () => {
+                const csv = generateCSV(data);
+                const blob = new Blob([csv], { type: 'text/csv' });
+                downloadBlob(blob, `opensight-analysis-${Date.now()}.csv`);
+            });
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function generateCSV(data) {
+            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            const headers = ['Name', 'Team', 'Rating', 'Kills', 'Deaths', 'Assists', 'K/D', 'ADR', 'HS%', 'KAST%', 'Impact', 'Aim Rating', 'Utility Rating', 'TTD (ms)', 'CP (deg)', 'Opening Win%', 'Flash Assists', 'HE Damage'];
+            const rows = players.map(p => [
+                p.name,
+                p.team,
+                p.rating?.hltv_rating,
+                p.stats?.kills,
+                p.stats?.deaths,
+                p.stats?.assists,
+                p.stats?.kd_ratio,
+                p.stats?.adr,
+                p.stats?.headshot_pct,
+                p.rating?.kast_percentage,
+                p.rating?.impact_rating,
+                p.rating?.aim_rating,
+                p.rating?.utility_rating,
+                p.advanced?.ttd_median_ms,
+                p.advanced?.cp_median_error_deg,
+                p.duels?.opening_win_rate,
+                p.utility?.flash_assists,
+                p.utility?.he_damage
+            ].join(','));
+            return [headers.join(','), ...rows].join('\n');
+        }
+
+        // Chart Functions
+        function initCharts(players) {
+            const names = players.map(p => p.name?.substring(0, 12) || 'Unknown');
+            const teams = players.map(p => p.team);
+
+            // Color helper
+            const getColor = (team, alpha = 1) => team === 'CT'
+                ? `rgba(74, 144, 217, ${alpha})`
+                : `rgba(222, 155, 53, ${alpha})`;
+
+            // Destroy existing charts
+            Object.values(charts).forEach(c => c?.destroy?.());
+            charts = {};
+
+            // Rating Chart
+            const ratingsCtx = document.getElementById('chart-ratings');
+            if (ratingsCtx) {
+                charts.ratings = new Chart(ratingsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'HLTV Rating',
+                            data: players.map(p => p.rating?.hltv_rating || 0),
+                            backgroundColor: teams.map(t => getColor(t, 0.7)),
+                            borderColor: teams.map(t => getColor(t)),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            annotation: {
+                                annotations: {
+                                    line1: {
+                                        type: 'line',
+                                        yMin: 1.0,
+                                        yMax: 1.0,
+                                        borderColor: 'rgba(255, 255, 255, 0.3)',
+                                        borderWidth: 2,
+                                        borderDash: [5, 5]
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 2,
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                ticks: { color: '#a0a0b0' }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: '#a0a0b0' }
+                            }
+                        }
+                    }
+                });
             }
 
-            html += '</div>';
-            resultsDiv.innerHTML = html;
-            resultsDiv.classList.add('show');
+            // K/D Chart
+            const kdCtx = document.getElementById('chart-kd');
+            if (kdCtx) {
+                charts.kd = new Chart(kdCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [
+                            {
+                                label: 'Kills',
+                                data: players.map(p => p.stats?.kills || 0),
+                                backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                                borderColor: 'rgba(34, 197, 94, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Deaths',
+                                data: players.map(p => p.stats?.deaths || 0),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                                borderColor: 'rgba(239, 68, 68, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // ADR Chart
+            const adrCtx = document.getElementById('chart-adr');
+            if (adrCtx) {
+                charts.adr = new Chart(adrCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'ADR',
+                            data: players.map(p => p.stats?.adr || 0),
+                            backgroundColor: teams.map(t => getColor(t, 0.7)),
+                            borderColor: teams.map(t => getColor(t)),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            y: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // Composite Rating Chart (Aim vs Utility)
+            const compositeCtx = document.getElementById('chart-composite');
+            if (compositeCtx) {
+                charts.composite = new Chart(compositeCtx, {
+                    type: 'scatter',
+                    data: {
+                        datasets: [{
+                            label: 'Players',
+                            data: players.map(p => ({
+                                x: p.rating?.aim_rating || 0,
+                                y: p.rating?.utility_rating || 0,
+                                name: p.name
+                            })),
+                            backgroundColor: teams.map(t => getColor(t, 0.8)),
+                            pointRadius: 10,
+                            pointHoverRadius: 12
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => `${ctx.raw.name}: Aim ${ctx.raw.x}, Utility ${ctx.raw.y}`
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: 'Aim Rating', color: '#a0a0b0' },
+                                min: 0, max: 100,
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                ticks: { color: '#a0a0b0' }
+                            },
+                            y: {
+                                title: { display: true, text: 'Utility Rating', color: '#a0a0b0' },
+                                min: 0, max: 100,
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                ticks: { color: '#a0a0b0' }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        function initAdvancedCharts(players) {
+            const names = players.map(p => p.name?.substring(0, 12) || 'Unknown');
+            const teams = players.map(p => p.team);
+            const getColor = (team, alpha = 1) => team === 'CT'
+                ? `rgba(74, 144, 217, ${alpha})`
+                : `rgba(222, 155, 53, ${alpha})`;
+
+            // Rating Distribution
+            const ratingDistCtx = document.getElementById('chart-rating-dist');
+            if (ratingDistCtx && !charts.ratingDist) {
+                charts.ratingDist = new Chart(ratingDistCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Elite (1.3+)', 'Good (1.1-1.3)', 'Average (0.9-1.1)', 'Below (< 0.9)'],
+                        datasets: [{
+                            data: [
+                                players.filter(p => (p.rating?.hltv_rating || 0) >= 1.3).length,
+                                players.filter(p => (p.rating?.hltv_rating || 0) >= 1.1 && (p.rating?.hltv_rating || 0) < 1.3).length,
+                                players.filter(p => (p.rating?.hltv_rating || 0) >= 0.9 && (p.rating?.hltv_rating || 0) < 1.1).length,
+                                players.filter(p => (p.rating?.hltv_rating || 0) < 0.9).length
+                            ],
+                            backgroundColor: ['#ffd700', '#22c55e', '#f59e0b', '#ef4444']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } }
+                    }
+                });
+            }
+
+            // TTD Chart
+            const ttdCtx = document.getElementById('chart-ttd');
+            if (ttdCtx && !charts.ttd) {
+                charts.ttd = new Chart(ttdCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'TTD (ms)',
+                            data: players.map(p => p.advanced?.ttd_median_ms || 0),
+                            backgroundColor: players.map(p => {
+                                const ttd = p.advanced?.ttd_median_ms || 999;
+                                if (ttd < 250) return 'rgba(34, 197, 94, 0.7)';
+                                if (ttd < 400) return 'rgba(245, 158, 11, 0.7)';
+                                return 'rgba(239, 68, 68, 0.7)';
+                            }),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // Crosshair Placement Chart
+            const cpCtx = document.getElementById('chart-cp');
+            if (cpCtx && !charts.cp) {
+                charts.cp = new Chart(cpCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'CP Error (degrees)',
+                            data: players.map(p => p.advanced?.cp_median_error_deg || 0),
+                            backgroundColor: players.map(p => {
+                                const cp = p.advanced?.cp_median_error_deg || 999;
+                                if (cp < 8) return 'rgba(34, 197, 94, 0.7)';
+                                if (cp < 15) return 'rgba(245, 158, 11, 0.7)';
+                                return 'rgba(239, 68, 68, 0.7)';
+                            }),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // Opening Duels Chart
+            const openingCtx = document.getElementById('chart-opening');
+            if (openingCtx && !charts.opening) {
+                charts.opening = new Chart(openingCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [
+                            {
+                                label: 'Wins',
+                                data: players.map(p => p.duels?.opening_wins || 0),
+                                backgroundColor: 'rgba(34, 197, 94, 0.7)'
+                            },
+                            {
+                                label: 'Losses',
+                                data: players.map(p => p.duels?.opening_losses || 0),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } },
+                        scales: {
+                            y: { beginAtZero: true, stacked: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { stacked: true, grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // KAST Chart
+            const kastCtx = document.getElementById('chart-kast');
+            if (kastCtx && !charts.kast) {
+                charts.kast = new Chart(kastCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'KAST %',
+                            data: players.map(p => p.rating?.kast_percentage || 0),
+                            backgroundColor: teams.map(t => getColor(t, 0.7)),
+                            borderColor: teams.map(t => getColor(t)),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // HS% Chart
+            const hsCtx = document.getElementById('chart-hs');
+            if (hsCtx && !charts.hs) {
+                charts.hs = new Chart(hsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'HS %',
+                            data: players.map(p => p.stats?.headshot_pct || 0),
+                            backgroundColor: 'rgba(0, 212, 255, 0.7)',
+                            borderColor: 'rgba(0, 212, 255, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+        }
+
+        function initUtilityCharts(players) {
+            const names = players.map(p => p.name?.substring(0, 12) || 'Unknown');
+
+            // Flash Effectiveness Chart
+            const flashCtx = document.getElementById('chart-flash');
+            if (flashCtx && !charts.flash) {
+                charts.flash = new Chart(flashCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [
+                            {
+                                label: 'Enemies Flashed',
+                                data: players.map(p => p.utility?.enemies_flashed || 0),
+                                backgroundColor: 'rgba(0, 212, 255, 0.7)'
+                            },
+                            {
+                                label: 'Teammates Flashed',
+                                data: players.map(p => p.utility?.teammates_flashed || 0),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // Grenade Damage Chart
+            const nadeDmgCtx = document.getElementById('chart-nade-damage');
+            if (nadeDmgCtx && !charts.nadeDmg) {
+                charts.nadeDmg = new Chart(nadeDmgCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [
+                            {
+                                label: 'HE Damage',
+                                data: players.map(p => p.utility?.he_damage || 0),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)'
+                            },
+                            {
+                                label: 'Molotov Damage',
+                                data: players.map(p => p.utility?.molotov_damage || 0),
+                                backgroundColor: 'rgba(245, 158, 11, 0.7)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } },
+                        scales: {
+                            y: { beginAtZero: true, stacked: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { stacked: true, grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
         }
     </script>
 </body>

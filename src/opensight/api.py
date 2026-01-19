@@ -143,6 +143,20 @@ async def analyze_demo(file: UploadFile = File(...)):
         analyzer = DemoAnalyzer(data)
         analysis = analyzer.analyze()
 
+        # Build round-by-round data
+        rounds_data = []
+        for round_info in data.rounds:
+            round_kills = [k for k in data.kills if k.round_num == round_info.round_num]
+            rounds_data.append({
+                "round_num": round_info.round_num,
+                "winner": round_info.winner,
+                "reason": round_info.reason,
+                "ct_score": round_info.ct_score,
+                "t_score": round_info.t_score,
+                "kills": len(round_kills),
+                "round_type": round_info.round_type or "unknown",
+            })
+
         # Build response
         result = {
             "demo_info": {
@@ -152,10 +166,13 @@ async def analyze_demo(file: UploadFile = File(...)):
                 "tick_rate": data.tick_rate,
                 "rounds": analysis.total_rounds,
                 "score": f"{analysis.team1_score} - {analysis.team2_score}",
+                "ct_score": analysis.team1_score,
+                "t_score": analysis.team2_score,
                 "player_count": len(analysis.players),
                 "total_kills": len(data.kills),
                 "total_damage_events": len(data.damages),
             },
+            "rounds": rounds_data,
             "mvp": None,
             "players": {}
         }
