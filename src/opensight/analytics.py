@@ -2086,21 +2086,27 @@ class DemoAnalyzer:
         return timeline
 
     def _extract_position_data(self) -> tuple[list, list]:
-        """Extract position data for heatmap visualization."""
+        """Extract position data for heatmap and kill map visualization."""
         kill_positions = []
         death_positions = []
 
         # Extract from KillEvent objects (they have position data)
         for kill in self.data.kills:
             try:
+                att_name = self.data.player_names.get(kill.attacker_steamid, "Unknown")
+                vic_name = self.data.player_names.get(kill.victim_steamid, "Unknown")
+
                 # Attacker position (kill location)
                 if kill.attacker_x is not None and kill.attacker_y is not None:
-                    att_name = self.data.player_names.get(kill.attacker_steamid, "Unknown")
                     kill_positions.append({
                         "x": kill.attacker_x,
                         "y": kill.attacker_y,
                         "z": kill.attacker_z or 0,
                         "player": att_name,
+                        "attacker": att_name,
+                        "victim": vic_name,
+                        "attacker_team": kill.attacker_side,
+                        "victim_team": kill.victim_side,
                         "weapon": kill.weapon,
                         "round": kill.round_num,
                         "headshot": kill.headshot,
@@ -2108,12 +2114,14 @@ class DemoAnalyzer:
 
                 # Victim position (death location)
                 if kill.victim_x is not None and kill.victim_y is not None:
-                    vic_name = self.data.player_names.get(kill.victim_steamid, "Unknown")
                     death_positions.append({
                         "x": kill.victim_x,
                         "y": kill.victim_y,
                         "z": kill.victim_z or 0,
                         "player": vic_name,
+                        "attacker": att_name,
+                        "victim_team": kill.victim_side,
+                        "attacker_team": kill.attacker_side,
                         "round": kill.round_num,
                     })
             except Exception as e:
