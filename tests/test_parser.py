@@ -253,10 +253,12 @@ class TestDemoParser:
         demo_file = tmp_path / "test.dem"
         demo_file.write_bytes(b"FAKE_DEMO_DATA")
 
-        with patch("opensight.parser.Demoparser2", None):
-            parser = DemoParser(demo_file)
-            with pytest.raises(ImportError, match="demoparser2 is required"):
-                parser.parse()
+        # Patch the lazy availability check functions
+        with patch("opensight.parser._check_demoparser2_available", return_value=False):
+            with patch("opensight.parser._check_awpy_available", return_value=False):
+                parser = DemoParser(demo_file)
+                with pytest.raises(ImportError, match="No parser available"):
+                    parser.parse()
 
     def test_parse_caches_result(self, tmp_path):
         """Parser caches the result after first parse."""
@@ -264,19 +266,23 @@ class TestDemoParser:
         demo_file.write_bytes(b"FAKE_DEMO_DATA")
 
         # Create mock demoparser2
-        mock_parser = MagicMock()
-        mock_parser.parse_header.return_value = {"map_name": "de_dust2"}
-        mock_parser.parse_event.return_value = pd.DataFrame()
+        mock_demoparser2 = MagicMock()
+        mock_parser_instance = MagicMock()
+        mock_parser_instance.parse_header.return_value = {"map_name": "de_dust2"}
+        mock_parser_instance.parse_event.return_value = pd.DataFrame()
+        mock_demoparser2.return_value = mock_parser_instance
 
-        with patch("opensight.parser.Demoparser2", return_value=mock_parser):
-            parser = DemoParser(demo_file)
-            result1 = parser.parse()
-            result2 = parser.parse()
+        # Patch the lazy import inside _parse_with_demoparser2
+        with patch("opensight.parser._check_demoparser2_available", return_value=True):
+            with patch.dict("sys.modules", {"demoparser2": MagicMock(DemoParser=mock_demoparser2)}):
+                parser = DemoParser(demo_file)
+                result1 = parser.parse()
+                result2 = parser.parse()
 
-            # Should be same object (cached)
-            assert result1 is result2
-            # parse_header should only be called once
-            assert mock_parser.parse_header.call_count == 1
+                # Should be same object (cached)
+                assert result1 is result2
+                # parse_header should only be called once
+                assert mock_parser_instance.parse_header.call_count == 1
 
 
 class TestParseDemoFunction:
@@ -287,10 +293,110 @@ class TestParseDemoFunction:
         demo_file = tmp_path / "test.dem"
         demo_file.write_bytes(b"FAKE_DEMO_DATA")
 
-        mock_parser = MagicMock()
-        mock_parser.parse_header.return_value = {"map_name": "de_mirage"}
-        mock_parser.parse_event.return_value = pd.DataFrame()
+        mock_demoparser2 = MagicMock()
+        mock_parser_instance = MagicMock()
+        mock_parser_instance.parse_header.return_value = {"map_name": "de_mirage"}
+        mock_parser_instance.parse_event.return_value = pd.DataFrame()
+        mock_demoparser2.return_value = mock_parser_instance
 
-        with patch("opensight.parser.Demoparser2", return_value=mock_parser):
-            result = parse_demo(demo_file)
-            assert result.map_name == "de_mirage"
+        # Patch the lazy import inside _parse_with_demoparser2
+        with patch("opensight.parser._check_demoparser2_available", return_value=True):
+            with patch.dict("sys.modules", {"demoparser2": MagicMock(DemoParser=mock_demoparser2)}):
+                result = parse_demo(demo_file)
+                assert result.map_name == "de_mirage"
+
+
+class TestOptimizations:
+    """Tests for new optimization features."""
+
+    def test_parse_mode_enum(self):
+        """Test ParseMode enum values."""
+        from opensight.parser import ParseMode
+
+        assert ParseMode.MINIMAL.value == "minimal"
+        assert ParseMode.STANDARD.value == "standard"
+        assert ParseMode.COMPREHENSIVE.value == "comprehensive"
+
+    def test_parser_backend_enum(self):
+        """Test ParserBackend enum values."""
+        from opensight.parser import ParserBackend
+
+        assert ParserBackend.DEMOPARSER2.value == "demoparser2"
+        assert ParserBackend.AWPY.value == "awpy"
+        assert ParserBackend.AUTO.value == "auto"
+
+    def test_optimize_dataframe_dtypes_empty(self):
+        """Test dtype optimization on empty DataFrame."""
+        from opensight.parser import optimize_dataframe_dtypes
+
+        df = pd.DataFrame()
+        result = optimize_dataframe_dtypes(df)
+        assert result.empty
+
+    def test_optimize_dataframe_dtypes_int64_to_int32(self):
+        """Test int64 to int32 conversion."""
+        from opensight.parser import optimize_dataframe_dtypes
+
+        df = pd.DataFrame({
+            "tick": np.array([100, 200, 300], dtype=np.int64),
+            "damage": np.array([50, 75, 100], dtype=np.int64),
+        })
+        result = optimize_dataframe_dtypes(df.copy(), inplace=False)
+
+        # Should convert to Int32 (nullable)
+        assert result["tick"].dtype in [np.int32, "Int32"]
+        assert result["damage"].dtype in [np.int32, "Int32"]
+
+    def test_optimize_dataframe_dtypes_float64_to_float32(self):
+        """Test float64 to float32 conversion for position data."""
+        from opensight.parser import optimize_dataframe_dtypes
+
+        df = pd.DataFrame({
+            "X": np.array([100.5, 200.5, 300.5], dtype=np.float64),
+            "Y": np.array([50.5, 75.5, 100.5], dtype=np.float64),
+            "pitch": np.array([10.0, 20.0, 30.0], dtype=np.float64),
+        })
+        result = optimize_dataframe_dtypes(df.copy(), inplace=False)
+
+        assert result["X"].dtype == np.float32
+        assert result["Y"].dtype == np.float32
+        assert result["pitch"].dtype == np.float32
+
+    def test_optimize_dataframe_dtypes_categorical(self):
+        """Test string to categorical conversion."""
+        from opensight.parser import optimize_dataframe_dtypes
+
+        df = pd.DataFrame({
+            "weapon": ["ak47", "m4a1", "ak47", "awp", "m4a1"],
+            "player_name": ["player1", "player2", "player1", "player3", "player2"],
+        })
+        result = optimize_dataframe_dtypes(df.copy(), inplace=False)
+
+        assert result["weapon"].dtype.name == "category"
+        assert result["player_name"].dtype.name == "category"
+
+    def test_demo_parser_accepts_string_backend(self, tmp_path):
+        """Test DemoParser accepts string backend."""
+        demo_file = tmp_path / "test.dem"
+        demo_file.write_bytes(b"FAKE_DEMO_DATA")
+
+        parser = DemoParser(demo_file, backend="auto")
+        assert parser.backend == ParserBackend.AUTO
+
+        parser2 = DemoParser(demo_file, backend="demoparser2")
+        assert parser2.backend == ParserBackend.DEMOPARSER2
+
+    def test_demo_parser_optimize_dtypes_flag(self, tmp_path):
+        """Test DemoParser optimize_dtypes flag."""
+        demo_file = tmp_path / "test.dem"
+        demo_file.write_bytes(b"FAKE_DEMO_DATA")
+
+        parser = DemoParser(demo_file, optimize_dtypes=True)
+        assert parser.optimize_dtypes is True
+
+        parser2 = DemoParser(demo_file, optimize_dtypes=False)
+        assert parser2.optimize_dtypes is False
+
+
+# Import ParserBackend for tests
+from opensight.parser import ParserBackend

@@ -129,6 +129,7 @@ Benchmarks: <5° elite | 5-15° good | 15-25° average | >25° needs work
 |--------|------|-------------|
 | GET | `/` | Web interface (HTML) |
 | GET | `/health` | Health check, returns version |
+| GET | `/readiness` | Readiness check for orchestration (disk, temp dir, deps) |
 | GET | `/about` | API documentation and metric descriptions |
 | POST | `/decode` | Decode share code (JSON body: `{"code": "CSGO-..."}`) |
 | POST | `/analyze` | Upload and analyze demo (multipart form) |
@@ -143,9 +144,23 @@ The project is configured for Hugging Face Spaces:
    app_port: 7860
    ```
 
-2. `Dockerfile` exposes port 7860 and runs uvicorn
+2. `Dockerfile` uses multi-stage build for optimization:
+   - **Build stage**: Compiles Rust extensions (demoparser2), installs all dependencies
+   - **Runtime stage**: Minimal image with only virtualenv and source files
+   - Runs as non-root user for security
+   - Includes Docker HEALTHCHECK for container orchestration
 
-3. To deploy: Push to a Hugging Face Space repository
+3. Uvicorn runs with production settings:
+   - 1 worker (demo parsing is CPU-heavy)
+   - Log level: warning (reduces verbosity)
+   - Timeout keep-alive: 65s (above typical load balancer timeout)
+
+4. Readiness endpoint (`/readiness`) checks:
+   - Disk space (>100MB free)
+   - Temp directory writable
+   - Heavy dependencies importable (demoparser2, pandas, numpy)
+
+5. To deploy: Push to a Hugging Face Space repository
 
 ## CLI Usage
 
