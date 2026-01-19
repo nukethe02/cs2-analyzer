@@ -1,667 +1,812 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenSight - CS2 Analytics</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- Google Fonts - Roboto Mono for tech feel -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['Roboto Mono', 'monospace'],
+                    },
+                    colors: {
+                        accent: {
+                            DEFAULT: '#00d4ff',
+                            dim: 'rgba(0, 212, 255, 0.15)',
+                            glow: 'rgba(0, 212, 255, 0.4)',
+                        },
+                        ct: {
+                            DEFAULT: '#4a90d9',
+                            bg: 'rgba(74, 144, 217, 0.15)',
+                        },
+                        t: {
+                            DEFAULT: '#de9b35',
+                            bg: 'rgba(222, 155, 53, 0.15)',
+                        },
+                    },
+                    animation: {
+                        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+                        'scan-line': 'scan-line 3s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        'pulse-glow': {
+                            '0%, 100%': { boxShadow: '0 0 20px rgba(0, 212, 255, 0.2), inset 0 0 20px rgba(0, 212, 255, 0.05)' },
+                            '50%': { boxShadow: '0 0 40px rgba(0, 212, 255, 0.4), inset 0 0 40px rgba(0, 212, 255, 0.1)' },
+                        },
+                        'scan-line': {
+                            '0%': { transform: 'translateY(-100%)', opacity: '0' },
+                            '50%': { opacity: '1' },
+                            '100%': { transform: 'translateY(100%)', opacity: '0' },
+                        },
+                    },
+                },
+            },
+        }
+    </script>
+
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
-        :root {
-            --bg-primary: #0a0a0f;
-            --bg-secondary: #12121a;
-            --bg-card: #1a1a24;
-            --bg-card-hover: #22222e;
-            --accent: #00d4ff;
-            --accent-dim: rgba(0, 212, 255, 0.15);
-            --accent-glow: rgba(0, 212, 255, 0.4);
-            --ct-color: #4a90d9;
-            --ct-bg: rgba(74, 144, 217, 0.15);
-            --t-color: #de9b35;
-            --t-bg: rgba(222, 155, 53, 0.15);
-            --text-primary: #ffffff;
-            --text-secondary: #a0a0b0;
-            --text-muted: #606070;
-            --success: #22c55e;
-            --success-bg: rgba(34, 197, 94, 0.15);
-            --warning: #f59e0b;
-            --warning-bg: rgba(245, 158, 11, 0.15);
-            --danger: #ef4444;
-            --danger-bg: rgba(239, 68, 68, 0.15);
-            --border: rgba(255, 255, 255, 0.08);
-            --border-light: rgba(255, 255, 255, 0.12);
-            --gradient-start: #00d4ff;
-            --gradient-end: #7c3aed;
+        /* Cyber grid background */
+        .cyber-grid {
+            background-image:
+                linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
         }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-primary);
-            min-height: 100vh;
-            color: var(--text-primary);
-            line-height: 1.5;
+        /* Glowing border effect */
+        .glow-border {
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.2), inset 0 0 20px rgba(0, 212, 255, 0.05);
         }
 
-        /* Header */
-        .header {
-            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
-            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-card) 100%);
-            border-bottom: 1px solid var(--border);
-            padding: 32px 20px;
-            text-align: center;
+        /* Scanner effect for dropzone */
+        .scanner-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00d4ff, transparent);
+            animation: scan-line 3s ease-in-out infinite;
         }
 
-        .header h1 {
-            font-size: 2.5rem;
-            background: linear-gradient(135deg, var(--accent) 0%, #00ff88 100%);
-            background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 8px;
+        /* Chart.js dark theme */
+        .chart-container canvas { max-height: 250px; }
+
+        /* Data value styling */
+        .data-value {
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 600;
+            letter-spacing: -0.02em;
         }
 
-        .header p { color: var(--text-secondary); font-size: 1.1rem; }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 24px 20px;
-        }
-        .container { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
-
-        /* Upload Section */
-        .upload-section {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 32px;
-            margin-bottom: 24px;
+        /* Sidebar transition */
+        .sidebar-item {
+            transition: all 0.2s ease;
         }
 
-        .upload-zone {
-            border: 2px dashed var(--border);
-            border-radius: 12px;
-            padding: 48px 24px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            background: var(--bg-secondary);
+        .sidebar-item:hover {
+            background: rgba(0, 212, 255, 0.1);
+            border-left-color: #00d4ff;
         }
 
-        .upload-zone:hover, .upload-zone.dragover {
-            border-color: var(--accent);
-            background: var(--accent-dim);
-            box-shadow: 0 0 30px var(--accent-glow);
+        .sidebar-item.active {
+            background: rgba(0, 212, 255, 0.15);
+            border-left-color: #00d4ff;
+            color: #00d4ff;
         }
 
-        .upload-zone h3 { margin-bottom: 8px; color: var(--text-primary); font-size: 1.3rem; }
-        .upload-zone p { color: var(--text-muted); font-size: 0.9rem; }
-        input[type="file"] { display: none; }
-
-        /* Loading Overlay */
-        .loading-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(10, 10, 15, 0.95);
-            z-index: 100;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .loading-overlay.show { display: flex; }
-
-        .spinner {
-            width: 64px;
-            height: 64px;
-            border: 4px solid var(--border);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 24px;
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .loading-text { color: var(--text-secondary); font-size: 1.1rem; }
-
-        /* Results */
-        .results { display: none; }
-        .results.show { display: block; }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-        }
-
-        .tab-btn {
-            padding: 12px 24px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-secondary);
-            cursor: pointer;
-            font-size: 0.95rem;
-            transition: all 0.2s;
-        }
-
-        .tab-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .tab-btn.active {
-            background: var(--accent-dim);
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-
-        /* Match Header */
-        .match-header {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 32px;
-            margin-bottom: 24px;
-            text-align: center;
-        }
-
-        .map-name { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
-        .match-meta { color: var(--text-muted); margin-bottom: 20px; font-size: 1rem; }
-        .map-name { font-size: 1.8rem; font-weight: 700; margin-bottom: 8px; }
-        .match-meta { color: var(--text-muted); margin-bottom: 16px; }
-
-        .score-display {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 32px;
-            font-size: 3rem;
-            gap: 24px;
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 24px;
-        }
-
-        .score-ct { color: var(--ct-color); }
-        .score-t { color: var(--t-color); }
-        .score-separator { color: var(--text-muted); font-weight: 400; }
-
-        /* Action Buttons */
-        .action-buttons {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .btn:hover {
-            background: var(--bg-card-hover);
-            border-color: var(--accent);
-        }
-
-        .btn-primary {
-            background: var(--accent);
-            color: var(--bg-primary);
-            border-color: var(--accent);
-        }
-
-        .btn-primary:hover {
-            background: #00b8e0;
-        }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-        }
-
-        .tab {
-            padding: 12px 24px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            cursor: pointer;
-            color: var(--text-secondary);
-            transition: all 0.2s;
-            font-weight: 500;
-        }
-
-        .tab:hover { background: var(--bg-card-hover); }
-
-        .tab.active {
-            background: var(--accent-dim);
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-
-        /* Charts Section */
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 24px;
-            margin-bottom: 24px;
-        }
-
-        .chart-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-        }
-
-        .chart-card h3 {
-            font-size: 1rem;
-            color: var(--text-secondary);
-            margin-bottom: 16px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .chart-container {
-            position: relative;
-            height: 250px;
-        }
-
-        /* Player Cards */
-        .players-grid {
-            display: grid;
-            gap: 16px;
-        /* MVP Banner */
-        .mvp-banner {
-            background: linear-gradient(90deg, var(--accent-dim), transparent);
-            border-left: 4px solid var(--accent);
-            padding: 16px 20px;
-            margin-top: 16px;
-            border-radius: 0 8px 8px 0;
-        }
-
-        .mvp-banner span { color: var(--accent); font-weight: 600; }
-
-        /* Players Grid */
-        .players-grid {
-            display: grid;
-            gap: 16px;
-            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-        }
-
-        .player-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
-            transition: all 0.2s;
-        }
-
-        .player-card:hover {
-            border-color: var(--border-light);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        }
-
-        .player-card.expanded .player-details { display: block; }
-        .player-card.expanded .expand-icon { transform: rotate(180deg); }
-
-        .player-main {
-            padding: 20px;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .player-card:hover {
+        /* Card hover effects */
+        .stat-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.3);
         }
 
-        .player-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
+        /* Progress bar animation */
+        .progress-bar-fill {
+            transition: width 0.8s ease-out;
         }
 
-        .player-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        /* Team color accents */
+        .team-ct { border-left: 3px solid #4a90d9; }
+        .team-t { border-left: 3px solid #de9b35; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans min-h-screen flex">
+
+    <!-- Fixed Sidebar Navigation -->
+    <aside id="sidebar" class="fixed left-0 top-0 h-screen w-64 bg-slate-950 border-r border-slate-800 flex flex-col z-50">
+        <!-- Logo -->
+        <div class="p-6 border-b border-slate-800">
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
+                OpenSight
+            </h1>
+            <p class="text-xs text-slate-500 mt-1">CS2 Analytics Platform</p>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="flex-1 py-4">
+            <div class="px-3 mb-2">
+                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Analysis</span>
+            </div>
+
+            <button class="sidebar-item active w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3" data-tab="overview">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                </svg>
+                Overview
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="heatmaps">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                </svg>
+                Heatmaps
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="utility">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"/>
+                </svg>
+                Utility
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="compare">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                Compare
+            </button>
+
+            <div class="px-3 mt-6 mb-2">
+                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Match Data</span>
+            </div>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="players">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
+                </svg>
+                Players
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="timeline">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Timeline
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="coaching">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                AI Coaching
+            </button>
+        </nav>
+
+        <!-- Footer -->
+        <div class="p-4 border-t border-slate-800">
+            <div class="text-xs text-slate-500">
+                <p>100% Free &amp; Local</p>
+                <a href="https://github.com/nukethe02/cs2-analyzer" target="_blank" class="text-cyan-400 hover:underline">GitHub</a>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 ml-64 min-h-screen cyber-grid">
+
+        <!-- Overview Tab (Default - with Upload) -->
+        <section id="tab-overview" class="tab-content block p-8">
+
+            <!-- Upload Section (visible when no data) -->
+            <div id="upload-section" class="max-w-4xl mx-auto">
+                <!-- Hero Header -->
+                <div class="text-center mb-12">
+                    <h2 class="text-4xl font-bold mb-4">
+                        <span class="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 bg-clip-text text-transparent">
+                            Analyze Your Demo
+                        </span>
+                    </h2>
+                    <p class="text-slate-400 text-lg">
+                        Get professional-grade CS2 analytics like Scope.gg &amp; Leetify - completely free
+                    </p>
+                </div>
+
+                <!-- High-Tech Drop Zone -->
+                <div id="upload-zone" class="relative bg-slate-950/80 border-2 border-dashed border-slate-700 rounded-2xl p-16 text-center cursor-pointer transition-all duration-300 hover:border-cyan-500 hover:animate-pulse-glow group overflow-hidden">
+
+                    <!-- Scanner Line Effect -->
+                    <div class="scanner-line opacity-0 group-hover:opacity-100"></div>
+
+                    <!-- Corner Accents -->
+                    <div class="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-cyan-500/50"></div>
+                    <div class="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-cyan-500/50"></div>
+                    <div class="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-cyan-500/50"></div>
+                    <div class="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-cyan-500/50"></div>
+
+                    <!-- Upload Icon -->
+                    <div class="mb-6">
+                        <svg class="w-20 h-20 mx-auto text-slate-600 group-hover:text-cyan-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                        </svg>
+                    </div>
+
+                    <!-- Text -->
+                    <h3 class="text-xl font-semibold text-slate-300 mb-2 group-hover:text-cyan-400 transition-colors">
+                        Drop your .dem file here
+                    </h3>
+                    <p class="text-slate-500 text-sm mb-4">
+                        or click to browse
+                    </p>
+
+                    <!-- Supported Formats -->
+                    <div class="flex items-center justify-center gap-4 text-xs text-slate-600">
+                        <span class="px-3 py-1 bg-slate-800 rounded-full font-mono">.dem</span>
+                        <span class="px-3 py-1 bg-slate-800 rounded-full font-mono">.dem.gz</span>
+                        <span class="text-slate-700">|</span>
+                        <span>Max 500MB</span>
+                    </div>
+
+                    <!-- Hidden File Input -->
+                    <input type="file" id="demo-file" accept=".dem,.dem.gz" class="hidden">
+                </div>
+
+                <!-- Feature Cards -->
+                <div class="grid grid-cols-3 gap-6 mt-12">
+                    <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+                        <div class="w-12 h-12 bg-cyan-500/10 rounded-lg flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                        </div>
+                        <h4 class="font-semibold text-white mb-2">Time to Damage</h4>
+                        <p class="text-sm text-slate-400">Measure your reaction speed from first damage to kill</p>
+                    </div>
+
+                    <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+                        <div class="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                        </div>
+                        <h4 class="font-semibold text-white mb-2">Crosshair Placement</h4>
+                        <p class="text-sm text-slate-400">Angular error analysis at moment of kill</p>
+                    </div>
+
+                    <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+                        <div class="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <h4 class="font-semibold text-white mb-2">HLTV 2.0 Rating</h4>
+                        <p class="text-sm text-slate-400">Professional-grade performance metrics</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section (hidden until analysis) -->
+            <div id="results-overview" class="hidden">
+                <!-- Populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Heatmaps Tab -->
+        <section id="tab-heatmaps" class="tab-content hidden p-8">
+            <div id="heatmaps-content" class="max-w-6xl mx-auto">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">Position Heatmaps</h2>
+                        <p class="text-slate-400 mt-1">Kill and death locations on the map</p>
+                    </div>
+                </div>
+
+                <div id="heatmap-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
+                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                    </svg>
+                    <p class="text-slate-500">Upload a demo file to view heatmaps</p>
+                </div>
+
+                <div id="heatmap-display" class="hidden">
+                    <!-- Heatmap controls and canvas -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                        <div class="flex gap-4 mb-6">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="show-kills" checked class="w-4 h-4 accent-green-500">
+                                <span class="text-sm text-slate-300">Kills</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="show-deaths" checked class="w-4 h-4 accent-red-500">
+                                <span class="text-sm text-slate-300">Deaths</span>
+                            </label>
+                            <select id="heatmap-player-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1 text-sm">
+                                <option value="all">All Players</option>
+                            </select>
+                        </div>
+                        <canvas id="heatmap-canvas" class="w-full max-w-3xl mx-auto rounded-lg bg-slate-900"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Utility Tab -->
+        <section id="tab-utility" class="tab-content hidden p-8">
+            <div id="utility-content" class="max-w-6xl mx-auto">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">Utility Analysis</h2>
+                        <p class="text-slate-400 mt-1">Flash, smoke, molotov, and HE effectiveness</p>
+                    </div>
+                </div>
+
+                <div id="utility-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
+                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
+                    </svg>
+                    <p class="text-slate-500">Upload a demo file to view utility stats</p>
+                </div>
+
+                <div id="utility-display" class="hidden">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Compare Tab -->
+        <section id="tab-compare" class="tab-content hidden p-8">
+            <div id="compare-content" class="max-w-6xl mx-auto">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">Player Comparison</h2>
+                        <p class="text-slate-400 mt-1">Compare stats between players</p>
+                    </div>
+                </div>
+
+                <div id="compare-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
+                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <p class="text-slate-500">Upload a demo file to compare players</p>
+                </div>
+
+                <div id="compare-display" class="hidden">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Players Tab -->
+        <section id="tab-players" class="tab-content hidden p-8">
+            <div id="players-content" class="max-w-6xl mx-auto">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">Player Stats</h2>
+                        <p class="text-slate-400 mt-1">Detailed individual performance</p>
+                    </div>
+                </div>
+
+                <div id="players-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
+                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
+                    </svg>
+                    <p class="text-slate-500">Upload a demo file to view player stats</p>
+                </div>
+
+                <div id="players-display" class="hidden">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Timeline Tab -->
+        <section id="tab-timeline" class="tab-content hidden p-8">
+            <div id="timeline-content" class="max-w-6xl mx-auto">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">Round Timeline</h2>
+                        <p class="text-slate-400 mt-1">Match progression round by round</p>
+                    </div>
+                </div>
+
+                <div id="timeline-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
+                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <p class="text-slate-500">Upload a demo file to view timeline</p>
+                </div>
+
+                <div id="timeline-display" class="hidden">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Coaching Tab -->
+        <section id="tab-coaching" class="tab-content hidden p-8">
+            <div id="coaching-content" class="max-w-6xl mx-auto">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">AI Coaching</h2>
+                        <p class="text-slate-400 mt-1">Personalized improvement suggestions</p>
+                    </div>
+                </div>
+
+                <div id="coaching-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
+                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                    </svg>
+                    <p class="text-slate-500">Upload a demo file to get AI coaching insights</p>
+                </div>
+
+                <div id="coaching-display" class="hidden">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="fixed inset-0 bg-slate-950/95 z-[100] hidden items-center justify-center flex-col">
+        <div class="relative">
+            <!-- Spinning ring -->
+            <div class="w-20 h-20 border-4 border-slate-700 border-t-cyan-400 rounded-full animate-spin"></div>
+            <!-- Inner pulse -->
+            <div class="absolute inset-0 flex items-center justify-center">
+                <div class="w-8 h-8 bg-cyan-400/20 rounded-full animate-ping"></div>
+            </div>
+        </div>
+        <p class="mt-6 text-lg text-slate-300">Analyzing demo...</p>
+        <p id="loading-details" class="mt-2 text-sm text-slate-500"></p>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // ============================================
+        // DOM Elements
+        // ============================================
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('demo-file');
+        const loading = document.getElementById('loading');
+        const loadingDetails = document.getElementById('loading-details');
+        const uploadSection = document.getElementById('upload-section');
+        const resultsOverview = document.getElementById('results-overview');
+
+        // Global state
+        let analysisData = null;
+        let charts = {};
+
+        // ============================================
+        // Tab Navigation
+        // ============================================
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const tab = item.dataset.tab;
+
+                // Update sidebar active state
+                document.querySelectorAll('.sidebar-item').forEach(i => {
+                    i.classList.remove('active', 'text-cyan-400');
+                    i.classList.add('text-slate-400');
+                });
+                item.classList.add('active');
+                item.classList.remove('text-slate-400');
+
+                // Update content visibility
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.add('hidden');
+                    content.classList.remove('block');
+                });
+                const tabContent = document.getElementById(`tab-${tab}`);
+                if (tabContent) {
+                    tabContent.classList.remove('hidden');
+                    tabContent.classList.add('block');
+                }
+
+                // Initialize tab-specific content if data exists
+                if (analysisData) {
+                    if (tab === 'heatmaps') initHeatmap(analysisData.heatmap_data || {});
+                }
+            });
+        });
+
+        // ============================================
+        // File Upload Handlers
+        // ============================================
+        uploadZone.addEventListener('click', () => fileInput.click());
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('border-cyan-500', 'animate-pulse-glow');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('border-cyan-500', 'animate-pulse-glow');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('border-cyan-500', 'animate-pulse-glow');
+            const file = e.dataTransfer.files[0];
+            if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
+                analyzeFile(file);
+            } else {
+                showToast('Please upload a .dem or .dem.gz file', 'error');
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) analyzeFile(file);
+        });
+
+        // ============================================
+        // Utility Functions
+        // ============================================
+        function esc(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
         }
 
-        .player-name { font-weight: 600; font-size: 1.1rem; }
-
-        .player-team {
-            padding: 4px 12px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
+        function formatNumber(num, decimals = 1) {
+            if (num === null || num === undefined) return '-';
+            return Number(num).toFixed(decimals);
         }
 
-        .team-ct { background: var(--ct-bg); color: var(--ct-color); }
-        .team-t { background: var(--t-bg); color: var(--t-color); }
-
-        .player-badges {
-            display: flex;
-            gap: 8px;
-            align-items: center;
+        function getRatingClass(rating) {
+            if (rating >= 1.3) return 'text-yellow-400';
+            if (rating >= 1.1) return 'text-green-400';
+            if (rating >= 0.9) return 'text-slate-300';
+            return 'text-red-400';
         }
 
-        .rating-badge {
-            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-            color: var(--bg-primary);
-            padding: 6px 14px;
-            border-radius: 6px;
-            font-weight: 700;
-            font-size: 0.95rem;
+        function getRatingBg(rating) {
+            if (rating >= 1.3) return 'bg-yellow-500/20 border-yellow-500/30';
+            if (rating >= 1.1) return 'bg-green-500/20 border-green-500/30';
+            if (rating >= 0.9) return 'bg-slate-500/20 border-slate-500/30';
+            return 'bg-red-500/20 border-red-500/30';
         }
 
-        .rating-badge.elite { background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%); }
-        .rating-badge.good { background: var(--success); }
-        .rating-badge.average { background: var(--warning); color: var(--bg-primary); }
-        .rating-badge.poor { background: var(--danger); }
-
-        .expand-icon {
-            color: var(--text-muted);
-            transition: transform 0.2s;
-            font-size: 1.2rem;
+        function getStatColor(value, thresholds) {
+            if (value >= thresholds.elite) return 'text-yellow-400';
+            if (value >= thresholds.good) return 'text-green-400';
+            if (value >= thresholds.avg) return 'text-slate-300';
+            return 'text-red-400';
         }
 
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
-            gap: 10px;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
+        function showToast(message, type = 'info') {
+            // Simple toast notification
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg z-[200] transition-all transform ${
+                type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-cyan-500'
+            } text-white font-medium`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
         }
 
-        .stat {
-            text-align: center;
-            padding: 12px 8px;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            transition: all 0.2s;
+        // ============================================
+        // Main Analysis Function
+        // ============================================
+        async function analyzeFile(file) {
+            const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+            loading.classList.remove('hidden');
+            loading.classList.add('flex');
+            loadingDetails.textContent = `Processing ${file.name} (${sizeMB} MB)`;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Analysis failed');
+                }
+
+                analysisData = data;
+                renderResults(data);
+                showToast('Analysis complete!', 'success');
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                loading.classList.add('hidden');
+                loading.classList.remove('flex');
+            }
         }
 
-        .stat:hover { background: var(--bg-card-hover); }
+        // ============================================
+        // Render Results
+        // ============================================
+        function renderResults(data) {
+            const info = data.demo_info || {};
+            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            const ctPlayers = players.filter(p => p.team === 'CT');
+            const tPlayers = players.filter(p => p.team === 'T');
 
-        .stat-value { font-size: 1.25rem; font-weight: 600; }
-        .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; letter-spacing: 0.3px; }
+            // Hide upload, show results
+            uploadSection.classList.add('hidden');
+            resultsOverview.classList.remove('hidden');
 
-        .stat.highlight { background: var(--accent-dim); border: 1px solid rgba(0, 212, 255, 0.3); }
-        .stat-value.good { color: var(--success); }
-        .stat-value.warning { color: var(--warning); }
-        .stat-value.bad { color: var(--danger); }
-        .stat-value.elite { color: #ffd700; }
+            // Render overview
+            resultsOverview.innerHTML = renderOverviewContent(data, players, info);
 
-        /* Player Details (Expandable) */
-        .player-details {
-            display: none;
-            border-top: 1px solid var(--border);
-            padding: 20px;
-            background: var(--bg-secondary);
+            // Show placeholders become real content
+            renderPlayersContent(ctPlayers, tPlayers);
+            renderUtilityContent(players);
+            renderTimelineContent(data.rounds || []);
+            renderCoachingContent(data.coaching || []);
+            renderCompareContent(players);
+            renderHeatmapContent();
+
+            // Initialize charts
+            initCharts(players);
+
+            // Add new analysis button handler
+            const newAnalysisBtn = document.getElementById('btn-new-analysis');
+            if (newAnalysisBtn) {
+                newAnalysisBtn.addEventListener('click', () => {
+                    uploadSection.classList.remove('hidden');
+                    resultsOverview.classList.add('hidden');
+                    resultsOverview.innerHTML = '';
+                    analysisData = null;
+
+                    // Reset all placeholders
+                    ['players', 'utility', 'timeline', 'coaching', 'compare', 'heatmap'].forEach(tab => {
+                        const display = document.getElementById(`${tab}-display`);
+                        const placeholder = document.getElementById(`${tab}-placeholder`);
+                        if (display) display.classList.add('hidden');
+                        if (placeholder) placeholder.classList.remove('hidden');
+                    });
+                });
+            }
+
+            // Export handlers
+            document.getElementById('btn-export-json')?.addEventListener('click', () => exportJSON(data));
+            document.getElementById('btn-export-csv')?.addEventListener('click', () => exportCSV(data));
         }
 
-        .details-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-        }
+        function renderOverviewContent(data, players, info) {
+            const scores = (info.score || '0 - 0').split(' - ');
+            const rounds = data.rounds || [];
 
-        .detail-section {
-            background: var(--bg-card);
-            border-radius: 8px;
-            padding: 16px;
-        }
+            return `
+                <!-- Match Header Card -->
+                <div class="bg-gradient-to-r from-slate-800/80 to-slate-800/40 rounded-2xl border border-slate-700 p-8 mb-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 class="text-3xl font-bold text-white">${esc(info.map) || 'Unknown Map'}</h2>
+                            <p class="text-slate-400 mt-1">
+                                <span class="font-mono data-value">${info.rounds || 0}</span> rounds &bull;
+                                <span class="font-mono data-value">${Math.round(info.duration_minutes || 0)}</span> min &bull;
+                                <span class="font-mono data-value">${info.total_kills || 0}</span> kills
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <button id="btn-new-analysis" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                </svg>
+                                New Analysis
+                            </button>
+                            <button id="btn-export-json" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors font-mono text-sm">
+                                { } JSON
+                            </button>
+                            <button id="btn-export-csv" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors font-mono text-sm">
+                                CSV
+                            </button>
+                        </div>
+                    </div>
 
-        .detail-section h4 {
-            font-size: 0.85rem;
-            color: var(--accent);
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+                    <!-- Score Display -->
+                    <div class="flex items-center justify-center gap-8 py-6">
+                        <div class="text-center">
+                            <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Counter-Terrorists</p>
+                            <p class="text-5xl font-bold font-mono data-value text-ct">${scores[0] || '0'}</p>
+                        </div>
+                        <div class="text-3xl text-slate-600 font-light">:</div>
+                        <div class="text-center">
+                            <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Terrorists</p>
+                            <p class="text-5xl font-bold font-mono data-value text-t">${scores[1] || '0'}</p>
+                        </div>
+                    </div>
 
-        .detail-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border);
-        }
+                    ${data.mvp ? `
+                        <div class="flex items-center justify-center gap-2 mt-4 text-slate-400">
+                            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                            </svg>
+                            MVP: <span class="text-cyan-400 font-semibold">${esc(data.mvp.name)}</span>
+                            <span class="font-mono data-value">(${formatNumber(data.mvp.rating, 2)})</span>
+                        </div>
+                    ` : ''}
+                </div>
 
-        .detail-row:last-child { border-bottom: none; }
+                <!-- Round Timeline -->
+                ${rounds.length > 0 ? `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-8">
+                    <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Round Timeline</h3>
+                    <div class="flex flex-wrap gap-1">
+                        ${rounds.map(r => `
+                            <div class="w-8 h-10 rounded flex items-center justify-center text-xs font-mono font-bold cursor-pointer transition-transform hover:scale-110 ${
+                                r.winner === 'CT'
+                                    ? 'bg-ct-bg text-ct border border-ct/30'
+                                    : 'bg-t-bg text-t border border-t/30'
+                            }" title="Round ${r.round_num}: ${r.winner} win">
+                                ${r.round_num}
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="flex gap-6 mt-4 text-sm text-slate-400">
+                        <span><span class="inline-block w-3 h-3 rounded bg-ct mr-2"></span>CT Wins: <span class="font-mono data-value">${rounds.filter(r => r.winner === 'CT').length}</span></span>
+                        <span><span class="inline-block w-3 h-3 rounded bg-t mr-2"></span>T Wins: <span class="font-mono data-value">${rounds.filter(r => r.winner === 'T').length}</span></span>
+                    </div>
+                </div>
+                ` : ''}
 
-        .detail-label { color: var(--text-muted); }
-        .detail-value { font-weight: 500; }
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="chart-card bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Player Ratings</h3>
+                        <div class="h-48">
+                            <canvas id="chart-ratings"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Kills & Deaths</h3>
+                        <div class="h-48">
+                            <canvas id="chart-kd"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">ADR Comparison</h3>
+                        <div class="h-48">
+                            <canvas id="chart-adr"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Headshot %</h3>
+                        <div class="h-48">
+                            <canvas id="chart-hs"></canvas>
+                        </div>
+                    </div>
+                </div>
 
-        /* Progress Bars */
-        .progress-bar {
-            height: 8px;
-            background: var(--bg-secondary);
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 8px;
-        }
-
-        .progress-fill {
-            height: 100%;
-            border-radius: 4px;
-            transition: width 0.5s ease-out;
-        }
-
-        .progress-fill.accent { background: var(--accent); }
-        .progress-fill.success { background: var(--success); }
-        .progress-fill.warning { background: var(--warning); }
-        .progress-fill.danger { background: var(--danger); }
-
-        /* Benchmark Comparison */
-        .benchmark-row {
-            margin-bottom: 16px;
-        }
-
-        .benchmark-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 4px;
-        }
-
-        .benchmark-label { color: var(--text-muted); font-size: 0.85rem; }
-        .benchmark-value { font-weight: 600; }
-        .benchmark-rank { font-size: 0.8rem; color: var(--accent); }
-
-        /* Utility Dashboard */
-        .utility-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-        }
-
-        .utility-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-        }
-
-        .utility-icon {
-            font-size: 2rem;
-            margin-bottom: 8px;
-        }
-
-        .utility-value {
-            font-size: 1.8rem;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-
-        .utility-label {
-            color: var(--text-muted);
-            font-size: 0.85rem;
-        }
-
-        .utility-sub {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            margin-top: 8px;
-        }
-
-        /* Round Timeline */
-        .round-timeline {
-        .stat-value.warning { color: var(--warning); }
-
-        /* Round Timeline */
-        .timeline-container {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 24px;
-            overflow-x: auto;
-        }
-
-        .round-timeline h3 {
-            font-size: 1rem;
-            color: var(--text-secondary);
-            margin-bottom: 16px;
-            text-transform: uppercase;
-        }
-
-        .timeline-container {
-            overflow-x: auto;
-        }
-
-        .timeline {
-            display: flex;
-            gap: 4px;
-            min-width: max-content;
-        }
-
-        .round-marker {
-            width: 32px;
-            height: 48px;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .round-marker:hover {
-            transform: scale(1.1);
-        }
-
-        .round-marker.ct-win { background: var(--ct-bg); color: var(--ct-color); border: 1px solid var(--ct-color); }
-        .round-marker.t-win { background: var(--t-bg); color: var(--t-color); border: 1px solid var(--t-color); }
-
-        /* Leaderboard Table */
-        .leaderboard {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .leaderboard table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .leaderboard th {
-            background: var(--bg-secondary);
-            padding: 14px 12px;
-            text-align: left;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            cursor: pointer;
-        }
-
-        .leaderboard th:hover { color: var(--accent); }
-
-        .leaderboard td {
-            padding: 14px 12px;
-            border-top: 1px solid var(--border);
-        }
-
-        .leaderboard tr:hover td {
-            background: var(--bg-secondary);
-        }
-
-
-        .round-box {
-            width: 36px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-
-        .round-box:hover { transform: scale(1.1); }
-        .round-box.ct-win { background: var(--ct-bg); color: var(--ct-color); }
-        .round-box.t-win { background: var(--t-bg); color: var(--t-color); }
-        .round-box.half-marker {
-            background: transparent;
-            border: 2px dashed var(--border);
-            color: var(--text-muted);
-        }
-
-        /* Kill Matrix */
-        .matrix-container {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            overflow-x: auto;
-        }
-
-        .matrix-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-        }
-
-        .matrix-table th, .matrix-table td {
-            padding: 10px;
-            text-align: center;
-            border: 1px solid var(--border);
-        }
-
-        .matrix-table th {
-            background: var(--bg-secondary);
-            color: var(--text-secondary);
-            font-weight: 500;
+                <!-- Player Cards Grid -->
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Player Performance</h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    ${players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0)).map(p => renderPlayerCard(p)).join('')}
+                </div>
+            `;
         }
 
         .matrix-table td.highlight {
@@ -2896,481 +3041,628 @@
             return html;
         }
 
-        // Render Heatmap Tab
-        function renderHeatmap(heatmapData, mapName) {
             return `
-                <div class="heatmap-container">
-                    <h3 style="margin-bottom: 16px;">Position Heatmap - ${esc(mapName)}</h3>
-                    <div class="heatmap-controls">
-                        <label>
-                            <input type="checkbox" id="show-kills" checked>
-                            Show Kills (green)
-                        </label>
-                        <label>
-                            <input type="checkbox" id="show-deaths" checked>
-                            Show Deaths (red)
-                        </label>
+                <div class="stat-card bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden transition-all duration-200 ${teamClass}">
+                    <div class="p-5">
+                        <!-- Header -->
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <span class="font-semibold text-white">${esc(player.name) || 'Unknown'}</span>
+                                <span class="px-2 py-0.5 rounded text-xs font-bold ${teamBadgeClass}">${player.team}</span>
+                            </div>
+                            <div class="px-3 py-1 rounded-lg border ${getRatingBg(r.hltv_rating)}">
+                                <span class="font-mono data-value text-lg ${getRatingClass(r.hltv_rating)}">${formatNumber(r.hltv_rating, 2)}</span>
+                            </div>
+                        </div>
+
+                        <!-- Stats Grid -->
+                        <div class="grid grid-cols-4 gap-3">
+                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
+                                <p class="font-mono data-value text-xl text-white">${s.kills || 0}</p>
+                                <p class="text-xs text-slate-500 uppercase">Kills</p>
+                            </div>
+                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
+                                <p class="font-mono data-value text-xl text-white">${s.deaths || 0}</p>
+                                <p class="text-xs text-slate-500 uppercase">Deaths</p>
+                            </div>
+                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
+                                <p class="font-mono data-value text-xl ${(s.kd_ratio || 0) >= 1 ? 'text-green-400' : 'text-red-400'}">${s.kd_ratio || '-'}</p>
+                                <p class="text-xs text-slate-500 uppercase">K/D</p>
+                            </div>
+                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
+                                <p class="font-mono data-value text-xl ${getStatColor(s.adr || 0, {elite: 90, good: 75, avg: 60})}">${s.adr || 0}</p>
+                                <p class="text-xs text-slate-500 uppercase">ADR</p>
+                            </div>
+                        </div>
+
+                        <!-- Secondary Stats -->
+                        <div class="grid grid-cols-4 gap-3 mt-3">
+                            <div class="text-center">
+                                <p class="font-mono data-value text-sm text-slate-300">${s.headshot_pct || 0}%</p>
+                                <p class="text-xs text-slate-600">HS%</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="font-mono data-value text-sm text-slate-300">${formatNumber(r.kast_percentage, 0)}%</p>
+                                <p class="text-xs text-slate-600">KAST</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="font-mono data-value text-sm text-slate-300">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</p>
+                                <p class="text-xs text-slate-600">TTD</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="font-mono data-value text-sm text-slate-300">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</p>
+                                <p class="text-xs text-slate-600">CP</p>
+                            </div>
+                        </div>
                     </div>
-                    <canvas id="heatmap-canvas" class="heatmap-canvas" width="800" height="800"></canvas>
-                    <p style="color: var(--text-muted); margin-top: 12px; font-size: 0.85rem;">
-                        ${(heatmapData.kill_positions?.length || 0)} kills, ${(heatmapData.death_positions?.length || 0)} deaths plotted
-                    </p>
                 </div>
             `;
         }
 
-        // Initialize Heatmap Canvas
-        function initHeatmap(heatmapData) {
-            const canvas = document.getElementById('heatmap-canvas');
-            if (!canvas) return;
+        // ============================================
+        // Tab-specific Content Renderers
+        // ============================================
+        function renderPlayersContent(ctPlayers, tPlayers) {
+            const container = document.getElementById('players-display');
+            const placeholder = document.getElementById('players-placeholder');
 
-            const ctx = canvas.getContext('2d');
-            const kills = heatmapData.kill_positions || [];
-            const deaths = heatmapData.death_positions || [];
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
 
-            // Find bounds
-            const allX = [...kills.map(p => p.x), ...deaths.map(p => p.x)].filter(v => v != null);
-            const allY = [...kills.map(p => p.y), ...deaths.map(p => p.y)].filter(v => v != null);
+            container.innerHTML = `
+                <h3 class="text-lg font-semibold text-ct mb-4 flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-ct"></span> Counter-Terrorists
+                </h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+                    ${ctPlayers.map(p => renderDetailedPlayerCard(p)).join('')}
+                </div>
 
-            if (!allX.length || !allY.length) {
-                ctx.fillStyle = '#606070';
-                ctx.font = '16px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('No position data available for this map', 400, 400);
+                <h3 class="text-lg font-semibold text-t mb-4 flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-t"></span> Terrorists
+                </h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    ${tPlayers.map(p => renderDetailedPlayerCard(p)).join('')}
+                </div>
+            `;
+        }
+
+        function renderDetailedPlayerCard(player) {
+            const s = player.stats || {};
+            const r = player.rating || {};
+            const adv = player.advanced || {};
+            const util = player.utility || {};
+            const d = player.duels || {};
+            const c = player.clutches || {};
+            const mk = player.multi_kills || {};
+
+            return `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h4 class="font-semibold text-white text-lg">${esc(player.name)}</h4>
+                        <span class="font-mono data-value text-2xl ${getRatingClass(r.hltv_rating)}">${formatNumber(r.hltv_rating, 2)}</span>
+                    </div>
+
+                    <!-- Aim Performance -->
+                    <div class="mb-6">
+                        <h5 class="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-3">Aim Performance</h5>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-slate-400">Aim Rating</span>
+                                <span class="font-mono data-value">${formatNumber(r.aim_rating, 0)}/100</span>
+                            </div>
+                            <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                                <div class="h-full bg-cyan-400 progress-bar-fill" style="width: ${r.aim_rating || 0}%"></div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">TTD (Median)</span>
+                                <span class="font-mono data-value">${adv.ttd_median_ms ? formatNumber(adv.ttd_median_ms, 0) + 'ms' : '-'}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Crosshair Placement</span>
+                                <span class="font-mono data-value">${adv.cp_median_error_deg ? formatNumber(adv.cp_median_error_deg, 1) + '°' : '-'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Utility -->
+                    <div class="mb-6">
+                        <h5 class="text-xs font-semibold text-green-400 uppercase tracking-wider mb-3">Utility Usage</h5>
+                        <div class="grid grid-cols-4 gap-2 text-center text-sm">
+                            <div>
+                                <p class="font-mono data-value text-white">${util.flashbangs_thrown || 0}</p>
+                                <p class="text-xs text-slate-500">Flashes</p>
+                            </div>
+                            <div>
+                                <p class="font-mono data-value text-white">${util.enemies_flashed || 0}</p>
+                                <p class="text-xs text-slate-500">Blinded</p>
+                            </div>
+                            <div>
+                                <p class="font-mono data-value text-white">${util.he_damage || 0}</p>
+                                <p class="text-xs text-slate-500">HE Dmg</p>
+                            </div>
+                            <div>
+                                <p class="font-mono data-value text-white">${util.molotov_damage || 0}</p>
+                                <p class="text-xs text-slate-500">Molly Dmg</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Duels & Clutches -->
+                    <div>
+                        <h5 class="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-3">Duels & Clutches</h5>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Opening Duels</span>
+                                <span class="font-mono data-value ${(d.opening_win_rate || 0) >= 50 ? 'text-green-400' : 'text-red-400'}">
+                                    ${d.opening_wins || 0}W/${d.opening_losses || 0}L
+                                </span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Clutches</span>
+                                <span class="font-mono data-value">${c.total_wins || 0}/${c.total_situations || 0}</span>
+                            </div>
+                            <div class="flex justify-between col-span-2">
+                                <span class="text-slate-500">Multi-Kills</span>
+                                <span class="font-mono data-value text-xs">
+                                    2k: ${mk.rounds_with_2k || 0} | 3k: ${mk.rounds_with_3k || 0} | 4k: ${mk.rounds_with_4k || 0} | 5k: ${mk.rounds_with_5k || 0}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderUtilityContent(players) {
+            const container = document.getElementById('utility-display');
+            const placeholder = document.getElementById('utility-placeholder');
+
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
+
+            const totals = players.reduce((acc, p) => {
+                const u = p.utility || {};
+                acc.flashesThrown += u.flashbangs_thrown || 0;
+                acc.enemiesFlashed += u.enemies_flashed || 0;
+                acc.teammatesFlashed += u.teammates_flashed || 0;
+                acc.heThrown += u.he_thrown || 0;
+                acc.heDamage += u.he_damage || 0;
+                acc.molotovThrown += u.molotov_thrown || 0;
+                acc.molotovDamage += u.molotov_damage || 0;
+                acc.flashAssists += u.flash_assists || 0;
+                return acc;
+            }, { flashesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, flashAssists: 0 });
+
+            container.innerHTML = `
+                <!-- Team Totals -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
+                        <div class="text-3xl mb-2">⚡</div>
+                        <p class="font-mono data-value text-3xl text-cyan-400">${totals.flashesThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">Flashbangs Thrown</p>
+                        <p class="text-xs text-slate-500 mt-2">${totals.enemiesFlashed} enemies blinded</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
+                        <div class="text-3xl mb-2">💥</div>
+                        <p class="font-mono data-value text-3xl text-red-400">${totals.heDamage}</p>
+                        <p class="text-sm text-slate-400 mt-1">HE Grenade Damage</p>
+                        <p class="text-xs text-slate-500 mt-2">${totals.heThrown} grenades thrown</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
+                        <div class="text-3xl mb-2">🔥</div>
+                        <p class="font-mono data-value text-3xl text-orange-400">${totals.molotovDamage}</p>
+                        <p class="text-sm text-slate-400 mt-1">Molotov Damage</p>
+                        <p class="text-xs text-slate-500 mt-2">${totals.molotovThrown} molotovs thrown</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
+                        <div class="text-3xl mb-2">✨</div>
+                        <p class="font-mono data-value text-3xl text-green-400">${totals.flashAssists}</p>
+                        <p class="text-sm text-slate-400 mt-1">Flash Assists</p>
+                        <p class="text-xs text-slate-500 mt-2">${totals.teammatesFlashed} teammates flashed</p>
+                    </div>
+                </div>
+
+                <!-- Player Utility Rankings -->
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Utility Ratings by Player</h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    ${players.sort((a, b) => (b.rating?.utility_rating || 0) - (a.rating?.utility_rating || 0)).map(p => `
+                        <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="font-semibold text-white">${esc(p.name)}</span>
+                                <span class="px-3 py-1 rounded-lg bg-green-500/20 text-green-400 font-mono data-value">${formatNumber(p.rating?.utility_rating, 0)}</span>
+                            </div>
+                            <div class="grid grid-cols-4 gap-2 text-center">
+                                <div>
+                                    <p class="font-mono data-value text-white">${p.utility?.flashbangs_thrown || 0}</p>
+                                    <p class="text-xs text-slate-500">Flashes</p>
+                                </div>
+                                <div>
+                                    <p class="font-mono data-value text-white">${p.utility?.enemies_flashed || 0}</p>
+                                    <p class="text-xs text-slate-500">Blinded</p>
+                                </div>
+                                <div>
+                                    <p class="font-mono data-value text-white">${p.utility?.he_damage || 0}</p>
+                                    <p class="text-xs text-slate-500">HE Dmg</p>
+                                </div>
+                                <div>
+                                    <p class="font-mono data-value text-white">${p.utility?.molotov_damage || 0}</p>
+                                    <p class="text-xs text-slate-500">Molly</p>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderTimelineContent(rounds) {
+            const container = document.getElementById('timeline-display');
+            const placeholder = document.getElementById('timeline-placeholder');
+
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
+
+            if (rounds.length === 0) {
+                container.innerHTML = '<p class="text-slate-500">No round data available</p>';
                 return;
             }
 
-            const minX = Math.min(...allX), maxX = Math.max(...allX);
-            const minY = Math.min(...allY), maxY = Math.max(...allY);
-            const rangeX = maxX - minX || 1;
-            const rangeY = maxY - minY || 1;
-
-            function draw() {
-                ctx.fillStyle = '#12121a';
-                ctx.fillRect(0, 0, 800, 800);
-
-                // Draw grid
-                ctx.strokeStyle = '#252532';
-                ctx.lineWidth = 1;
-                for (let i = 0; i <= 10; i++) {
-                    ctx.beginPath();
-                    ctx.moveTo(i * 80, 0);
-                    ctx.lineTo(i * 80, 800);
-                    ctx.stroke();
-                    ctx.beginPath();
-                    ctx.moveTo(0, i * 80);
-                    ctx.lineTo(800, i * 80);
-                    ctx.stroke();
-                }
-
-                const showKills = document.getElementById('show-kills')?.checked ?? true;
-                const showDeaths = document.getElementById('show-deaths')?.checked ?? true;
-
-                // Draw deaths (red)
-                if (showDeaths) {
-                    ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
-                    for (const pos of deaths) {
-                        if (pos.x == null || pos.y == null) continue;
-                        const x = ((pos.x - minX) / rangeX) * 750 + 25;
-                        const y = 800 - (((pos.y - minY) / rangeY) * 750 + 25);
-                        ctx.beginPath();
-                        ctx.arc(x, y, 5, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                }
-
-                // Draw kills (green)
-                if (showKills) {
-                    ctx.fillStyle = 'rgba(34, 197, 94, 0.6)';
-                    for (const pos of kills) {
-                        if (pos.x == null || pos.y == null) continue;
-                        const x = ((pos.x - minX) / rangeX) * 750 + 25;
-                        const y = 800 - (((pos.y - minY) / rangeY) * 750 + 25);
-                        ctx.beginPath();
-                        ctx.arc(x, y, 5, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                }
-            }
-
-            draw();
-
-            // Event listeners for checkboxes
-            document.getElementById('show-kills')?.addEventListener('change', draw);
-            document.getElementById('show-deaths')?.addEventListener('change', draw);
-        }
-
-        // Render Coaching Tab
-        function renderCoaching(coaching) {
-            if (!coaching.length) {
-                return '<div class="coaching-panel"><p style="color: var(--text-muted);">No coaching insights available.</p></div>';
-            }
-
-            let html = '<div class="coaching-panel">';
-
-            for (const player of coaching) {
-                html += `
-                    <div class="coaching-player">
-                        <div class="coaching-player-name">${esc(player.player_name)}</div>
-                `;
-
-                for (const insight of player.insights || []) {
-                    const icon = insight.type === 'positive' ? '✓' : insight.type === 'mistake' ? '✗' : '⚠';
-                    html += `
-                        <div class="insight ${insight.type}">
-                            <span class="insight-icon">${icon}</span>
-                            <div>
-                                <div class="insight-text">${esc(insight.message)}</div>
-                                <div class="insight-category">${esc(insight.category)}</div>
+            container.innerHTML = `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                    <div class="flex flex-wrap gap-2">
+                        ${rounds.map(r => `
+                            <div class="w-12 h-16 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-transform hover:scale-105 ${
+                                r.winner === 'CT'
+                                    ? 'bg-ct-bg text-ct border border-ct/30'
+                                    : 'bg-t-bg text-t border border-t/30'
+                            }">
+                                <span class="font-mono data-value text-lg font-bold">${r.round_num}</span>
+                                <span class="text-xs opacity-70">${r.winner}</span>
                             </div>
+                        `).join('')}
+                    </div>
+
+                    <div class="mt-6 grid grid-cols-2 gap-8">
+                        <div class="text-center p-4 bg-ct-bg rounded-lg">
+                            <p class="text-xs text-slate-400 uppercase mb-1">CT Rounds Won</p>
+                            <p class="font-mono data-value text-4xl text-ct">${rounds.filter(r => r.winner === 'CT').length}</p>
                         </div>
-                    `;
-                }
-
-                html += '</div>';
-            }
-
-            html += '</div>';
-            return html;
-        }
-
-        // Render 2D Replay Viewer Tab
-        function renderReplayViewer(players, mapName) {
-            return `
-                <div class="replay-container">
-                    <h3 style="margin-bottom: 16px;">2D Replay Viewer - ${esc(mapName)}</h3>
-                    <div class="replay-viewer">
-                        <div class="replay-canvas-container">
-                            <canvas id="replay-canvas" class="replay-canvas" width="600" height="600"></canvas>
-                            <div class="replay-controls">
-                                <button class="replay-btn" id="replay-play" title="Space to toggle">Play</button>
-                                <button class="replay-btn" id="replay-prev" title="Left Arrow">&lt;</button>
-                                <button class="replay-btn" id="replay-next" title="Right Arrow">&gt;</button>
-                                <input type="range" class="replay-slider" id="replay-slider" min="0" max="100" value="0">
-                                <select class="replay-btn" id="replay-speed">
-                                    <option value="0.25">0.25x</option>
-                                    <option value="0.5">0.5x</option>
-                                    <option value="1" selected>1x</option>
-                                    <option value="2">2x</option>
-                                    <option value="4">4x</option>
-                                </select>
-                            </div>
-                            <div class="replay-info">
-                                <span>Round: <span id="replay-round">-</span></span>
-                                <span>Time: <span id="replay-time">-</span></span>
-                                <span>Frame: <span id="replay-frame">-</span></span>
-                            </div>
-                        </div>
-                        <div class="replay-sidebar">
-                            <div class="replay-player-list">
-                                <h4>CT Side</h4>
-                                <div id="replay-ct-players"></div>
-                                <h4 style="margin-top: 16px;">T Side</h4>
-                                <div id="replay-t-players"></div>
-                            </div>
+                        <div class="text-center p-4 bg-t-bg rounded-lg">
+                            <p class="text-xs text-slate-400 uppercase mb-1">T Rounds Won</p>
+                            <p class="font-mono data-value text-4xl text-t">${rounds.filter(r => r.winner === 'T').length}</p>
                         </div>
                     </div>
-                    <p style="color: var(--text-muted); margin-top: 16px; font-size: 0.85rem;">
-                        Note: Detailed replay data requires generating replay from the server. This is a simulated preview based on available position data.
-                        Click on players to focus. Use keyboard shortcuts: Space (play/pause), Arrow keys (navigate frames).
-                    </p>
                 </div>
             `;
         }
 
-        // Replay State
-        let replayState = {
-            playing: false,
-            currentFrame: 0,
-            frames: [],
-            speed: 1,
-            selectedPlayer: null,
-            animationId: null
-        };
+        function renderCoachingContent(coaching) {
+            const container = document.getElementById('coaching-display');
+            const placeholder = document.getElementById('coaching-placeholder');
 
-        // Initialize Replay Viewer
-        function initReplayViewer(heatmapData, players) {
-            const canvas = document.getElementById('replay-canvas');
-            if (!canvas) return;
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
 
-            const ctx = canvas.getContext('2d');
-            const kills = heatmapData?.kill_positions || [];
-            const deaths = heatmapData?.death_positions || [];
+            if (!coaching || coaching.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-8 text-center">
+                        <p class="text-slate-400">No coaching insights available for this demo</p>
+                    </div>
+                `;
+                return;
+            }
 
-            // Build simulated frames from position data
-            // In production, this would come from the /replay/generate endpoint
-            replayState.frames = buildSimulatedFrames(players, kills, deaths);
+            container.innerHTML = coaching.map(player => `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-4">
+                    <h4 class="font-semibold text-white text-lg mb-4">${esc(player.player_name)}</h4>
+                    <div class="space-y-3">
+                        ${(player.insights || []).map(insight => `
+                            <div class="flex items-start gap-3 p-3 rounded-lg ${
+                                insight.type === 'positive' ? 'bg-green-500/10 border-l-2 border-green-500' :
+                                insight.type === 'warning' ? 'bg-yellow-500/10 border-l-2 border-yellow-500' :
+                                'bg-red-500/10 border-l-2 border-red-500'
+                            }">
+                                <span class="text-lg">${
+                                    insight.type === 'positive' ? '✓' :
+                                    insight.type === 'warning' ? '⚠' : '✗'
+                                }</span>
+                                <div>
+                                    <p class="text-sm text-slate-300">${esc(insight.message)}</p>
+                                    <p class="text-xs text-slate-500 mt-1">${esc(insight.category)}</p>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
 
-            const slider = document.getElementById('replay-slider');
-            if (slider) {
-                slider.max = Math.max(0, replayState.frames.length - 1);
-                slider.addEventListener('input', (e) => {
-                    replayState.currentFrame = parseInt(e.target.value);
-                    drawReplayFrame(ctx, canvas.width, canvas.height);
+        function renderCompareContent(players) {
+            const container = document.getElementById('compare-display');
+            const placeholder = document.getElementById('compare-placeholder');
+
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
+
+            // Leaderboard table
+            container.innerHTML = `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="bg-slate-900/50 text-left">
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">#</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Player</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Team</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Rating</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">K</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">D</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">A</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">K/D</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">ADR</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">HS%</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">KAST</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0)).map((p, i) => `
+                                <tr class="border-t border-slate-700/50 hover:bg-slate-700/20">
+                                    <td class="px-4 py-3 font-mono text-slate-500">${i + 1}</td>
+                                    <td class="px-4 py-3 font-semibold text-white">${esc(p.name)}</td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-0.5 rounded text-xs font-bold ${p.team === 'CT' ? 'bg-ct-bg text-ct' : 'bg-t-bg text-t'}">${p.team}</span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="font-mono data-value ${getRatingClass(p.rating?.hltv_rating)}">${formatNumber(p.rating?.hltv_rating, 2)}</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.kills || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.deaths || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.assists || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono ${(p.stats?.kd_ratio || 0) >= 1 ? 'text-green-400' : 'text-red-400'}">${p.stats?.kd_ratio || '-'}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.adr || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.headshot_pct || 0}%</td>
+                                    <td class="px-4 py-3 text-center font-mono">${formatNumber(p.rating?.kast_percentage, 0)}%</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderHeatmapContent() {
+            // This is initialized when the tab is clicked
+        }
+
+        // ============================================
+        // Chart Initialization
+        // ============================================
+        function initCharts(players) {
+            const chartConfig = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    }
+                }
+            };
+
+            const labels = players.map(p => p.name?.substring(0, 8) || 'Unknown');
+            const teamColors = players.map(p => p.team === 'CT' ? '#4a90d9' : '#de9b35');
+
+            // Ratings Chart
+            const ratingsCtx = document.getElementById('chart-ratings');
+            if (ratingsCtx) {
+                new Chart(ratingsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: players.map(p => p.rating?.hltv_rating || 0),
+                            backgroundColor: teamColors,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: chartConfig
                 });
             }
 
-            // Play/Pause button
-            document.getElementById('replay-play')?.addEventListener('click', toggleReplayPlay);
-
-            // Navigation buttons
-            document.getElementById('replay-prev')?.addEventListener('click', () => {
-                replayState.currentFrame = Math.max(0, replayState.currentFrame - 1);
-                updateReplaySlider();
-                drawReplayFrame(ctx, canvas.width, canvas.height);
-            });
-
-            document.getElementById('replay-next')?.addEventListener('click', () => {
-                replayState.currentFrame = Math.min(replayState.frames.length - 1, replayState.currentFrame + 1);
-                updateReplaySlider();
-                drawReplayFrame(ctx, canvas.width, canvas.height);
-            });
-
-            // Speed selector
-            document.getElementById('replay-speed')?.addEventListener('change', (e) => {
-                replayState.speed = parseFloat(e.target.value);
-            });
-
-            // Populate player lists
-            populatePlayerLists(players);
-
-            // Initial draw
-            drawReplayFrame(ctx, canvas.width, canvas.height);
-        }
-
-        // Build simulated frames from available data
-        function buildSimulatedFrames(players, kills, deaths) {
-            const frames = [];
-            const numFrames = 100; // Simulated frames
-
-            for (let i = 0; i < numFrames; i++) {
-                const frame = {
-                    round: Math.floor(i / 10) + 1,
-                    time: i * 0.5,
-                    players: players.map((p, idx) => {
-                        // Simulate movement based on index and frame
-                        const baseX = 300 + Math.sin(i * 0.1 + idx) * 100;
-                        const baseY = 300 + Math.cos(i * 0.1 + idx) * 100;
-                        return {
-                            name: p.name,
-                            team: p.team,
-                            x: baseX + (Math.random() - 0.5) * 20,
-                            y: baseY + (Math.random() - 0.5) * 20,
-                            yaw: (i * 5 + idx * 36) % 360,
-                            health: i < 80 ? 100 : Math.max(0, 100 - (i - 80) * 10),
-                            isAlive: i < 90 || idx % 2 === 0
-                        };
-                    })
-                };
-                frames.push(frame);
+            // K/D Chart
+            const kdCtx = document.getElementById('chart-kd');
+            if (kdCtx) {
+                new Chart(kdCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Kills',
+                                data: players.map(p => p.stats?.kills || 0),
+                                backgroundColor: '#22c55e',
+                                borderRadius: 4,
+                            },
+                            {
+                                label: 'Deaths',
+                                data: players.map(p => p.stats?.deaths || 0),
+                                backgroundColor: '#ef4444',
+                                borderRadius: 4,
+                            }
+                        ]
+                    },
+                    options: { ...chartConfig, plugins: { legend: { display: true, labels: { color: '#94a3b8' } } } }
+                });
             }
 
-            return frames;
-        }
+            // ADR Chart
+            const adrCtx = document.getElementById('chart-adr');
+            if (adrCtx) {
+                new Chart(adrCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: players.map(p => p.stats?.adr || 0),
+                            backgroundColor: '#00d4ff',
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: chartConfig
+                });
+            }
 
-        // Populate player lists in sidebar
-        function populatePlayerLists(players) {
-            const ctContainer = document.getElementById('replay-ct-players');
-            const tContainer = document.getElementById('replay-t-players');
-
-            if (!ctContainer || !tContainer) return;
-
-            const ctPlayers = players.filter(p => p.team === 'CT');
-            const tPlayers = players.filter(p => p.team === 'T');
-
-            ctContainer.innerHTML = ctPlayers.map((p, i) => `
-                <div class="replay-player-item" data-player="${esc(p.name)}" onclick="selectReplayPlayer('${esc(p.name)}')">
-                    <span class="player-dot ct"></span>
-                    <span>${esc(p.name)}</span>
-                    <span class="player-health" id="health-${i}">100</span>
-                </div>
-            `).join('');
-
-            tContainer.innerHTML = tPlayers.map((p, i) => `
-                <div class="replay-player-item" data-player="${esc(p.name)}" onclick="selectReplayPlayer('${esc(p.name)}')">
-                    <span class="player-dot t"></span>
-                    <span>${esc(p.name)}</span>
-                    <span class="player-health" id="health-t-${i}">100</span>
-                </div>
-            `).join('');
-        }
-
-        // Select player for POV focus
-        function selectReplayPlayer(name) {
-            replayState.selectedPlayer = replayState.selectedPlayer === name ? null : name;
-
-            document.querySelectorAll('.replay-player-item').forEach(item => {
-                item.classList.toggle('selected', item.dataset.player === replayState.selectedPlayer);
-            });
-
-            const canvas = document.getElementById('replay-canvas');
-            if (canvas) {
-                drawReplayFrame(canvas.getContext('2d'), canvas.width, canvas.height);
+            // HS% Chart
+            const hsCtx = document.getElementById('chart-hs');
+            if (hsCtx) {
+                new Chart(hsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: players.map(p => p.stats?.headshot_pct || 0),
+                            backgroundColor: '#a855f7',
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: chartConfig
+                });
             }
         }
 
-        // Toggle replay play/pause
-        function toggleReplayPlay() {
-            replayState.playing = !replayState.playing;
+        // ============================================
+        // Heatmap
+        // ============================================
+        function initHeatmap(heatmapData) {
+            const display = document.getElementById('heatmap-display');
+            const placeholder = document.getElementById('heatmap-placeholder');
 
-            const btn = document.getElementById('replay-play');
-            if (btn) {
-                btn.textContent = replayState.playing ? 'Pause' : 'Play';
-                btn.classList.toggle('active', replayState.playing);
+            if (!heatmapData || (!heatmapData.kills && !heatmapData.deaths)) {
+                return;
             }
 
-            if (replayState.playing) {
-                runReplayAnimation();
-            } else {
-                cancelAnimationFrame(replayState.animationId);
-            }
-        }
+            placeholder.classList.add('hidden');
+            display.classList.remove('hidden');
 
-        // Run replay animation loop
-        function runReplayAnimation() {
-            if (!replayState.playing) return;
+            const canvas = document.getElementById('heatmap-canvas');
+            const ctx = canvas.getContext('2d');
 
-            const canvas = document.getElementById('replay-canvas');
-            if (!canvas) return;
-
-            replayState.currentFrame++;
-            if (replayState.currentFrame >= replayState.frames.length) {
-                replayState.currentFrame = 0;
-            }
-
-            updateReplaySlider();
-            drawReplayFrame(canvas.getContext('2d'), canvas.width, canvas.height);
-
-            const delay = 1000 / (30 * replayState.speed);
-            replayState.animationId = setTimeout(() => requestAnimationFrame(runReplayAnimation), delay);
-        }
-
-        // Update replay slider position
-        function updateReplaySlider() {
-            const slider = document.getElementById('replay-slider');
-            if (slider) {
-                slider.value = replayState.currentFrame;
-            }
-        }
-
-        // Draw a single replay frame
-        function drawReplayFrame(ctx, width, height) {
-            const frame = replayState.frames[replayState.currentFrame];
-            if (!frame) return;
+            // Set canvas size
+            canvas.width = 800;
+            canvas.height = 800;
 
             // Clear and draw background
-            ctx.fillStyle = '#12121a';
-            ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             // Draw grid
-            ctx.strokeStyle = '#252532';
+            ctx.strokeStyle = 'rgba(0, 212, 255, 0.1)';
             ctx.lineWidth = 1;
             for (let i = 0; i <= 10; i++) {
+                const pos = (canvas.width / 10) * i;
                 ctx.beginPath();
-                ctx.moveTo(i * 60, 0);
-                ctx.lineTo(i * 60, height);
+                ctx.moveTo(pos, 0);
+                ctx.lineTo(pos, canvas.height);
                 ctx.stroke();
                 ctx.beginPath();
-                ctx.moveTo(0, i * 60);
-                ctx.lineTo(width, i * 60);
+                ctx.moveTo(0, pos);
+                ctx.lineTo(canvas.width, pos);
                 ctx.stroke();
             }
 
-            // Draw players
-            for (const player of frame.players) {
-                if (!player.isAlive) continue;
-
-                const isCT = player.team === 'CT';
-                const isSelected = player.name === replayState.selectedPlayer;
-
-                // Player circle
-                ctx.beginPath();
-                ctx.arc(player.x, player.y, isSelected ? 12 : 8, 0, Math.PI * 2);
-                ctx.fillStyle = isCT ? 'rgba(74, 144, 217, 0.8)' : 'rgba(222, 155, 53, 0.8)';
-                ctx.fill();
-
-                if (isSelected) {
-                    ctx.strokeStyle = '#00d4ff';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }
-
-                // View direction indicator
-                const yawRad = (player.yaw - 90) * Math.PI / 180;
-                ctx.beginPath();
-                ctx.moveTo(player.x, player.y);
-                ctx.lineTo(player.x + Math.cos(yawRad) * 20, player.y + Math.sin(yawRad) * 20);
-                ctx.strokeStyle = isCT ? '#4a90d9' : '#de9b35';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-
-                // Player name
-                ctx.fillStyle = '#ffffff';
-                ctx.font = '10px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(player.name, player.x, player.y - 14);
+            // Draw kills (green dots)
+            if (heatmapData.kills && document.getElementById('show-kills').checked) {
+                heatmapData.kills.forEach(k => {
+                    if (k.x !== undefined && k.y !== undefined) {
+                        const x = (k.x / 100) * canvas.width;
+                        const y = (k.y / 100) * canvas.height;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 6, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(34, 197, 94, 0.7)';
+                        ctx.fill();
+                    }
+                });
             }
 
-            // Update info display
-            document.getElementById('replay-round').textContent = frame.round;
-            document.getElementById('replay-time').textContent = frame.time.toFixed(1) + 's';
-            document.getElementById('replay-frame').textContent = `${replayState.currentFrame + 1}/${replayState.frames.length}`;
+            // Draw deaths (red dots)
+            if (heatmapData.deaths && document.getElementById('show-deaths').checked) {
+                heatmapData.deaths.forEach(d => {
+                    if (d.x !== undefined && d.y !== undefined) {
+                        const x = (d.x / 100) * canvas.width;
+                        const y = (d.y / 100) * canvas.height;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 6, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(239, 68, 68, 0.7)';
+                        ctx.fill();
+                    }
+                });
+            }
+
+            // Add event listeners for checkboxes
+            document.getElementById('show-kills').onchange = () => initHeatmap(heatmapData);
+            document.getElementById('show-deaths').onchange = () => initHeatmap(heatmapData);
         }
 
-        // Keyboard shortcuts
-        const shortcutsPanel = document.getElementById('shortcuts-panel');
-        const tabMapping = {
-            '1': 'overview',
-            '2': 'timeline',
-            '3': 'matrix',
-            '4': 'heatmap',
-            '5': 'coaching',
-            '6': 'replay'
-        };
+        // ============================================
+        // Export Functions
+        // ============================================
+        function exportJSON(data) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `opensight_analysis_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('JSON exported!', 'success');
+        }
 
+        function exportCSV(data) {
+            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            const headers = ['Name', 'Team', 'Rating', 'Kills', 'Deaths', 'Assists', 'K/D', 'ADR', 'HS%', 'KAST'];
+            const rows = players.map(p => [
+                p.name,
+                p.team,
+                p.rating?.hltv_rating?.toFixed(2) || '',
+                p.stats?.kills || 0,
+                p.stats?.deaths || 0,
+                p.stats?.assists || 0,
+                p.stats?.kd_ratio || '',
+                p.stats?.adr || 0,
+                p.stats?.headshot_pct || 0,
+                p.rating?.kast_percentage?.toFixed(0) || ''
+            ]);
+
+            const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `opensight_analysis_${Date.now()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('CSV exported!', 'success');
+        }
+
+        // ============================================
+        // Keyboard Shortcuts
+        // ============================================
         document.addEventListener('keydown', (e) => {
-            // Don't trigger shortcuts when typing in inputs
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-            // Tab switching with number keys
-            if (tabMapping[e.key]) {
-                e.preventDefault();
-                switchTab(tabMapping[e.key]);
-            }
-
-            // Toggle shortcuts panel with ?
-            if (e.key === '?') {
-                e.preventDefault();
-                shortcutsPanel.classList.toggle('show');
-            }
-
-            // Replay controls
-            if (e.key === ' ') {
-                e.preventDefault();
-                const replayTab = document.getElementById('tab-replay');
-                if (replayTab?.classList.contains('active')) {
-                    toggleReplayPlay();
-                }
-            }
-
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                document.getElementById('replay-prev')?.click();
-            }
-
-            if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                document.getElementById('replay-next')?.click();
+            const tabs = ['overview', 'heatmaps', 'utility', 'compare', 'players', 'timeline', 'coaching'];
+            const num = parseInt(e.key);
+            if (num >= 1 && num <= tabs.length) {
+                const tabBtn = document.querySelector(`[data-tab="${tabs[num - 1]}"]`);
+                if (tabBtn) tabBtn.click();
             }
         });
-
-        // Switch to a specific tab
-        function switchTab(tabName) {
-            const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
-            if (btn) {
-                btn.click();
-            }
-        }
     </script>
 </body>
 </html>
