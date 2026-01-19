@@ -98,43 +98,58 @@ class TestDataClasses:
         """KillEvent can be created with required fields."""
         event = KillEvent(
             tick=1000,
+            round_num=1,
             attacker_steamid=12345,
             attacker_name="Player1",
+            attacker_side="CT",
             victim_steamid=67890,
             victim_name="Player2",
+            victim_side="T",
             weapon="ak47",
             headshot=True,
         )
         assert event.tick == 1000
         assert event.attacker_steamid == 12345
         assert event.headshot is True
-        assert event.attacker_position is None  # Optional field
+        assert event.attacker_x is None  # Optional field
 
     def test_kill_event_with_positions(self):
         """KillEvent can include optional position data."""
-        pos = np.array([100.0, 200.0, 300.0])
-        angles = np.array([0.0, 90.0])
         event = KillEvent(
             tick=1000,
+            round_num=1,
             attacker_steamid=12345,
             attacker_name="Player1",
+            attacker_side="CT",
             victim_steamid=67890,
             victim_name="Player2",
+            victim_side="T",
             weapon="ak47",
             headshot=False,
-            attacker_position=pos,
-            attacker_angles=angles,
+            attacker_x=100.0,
+            attacker_y=200.0,
+            attacker_z=300.0,
+            attacker_pitch=0.0,
+            attacker_yaw=90.0,
         )
-        np.testing.assert_array_equal(event.attacker_position, pos)
-        np.testing.assert_array_equal(event.attacker_angles, angles)
+        assert event.attacker_x == 100.0
+        assert event.attacker_yaw == 90.0
 
     def test_damage_event_creation(self):
         """DamageEvent can be created with required fields."""
         event = DamageEvent(
             tick=1000,
+            round_num=1,
             attacker_steamid=12345,
+            attacker_name="Player1",
+            attacker_side="CT",
             victim_steamid=67890,
+            victim_name="Player2",
+            victim_side="T",
             damage=27,
+            damage_armor=5,
+            health_remaining=73,
+            armor_remaining=95,
             weapon="ak47",
             hitgroup="head",
         )
@@ -143,21 +158,34 @@ class TestDataClasses:
         assert event.hitgroup == "head"
 
     def test_player_state_creation(self):
-        """PlayerState can be created with required fields."""
+        """PlayerState (PlayerRoundSnapshot) can be created with required fields."""
         state = PlayerState(
             tick=1000,
-            steam_id=12345,
+            round_num=1,
+            steamid=12345,
             name="Player1",
-            team=2,
-            position=np.array([100.0, 200.0, 300.0]),
-            eye_angles=np.array([0.0, 90.0]),
+            side="T",
+            x=100.0,
+            y=200.0,
+            z=300.0,
+            pitch=0.0,
+            yaw=90.0,
+            velocity_x=0.0,
+            velocity_y=0.0,
+            velocity_z=0.0,
             health=100,
+            armor=100,
             is_alive=True,
+            is_scoped=False,
+            is_walking=False,
+            is_crouching=False,
+            money=4000,
+            equipment_value=5500,
+            place_name="TSpawn",
         )
         assert state.tick == 1000
-        assert state.team == 2
+        assert state.side == "T"
         assert state.health == 100
-        assert state.is_alive is True
 
 
 class TestDemoData:

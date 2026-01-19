@@ -286,8 +286,54 @@ async def analyze_demo(file: UploadFile = File(...)):
                     "teammates_flashed": player.mistakes.teammates_flashed,
                     "total_mistakes": player.mistakes.total_mistakes,
                 },
+                "economy": {
+                    "avg_equipment_value": round(player.avg_equipment_value, 0),
+                    "eco_rounds": player.eco_rounds,
+                    "force_rounds": player.force_rounds,
+                    "full_buy_rounds": player.full_buy_rounds,
+                    "damage_per_dollar": round(player.damage_per_dollar, 4) if player.damage_per_dollar else 0,
+                    "kills_per_dollar": round(player.kills_per_dollar, 6) if player.kills_per_dollar else 0,
+                },
                 "weapons": weapon_stats,
             }
+
+        # Add enhanced match-level data
+        result["round_timeline"] = [
+            {
+                "round_num": r.round_num,
+                "winner": r.winner,
+                "win_reason": r.win_reason,
+                "ct_score": r.ct_score,
+                "t_score": r.t_score,
+                "first_kill": r.first_kill_player,
+                "first_death": r.first_death_player,
+            }
+            for r in analysis.round_timeline
+        ]
+
+        result["kill_matrix"] = [
+            {
+                "attacker": e.attacker_name,
+                "victim": e.victim_name,
+                "count": e.count,
+                "weapons": e.weapons,
+            }
+            for e in analysis.kill_matrix
+        ]
+
+        result["team_stats"] = {
+            "trade_rates": analysis.team_trade_rates,
+            "opening_rates": analysis.team_opening_rates,
+        }
+
+        # Position data for heatmaps (only first 500 to avoid huge response)
+        result["heatmap_data"] = {
+            "kill_positions": analysis.kill_positions[:500],
+            "death_positions": analysis.death_positions[:500],
+        }
+
+        # AI Coaching insights
+        result["coaching"] = analysis.coaching_insights
 
         logger.info(f"Analysis complete: {len(result['players'])} players, {analysis.total_rounds} rounds")
         return JSONResponse(content=result)

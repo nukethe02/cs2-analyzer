@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenSight - CS2 Analytics</title>
+    <title>OpenSight - Professional CS2 Analytics</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -11,6 +11,7 @@
             --bg-primary: #0a0a0f;
             --bg-secondary: #12121a;
             --bg-card: #1a1a24;
+            --bg-hover: #252532;
             --accent: #00d4ff;
             --accent-dim: rgba(0, 212, 255, 0.15);
             --ct-color: #4a90d9;
@@ -24,6 +25,8 @@
             --warning: #f59e0b;
             --danger: #ef4444;
             --border: rgba(255, 255, 255, 0.08);
+            --gradient-start: #00d4ff;
+            --gradient-end: #7c3aed;
         }
 
         body {
@@ -34,27 +37,28 @@
             line-height: 1.5;
         }
 
+        /* Header */
         .header {
-            background: var(--bg-secondary);
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-card) 100%);
             border-bottom: 1px solid var(--border);
             padding: 24px 20px;
             text-align: center;
         }
 
         .header h1 {
-            font-size: 2rem;
-            color: var(--accent);
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             margin-bottom: 8px;
         }
 
         .header p { color: var(--text-secondary); }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 24px 20px;
-        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
 
+        /* Upload Section */
         .upload-section {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -80,9 +84,9 @@
 
         .upload-zone h3 { margin-bottom: 8px; color: var(--text-primary); }
         .upload-zone p { color: var(--text-muted); font-size: 0.9rem; }
-
         input[type="file"] { display: none; }
 
+        /* Loading Overlay */
         .loading-overlay {
             display: none;
             position: fixed;
@@ -110,9 +114,40 @@
 
         .loading-text { color: var(--text-secondary); font-size: 1.1rem; }
 
+        /* Results */
         .results { display: none; }
         .results.show { display: block; }
 
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .tab-btn.active {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Match Header */
         .match-header {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -122,7 +157,7 @@
             text-align: center;
         }
 
-        .map-name { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
+        .map-name { font-size: 1.8rem; font-weight: 700; margin-bottom: 8px; }
         .match-meta { color: var(--text-muted); margin-bottom: 16px; }
 
         .score-display {
@@ -130,20 +165,42 @@
             justify-content: center;
             align-items: center;
             gap: 24px;
-            font-size: 2rem;
+            font-size: 2.5rem;
             font-weight: 700;
         }
 
         .score-ct { color: var(--ct-color); }
         .score-t { color: var(--t-color); }
 
-        .players-grid { display: grid; gap: 16px; }
+        /* MVP Banner */
+        .mvp-banner {
+            background: linear-gradient(90deg, var(--accent-dim), transparent);
+            border-left: 4px solid var(--accent);
+            padding: 16px 20px;
+            margin-top: 16px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .mvp-banner span { color: var(--accent); font-weight: 600; }
+
+        /* Players Grid */
+        .players-grid {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+        }
 
         .player-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 20px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .player-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
 
         .player-header {
@@ -168,7 +225,7 @@
         .team-t { background: var(--t-bg); color: var(--t-color); }
 
         .rating-badge {
-            background: var(--accent);
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
             color: var(--bg-primary);
             padding: 6px 14px;
             border-radius: 6px;
@@ -177,7 +234,7 @@
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 12px;
         }
 
@@ -194,7 +251,172 @@
         .stat.highlight { background: var(--accent-dim); border: 1px solid rgba(0, 212, 255, 0.3); }
         .stat-value.good { color: var(--success); }
         .stat-value.bad { color: var(--danger); }
+        .stat-value.warning { color: var(--warning); }
 
+        /* Round Timeline */
+        .timeline-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+
+        .timeline {
+            display: flex;
+            gap: 4px;
+            min-width: max-content;
+        }
+
+        .round-box {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .round-box:hover { transform: scale(1.1); }
+        .round-box.ct-win { background: var(--ct-bg); color: var(--ct-color); }
+        .round-box.t-win { background: var(--t-bg); color: var(--t-color); }
+        .round-box.half-marker {
+            background: transparent;
+            border: 2px dashed var(--border);
+            color: var(--text-muted);
+        }
+
+        /* Kill Matrix */
+        .matrix-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+
+        .matrix-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .matrix-table th, .matrix-table td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .matrix-table th {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .matrix-table td.highlight {
+            background: var(--accent-dim);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .matrix-table td.victim { background: rgba(239, 68, 68, 0.1); }
+        .matrix-table td.killer { background: rgba(34, 197, 94, 0.1); }
+
+        /* Heatmap Canvas */
+        .heatmap-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .heatmap-canvas {
+            max-width: 100%;
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+
+        .heatmap-controls {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+
+        .heatmap-controls label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+
+        .heatmap-controls input[type="checkbox"] {
+            accent-color: var(--accent);
+        }
+
+        /* Coaching Panel */
+        .coaching-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .coaching-player {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .coaching-player:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .coaching-player-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+        }
+
+        .insight {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .insight.warning { background: rgba(245, 158, 11, 0.1); border-left: 3px solid var(--warning); }
+        .insight.positive { background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--success); }
+        .insight.mistake { background: rgba(239, 68, 68, 0.1); border-left: 3px solid var(--danger); }
+
+        .insight-icon {
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .insight-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .insight-category {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Error Box */
         .error-box {
             background: rgba(239, 68, 68, 0.1);
             border: 1px solid rgba(239, 68, 68, 0.3);
@@ -204,6 +426,7 @@
             text-align: center;
         }
 
+        /* Footer */
         footer {
             text-align: center;
             padding: 32px 20px;
@@ -211,19 +434,25 @@
         }
 
         footer a { color: var(--accent); text-decoration: none; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .players-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
     <header class="header">
         <h1>OpenSight</h1>
-        <p>Professional CS2 Analytics - Leetify/Scope.gg Style Metrics</p>
+        <p>Professional CS2 Analytics - Free, Local, No Subscriptions</p>
     </header>
 
     <main class="container">
         <section class="upload-section">
             <div class="upload-zone" id="upload-zone">
                 <h3>Drop your .dem file here</h3>
-                <p>or click to browse (supports .dem and .dem.gz)</p>
+                <p>or click to browse (supports .dem and .dem.gz up to 500MB)</p>
                 <input type="file" id="demo-file" accept=".dem,.dem.gz">
             </div>
         </section>
@@ -238,7 +467,7 @@
     </div>
 
     <footer>
-        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer">OpenSight</a></p>
+        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer">OpenSight</a> - 100% Free CS2 Analytics</p>
     </footer>
 
     <script>
@@ -247,6 +476,8 @@
         const loading = document.getElementById('loading');
         const loadingDetails = document.getElementById('loading-details');
         const resultsDiv = document.getElementById('results');
+
+        let analysisData = null;
 
         // Click to upload
         uploadZone.addEventListener('click', () => fileInput.click());
@@ -307,6 +538,7 @@
                     throw new Error(data.detail || 'Analysis failed');
                 }
 
+                analysisData = data;
                 renderResults(data);
             } catch (error) {
                 resultsDiv.innerHTML = `<div class="error-box">${esc(error.message)}</div>`;
@@ -314,6 +546,13 @@
             } finally {
                 loading.classList.remove('show');
             }
+        }
+
+        // Rating class helper
+        function getRatingClass(rating) {
+            if (rating >= 1.2) return 'good';
+            if (rating <= 0.8) return 'bad';
+            return '';
         }
 
         // Render results
@@ -324,20 +563,80 @@
             let html = `
                 <div class="match-header">
                     <div class="map-name">${esc(info.map) || 'Unknown Map'}</div>
-                    <div class="match-meta">${info.rounds || 0} rounds &bull; ${Math.round(info.duration_minutes || 0)} min &bull; ${info.total_kills || 0} kills</div>
+                    <div class="match-meta">
+                        ${info.rounds || 0} rounds &bull; ${Math.round(info.duration_minutes || 0)} min &bull; ${info.total_kills || 0} kills
+                    </div>
                     <div class="score-display">
                         <span class="score-ct">${info.score?.split(' - ')[0] || '0'}</span>
                         <span>-</span>
                         <span class="score-t">${info.score?.split(' - ')[1] || '0'}</span>
                     </div>
+                    ${data.mvp ? `
+                        <div class="mvp-banner">
+                            MVP: <span>${esc(data.mvp.name)}</span> (${data.mvp.rating?.toFixed(2) || '-'} Rating)
+                        </div>
+                    ` : ''}
                 </div>
-                <div class="players-grid">
+
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="overview">Overview</button>
+                    <button class="tab-btn" data-tab="timeline">Round Timeline</button>
+                    <button class="tab-btn" data-tab="matrix">Kill Matrix</button>
+                    <button class="tab-btn" data-tab="heatmap">Heatmap</button>
+                    <button class="tab-btn" data-tab="coaching">AI Coaching</button>
+                </div>
+
+                <div class="tab-content active" id="tab-overview">
+                    ${renderOverview(players)}
+                </div>
+
+                <div class="tab-content" id="tab-timeline">
+                    ${renderTimeline(data.round_timeline || [])}
+                </div>
+
+                <div class="tab-content" id="tab-matrix">
+                    ${renderKillMatrix(data.kill_matrix || [], players)}
+                </div>
+
+                <div class="tab-content" id="tab-heatmap">
+                    ${renderHeatmap(data.heatmap_data || {}, info.map || 'unknown')}
+                </div>
+
+                <div class="tab-content" id="tab-coaching">
+                    ${renderCoaching(data.coaching || [])}
+                </div>
             `;
+
+            resultsDiv.innerHTML = html;
+            resultsDiv.classList.add('show');
+
+            // Tab switching
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+
+                    // Initialize heatmap when tab is shown
+                    if (btn.dataset.tab === 'heatmap') {
+                        initHeatmap(data.heatmap_data || {});
+                    }
+                });
+            });
+        }
+
+        // Render Overview Tab
+        function renderOverview(players) {
+            let html = '<div class="players-grid">';
 
             for (const player of players) {
                 const s = player.stats || {};
                 const r = player.rating || {};
+                const adv = player.advanced || {};
+                const util = player.utility || {};
                 const teamClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
+                const ratingClass = getRatingClass(r.hltv_rating);
 
                 html += `
                     <div class="player-card">
@@ -372,12 +671,28 @@
                                 <div class="stat-label">HS%</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-value">${r.kast_percentage || 0}%</div>
+                                <div class="stat-value ${r.kast_percentage >= 70 ? 'good' : r.kast_percentage < 50 ? 'bad' : ''}">${r.kast_percentage || 0}%</div>
                                 <div class="stat-label">KAST</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-value">${s.total_damage || 0}</div>
-                                <div class="stat-label">Damage</div>
+                                <div class="stat-value ${r.aim_rating >= 60 ? 'good' : r.aim_rating < 40 ? 'bad' : ''}">${r.aim_rating || 0}</div>
+                                <div class="stat-label">Aim</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</div>
+                                <div class="stat-label">TTD</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</div>
+                                <div class="stat-label">CP</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${util.flashbangs_thrown || 0}</div>
+                                <div class="stat-label">Flashes</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value ${r.utility_rating >= 60 ? 'good' : r.utility_rating < 30 ? 'bad' : ''}">${r.utility_rating || 0}</div>
+                                <div class="stat-label">Util</div>
                             </div>
                         </div>
                     </div>
@@ -385,8 +700,211 @@
             }
 
             html += '</div>';
-            resultsDiv.innerHTML = html;
-            resultsDiv.classList.add('show');
+            return html;
+        }
+
+        // Render Timeline Tab
+        function renderTimeline(timeline) {
+            if (!timeline.length) {
+                return '<div class="timeline-container"><p style="color: var(--text-muted);">No round timeline data available.</p></div>';
+            }
+
+            let html = '<div class="timeline-container"><div class="timeline">';
+
+            for (const round of timeline) {
+                const isCtWin = round.winner === 'CT';
+                const isTWin = round.winner === 'T';
+                const cls = isCtWin ? 'ct-win' : isTWin ? 't-win' : '';
+                const title = `Round ${round.round_num}: ${round.winner} wins (${round.win_reason})\nFirst kill: ${round.first_kill || 'Unknown'}\nFirst death: ${round.first_death || 'Unknown'}`;
+
+                // Add half marker after round 12
+                if (round.round_num === 13) {
+                    html += '<div class="round-box half-marker">|</div>';
+                }
+
+                html += `<div class="round-box ${cls}" title="${esc(title)}">${round.round_num}</div>`;
+            }
+
+            html += '</div></div>';
+            return html;
+        }
+
+        // Render Kill Matrix Tab
+        function renderKillMatrix(matrix, players) {
+            if (!matrix.length || players.length < 2) {
+                return '<div class="matrix-container"><p style="color: var(--text-muted);">No kill matrix data available.</p></div>';
+            }
+
+            // Build matrix data
+            const playerNames = [...new Set(players.map(p => p.name))];
+            const matrixData = {};
+
+            for (const entry of matrix) {
+                if (!matrixData[entry.attacker]) matrixData[entry.attacker] = {};
+                matrixData[entry.attacker][entry.victim] = entry.count;
+            }
+
+            let html = '<div class="matrix-container"><table class="matrix-table"><thead><tr><th>Killer \\ Victim</th>';
+
+            for (const name of playerNames) {
+                html += `<th>${esc(name)}</th>`;
+            }
+            html += '</tr></thead><tbody>';
+
+            for (const attacker of playerNames) {
+                html += `<tr><th>${esc(attacker)}</th>`;
+                for (const victim of playerNames) {
+                    if (attacker === victim) {
+                        html += '<td>-</td>';
+                    } else {
+                        const kills = matrixData[attacker]?.[victim] || 0;
+                        const cls = kills >= 3 ? 'highlight' : kills > 0 ? 'killer' : '';
+                        html += `<td class="${cls}">${kills || '-'}</td>`;
+                    }
+                }
+                html += '</tr>';
+            }
+
+            html += '</tbody></table></div>';
+            return html;
+        }
+
+        // Render Heatmap Tab
+        function renderHeatmap(heatmapData, mapName) {
+            return `
+                <div class="heatmap-container">
+                    <h3 style="margin-bottom: 16px;">Position Heatmap - ${esc(mapName)}</h3>
+                    <div class="heatmap-controls">
+                        <label>
+                            <input type="checkbox" id="show-kills" checked>
+                            Show Kills (green)
+                        </label>
+                        <label>
+                            <input type="checkbox" id="show-deaths" checked>
+                            Show Deaths (red)
+                        </label>
+                    </div>
+                    <canvas id="heatmap-canvas" class="heatmap-canvas" width="800" height="800"></canvas>
+                    <p style="color: var(--text-muted); margin-top: 12px; font-size: 0.85rem;">
+                        ${(heatmapData.kill_positions?.length || 0)} kills, ${(heatmapData.death_positions?.length || 0)} deaths plotted
+                    </p>
+                </div>
+            `;
+        }
+
+        // Initialize Heatmap Canvas
+        function initHeatmap(heatmapData) {
+            const canvas = document.getElementById('heatmap-canvas');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            const kills = heatmapData.kill_positions || [];
+            const deaths = heatmapData.death_positions || [];
+
+            // Find bounds
+            const allX = [...kills.map(p => p.x), ...deaths.map(p => p.x)].filter(v => v != null);
+            const allY = [...kills.map(p => p.y), ...deaths.map(p => p.y)].filter(v => v != null);
+
+            if (!allX.length || !allY.length) {
+                ctx.fillStyle = '#606070';
+                ctx.font = '16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No position data available for this map', 400, 400);
+                return;
+            }
+
+            const minX = Math.min(...allX), maxX = Math.max(...allX);
+            const minY = Math.min(...allY), maxY = Math.max(...allY);
+            const rangeX = maxX - minX || 1;
+            const rangeY = maxY - minY || 1;
+
+            function draw() {
+                ctx.fillStyle = '#12121a';
+                ctx.fillRect(0, 0, 800, 800);
+
+                // Draw grid
+                ctx.strokeStyle = '#252532';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 10; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i * 80, 0);
+                    ctx.lineTo(i * 80, 800);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, i * 80);
+                    ctx.lineTo(800, i * 80);
+                    ctx.stroke();
+                }
+
+                const showKills = document.getElementById('show-kills')?.checked ?? true;
+                const showDeaths = document.getElementById('show-deaths')?.checked ?? true;
+
+                // Draw deaths (red)
+                if (showDeaths) {
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+                    for (const pos of deaths) {
+                        if (pos.x == null || pos.y == null) continue;
+                        const x = ((pos.x - minX) / rangeX) * 750 + 25;
+                        const y = 800 - (((pos.y - minY) / rangeY) * 750 + 25);
+                        ctx.beginPath();
+                        ctx.arc(x, y, 5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                // Draw kills (green)
+                if (showKills) {
+                    ctx.fillStyle = 'rgba(34, 197, 94, 0.6)';
+                    for (const pos of kills) {
+                        if (pos.x == null || pos.y == null) continue;
+                        const x = ((pos.x - minX) / rangeX) * 750 + 25;
+                        const y = 800 - (((pos.y - minY) / rangeY) * 750 + 25);
+                        ctx.beginPath();
+                        ctx.arc(x, y, 5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            draw();
+
+            // Event listeners for checkboxes
+            document.getElementById('show-kills')?.addEventListener('change', draw);
+            document.getElementById('show-deaths')?.addEventListener('change', draw);
+        }
+
+        // Render Coaching Tab
+        function renderCoaching(coaching) {
+            if (!coaching.length) {
+                return '<div class="coaching-panel"><p style="color: var(--text-muted);">No coaching insights available.</p></div>';
+            }
+
+            let html = '<div class="coaching-panel">';
+
+            for (const player of coaching) {
+                html += `
+                    <div class="coaching-player">
+                        <div class="coaching-player-name">${esc(player.player_name)}</div>
+                `;
+
+                for (const insight of player.insights || []) {
+                    const icon = insight.type === 'positive' ? '✓' : insight.type === 'mistake' ? '✗' : '⚠';
+                    html += `
+                        <div class="insight ${insight.type}">
+                            <span class="insight-icon">${icon}</span>
+                            <div>
+                                <div class="insight-text">${esc(insight.message)}</div>
+                                <div class="insight-category">${esc(insight.category)}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                html += '</div>';
+            }
+
+            html += '</div>';
+            return html;
         }
     </script>
 </body>
