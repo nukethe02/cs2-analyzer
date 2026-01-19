@@ -27,97 +27,36 @@ def __getattr__(name):
     elif name == "DemoData":
         from opensight.parser import DemoData
         return DemoData
-    elif name == "parse_demo":
-        from opensight.parser import parse_demo
-        return parse_demo
-    elif name == "KillEvent":
-        from opensight.parser import KillEvent
-        return KillEvent
-    elif name == "DamageEvent":
-        from opensight.parser import DamageEvent
-        return DamageEvent
-
-    # Analytics
-    elif name == "DemoAnalyzer":
-        from opensight.analytics import DemoAnalyzer
-        return DemoAnalyzer
-    elif name == "analyze_demo":
-        from opensight.analytics import analyze_demo
-        return analyze_demo
-    elif name == "MatchAnalysis":
-        from opensight.analytics import MatchAnalysis
-        return MatchAnalysis
-    elif name == "PlayerMatchStats":
-        from opensight.analytics import PlayerMatchStats
-        return PlayerMatchStats
-
-    # Constants
-    elif name == "DemoSource":
-        from opensight.constants import DemoSource
-        return DemoSource
-    elif name == "GameMode":
-        from opensight.constants import GameMode
-        return GameMode
-    elif name == "DemoType":
-        from opensight.constants import DemoType
-        return DemoType
-    elif name == "CS2_TICK_RATE":
-        from opensight.constants import CS2_TICK_RATE
-        return CS2_TICK_RATE
-
-    # Detection
-    elif name == "DemoMetadata":
-        from opensight.detection import DemoMetadata
-        return DemoMetadata
-    elif name == "detect_demo_metadata":
-        from opensight.detection import detect_demo_metadata
-        return detect_demo_metadata
-
-    # Export
-    elif name == "export_demo":
-        from opensight.export import export_demo
-        return export_demo
-    elif name == "export_json":
-        from opensight.export import export_json
-        return export_json
-    elif name == "export_csv":
-        from opensight.export import export_csv
-        return export_csv
-    elif name == "export_excel":
-        from opensight.export import export_excel
-        return export_excel
-
-    # Sharecode
-    elif name == "decode_sharecode":
-        from opensight.sharecode import decode_sharecode
-        return decode_sharecode
-    elif name == "ShareCodeInfo":
-        from opensight.sharecode import ShareCodeInfo
-        return ShareCodeInfo
-
-    # State Machine (Pro-Level Analytics)
-    elif name == "StateMachine":
-        from opensight.state_machine import StateMachine
-        return StateMachine
-    elif name == "analyze_state":
-        from opensight.state_machine import analyze_state
-        return analyze_state
-    elif name == "get_kill_contexts":
-        from opensight.state_machine import get_kill_contexts
-        return get_kill_contexts
-    elif name == "KillContext":
-        from opensight.state_machine import KillContext
-        return KillContext
-    elif name == "PlayerContextStats":
-        from opensight.state_machine import PlayerContextStats
-        return PlayerContextStats
-    elif name == "StateAnalysisResult":
-        from opensight.state_machine import StateAnalysisResult
-        return StateAnalysisResult
-    elif name == "CrosshairAnalyzer":
-        from opensight.state_machine import CrosshairAnalyzer
-        return CrosshairAnalyzer
-
+    elif name == "calculate_ttd":
+        from opensight.metrics import calculate_ttd
+        return calculate_ttd
+    elif name == "calculate_crosshair_placement":
+        from opensight.metrics import calculate_crosshair_placement
+        return calculate_crosshair_placement
+    elif name == "ReplayWatcher":
+        from opensight.watcher import ReplayWatcher
+        return ReplayWatcher
+    elif name == "EconomyAnalyzer":
+        from opensight.economy import EconomyAnalyzer
+        return EconomyAnalyzer
+    elif name == "analyze_economy":
+        from opensight.economy import analyze_economy
+        return analyze_economy
+    elif name == "BuyType":
+        from opensight.economy import BuyType
+        return BuyType
+    elif name == "CombatAnalyzer":
+        from opensight.combat import CombatAnalyzer
+        return CombatAnalyzer
+    elif name == "analyze_combat":
+        from opensight.combat import analyze_combat
+        return analyze_combat
+    elif name == "UtilityAnalyzer":
+        from opensight.utility import UtilityAnalyzer
+        return UtilityAnalyzer
+    elif name == "analyze_utility":
+        from opensight.utility import analyze_utility
+        return analyze_utility
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
 
@@ -127,36 +66,14 @@ __all__ = [
     # Parser
     "DemoParser",
     "DemoData",
-    "parse_demo",
-    "KillEvent",
-    "DamageEvent",
-    # Analytics
-    "DemoAnalyzer",
-    "analyze_demo",
-    "MatchAnalysis",
-    "PlayerMatchStats",
-    # State Machine (Pro-Level Analytics)
-    "StateMachine",
-    "analyze_state",
-    "get_kill_contexts",
-    "KillContext",
-    "PlayerContextStats",
-    "StateAnalysisResult",
-    "CrosshairAnalyzer",
-    # Constants
-    "DemoSource",
-    "GameMode",
-    "DemoType",
-    "CS2_TICK_RATE",
-    # Detection
-    "DemoMetadata",
-    "detect_demo_metadata",
-    # Export
-    "export_demo",
-    "export_json",
-    "export_csv",
-    "export_excel",
-    # Sharecode
-    "decode_sharecode",
-    "ShareCodeInfo",
+    "calculate_ttd",
+    "calculate_crosshair_placement",
+    "ReplayWatcher",
+    "EconomyAnalyzer",
+    "analyze_economy",
+    "BuyType",
+    "CombatAnalyzer",
+    "analyze_combat",
+    "UtilityAnalyzer",
+    "analyze_utility",
 ]

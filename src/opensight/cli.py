@@ -282,7 +282,7 @@ def _export_results(data: DemoData, steam_id: Optional[int], output: Path) -> No
     for sid in data.player_names:
         player_data = {
             "name": data.player_names[sid],
-            "team": data.teams.get(sid, "Unknown"),
+            "team": data.player_teams.get(sid, 0),
         }
 
         if sid in metrics:
