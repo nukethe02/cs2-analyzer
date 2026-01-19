@@ -497,6 +497,7 @@
 
         // Global state
         let analysisData = null;
+        let lastUploadedFile = null;  // Store file for Excel export
         let charts = {};
 
         // ============================================
@@ -618,6 +619,9 @@
             loading.classList.add('flex');
             loadingDetails.textContent = `Processing ${file.name} (${sizeMB} MB)`;
 
+            // Store file for Excel export
+            lastUploadedFile = file;
+
             const formData = new FormData();
             formData.append('file', file);
 
@@ -691,8 +695,64 @@
             }
 
             // Export handlers
+            document.getElementById('btn-export-excel')?.addEventListener('click', () => exportExcel());
             document.getElementById('btn-export-json')?.addEventListener('click', () => exportJSON(data));
             document.getElementById('btn-export-csv')?.addEventListener('click', () => exportCSV(data));
+        }
+
+        // ============================================
+        // Excel Export Function
+        // ============================================
+        async function exportExcel() {
+            if (!lastUploadedFile) {
+                showToast('No demo file available for Excel export. Please analyze a demo first.', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('btn-export-excel');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Exporting...';
+            btn.disabled = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('file', lastUploadedFile);
+
+                const response = await fetch('/export/excel', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Excel export failed');
+                }
+
+                // Download the file
+                const blob = await response.blob();
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'analysis.xlsx';
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename="?([^"]+)"?/);
+                    if (match) filename = match[1];
+                }
+
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+
+                showToast('Excel file downloaded!', 'success');
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
 
         function renderOverviewContent(data, players, info) {
@@ -717,6 +777,12 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                                 </svg>
                                 New Analysis
+                            </button>
+                            <button id="btn-export-excel" class="px-4 py-2 bg-green-700 hover:bg-green-600 rounded-lg transition-colors font-mono text-sm flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                                Excel
                             </button>
                             <button id="btn-export-json" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors font-mono text-sm">
                                 { } JSON
