@@ -27,7 +27,8 @@ from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+from tempfile import NamedTemporaryFile
 from pydantic import BaseModel
 
 __version__ = "0.4.0"
@@ -1047,11 +1048,16 @@ async def compare_players_endpoint(
                 pass
 
 
-@app.post("/compare/{job_id}")
-async def compare_players_from_job(
-    job_id: str,
-    request: PlayerCompareRequest,
-):
+# NOTE: /compare/{job_id} endpoint disabled - requires job_store infrastructure
+# which is not currently implemented. Use POST /compare with file upload instead.
+# @app.post("/compare/{job_id}")
+# async def compare_players_from_job(job_id: str, request: PlayerCompareRequest):
+#     """Compare two players using cached job results."""
+#     pass  # Requires job_store and JobStatus to be implemented
+
+
+# Legacy code preserved for reference when job infrastructure is added:
+def _compare_players_from_job_disabled(job_id: str, request: PlayerCompareRequest):
     """
     Compare two players using data from a completed analysis job.
 
@@ -1064,186 +1070,17 @@ async def compare_players_from_job(
 
     Returns normalized scores (0-100) for radar chart plus raw values for display.
     """
-    job = job_store.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
-
-    if job.status != JobStatus.COMPLETED:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Job not completed. Current status: {job.status.value}"
-        )
-
-    if not job.result:
-        raise HTTPException(status_code=500, detail="Job completed but no result available")
-
-    # Find players in the result
-    players = job.result.get("players", {})
-    if not players:
-        raise HTTPException(status_code=400, detail="No players found in job result")
-
-    player_a_data = None
-    player_b_data = None
-
-    for steam_id, player in players.items():
-        name = player.get("name", "").lower()
-        if name == request.player_a.lower():
-            player_a_data = {"steam_id": steam_id, **player}
-        elif name == request.player_b.lower():
-            player_b_data = {"steam_id": steam_id, **player}
-
-    if player_a_data is None:
-        raise HTTPException(status_code=400, detail=f"Player '{request.player_a}' not found in job")
-    if player_b_data is None:
-        raise HTTPException(status_code=400, detail=f"Player '{request.player_b}' not found in job")
-
-    # Helper functions for normalization (matching compare_players in analytics.py)
-    def normalize_adr(adr):
-        return round(min(100, max(0, (adr / 150) * 100)), 1)
-
-    def normalize_percentage(pct):
-        return round(min(100, max(0, pct)), 1)
-
-    def normalize_utility_usage(player):
-        utility = player.get("utility", {})
-        rounds = player.get("stats", {}).get("rounds_played", 1) or 1
-        # Use stats from the result - need to infer rounds from other data
-        demo_info = job.result.get("demo_info", {})
-        total_rounds = demo_info.get("rounds", 1) or 1
-        # Estimate player rounds (they played most/all rounds typically)
-        total_utility = (
-            utility.get("flashbangs_thrown", 0) +
-            utility.get("he_thrown", 0) +
-            utility.get("molotov_thrown", 0) +
-            utility.get("smokes_thrown", 0)
-        )
-        utility_per_round = total_utility / total_rounds
-        return round(min(100, max(0, (utility_per_round / 4) * 100)), 1)
-
-    def get_utility_per_round(player):
-        utility = player.get("utility", {})
-        demo_info = job.result.get("demo_info", {})
-        total_rounds = demo_info.get("rounds", 1) or 1
-        total_utility = (
-            utility.get("flashbangs_thrown", 0) +
-            utility.get("he_thrown", 0) +
-            utility.get("molotov_thrown", 0) +
-            utility.get("smokes_thrown", 0)
-        )
-        return round(total_utility / total_rounds, 2)
-
-    # Extract values for player A
-    stats_a = player_a_data.get("stats", {})
-    duels_a = player_a_data.get("duels", {})
-    clutches_a = player_a_data.get("clutches", {})
-    utility_a = player_a_data.get("utility", {})
-    rating_a = player_a_data.get("rating", {})
-    advanced_a = player_a_data.get("advanced", {})
-
-    # Extract values for player B
-    stats_b = player_b_data.get("stats", {})
-    duels_b = player_b_data.get("duels", {})
-    clutches_b = player_b_data.get("clutches", {})
-    utility_b = player_b_data.get("utility", {})
-    rating_b = player_b_data.get("rating", {})
-    advanced_b = player_b_data.get("advanced", {})
-
-    # Calculate trade rate (need to compute from available data)
-    # trade_rate = kills_traded / trade_attempts, but we don't have trade_attempts in job result
-    # Estimate from deaths_traded as proxy
-    def get_trade_rate(duels):
-        # Simplified: use kills_traded as indicator (higher is better)
-        # No direct trade_attempts in job result, so normalize kills_traded
-        return min(100, duels.get("kills_traded", 0) * 20)  # 5 trades = 100
-
-    # Define axes
-    axes = [
-        "ADR",
-        "Opening Success %",
-        "Clutch Win %",
-        "Trade Success %",
-        "Utility Usage"
-    ]
-
-    # Calculate scores
-    scores_a = [
-        normalize_adr(stats_a.get("adr", 0)),
-        normalize_percentage(duels_a.get("opening_win_rate", 0)),
-        normalize_percentage(
-            (clutches_a.get("total_wins", 0) / max(1, clutches_a.get("total_situations", 1))) * 100
-        ),
-        get_trade_rate(duels_a),
-        normalize_utility_usage(player_a_data)
-    ]
-
-    scores_b = [
-        normalize_adr(stats_b.get("adr", 0)),
-        normalize_percentage(duels_b.get("opening_win_rate", 0)),
-        normalize_percentage(
-            (clutches_b.get("total_wins", 0) / max(1, clutches_b.get("total_situations", 1))) * 100
-        ),
-        get_trade_rate(duels_b),
-        normalize_utility_usage(player_b_data)
-    ]
-
-    # Build response
-    comparison = {
-        "player_a_name": player_a_data.get("name"),
-        "player_b_name": player_b_data.get("name"),
-        "player_a_team": player_a_data.get("team"),
-        "player_b_team": player_b_data.get("team"),
-        "player_a_steam_id": player_a_data.get("steam_id"),
-        "player_b_steam_id": player_b_data.get("steam_id"),
-        "axes": axes,
-        "scores_a": scores_a,
-        "scores_b": scores_b,
-        "raw_values_a": {
-            "adr": stats_a.get("adr", 0),
-            "opening_success_pct": duels_a.get("opening_win_rate", 0),
-            "opening_attempts": duels_a.get("opening_attempts", 0),
-            "opening_wins": duels_a.get("opening_wins", 0),
-            "clutch_win_pct": round(
-                (clutches_a.get("total_wins", 0) / max(1, clutches_a.get("total_situations", 1))) * 100, 1
-            ),
-            "clutch_situations": clutches_a.get("total_situations", 0),
-            "clutch_wins": clutches_a.get("total_wins", 0),
-            "trade_kills": duels_a.get("kills_traded", 0),
-            "utility_per_round": get_utility_per_round(player_a_data),
-            "kills": stats_a.get("kills", 0),
-            "deaths": stats_a.get("deaths", 0),
-            "kd_ratio": stats_a.get("kd_ratio", 0),
-            "headshot_pct": stats_a.get("headshot_pct", 0),
-            "hltv_rating": rating_a.get("hltv_rating", 0),
-            "kast_pct": rating_a.get("kast_percentage", 0),
-            "ttd_median_ms": advanced_a.get("ttd_median_ms"),
-        },
-        "raw_values_b": {
-            "adr": stats_b.get("adr", 0),
-            "opening_success_pct": duels_b.get("opening_win_rate", 0),
-            "opening_attempts": duels_b.get("opening_attempts", 0),
-            "opening_wins": duels_b.get("opening_wins", 0),
-            "clutch_win_pct": round(
-                (clutches_b.get("total_wins", 0) / max(1, clutches_b.get("total_situations", 1))) * 100, 1
-            ),
-            "clutch_situations": clutches_b.get("total_situations", 0),
-            "clutch_wins": clutches_b.get("total_wins", 0),
-            "trade_kills": duels_b.get("kills_traded", 0),
-            "utility_per_round": get_utility_per_round(player_b_data),
-            "kills": stats_b.get("kills", 0),
-            "deaths": stats_b.get("deaths", 0),
-            "kd_ratio": stats_b.get("kd_ratio", 0),
-            "headshot_pct": stats_b.get("headshot_pct", 0),
-            "hltv_rating": rating_b.get("hltv_rating", 0),
-            "kast_pct": rating_b.get("kast_percentage", 0),
-            "ttd_median_ms": advanced_b.get("ttd_median_ms"),
-        },
-    }
-
-    return JSONResponse(content={
-        "status": "success",
-        "demo_info": job.result.get("demo_info", {}),
-        "comparison": comparison,
-    })
+    # NOTE: Requires job_store and JobStatus to be implemented
+    # job = job_store.get_job(job_id)
+    # if not job:
+    #     raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    #
+    # if job.status != JobStatus.COMPLETED:
+    #     raise HTTPException(
+    #         status_code=400,
+    #         detail=f"Job not completed. Current status: {job.status.value}"
+    #     )
+    raise HTTPException(status_code=501, detail="Job-based comparison not implemented")
 
 
 # =============================================================================
