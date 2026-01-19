@@ -493,6 +493,12 @@ async def analyze_demo(file: UploadFile = File(...)):
             "team_stats": analysis.grenade_team_stats,
         }
 
+        # Utility stats per player (Scope.gg style nade stats)
+        utility_metrics = compute_utility_metrics(data)
+        result["utility_stats"] = [
+            metrics.to_dict() for metrics in utility_metrics.values()
+        ]
+
         # AI Coaching insights
         result["coaching"] = analysis.coaching_insights
 

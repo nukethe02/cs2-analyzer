@@ -3511,6 +3511,7 @@
             const totals = players.reduce((acc, p) => {
                 const u = p.utility || {};
                 acc.flashesThrown += u.flashbangs_thrown || 0;
+                acc.smokesThrown += u.smokes_thrown || 0;
                 acc.enemiesFlashed += u.enemies_flashed || 0;
                 acc.teammatesFlashed += u.teammates_flashed || 0;
                 acc.heThrown += u.he_thrown || 0;
@@ -3518,67 +3519,178 @@
                 acc.molotovThrown += u.molotov_thrown || 0;
                 acc.molotovDamage += u.molotov_damage || 0;
                 acc.flashAssists += u.flash_assists || 0;
+                acc.totalUtilityDamage += (u.he_damage || 0) + (u.molotov_damage || 0);
                 return acc;
-            }, { flashesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, flashAssists: 0 });
+            }, { flashesThrown: 0, smokesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, flashAssists: 0, totalUtilityDamage: 0 });
+
+            // Calculate max values for bar widths
+            const maxFlashes = Math.max(...players.map(p => p.utility?.flashbangs_thrown || 0), 1);
+            const maxSmokes = Math.max(...players.map(p => p.utility?.smokes_thrown || 0), 1);
+            const maxHE = Math.max(...players.map(p => p.utility?.he_thrown || 0), 1);
+            const maxMolotovs = Math.max(...players.map(p => p.utility?.molotov_thrown || 0), 1);
+            const maxUtilityDmg = Math.max(...players.map(p => (p.utility?.he_damage || 0) + (p.utility?.molotov_damage || 0)), 1);
 
             container.innerHTML = `
                 <!-- Team Totals -->
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
-                        <div class="text-3xl mb-2">⚡</div>
-                        <p class="font-mono data-value text-3xl text-cyan-400">${totals.flashesThrown}</p>
-                        <p class="text-sm text-slate-400 mt-1">Flashbangs Thrown</p>
-                        <p class="text-xs text-slate-500 mt-2">${totals.enemiesFlashed} enemies blinded</p>
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2" style="color: #f1c40f;">&#9889;</div>
+                        <p class="font-mono data-value text-2xl" style="color: #f1c40f;">${totals.flashesThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">Flashbangs</p>
+                        <p class="text-xs text-slate-500 mt-1">${totals.enemiesFlashed} blinded</p>
                     </div>
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
-                        <div class="text-3xl mb-2">💥</div>
-                        <p class="font-mono data-value text-3xl text-red-400">${totals.heDamage}</p>
-                        <p class="text-sm text-slate-400 mt-1">HE Grenade Damage</p>
-                        <p class="text-xs text-slate-500 mt-2">${totals.heThrown} grenades thrown</p>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2" style="color: #9b59b6;">&#128168;</div>
+                        <p class="font-mono data-value text-2xl" style="color: #9b59b6;">${totals.smokesThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">Smokes</p>
+                        <p class="text-xs text-slate-500 mt-1">vision control</p>
                     </div>
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
-                        <div class="text-3xl mb-2">🔥</div>
-                        <p class="font-mono data-value text-3xl text-orange-400">${totals.molotovDamage}</p>
-                        <p class="text-sm text-slate-400 mt-1">Molotov Damage</p>
-                        <p class="text-xs text-slate-500 mt-2">${totals.molotovThrown} molotovs thrown</p>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2" style="color: #e74c3c;">&#128163;</div>
+                        <p class="font-mono data-value text-2xl" style="color: #e74c3c;">${totals.heThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">HE Grenades</p>
+                        <p class="text-xs text-slate-500 mt-1">${totals.heDamage} damage</p>
                     </div>
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
-                        <div class="text-3xl mb-2">✨</div>
-                        <p class="font-mono data-value text-3xl text-green-400">${totals.flashAssists}</p>
-                        <p class="text-sm text-slate-400 mt-1">Flash Assists</p>
-                        <p class="text-xs text-slate-500 mt-2">${totals.teammatesFlashed} teammates flashed</p>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2" style="color: #e67e22;">&#128293;</div>
+                        <p class="font-mono data-value text-2xl" style="color: #e67e22;">${totals.molotovThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">Molotovs</p>
+                        <p class="text-xs text-slate-500 mt-1">${totals.molotovDamage} damage</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2 text-green-400">&#10024;</div>
+                        <p class="font-mono data-value text-2xl text-green-400">${totals.totalUtilityDamage}</p>
+                        <p class="text-sm text-slate-400 mt-1">Total Utility Dmg</p>
+                        <p class="text-xs text-slate-500 mt-1">${totals.flashAssists} flash assists</p>
                     </div>
                 </div>
 
-                <!-- Player Utility Rankings -->
-                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Utility Ratings by Player</h3>
+                <!-- Per-Player Utility Bars Section -->
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Utility Usage by Player</h3>
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-8">
+                    <div class="space-y-4">
+                        ${players.sort((a, b) => {
+                            const aTotal = (a.utility?.flashbangs_thrown || 0) + (a.utility?.smokes_thrown || 0) + (a.utility?.he_thrown || 0) + (a.utility?.molotov_thrown || 0);
+                            const bTotal = (b.utility?.flashbangs_thrown || 0) + (b.utility?.smokes_thrown || 0) + (b.utility?.he_thrown || 0) + (b.utility?.molotov_thrown || 0);
+                            return bTotal - aTotal;
+                        }).map(p => {
+                            const u = p.utility || {};
+                            const flashes = u.flashbangs_thrown || 0;
+                            const smokes = u.smokes_thrown || 0;
+                            const hes = u.he_thrown || 0;
+                            const mollys = u.molotov_thrown || 0;
+                            const utilDmg = (u.he_damage || 0) + (u.molotov_damage || 0);
+                            const totalNades = flashes + smokes + hes + mollys;
+
+                            return `
+                            <div class="flex items-center gap-4">
+                                <div class="w-32 flex-shrink-0">
+                                    <span class="font-medium text-white text-sm">${esc(p.name)}</span>
+                                    <span class="text-xs text-slate-500 ml-1">(${totalNades})</span>
+                                </div>
+                                <div class="flex-1 flex gap-1 h-6">
+                                    <!-- Flashbangs (yellow) -->
+                                    <div class="h-full rounded transition-all" style="width: ${Math.max((flashes / Math.max(maxFlashes, 1)) * 100, flashes > 0 ? 8 : 0)}%; background: #f1c40f;" title="Flashbangs: ${flashes}"></div>
+                                    <!-- Smokes (purple) -->
+                                    <div class="h-full rounded transition-all" style="width: ${Math.max((smokes / Math.max(maxSmokes, 1)) * 100, smokes > 0 ? 8 : 0)}%; background: #9b59b6;" title="Smokes: ${smokes}"></div>
+                                    <!-- HE (red) -->
+                                    <div class="h-full rounded transition-all" style="width: ${Math.max((hes / Math.max(maxHE, 1)) * 100, hes > 0 ? 8 : 0)}%; background: #e74c3c;" title="HE Grenades: ${hes}"></div>
+                                    <!-- Molotovs (orange) -->
+                                    <div class="h-full rounded transition-all" style="width: ${Math.max((mollys / Math.max(maxMolotovs, 1)) * 100, mollys > 0 ? 8 : 0)}%; background: #e67e22;" title="Molotovs: ${mollys}"></div>
+                                </div>
+                                <div class="w-20 text-right flex-shrink-0">
+                                    <span class="font-mono data-value text-sm ${utilDmg > 100 ? 'text-green-400' : 'text-slate-300'}">${utilDmg}</span>
+                                    <span class="text-xs text-slate-500 ml-1">dmg</span>
+                                </div>
+                            </div>
+                        `}).join('')}
+                    </div>
+                    <!-- Legend -->
+                    <div class="flex gap-6 mt-4 pt-4 border-t border-slate-700 justify-center">
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #f1c40f;"></div><span class="text-xs text-slate-400">Flash</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #9b59b6;"></div><span class="text-xs text-slate-400">Smoke</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #e74c3c;"></div><span class="text-xs text-slate-400">HE</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #e67e22;"></div><span class="text-xs text-slate-400">Molotov</span></div>
+                    </div>
+                </div>
+
+                <!-- Utility Damage by Player -->
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Utility Damage by Player</h3>
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-8">
+                    <div class="space-y-3">
+                        ${players.sort((a, b) => {
+                            const aDmg = (a.utility?.he_damage || 0) + (a.utility?.molotov_damage || 0);
+                            const bDmg = (b.utility?.he_damage || 0) + (b.utility?.molotov_damage || 0);
+                            return bDmg - aDmg;
+                        }).map(p => {
+                            const u = p.utility || {};
+                            const heDmg = u.he_damage || 0;
+                            const mollyDmg = u.molotov_damage || 0;
+                            const totalDmg = heDmg + mollyDmg;
+                            const pct = maxUtilityDmg > 0 ? (totalDmg / maxUtilityDmg * 100) : 0;
+
+                            return `
+                            <div class="flex items-center gap-4">
+                                <div class="w-32 flex-shrink-0">
+                                    <span class="font-medium text-white text-sm">${esc(p.name)}</span>
+                                </div>
+                                <div class="flex-1 bg-slate-700/50 rounded-full h-4 overflow-hidden">
+                                    <div class="h-full rounded-full flex">
+                                        <div class="h-full" style="width: ${(heDmg / Math.max(totalDmg, 1)) * pct}%; background: #e74c3c;" title="HE: ${heDmg}"></div>
+                                        <div class="h-full" style="width: ${(mollyDmg / Math.max(totalDmg, 1)) * pct}%; background: #e67e22;" title="Molotov: ${mollyDmg}"></div>
+                                    </div>
+                                </div>
+                                <div class="w-24 text-right flex-shrink-0 flex items-center justify-end gap-2">
+                                    <span class="font-mono data-value text-sm text-red-400">${heDmg}</span>
+                                    <span class="text-slate-600">/</span>
+                                    <span class="font-mono data-value text-sm text-orange-400">${mollyDmg}</span>
+                                </div>
+                            </div>
+                        `}).join('')}
+                    </div>
+                    <!-- Legend -->
+                    <div class="flex gap-6 mt-4 pt-4 border-t border-slate-700 justify-center">
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #e74c3c;"></div><span class="text-xs text-slate-400">HE Damage</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #e67e22;"></div><span class="text-xs text-slate-400">Molotov Damage</span></div>
+                    </div>
+                </div>
+
+                <!-- Player Utility Efficiency Cards -->
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Flash Efficiency</h3>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    ${players.sort((a, b) => (b.rating?.utility_rating || 0) - (a.rating?.utility_rating || 0)).map(p => `
+                    ${players.sort((a, b) => (b.utility?.enemies_flashed || 0) - (a.utility?.enemies_flashed || 0)).map(p => {
+                        const u = p.utility || {};
+                        const flashEff = u.flashbangs_thrown > 0 ? (u.enemies_flashed / u.flashbangs_thrown).toFixed(2) : '0.00';
+                        return `
                         <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
                             <div class="flex justify-between items-center mb-4">
                                 <span class="font-semibold text-white">${esc(p.name)}</span>
-                                <span class="px-3 py-1 rounded-lg bg-green-500/20 text-green-400 font-mono data-value">${formatNumber(p.rating?.utility_rating, 0)}</span>
+                                <span class="px-3 py-1 rounded-lg ${parseFloat(flashEff) >= 1.0 ? 'bg-green-500/20 text-green-400' : parseFloat(flashEff) >= 0.5 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'} font-mono data-value">${flashEff}/flash</span>
                             </div>
-                            <div class="grid grid-cols-4 gap-2 text-center">
+                            <div class="grid grid-cols-5 gap-2 text-center">
                                 <div>
-                                    <p class="font-mono data-value text-white">${p.utility?.flashbangs_thrown || 0}</p>
+                                    <p class="font-mono data-value text-white">${u.flashbangs_thrown || 0}</p>
                                     <p class="text-xs text-slate-500">Flashes</p>
                                 </div>
                                 <div>
-                                    <p class="font-mono data-value text-white">${p.utility?.enemies_flashed || 0}</p>
+                                    <p class="font-mono data-value text-white">${u.smokes_thrown || 0}</p>
+                                    <p class="text-xs text-slate-500">Smokes</p>
+                                </div>
+                                <div>
+                                    <p class="font-mono data-value text-white">${u.enemies_flashed || 0}</p>
                                     <p class="text-xs text-slate-500">Blinded</p>
                                 </div>
                                 <div>
-                                    <p class="font-mono data-value text-white">${p.utility?.he_damage || 0}</p>
+                                    <p class="font-mono data-value text-white">${u.he_damage || 0}</p>
                                     <p class="text-xs text-slate-500">HE Dmg</p>
                                 </div>
                                 <div>
-                                    <p class="font-mono data-value text-white">${p.utility?.molotov_damage || 0}</p>
+                                    <p class="font-mono data-value text-white">${u.molotov_damage || 0}</p>
                                     <p class="text-xs text-slate-500">Molly</p>
                                 </div>
                             </div>
                         </div>
-                    `).join('')}
+                    `}).join('')}
                 </div>
             `;
         }
