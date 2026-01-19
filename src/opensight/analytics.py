@@ -417,6 +417,38 @@ class MultiKillStats:
 
 
 @dataclass
+class WeaponStats:
+    """Per-weapon statistics for a player."""
+    weapon: str
+    kills: int = 0
+    headshots: int = 0
+    damage: int = 0
+    shots_fired: int = 0
+    shots_hit: int = 0
+
+    @property
+    def headshot_percentage(self) -> float:
+        """Percentage of kills that were headshots."""
+        if self.kills <= 0:
+            return 0.0
+        return round(self.headshots / self.kills * 100, 1)
+
+    @property
+    def accuracy(self) -> float:
+        """Shot accuracy (hits / shots fired)."""
+        if self.shots_fired <= 0:
+            return 0.0
+        return round(self.shots_hit / self.shots_fired * 100, 1)
+
+    @property
+    def damage_per_shot(self) -> float:
+        """Average damage per shot fired."""
+        if self.shots_fired <= 0:
+            return 0.0
+        return round(self.damage / self.shots_fired, 1)
+
+
+@dataclass
 class UtilityStats:
     """Utility usage statistics."""
     flashbangs_thrown: int = 0
@@ -1016,6 +1048,10 @@ class MatchAnalysis:
     # AI Coaching insights
     coaching_insights: list[dict] = field(default_factory=list)
 
+    # Weapon-specific statistics per player
+    # Key: player name, Value: list of WeaponStats
+    weapon_stats: dict[str, list[WeaponStats]] = field(default_factory=dict)
+
     def get_leaderboard(self, sort_by: str = "hltv_rating") -> list[PlayerMatchStats]:
         """Get players sorted by specified metric (descending)."""
         players_list = list(self.players.values())
@@ -1276,6 +1312,10 @@ class DemoAnalyzer:
         # Generate AI coaching insights
         coaching_insights = self._generate_coaching_insights()
 
+        # Calculate weapon-specific statistics
+        with stage_timer("calculate_weapon_stats"):
+            weapon_stats = calculate_weapon_stats(self.data)
+
         # Build result
         team_scores = self._calculate_team_scores()
         analysis = MatchAnalysis(
@@ -1293,6 +1333,7 @@ class DemoAnalyzer:
             grenade_positions=grenade_positions,
             grenade_team_stats=grenade_team_stats,
             coaching_insights=coaching_insights,
+            weapon_stats=weapon_stats,
         )
 
         logger.info(f"Analysis complete. {len(self._players)} players analyzed.")

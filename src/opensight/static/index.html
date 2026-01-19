@@ -467,6 +467,43 @@
                         </ul>
                     </div>
                 </div>
+
+                <!-- Weapons Tab -->
+                <div id="tab-weapons" class="tab-content">
+                    <div class="bg-slate-800 rounded-xl p-6">
+                        <!-- Player Selection -->
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Select Player</label>
+                            <select id="weapons-player-select" class="w-full max-w-md px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                                <!-- Options populated by JS -->
+                            </select>
+                        </div>
+
+                        <!-- Weapons Table -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="bg-slate-700/50 text-left text-sm text-slate-300">
+                                        <th class="px-6 py-3 font-semibold">Weapon</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Kills</th>
+                                        <th class="px-6 py-3 font-semibold text-center">HS%</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Damage</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Shots</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Accuracy</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="weapons-table" class="divide-y divide-slate-700">
+                                    <!-- Weapon rows populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- No Data Message -->
+                        <div id="weapons-no-data" class="hidden text-center py-8 text-slate-400">
+                            <p>No weapon data available for this player</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
     </main>
@@ -498,14 +535,16 @@
         const navBtns = {
             overview: document.getElementById('nav-overview'),
             advanced: document.getElementById('nav-advanced'),
-            compare: document.getElementById('nav-compare')
+            compare: document.getElementById('nav-compare'),
+            weapons: document.getElementById('nav-weapons')
         };
 
         // Tab contents
         const tabContents = {
             overview: document.getElementById('tab-overview'),
             advanced: document.getElementById('tab-advanced'),
-            compare: document.getElementById('tab-compare')
+            compare: document.getElementById('tab-compare'),
+            weapons: document.getElementById('tab-weapons')
         };
 
         // =============================================================================
@@ -710,6 +749,7 @@
             renderOverview();
             renderAdvanced();
             populatePlayerSelects();
+            populateWeaponsSelect();
         }
 
         newAnalysisBtn.addEventListener('click', () => {
