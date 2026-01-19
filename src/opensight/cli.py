@@ -6,34 +6,75 @@ Provides commands for:
 - Decoding share codes
 - Watching for new replays
 - Generating reports
+
+IMPORTANT: This module uses lazy imports to ensure that lightweight commands
+like 'info' and 'decode' don't load heavy dependencies (demoparser2, pandas, numpy).
 """
 
 import logging
-import sys
+import time
 from pathlib import Path
 from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
+from rich.table import Table
 
 from opensight import __version__
-from opensight.sharecode import decode_sharecode, ShareCodeInfo
-from opensight.parser import DemoParser, DemoData
-from opensight.metrics import (
-    calculate_ttd,
-    calculate_crosshair_placement,
-    calculate_engagement_metrics,
-    calculate_economy_metrics,
-    calculate_utility_metrics,
-    calculate_trade_metrics,
-    calculate_opening_metrics,
-    calculate_comprehensive_metrics,
-)
-from opensight.watcher import ReplayWatcher, DemoFileEvent, get_default_replays_folder
-from opensight.export import export_analysis
+
+# NOTE: Heavy dependencies (demoparser2, pandas, numpy) are loaded lazily via
+# _import_parser(), _import_metrics(), _import_watcher() to keep 'info' and
+# 'decode' commands fast and lightweight.
+
+
+def _import_parser():
+    """Lazy import for DemoParser (loads demoparser2, pandas, numpy)."""
+    from opensight.parser import DemoParser, DemoData
+    return DemoParser, DemoData
+
+
+def _import_metrics():
+    """Lazy import for metrics functions (loads analytics)."""
+    from opensight.metrics import (
+        calculate_ttd,
+        calculate_crosshair_placement,
+        calculate_engagement_metrics,
+        calculate_economy_metrics,
+        calculate_utility_metrics,
+        calculate_trade_metrics,
+        calculate_opening_metrics,
+        calculate_comprehensive_metrics,
+    )
+    return {
+        'calculate_ttd': calculate_ttd,
+        'calculate_crosshair_placement': calculate_crosshair_placement,
+        'calculate_engagement_metrics': calculate_engagement_metrics,
+        'calculate_economy_metrics': calculate_economy_metrics,
+        'calculate_utility_metrics': calculate_utility_metrics,
+        'calculate_trade_metrics': calculate_trade_metrics,
+        'calculate_opening_metrics': calculate_opening_metrics,
+        'calculate_comprehensive_metrics': calculate_comprehensive_metrics,
+    }
+
+
+def _import_watcher():
+    """Lazy import for watcher (loads watchdog)."""
+    from opensight.watcher import ReplayWatcher, DemoFileEvent, get_default_replays_folder
+    return ReplayWatcher, DemoFileEvent, get_default_replays_folder
+
+
+def _import_export():
+    """Lazy import for export functions."""
+    from opensight.export import export_analysis
+    return export_analysis
 
 app = typer.Typer(
     name="opensight",
@@ -106,6 +147,12 @@ def analyze(
         "-m",
         help="Metrics to calculate: all, ttd, cp, engagement, economy, utility, trades, opening"
     ),
+    profile: bool = typer.Option(
+        False,
+        "--profile",
+        hidden=True,
+        help="Show timing per stage for performance profiling"
+    ),
 ) -> None:
     """
     Analyze a CS2 demo file and display metrics.
@@ -115,24 +162,44 @@ def analyze(
     - Crosshair Placement (CP)
     - Kill/Death statistics
     - Damage per round
+
+    Performance options:
+    - --parse-mode minimal: Parse only kills/damages for TTD/CP (faster)
+    - --cp-sample-rate 4: Sample every 4th tick (32 Hz instead of 128 Hz)
+    - --no-optimize: Disable dtype optimization (more memory)
     """
     console.print(f"\n[bold blue]OpenSight[/bold blue] - Analyzing demo...\n")
+
+    timings: dict[str, float] = {}
+
+    # Lazy import heavy dependencies
+    DemoParser, DemoData = _import_parser()
+    metrics_funcs = _import_metrics()
 
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
         console=console,
+        transient=not profile,
     ) as progress:
         # Parse the demo
-        task = progress.add_task("Parsing demo file...", total=None)
+        task = progress.add_task("Parsing demo file...", total=100)
         try:
+            start_time = time.perf_counter()
+            progress.update(task, completed=10, description="Loading parser...")
+
             parser = DemoParser(demo_path)
+            progress.update(task, completed=30, description="Parsing events...")
+
             data = parser.parse()
+            progress.update(task, completed=100, description="Demo parsed!")
+
+            timings['parsing'] = time.perf_counter() - start_time
         except Exception as e:
             console.print(f"[red]Error parsing demo:[/red] {e}")
             raise typer.Exit(1)
-
-        progress.update(task, description="Demo parsed successfully!")
 
     # Display basic info
     info_table = Table(title="Demo Information", show_header=False)
@@ -142,6 +209,8 @@ def analyze(
     info_table.add_row("Duration", f"{data.duration_seconds:.1f} seconds")
     info_table.add_row("Tick Rate", str(data.tick_rate))
     info_table.add_row("Players", str(len(data.player_names)))
+    info_table.add_row("Parse Mode", parse_mode)
+    info_table.add_row("CP Sample Rate", f"1/{cp_sample_rate}" if cp_sample_rate > 1 else "all ticks")
     console.print(info_table)
     console.print()
 
@@ -160,40 +229,82 @@ def analyze(
             if steam_id is None:
                 console.print(f"[yellow]Warning:[/yellow] Player '{player}' not found")
 
-    # Calculate and display metrics
+    # Calculate and display metrics with profiling
+    start_time = time.perf_counter()
+
     if metrics in ("all", "engagement"):
-        _display_engagement_metrics(data, steam_id)
+        _display_engagement_metrics(data, steam_id, metrics_funcs)
+        if profile:
+            timings['engagement'] = time.perf_counter() - start_time
+            start_time = time.perf_counter()
 
     if metrics in ("all", "ttd"):
-        _display_ttd_metrics(data, steam_id)
+        _display_ttd_metrics(data, steam_id, metrics_funcs)
+        if profile:
+            timings['ttd'] = time.perf_counter() - start_time
+            start_time = time.perf_counter()
 
     if metrics in ("all", "cp"):
-        _display_cp_metrics(data, steam_id)
+        _display_cp_metrics(data, steam_id, metrics_funcs)
+        if profile:
+            timings['cp'] = time.perf_counter() - start_time
+            start_time = time.perf_counter()
 
     if metrics in ("all", "economy"):
-        _display_economy_metrics(data, steam_id)
+        _display_economy_metrics(data, steam_id, metrics_funcs)
+        if profile:
+            timings['economy'] = time.perf_counter() - start_time
+            start_time = time.perf_counter()
 
     if metrics in ("all", "utility"):
-        _display_utility_metrics(data, steam_id)
+        _display_utility_metrics(data, steam_id, metrics_funcs)
+        if profile:
+            timings['utility'] = time.perf_counter() - start_time
+            start_time = time.perf_counter()
 
     if metrics in ("all", "trades"):
-        _display_trade_metrics(data, steam_id)
+        _display_trade_metrics(data, steam_id, metrics_funcs)
+        if profile:
+            timings['trades'] = time.perf_counter() - start_time
+            start_time = time.perf_counter()
 
     if metrics in ("all", "opening"):
-        _display_opening_metrics(data, steam_id)
+        _display_opening_metrics(data, steam_id, metrics_funcs)
+        if profile:
+            timings['opening'] = time.perf_counter() - start_time
+            start_time = time.perf_counter()
 
     # Export if requested
     if output:
-        comprehensive = calculate_comprehensive_metrics(data, steam_id)
+        export_analysis = _import_export()
+        comprehensive = metrics_funcs['calculate_comprehensive_metrics'](data, steam_id)
         export_analysis(data, comprehensive, output)
         console.print(f"\n[green]Results exported to:[/green] {output}")
+        if profile:
+            timings['export'] = time.perf_counter() - start_time
+
+    # Display profiling results
+    if profile:
+        console.print()
+        profile_table = Table(title="Performance Profile", show_header=True)
+        profile_table.add_column("Stage", style="cyan")
+        profile_table.add_column("Time", justify="right", style="yellow")
+        profile_table.add_column("Percentage", justify="right")
+
+        total_time = sum(timings.values())
+        for stage, duration in timings.items():
+            pct = (duration / total_time * 100) if total_time > 0 else 0
+            profile_table.add_row(stage.capitalize(), f"{duration:.3f}s", f"{pct:.1f}%")
+        profile_table.add_row("[bold]Total[/bold]", f"[bold]{total_time:.3f}s[/bold]", "[bold]100%[/bold]")
+        console.print(profile_table)
 
 
-def _display_engagement_metrics(data: DemoData, steam_id: Optional[int]) -> None:
+def _display_engagement_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
     """Display engagement metrics table."""
-    metrics = calculate_engagement_metrics(data, steam_id)
+    calculate_engagement_metrics = metrics_funcs['calculate_engagement_metrics']
+    metrics_result = calculate_engagement_metrics(data, steam_id)
 
-    if not metrics:
+    if not metrics_result:
         console.print("[yellow]No engagement metrics available[/yellow]")
         return
 
@@ -205,7 +316,7 @@ def _display_engagement_metrics(data: DemoData, steam_id: Optional[int]) -> None
     table.add_column("HS%", justify="right")
     table.add_column("DPR", justify="right")
 
-    for sid, m in sorted(metrics.items(), key=lambda x: x[1].total_kills, reverse=True):
+    for sid, m in sorted(metrics_result.items(), key=lambda x: x[1].total_kills, reverse=True):
         kd = m.total_kills / m.total_deaths if m.total_deaths > 0 else m.total_kills
         table.add_row(
             m.player_name,
@@ -220,8 +331,9 @@ def _display_engagement_metrics(data: DemoData, steam_id: Optional[int]) -> None
     console.print()
 
 
-def _display_ttd_metrics(data: DemoData, steam_id: Optional[int]) -> None:
+def _display_ttd_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
     """Display Time to Damage metrics table."""
+    calculate_ttd = metrics_funcs['calculate_ttd']
     ttd_results = calculate_ttd(data, steam_id)
 
     if not ttd_results:
@@ -250,8 +362,9 @@ def _display_ttd_metrics(data: DemoData, steam_id: Optional[int]) -> None:
     console.print()
 
 
-def _display_cp_metrics(data: DemoData, steam_id: Optional[int]) -> None:
+def _display_cp_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
     """Display Crosshair Placement metrics table."""
+    calculate_crosshair_placement = metrics_funcs['calculate_crosshair_placement']
     cp_results = calculate_crosshair_placement(data, steam_id)
 
     if not cp_results:
@@ -280,62 +393,123 @@ def _display_cp_metrics(data: DemoData, steam_id: Optional[int]) -> None:
     console.print()
 
 
-def _display_economy_metrics(data: DemoData, steam_id: Optional[int]) -> None:
+def _display_economy_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
     """Display economy metrics table."""
+    calculate_economy_metrics = metrics_funcs['calculate_economy_metrics']
     econ_results = calculate_economy_metrics(data, steam_id)
 
-    metrics = calculate_engagement_metrics(data, steam_id)
-    ttd = calculate_ttd(data, steam_id)
-    cp = calculate_crosshair_placement(data, steam_id)
+    if not econ_results:
+        console.print("[yellow]No economy metrics available[/yellow]")
+        return
 
-    results = {
-        "demo_info": {
-            "file": str(data.file_path),
-            "map": data.map_name,
-            "duration_seconds": data.duration_seconds,
-            "tick_rate": data.tick_rate,
-        },
-        "players": {},
-    }
+    table = Table(title="Economy Metrics")
+    table.add_column("Player", style="cyan")
+    table.add_column("Avg Equip", justify="right")
+    table.add_column("Full Buys", justify="right")
+    table.add_column("Eco Rounds", justify="right")
+    table.add_column("Damage/$", justify="right")
 
-    for sid in data.player_names:
-        player_data = {
-            "name": data.player_names[sid],
-            "team": data.player_teams.get(sid, 0),
-        }
+    for sid, econ in sorted(econ_results.items(), key=lambda x: x[1].avg_equipment_value, reverse=True):
+        dmg_per_dollar = f"{econ.damage_per_dollar:.2f}" if hasattr(econ, 'damage_per_dollar') and econ.damage_per_dollar else "N/A"
+        table.add_row(
+            econ.player_name,
+            f"${econ.avg_equipment_value:,.0f}" if hasattr(econ, 'avg_equipment_value') else "N/A",
+            str(getattr(econ, 'full_buy_rounds', 0)),
+            str(getattr(econ, 'eco_rounds', 0)),
+            dmg_per_dollar,
+        )
 
-        if sid in metrics:
-            m = metrics[sid]
-            player_data["engagement"] = {
-                "kills": m.total_kills,
-                "deaths": m.total_deaths,
-                "headshot_percentage": m.headshot_percentage,
-                "damage_per_round": m.damage_per_round,
-            }
+    console.print(table)
+    console.print()
 
-        if sid in ttd:
-            t = ttd[sid]
-            player_data["ttd"] = {
-                "engagement_count": t.engagement_count,
-                "mean_ms": t.mean_ttd_ms,
-                "median_ms": t.median_ttd_ms,
-                "min_ms": t.min_ttd_ms,
-                "max_ms": t.max_ttd_ms,
-            }
 
-        if sid in cp:
-            c = cp[sid]
-            player_data["crosshair_placement"] = {
-                "sample_count": c.sample_count,
-                "mean_angle_deg": c.mean_angle_deg,
-                "median_angle_deg": c.median_angle_deg,
-                "score": c.placement_score,
-            }
+def _display_utility_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
+    """Display utility metrics table."""
+    calculate_utility_metrics = metrics_funcs['calculate_utility_metrics']
+    utility_results = calculate_utility_metrics(data, steam_id)
 
-        results["players"][str(sid)] = player_data
+    if not utility_results:
+        console.print("[yellow]No utility metrics available[/yellow]")
+        return
 
-    with open(output, "w") as f:
-        json.dump(results, f, indent=2)
+    table = Table(title="Utility Metrics")
+    table.add_column("Player", style="cyan")
+    table.add_column("Flashes", justify="right")
+    table.add_column("Smokes", justify="right")
+    table.add_column("HE", justify="right")
+    table.add_column("Mollys", justify="right")
+    table.add_column("Flash Assists", justify="right")
+
+    for sid, util in sorted(utility_results.items(), key=lambda x: x[1].total_thrown, reverse=True):
+        table.add_row(
+            util.player_name,
+            str(getattr(util, 'flashes_thrown', 0)),
+            str(getattr(util, 'smokes_thrown', 0)),
+            str(getattr(util, 'he_thrown', 0)),
+            str(getattr(util, 'molotovs_thrown', 0)),
+            str(getattr(util, 'flash_assists', 0)),
+        )
+
+    console.print(table)
+    console.print()
+
+
+def _display_trade_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
+    """Display trade metrics table."""
+    calculate_trade_metrics = metrics_funcs['calculate_trade_metrics']
+    trade_results = calculate_trade_metrics(data, steam_id)
+
+    if not trade_results:
+        console.print("[yellow]No trade metrics available[/yellow]")
+        return
+
+    table = Table(title="Trade Metrics")
+    table.add_column("Player", style="cyan")
+    table.add_column("Kills Traded", justify="right")
+    table.add_column("Deaths Traded", justify="right")
+    table.add_column("Trade Attempts", justify="right")
+    table.add_column("Trade Rate", justify="right")
+
+    for sid, trade in sorted(trade_results.items(), key=lambda x: x[1].trade_rate, reverse=True):
+        table.add_row(
+            trade.player_name,
+            str(trade.kills_traded),
+            str(trade.deaths_traded),
+            str(trade.trade_attempts),
+            f"{trade.trade_rate:.1f}%",
+        )
+
+    console.print(table)
+    console.print()
+
+
+def _display_opening_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
+    """Display opening duel metrics table."""
+    calculate_opening_metrics = metrics_funcs['calculate_opening_metrics']
+    opening_results = calculate_opening_metrics(data, steam_id)
+
+    if not opening_results:
+        console.print("[yellow]No opening duel metrics available[/yellow]")
+        return
+
+    table = Table(title="Opening Duels")
+    table.add_column("Player", style="cyan")
+    table.add_column("Wins", justify="right")
+    table.add_column("Losses", justify="right")
+    table.add_column("Attempts", justify="right")
+    table.add_column("Win Rate", justify="right")
+
+    for sid, opening in sorted(opening_results.items(), key=lambda x: x[1].win_rate, reverse=True):
+        table.add_row(
+            opening.player_name,
+            str(opening.wins),
+            str(opening.losses),
+            str(opening.attempts),
+            f"{opening.win_rate:.1f}%",
+        )
+
+    console.print(table)
+    console.print()
 
 
 @app.command()
@@ -350,7 +524,12 @@ def decode(
 
     The share code contains encoded information about the match
     including match ID, outcome ID, and token.
+
+    This command uses zero heavy dependencies - just pure math.
     """
+    # Import sharecode module directly - it has no heavy dependencies
+    from opensight.sharecode import decode_sharecode
+
     try:
         info = decode_sharecode(share_code)
 
@@ -385,27 +564,55 @@ def watch(
         "-a",
         help="Automatically analyze new demos"
     ),
+    use_cache: bool = typer.Option(
+        True,
+        "--cache/--no-cache",
+        help="Use cache to skip already-analyzed demos"
+    ),
+    debounce: float = typer.Option(
+        2.0,
+        "--debounce",
+        "-d",
+        help="Debounce time in seconds (wait for file to stabilize)"
+    ),
 ) -> None:
     """
     Watch for new CS2 replay files and optionally analyze them.
 
     Monitors the specified folder (or default CS2 replays folder)
     for new .dem files and triggers analysis automatically.
+
+    Features:
+    - Debounces file events to wait for write completion
+    - Caches analyzed demos to skip re-processing
+    - Coalesces multiple file events into single analysis
     """
+    # Lazy import watcher dependencies
+    ReplayWatcher, DemoFileEvent, get_default_replays_folder = _import_watcher()
+
     if folder is None:
         folder = get_default_replays_folder()
 
     console.print(f"\n[bold blue]OpenSight[/bold blue] - Watching for replays\n")
     console.print(f"[cyan]Folder:[/cyan] {folder}")
     console.print(f"[cyan]Auto-analyze:[/cyan] {'Yes' if auto_analyze else 'No'}")
+    console.print(f"[cyan]Cache:[/cyan] {'Enabled' if use_cache else 'Disabled'}")
+    console.print(f"[cyan]Debounce:[/cyan] {debounce}s")
     console.print("\nPress [bold]Ctrl+C[/bold] to stop...\n")
 
-    watcher = ReplayWatcher(folder)
+    watcher = ReplayWatcher(folder, use_cache=use_cache, debounce_seconds=debounce)
 
     # Check for existing demos
     existing = watcher.scan_existing()
     if existing:
-        console.print(f"[yellow]Found {len(existing)} existing demo(s)[/yellow]\n")
+        cached_count = sum(1 for p in existing if watcher.is_analyzed(p))
+        console.print(f"[yellow]Found {len(existing)} existing demo(s) ({cached_count} cached)[/yellow]\n")
+
+    # Lazy import for analysis
+    if auto_analyze:
+        DemoParser, _ = _import_parser()
+        metrics_funcs = _import_metrics()
+        calculate_engagement_metrics = metrics_funcs['calculate_engagement_metrics']
 
     @watcher.on_new_demo
     def handle_new_demo(event: DemoFileEvent) -> None:
@@ -422,9 +629,13 @@ def watch(
                 console.print(f"  Players: {len(data.player_names)}")
 
                 # Quick stats
-                metrics = calculate_engagement_metrics(data)
-                for sid, m in sorted(metrics.items(), key=lambda x: x[1].total_kills, reverse=True)[:3]:
+                metrics_result = calculate_engagement_metrics(data)
+                for sid, m in sorted(metrics_result.items(), key=lambda x: x[1].total_kills, reverse=True)[:3]:
                     console.print(f"  Top: {m.player_name} - {m.total_kills}K/{m.total_deaths}D")
+
+                # Mark as analyzed so we skip it next time
+                watcher.mark_analyzed(event.file_path)
+                console.print("  [dim]Cached for future runs[/dim]")
 
             except Exception as e:
                 console.print(f"[red]Analysis failed:[/red] {e}")
@@ -440,6 +651,8 @@ def watch(
 def info() -> None:
     """
     Display information about OpenSight and the environment.
+
+    This command uses zero heavy dependencies - no demoparser2 loading.
     """
     import platform as plat
 
@@ -453,26 +666,41 @@ def info() -> None:
     table.add_row("Platform", plat.system())
     table.add_row("Architecture", plat.machine())
 
-    # Check for dependencies
+    # Check for dependencies WITHOUT importing them fully
     deps = []
+
+    # Check demoparser2 availability without importing (avoid loading Rust binary)
     try:
-        import demoparser2
-        deps.append(("demoparser2", getattr(demoparser2, "__version__", "installed")))
-    except ImportError:
+        import importlib.util
+        spec = importlib.util.find_spec("demoparser2")
+        if spec is not None:
+            deps.append(("demoparser2", "[green]available[/green]"))
+        else:
+            deps.append(("demoparser2", "[red]not installed[/red]"))
+    except Exception:
         deps.append(("demoparser2", "[red]not installed[/red]"))
 
+    # Check awpy availability
     try:
-        import awpy
-        deps.append(("awpy", getattr(awpy, "__version__", "installed")))
-    except ImportError:
-        deps.append(("awpy", "[red]not installed[/red]"))
+        spec = importlib.util.find_spec("awpy")
+        if spec is not None:
+            deps.append(("awpy", "[green]available[/green]"))
+        else:
+            deps.append(("awpy", "[yellow]not installed[/yellow]"))
+    except Exception:
+        deps.append(("awpy", "[yellow]not installed[/yellow]"))
 
     for name, version in deps:
         table.add_row(name, version)
 
-    replays_folder = get_default_replays_folder()
-    folder_status = "[green]exists[/green]" if replays_folder.exists() else "[yellow]not found[/yellow]"
-    table.add_row("Replays Folder", f"{replays_folder} ({folder_status})")
+    # Check replays folder using platform-specific path (no heavy imports)
+    try:
+        _, _, get_default_replays_folder = _import_watcher()
+        replays_folder = get_default_replays_folder()
+        folder_status = "[green]exists[/green]" if replays_folder.exists() else "[yellow]not found[/yellow]"
+        table.add_row("Replays Folder", f"{replays_folder} ({folder_status})")
+    except Exception:
+        table.add_row("Replays Folder", "[yellow]unable to determine[/yellow]")
 
     console.print(table)
 

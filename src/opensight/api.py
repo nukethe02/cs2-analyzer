@@ -36,6 +36,13 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
 from pydantic import BaseModel, Field
 
+from opensight.profiling import (
+    TimingCollector,
+    SlowJobLogger,
+    set_timing_collector,
+    DEFAULT_SLOW_THRESHOLD_SECONDS,
+)
+
 __version__ = "0.3.0"
 
 # Security constants
@@ -358,7 +365,7 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
     This runs in a thread pool to avoid blocking the event loop.
     """
     try:
-        from opensight.parser import DemoParser
+        from opensight.parser import DemoParser, ParseMode
         from opensight.analytics import DemoAnalyzer
 
         job_store.update_job(job_id, status=JobStatus.PROCESSING, progress=10)
@@ -402,6 +409,10 @@ def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
                 "player_count": len(analysis.players),
                 "total_kills": len(data.kills),
                 "total_damage_events": len(data.damages),
+                # Parsing metadata
+                "parse_mode": parse_mode,
+                "cp_sample_rate": cp_sample_rate,
+                "memory_optimized": optimize_memory,
             },
             "rounds": rounds_data,
             "mvp": None,
