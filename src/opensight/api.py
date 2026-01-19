@@ -14,8 +14,12 @@ Endpoints:
 - POST /analyze Upload and analyze demo file
 """
 
+import hashlib
 import logging
+import os
+import pickle
 import tempfile
+import time
 import traceback
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -49,6 +53,125 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Caching Configuration
+# =============================================================================
+
+CACHE_DIR = Path(tempfile.gettempdir()) / "opensight_cache"
+CACHE_MAX_AGE_HOURS = 24
+CACHE_CLEANUP_INTERVAL_SECONDS = 3600  # Run cleanup at most once per hour
+
+# Track last cleanup time to avoid running too frequently
+_last_cache_cleanup = 0.0
+
+
+def get_file_hash(file_path: Path) -> str:
+    """
+    Calculate SHA256 hash of a file.
+
+    Reads the file in chunks to handle large demo files efficiently.
+
+    Args:
+        file_path: Path to the file to hash
+
+    Returns:
+        Hex digest of the file's SHA256 hash
+    """
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+
+def get_cache_path(file_hash: str) -> Path:
+    """Get the cache file path for a given file hash."""
+    return CACHE_DIR / f"{file_hash}.pkl"
+
+
+def load_from_cache(file_hash: str) -> dict | None:
+    """
+    Load cached analysis result if it exists and is valid.
+
+    Args:
+        file_hash: SHA256 hash of the demo file
+
+    Returns:
+        Cached result dict, or None if not found/invalid
+    """
+    cache_path = get_cache_path(file_hash)
+    if not cache_path.exists():
+        return None
+
+    try:
+        with open(cache_path, "rb") as f:
+            result = pickle.load(f)
+        logger.info(f"Cache hit for hash {file_hash[:16]}...")
+        return result
+    except (pickle.PickleError, EOFError, OSError) as e:
+        logger.warning(f"Failed to load cache {cache_path}: {e}")
+        # Remove corrupted cache file
+        try:
+            cache_path.unlink()
+        except OSError:
+            pass
+        return None
+
+
+def save_to_cache(file_hash: str, result: dict) -> None:
+    """
+    Save analysis result to cache.
+
+    Args:
+        file_hash: SHA256 hash of the demo file
+        result: Analysis result dictionary to cache
+    """
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_path = get_cache_path(file_hash)
+        with open(cache_path, "wb") as f:
+            pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+        logger.info(f"Cached result for hash {file_hash[:16]}...")
+    except (pickle.PickleError, OSError) as e:
+        logger.warning(f"Failed to save cache: {e}")
+
+
+def cleanup_old_cache() -> None:
+    """
+    Remove cache files older than CACHE_MAX_AGE_HOURS.
+
+    Only runs if enough time has passed since last cleanup to avoid
+    excessive filesystem operations.
+    """
+    global _last_cache_cleanup
+
+    now = time.time()
+    if now - _last_cache_cleanup < CACHE_CLEANUP_INTERVAL_SECONDS:
+        return  # Too soon since last cleanup
+
+    _last_cache_cleanup = now
+
+    if not CACHE_DIR.exists():
+        return
+
+    max_age_seconds = CACHE_MAX_AGE_HOURS * 3600
+    cutoff_time = now - max_age_seconds
+    removed_count = 0
+
+    try:
+        for cache_file in CACHE_DIR.glob("*.pkl"):
+            try:
+                if cache_file.stat().st_mtime < cutoff_time:
+                    cache_file.unlink()
+                    removed_count += 1
+            except OSError:
+                pass
+
+        if removed_count > 0:
+            logger.info(f"Cache cleanup: removed {removed_count} old files")
+    except OSError as e:
+        logger.warning(f"Cache cleanup failed: {e}")
 
 
 # =============================================================================
@@ -464,7 +587,20 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         logger.info(f"Wrote temp file: {tmp_path}")
 
-        # Import and run analysis
+        # Calculate file hash for caching
+        file_hash = get_file_hash(tmp_path)
+        logger.info(f"File hash: {file_hash[:16]}...")
+
+        # Run periodic cache cleanup (non-blocking, runs at most once per hour)
+        cleanup_old_cache()
+
+        # Check for cached result
+        cached_result = load_from_cache(file_hash)
+        if cached_result is not None:
+            logger.info("Returning cached result")
+            return cached_result
+
+        # Import and run analysis (cache miss)
         from opensight.parser import DemoParser
         from opensight.analytics import DemoAnalyzer, compute_kill_positions, compute_utility_metrics
 
@@ -512,6 +648,9 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         # AI Coaching insights
         response["coaching"] = analysis.coaching_insights
+
+        # Save to cache for future requests
+        save_to_cache(file_hash, response)
 
         return response
 
