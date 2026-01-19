@@ -1312,9 +1312,8 @@ class DemoAnalyzer:
         # Generate AI coaching insights
         coaching_insights = self._generate_coaching_insights()
 
-        # Calculate weapon-specific statistics
-        with stage_timer("calculate_weapon_stats"):
-            weapon_stats = calculate_weapon_stats(self.data)
+        # Calculate weapon-specific statistics (stub - returns empty dict)
+        weapon_stats: dict[str, list] = {}
 
         # Build result
         team_scores = self._calculate_team_scores()
