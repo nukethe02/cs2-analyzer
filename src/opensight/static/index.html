@@ -828,6 +828,180 @@
             .players-grid { grid-template-columns: 1fr; }
         }
 
+        /* Player Comparison Section */
+        .comparison-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .comparison-section .section-title {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .comparison-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+
+        .comparison-dropdown {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .comparison-dropdown label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .comparison-select {
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            cursor: pointer;
+            min-width: 200px;
+            transition: all 0.2s;
+        }
+
+        .comparison-select:hover {
+            border-color: var(--accent);
+        }
+
+        .comparison-select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent-dim);
+        }
+
+        .comparison-vs {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .comparison-chart-container {
+            display: flex;
+            gap: 32px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .comparison-chart-wrapper {
+            flex: 1;
+            min-width: 350px;
+            max-width: 500px;
+            height: 400px;
+            position: relative;
+        }
+
+        .comparison-stats {
+            flex: 1;
+            min-width: 280px;
+            max-width: 400px;
+        }
+
+        .comparison-player-stats {
+            margin-bottom: 20px;
+        }
+
+        .comparison-player-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .comparison-player-header.player-a {
+            border-color: var(--ct-color);
+        }
+
+        .comparison-player-header.player-b {
+            border-color: var(--t-color);
+        }
+
+        .comparison-player-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .comparison-player-team {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .comparison-stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.9rem;
+        }
+
+        .comparison-stat-label {
+            color: var(--text-muted);
+        }
+
+        .comparison-stat-value {
+            font-weight: 500;
+        }
+
+        .comparison-stat-value.better {
+            color: var(--success);
+        }
+
+        .comparison-stat-value.worse {
+            color: var(--danger);
+        }
+
+        .comparison-placeholder {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-muted);
+        }
+
+        .comparison-placeholder p {
+            font-size: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .comparison-controls {
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .comparison-select {
+                width: 100%;
+                min-width: unset;
+            }
+
+            .comparison-chart-container {
+                flex-direction: column;
+            }
+
+            .comparison-chart-wrapper {
+                max-width: 100%;
+                height: 300px;
+            }
+        }
+
         /* Replay Viewer */
         .replay-container {
             background: var(--bg-card);
@@ -1208,6 +1382,7 @@
             initTabs();
             initPlayerCards();
             initCharts(players);
+            initPlayerComparison();
             initExportButtons(data);
         }
 
@@ -1297,6 +1472,37 @@
                         <div class="chart-container">
                             <canvas id="chart-composite"></canvas>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Player Comparison Section -->
+                <div class="comparison-section">
+                    <h3 class="section-title">Player Comparison</h3>
+                    <div class="comparison-controls">
+                        <div class="comparison-dropdown">
+                            <label for="player-a-select">Player A:</label>
+                            <select id="player-a-select" class="comparison-select">
+                                <option value="">Select Player A</option>
+                                ${players.map(p => `<option value="${p.id}">${esc(p.name)} (${p.team})</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="comparison-vs">VS</div>
+                        <div class="comparison-dropdown">
+                            <label for="player-b-select">Player B:</label>
+                            <select id="player-b-select" class="comparison-select">
+                                <option value="">Select Player B</option>
+                                ${players.map(p => `<option value="${p.id}">${esc(p.name)} (${p.team})</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div id="comparison-chart-container" class="comparison-chart-container" style="display: none;">
+                        <div class="comparison-chart-wrapper">
+                            <canvas id="chart-comparison-radar"></canvas>
+                        </div>
+                        <div id="comparison-stats" class="comparison-stats"></div>
+                    </div>
+                    <div id="comparison-placeholder" class="comparison-placeholder">
+                        <p>Select two players above to compare their performance</p>
                     </div>
                 </div>
 
@@ -2299,6 +2505,329 @@
                     }
                 });
             }
+        }
+
+        // =====================================================
+        // Player Comparison Radar Chart
+        // =====================================================
+
+        /**
+         * Calculate comparison stats for two players
+         * Returns normalized values (0-100) suitable for radar chart
+         */
+        function getPlayerComparisonStats(playerA, playerB) {
+            const labels = ['HLTV Rating', 'Impact Score', 'TTD (Reaction)', 'Headshot %', 'Utility Damage'];
+
+            // Helper to normalize TTD (lower is better, so we invert)
+            function getTtdScore(player) {
+                const ttd = player.advanced?.ttd_median_ms;
+                if (ttd === null || ttd === undefined) return 50; // Default to average
+                // TTD ranges from ~100ms (elite) to ~600ms (slow)
+                // Invert so lower (faster) TTD gives higher score
+                const clamped = Math.max(100, Math.min(600, ttd));
+                return Math.round(100 - ((clamped - 100) / 500 * 100));
+            }
+
+            // Helper to normalize HLTV rating
+            function getHltvScore(player) {
+                const rating = player.rating?.hltv_rating || 0;
+                // HLTV rating ranges from ~0.5 to ~2.0
+                const clamped = Math.max(0.5, Math.min(2.0, rating));
+                return Math.round((clamped - 0.5) / 1.5 * 100);
+            }
+
+            // Helper to normalize impact rating
+            function getImpactScore(player) {
+                const impact = player.rating?.impact_rating || 0;
+                // Impact typically ranges from 0 to 2
+                const clamped = Math.max(0, Math.min(2.0, impact));
+                return Math.round(clamped / 2.0 * 100);
+            }
+
+            // Helper to get headshot percentage (already 0-100)
+            function getHsScore(player) {
+                return Math.round(player.stats?.headshot_pct || 0);
+            }
+
+            // Helper to normalize utility damage
+            function getUtilityDamageScore(player) {
+                const heDmg = player.utility?.he_damage || 0;
+                const molotovDmg = player.utility?.molotov_damage || 0;
+                const total = heDmg + molotovDmg;
+                // Utility damage can range from 0 to 500+
+                const clamped = Math.max(0, Math.min(500, total));
+                return Math.round(clamped / 500 * 100);
+            }
+
+            // Calculate normalized metrics for both players
+            const metricsA = [
+                getHltvScore(playerA),
+                getImpactScore(playerA),
+                getTtdScore(playerA),
+                getHsScore(playerA),
+                getUtilityDamageScore(playerA)
+            ];
+
+            const metricsB = [
+                getHltvScore(playerB),
+                getImpactScore(playerB),
+                getTtdScore(playerB),
+                getHsScore(playerB),
+                getUtilityDamageScore(playerB)
+            ];
+
+            // Raw values for display
+            const rawA = {
+                hltv: (playerA.rating?.hltv_rating || 0).toFixed(2),
+                impact: (playerA.rating?.impact_rating || 0).toFixed(2),
+                ttd: playerA.advanced?.ttd_median_ms ? Math.round(playerA.advanced.ttd_median_ms) + 'ms' : 'N/A',
+                hs: (playerA.stats?.headshot_pct || 0).toFixed(1) + '%',
+                util: (playerA.utility?.he_damage || 0) + (playerA.utility?.molotov_damage || 0)
+            };
+
+            const rawB = {
+                hltv: (playerB.rating?.hltv_rating || 0).toFixed(2),
+                impact: (playerB.rating?.impact_rating || 0).toFixed(2),
+                ttd: playerB.advanced?.ttd_median_ms ? Math.round(playerB.advanced.ttd_median_ms) + 'ms' : 'N/A',
+                hs: (playerB.stats?.headshot_pct || 0).toFixed(1) + '%',
+                util: (playerB.utility?.he_damage || 0) + (playerB.utility?.molotov_damage || 0)
+            };
+
+            return {
+                labels,
+                metricsA,
+                metricsB,
+                rawA,
+                rawB,
+                playerA: {
+                    name: playerA.name,
+                    team: playerA.team,
+                    id: playerA.id
+                },
+                playerB: {
+                    name: playerB.name,
+                    team: playerB.team,
+                    id: playerB.id
+                }
+            };
+        }
+
+        /**
+         * Render the comparison radar chart and stats panel
+         */
+        function renderComparisonChart(playerA, playerB) {
+            const container = document.getElementById('comparison-chart-container');
+            const placeholder = document.getElementById('comparison-placeholder');
+            const statsDiv = document.getElementById('comparison-stats');
+
+            if (!playerA || !playerB) {
+                if (container) container.style.display = 'none';
+                if (placeholder) placeholder.style.display = 'block';
+                return;
+            }
+
+            if (container) container.style.display = 'flex';
+            if (placeholder) placeholder.style.display = 'none';
+
+            const comparison = getPlayerComparisonStats(playerA, playerB);
+
+            // Colors based on team
+            const colorA = playerA.team === 'CT' ? 'rgba(74, 144, 217, 0.7)' : 'rgba(222, 155, 53, 0.7)';
+            const borderA = playerA.team === 'CT' ? 'rgba(74, 144, 217, 1)' : 'rgba(222, 155, 53, 1)';
+            const colorB = playerB.team === 'CT' ? 'rgba(74, 144, 217, 0.7)' : 'rgba(222, 155, 53, 0.7)';
+            const borderB = playerB.team === 'CT' ? 'rgba(74, 144, 217, 1)' : 'rgba(222, 155, 53, 1)';
+
+            // Ensure different colors if same team
+            const finalColorA = colorA;
+            const finalBorderA = borderA;
+            const finalColorB = playerA.team === playerB.team ? 'rgba(124, 58, 237, 0.7)' : colorB;
+            const finalBorderB = playerA.team === playerB.team ? 'rgba(124, 58, 237, 1)' : borderB;
+
+            // Destroy existing chart if present
+            if (charts.comparisonRadar) {
+                charts.comparisonRadar.destroy();
+            }
+
+            // Create radar chart
+            const ctx = document.getElementById('chart-comparison-radar');
+            if (ctx) {
+                charts.comparisonRadar = new Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: comparison.labels,
+                        datasets: [
+                            {
+                                label: comparison.playerA.name,
+                                data: comparison.metricsA,
+                                fill: true,
+                                backgroundColor: finalColorA.replace('0.7', '0.2'),
+                                borderColor: finalBorderA,
+                                pointBackgroundColor: finalBorderA,
+                                pointBorderColor: '#fff',
+                                pointHoverBackgroundColor: '#fff',
+                                pointHoverBorderColor: finalBorderA,
+                                borderWidth: 2
+                            },
+                            {
+                                label: comparison.playerB.name,
+                                data: comparison.metricsB,
+                                fill: true,
+                                backgroundColor: finalColorB.replace('0.7', '0.2'),
+                                borderColor: finalBorderB,
+                                pointBackgroundColor: finalBorderB,
+                                pointBorderColor: '#fff',
+                                pointHoverBackgroundColor: '#fff',
+                                pointHoverBorderColor: finalBorderB,
+                                borderWidth: 2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: '#a0a0b0',
+                                    font: { size: 12 },
+                                    padding: 20
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.dataset.label || '';
+                                        const value = context.raw || 0;
+                                        return `${label}: ${value}/100`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            r: {
+                                min: 0,
+                                max: 100,
+                                beginAtZero: true,
+                                angleLines: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                pointLabels: {
+                                    color: '#a0a0b0',
+                                    font: { size: 11 }
+                                },
+                                ticks: {
+                                    color: '#606070',
+                                    backdropColor: 'transparent',
+                                    stepSize: 20
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Render stats comparison table
+            if (statsDiv) {
+                const teamClassA = playerA.team === 'CT' ? 'team-ct' : 'team-t';
+                const teamClassB = playerB.team === 'CT' ? 'team-ct' : 'team-t';
+
+                // Determine which values are better
+                const hltvBetter = parseFloat(comparison.rawA.hltv) > parseFloat(comparison.rawB.hltv) ? 'a' : 'b';
+                const impactBetter = parseFloat(comparison.rawA.impact) > parseFloat(comparison.rawB.impact) ? 'a' : 'b';
+                const ttdBetter = comparison.rawA.ttd !== 'N/A' && comparison.rawB.ttd !== 'N/A'
+                    ? (parseInt(comparison.rawA.ttd) < parseInt(comparison.rawB.ttd) ? 'a' : 'b')
+                    : '';
+                const hsBetter = parseFloat(comparison.rawA.hs) > parseFloat(comparison.rawB.hs) ? 'a' : 'b';
+                const utilBetter = comparison.rawA.util > comparison.rawB.util ? 'a' : 'b';
+
+                statsDiv.innerHTML = `
+                    <div class="comparison-player-stats">
+                        <div class="comparison-player-header player-a">
+                            <span class="comparison-player-name">${esc(comparison.playerA.name)}</span>
+                            <span class="comparison-player-team ${teamClassA}">${comparison.playerA.team}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">HLTV Rating</span>
+                            <span class="comparison-stat-value ${hltvBetter === 'a' ? 'better' : ''}">${comparison.rawA.hltv}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Impact Score</span>
+                            <span class="comparison-stat-value ${impactBetter === 'a' ? 'better' : ''}">${comparison.rawA.impact}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">TTD (Reaction)</span>
+                            <span class="comparison-stat-value ${ttdBetter === 'a' ? 'better' : ''}">${comparison.rawA.ttd}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Headshot %</span>
+                            <span class="comparison-stat-value ${hsBetter === 'a' ? 'better' : ''}">${comparison.rawA.hs}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Utility Damage</span>
+                            <span class="comparison-stat-value ${utilBetter === 'a' ? 'better' : ''}">${comparison.rawA.util}</span>
+                        </div>
+                    </div>
+
+                    <div class="comparison-player-stats">
+                        <div class="comparison-player-header player-b">
+                            <span class="comparison-player-name">${esc(comparison.playerB.name)}</span>
+                            <span class="comparison-player-team ${teamClassB}">${comparison.playerB.team}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">HLTV Rating</span>
+                            <span class="comparison-stat-value ${hltvBetter === 'b' ? 'better' : ''}">${comparison.rawB.hltv}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Impact Score</span>
+                            <span class="comparison-stat-value ${impactBetter === 'b' ? 'better' : ''}">${comparison.rawB.impact}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">TTD (Reaction)</span>
+                            <span class="comparison-stat-value ${ttdBetter === 'b' ? 'better' : ''}">${comparison.rawB.ttd}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Headshot %</span>
+                            <span class="comparison-stat-value ${hsBetter === 'b' ? 'better' : ''}">${comparison.rawB.hs}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Utility Damage</span>
+                            <span class="comparison-stat-value ${utilBetter === 'b' ? 'better' : ''}">${comparison.rawB.util}</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Initialize player comparison dropdowns
+         */
+        function initPlayerComparison() {
+            const selectA = document.getElementById('player-a-select');
+            const selectB = document.getElementById('player-b-select');
+
+            if (!selectA || !selectB || !analysisData) return;
+
+            const players = Object.entries(analysisData.players || {}).map(([id, p]) => ({ id, ...p }));
+
+            function onSelectionChange() {
+                const idA = selectA.value;
+                const idB = selectB.value;
+
+                if (idA && idB && idA !== idB) {
+                    const playerA = players.find(p => p.id === idA);
+                    const playerB = players.find(p => p.id === idB);
+                    renderComparisonChart(playerA, playerB);
+                } else {
+                    renderComparisonChart(null, null);
+                }
+            }
+
+            selectA.addEventListener('change', onSelectionChange);
+            selectB.addEventListener('change', onSelectionChange);
         }
 
         // Render Timeline Tab
