@@ -474,6 +474,22 @@ class DemoParser:
         damages_df = demo.damages.to_pandas() if demo.damages is not None else pd.DataFrame()
         rounds_df = demo.rounds.to_pandas() if demo.rounds is not None else pd.DataFrame()
         grenades_df = demo.grenades.to_pandas() if demo.grenades is not None else pd.DataFrame()
+
+        # SAFETY: awpy grenades can contain tick-level trajectory data (millions of rows)
+        # We only need one row per grenade throw, so deduplicate by entity_id
+        if not grenades_df.empty and len(grenades_df) > 1000:
+            original_len = len(grenades_df)
+
+            # Try to deduplicate by entity_id (get first occurrence = throw event)
+            if 'entity_id' in grenades_df.columns:
+                grenades_df = grenades_df.drop_duplicates(subset=['entity_id'], keep='first')
+                logger.info(f"Deduplicated grenades by entity_id: {original_len} -> {len(grenades_df)} rows")
+
+            # If still too large, apply hard cap to prevent memory exhaustion
+            if len(grenades_df) > 10000:
+                logger.warning(f"Grenade dataset still large ({len(grenades_df)} rows). Limiting to 10,000 to prevent crash.")
+                grenades_df = grenades_df.head(10000)
+
         bomb_df = demo.bomb.to_pandas() if demo.bomb is not None else pd.DataFrame()
         shots_df = demo.shots.to_pandas() if demo.shots is not None else pd.DataFrame()
         ticks_df = demo.ticks.to_pandas() if include_ticks and demo.ticks is not None else None
