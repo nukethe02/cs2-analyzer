@@ -11,6 +11,10 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
+    <!-- Leaflet.js for interactive maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
     <!-- Google Fonts - Roboto Mono for tech feel -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -318,8 +322,8 @@
             <div id="heatmaps-content" class="max-w-6xl mx-auto">
                 <div class="flex items-center justify-between mb-8">
                     <div>
-                        <h2 class="text-2xl font-bold text-white">Position Heatmaps</h2>
-                        <p class="text-slate-400 mt-1">Kill and death locations on the map</p>
+                        <h2 class="text-2xl font-bold text-white">Interactive Kill Map</h2>
+                        <p class="text-slate-400 mt-1">Zoom, pan, and click markers for kill details</p>
                     </div>
                 </div>
 
@@ -327,25 +331,84 @@
                     <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
                     </svg>
-                    <p class="text-slate-500">Upload a demo file to view heatmaps</p>
+                    <p class="text-slate-500">Upload a demo file to view the interactive kill map</p>
                 </div>
 
                 <div id="heatmap-display" class="hidden">
-                    <!-- Heatmap controls and canvas -->
+                    <!-- Interactive Kill Map with Leaflet -->
                     <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
-                        <div class="flex gap-4 mb-6">
+                        <!-- Map Controls -->
+                        <div class="flex flex-wrap items-center gap-4 mb-4">
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" id="show-kills" checked class="w-4 h-4 accent-green-500">
                                 <span class="text-sm text-slate-300">Kills</span>
+                                <span class="w-3 h-3 rounded-full bg-green-500 ml-1"></span>
                             </label>
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" id="show-deaths" checked class="w-4 h-4 accent-red-500">
                                 <span class="text-sm text-slate-300">Deaths</span>
+                                <span class="w-3 h-3 rounded-full bg-red-500 ml-1"></span>
                             </label>
-                            <select id="heatmap-player-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1 text-sm">
+                            <div class="h-6 w-px bg-slate-600"></div>
+                            <select id="heatmap-player-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
                                 <option value="all">All Players</option>
                             </select>
+                            <select id="heatmap-round-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
+                                <option value="all">All Rounds</option>
+                            </select>
+                            <div class="h-6 w-px bg-slate-600"></div>
+                            <button id="killmap-reset-view" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg text-sm text-white transition-colors">
+                                Reset View
+                            </button>
                         </div>
+
+                        <!-- Legend -->
+                        <div class="flex flex-wrap items-center gap-6 mb-4 text-xs text-slate-400">
+                            <div class="flex items-center gap-2">
+                                <span class="w-4 h-4 rounded-full border-2 border-blue-500 bg-blue-500/30"></span>
+                                <span>CT Kill</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-4 h-4 rounded-full border-2 border-orange-500 bg-orange-500/30"></span>
+                                <span>T Kill</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-4 h-4 rounded-full border-2 border-red-500 bg-red-500/30"></span>
+                                <span>Death Location</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-4 h-4 rounded-full border-2 border-yellow-400 bg-yellow-400/30"></span>
+                                <span>Headshot</span>
+                            </div>
+                        </div>
+
+                        <!-- Leaflet Map Container -->
+                        <div id="killmap" class="w-full rounded-lg overflow-hidden border border-slate-600" style="height: 600px; background: #0f172a;"></div>
+
+                        <!-- Map Stats -->
+                        <div id="killmap-stats" class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                            <div class="bg-slate-900/50 rounded-lg p-3">
+                                <div id="stat-total-kills" class="text-2xl font-bold text-green-400">0</div>
+                                <div class="text-xs text-slate-500">Total Kills</div>
+                            </div>
+                            <div class="bg-slate-900/50 rounded-lg p-3">
+                                <div id="stat-total-deaths" class="text-2xl font-bold text-red-400">0</div>
+                                <div class="text-xs text-slate-500">Total Deaths</div>
+                            </div>
+                            <div class="bg-slate-900/50 rounded-lg p-3">
+                                <div id="stat-headshots" class="text-2xl font-bold text-yellow-400">0</div>
+                                <div class="text-xs text-slate-500">Headshots</div>
+                            </div>
+                            <div class="bg-slate-900/50 rounded-lg p-3">
+                                <div id="stat-hs-rate" class="text-2xl font-bold text-cyan-400">0%</div>
+                                <div class="text-xs text-slate-500">HS Rate</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fallback Canvas Heatmap (hidden by default, can toggle) -->
+                    <div class="mt-6 bg-slate-800/50 rounded-xl border border-slate-700 p-6 hidden" id="canvas-heatmap-section">
+                        <h3 class="text-lg font-semibold text-white mb-4">Classic Heatmap View</h3>
                         <canvas id="heatmap-canvas" class="w-full max-w-3xl mx-auto rounded-lg bg-slate-900"></canvas>
                     </div>
                 </div>
@@ -527,7 +590,10 @@
 
                 // Initialize tab-specific content if data exists
                 if (analysisData) {
-                    if (tab === 'heatmaps') initHeatmap(analysisData.heatmap_data || {});
+                    if (tab === 'heatmaps') {
+                        const players = Object.entries(analysisData.players || {}).map(([id, p]) => ({ id, ...p }));
+                        initHeatmap(analysisData.heatmap_data || {}, players);
+                    }
                 }
             });
         });
@@ -1075,6 +1141,51 @@
             padding: 32px;
             text-align: center;
             color: var(--text-muted);
+        }
+
+        /* Leaflet Kill Map Popup Styles */
+        .leaflet-popup-content-wrapper {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+        .leaflet-popup-content {
+            margin: 12px 16px;
+            color: #e2e8f0;
+        }
+        .leaflet-popup-tip {
+            background: #1e293b;
+            border: 1px solid #334155;
+        }
+        .leaflet-popup-close-button {
+            color: #64748b !important;
+            font-size: 18px !important;
+            padding: 4px 8px !important;
+        }
+        .leaflet-popup-close-button:hover {
+            color: #e2e8f0 !important;
+        }
+        .leaflet-control-zoom a {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }
+        .leaflet-control-zoom a:hover {
+            background: #334155 !important;
+        }
+        .leaflet-control-scale-line {
+            background: rgba(30, 41, 59, 0.8) !important;
+            border-color: #334155 !important;
+            color: #94a3b8 !important;
+        }
+
+        /* Kill Map container styling */
+        #killmap {
+            z-index: 1;
+        }
+        #killmap .leaflet-container {
+            background: #0f172a;
         }
 
         /* Grenade Radar Visualization */
@@ -2091,8 +2202,7 @@
 
                     // Initialize heatmap and kill map when tab is shown
                     if (btn.dataset.tab === 'heatmap') {
-                        initHeatmap(data.heatmap_data || {});
-                        initKillMap(data.heatmap_data || {}, info.map || 'unknown', players);
+                        initHeatmap(data.heatmap_data || {}, players);
                     }
 
                     // Initialize replay viewer when tab is shown
@@ -4252,7 +4362,11 @@
         }
 
         function renderHeatmapContent() {
-            // This is initialized when the tab is clicked
+            // Initialize interactive kill map if data is available
+            if (analysisData && analysisData.heatmap_data) {
+                const players = Object.entries(analysisData.players || {}).map(([id, p]) => ({ id, ...p }));
+                initHeatmap(analysisData.heatmap_data, players);
+            }
         }
 
         // ============================================
@@ -4359,76 +4473,458 @@
         }
 
         // ============================================
-        // Heatmap
+        // Interactive Kill Map with Leaflet.js
         // ============================================
-        function initHeatmap(heatmapData) {
+
+        // Global kill map state
+        let killMap = null;
+        let killMapLayers = {
+            kills: null,
+            deaths: null
+        };
+        let killMapData = null;
+        let killMapPlayers = [];
+
+        // CS2 map coordinate bounds (approximate, varies by map)
+        // These are normalized coordinates for a generic representation
+        const CS2_MAP_BOUNDS = {
+            min: [-4096, -4096],
+            max: [4096, 4096]
+        };
+
+        /**
+         * Initialize the interactive Leaflet kill map
+         */
+        function initHeatmap(heatmapData, players = []) {
             const display = document.getElementById('heatmap-display');
             const placeholder = document.getElementById('heatmap-placeholder');
+            const mapContainer = document.getElementById('killmap');
 
-            if (!heatmapData || (!heatmapData.kills && !heatmapData.deaths)) {
+            // Check if we have data
+            const hasKills = heatmapData?.kill_positions?.length > 0;
+            const hasDeaths = heatmapData?.death_positions?.length > 0;
+
+            if (!heatmapData || (!hasKills && !hasDeaths)) {
+                // No data - show placeholder
+                if (placeholder) placeholder.classList.remove('hidden');
+                if (display) display.classList.add('hidden');
                 return;
             }
 
-            placeholder.classList.add('hidden');
-            display.classList.remove('hidden');
+            // Show display, hide placeholder
+            if (placeholder) placeholder.classList.add('hidden');
+            if (display) display.classList.remove('hidden');
 
-            const canvas = document.getElementById('heatmap-canvas');
-            const ctx = canvas.getContext('2d');
+            // Store data for filtering
+            killMapData = heatmapData;
+            killMapPlayers = players || [];
 
-            // Set canvas size
-            canvas.width = 800;
-            canvas.height = 800;
-
-            // Clear and draw background
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw grid
-            ctx.strokeStyle = 'rgba(0, 212, 255, 0.1)';
-            ctx.lineWidth = 1;
-            for (let i = 0; i <= 10; i++) {
-                const pos = (canvas.width / 10) * i;
-                ctx.beginPath();
-                ctx.moveTo(pos, 0);
-                ctx.lineTo(pos, canvas.height);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(0, pos);
-                ctx.lineTo(canvas.width, pos);
-                ctx.stroke();
+            // Initialize map if not already done
+            if (!killMap) {
+                initLeafletMap();
             }
 
-            // Draw kills (green dots)
-            if (heatmapData.kills && document.getElementById('show-kills').checked) {
-                heatmapData.kills.forEach(k => {
-                    if (k.x !== undefined && k.y !== undefined) {
-                        const x = (k.x / 100) * canvas.width;
-                        const y = (k.y / 100) * canvas.height;
+            // Populate player filter dropdown
+            populateKillMapFilters();
+
+            // Plot markers
+            updateKillMapMarkers();
+
+            // Update stats
+            updateKillMapStats();
+
+            // Set up event listeners
+            setupKillMapListeners();
+        }
+
+        /**
+         * Initialize the Leaflet map instance
+         */
+        function initLeafletMap() {
+            const mapContainer = document.getElementById('killmap');
+            if (!mapContainer || killMap) return;
+
+            // Create a simple CRS for CS2 coordinates
+            const cs2CRS = L.CRS.Simple;
+
+            // Initialize map with simple CRS (no geographic projection)
+            killMap = L.map('killmap', {
+                crs: cs2CRS,
+                minZoom: -2,
+                maxZoom: 4,
+                zoomSnap: 0.25,
+                zoomDelta: 0.5,
+                attributionControl: false,
+                zoomControl: true
+            });
+
+            // Set initial view to center of CS2 coordinate system
+            killMap.setView([0, 0], 0);
+
+            // Add a dark tile background (grid pattern)
+            addMapBackground();
+
+            // Add custom zoom control position
+            killMap.zoomControl.setPosition('topright');
+
+            // Add scale control
+            L.control.scale({
+                position: 'bottomleft',
+                maxWidth: 200,
+                metric: true,
+                imperial: false
+            }).addTo(killMap);
+
+            // Initialize layer groups
+            killMapLayers.kills = L.layerGroup().addTo(killMap);
+            killMapLayers.deaths = L.layerGroup().addTo(killMap);
+        }
+
+        /**
+         * Add a grid background to the map
+         */
+        function addMapBackground() {
+            if (!killMap) return;
+
+            // Create a custom grid layer using canvas
+            const GridLayer = L.GridLayer.extend({
+                createTile: function(coords) {
+                    const tile = document.createElement('canvas');
+                    const tileSize = this.getTileSize();
+                    tile.width = tileSize.x;
+                    tile.height = tileSize.y;
+
+                    const ctx = tile.getContext('2d');
+
+                    // Dark background
+                    ctx.fillStyle = '#0f172a';
+                    ctx.fillRect(0, 0, tile.width, tile.height);
+
+                    // Grid lines
+                    ctx.strokeStyle = 'rgba(0, 212, 255, 0.08)';
+                    ctx.lineWidth = 1;
+
+                    // Draw grid
+                    const gridSize = 32;
+                    for (let x = 0; x <= tile.width; x += gridSize) {
                         ctx.beginPath();
-                        ctx.arc(x, y, 6, 0, Math.PI * 2);
-                        ctx.fillStyle = 'rgba(34, 197, 94, 0.7)';
-                        ctx.fill();
+                        ctx.moveTo(x, 0);
+                        ctx.lineTo(x, tile.height);
+                        ctx.stroke();
                     }
+                    for (let y = 0; y <= tile.height; y += gridSize) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, y);
+                        ctx.lineTo(tile.width, y);
+                        ctx.stroke();
+                    }
+
+                    // Add subtle corner markers
+                    ctx.fillStyle = 'rgba(0, 212, 255, 0.15)';
+                    ctx.fillRect(0, 0, 2, 2);
+
+                    return tile;
+                }
+            });
+
+            new GridLayer({
+                tileSize: 256,
+                opacity: 1
+            }).addTo(killMap);
+        }
+
+        /**
+         * Populate the player and round filter dropdowns
+         */
+        function populateKillMapFilters() {
+            const playerFilter = document.getElementById('heatmap-player-filter');
+            const roundFilter = document.getElementById('heatmap-round-filter');
+
+            if (!playerFilter || !killMapData) return;
+
+            // Get unique players from kill data
+            const playerNames = new Set();
+            const rounds = new Set();
+
+            if (killMapData.kill_positions) {
+                killMapData.kill_positions.forEach(k => {
+                    if (k.player) playerNames.add(k.player);
+                    if (k.victim) playerNames.add(k.victim);
+                    if (k.round) rounds.add(k.round);
+                });
+            }
+            if (killMapData.death_positions) {
+                killMapData.death_positions.forEach(d => {
+                    if (d.player) playerNames.add(d.player);
+                    if (d.attacker) playerNames.add(d.attacker);
+                    if (d.round) rounds.add(d.round);
                 });
             }
 
-            // Draw deaths (red dots)
-            if (heatmapData.deaths && document.getElementById('show-deaths').checked) {
-                heatmapData.deaths.forEach(d => {
-                    if (d.x !== undefined && d.y !== undefined) {
-                        const x = (d.x / 100) * canvas.width;
-                        const y = (d.y / 100) * canvas.height;
-                        ctx.beginPath();
-                        ctx.arc(x, y, 6, 0, Math.PI * 2);
-                        ctx.fillStyle = 'rgba(239, 68, 68, 0.7)';
-                        ctx.fill();
+            // Populate player dropdown
+            playerFilter.innerHTML = '<option value="all">All Players</option>';
+            Array.from(playerNames).sort().forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                playerFilter.appendChild(option);
+            });
+
+            // Populate round dropdown
+            if (roundFilter) {
+                roundFilter.innerHTML = '<option value="all">All Rounds</option>';
+                Array.from(rounds).sort((a, b) => a - b).forEach(round => {
+                    const option = document.createElement('option');
+                    option.value = round;
+                    option.textContent = `Round ${round}`;
+                    roundFilter.appendChild(option);
+                });
+            }
+        }
+
+        /**
+         * Update markers based on current filter settings
+         */
+        function updateKillMapMarkers() {
+            if (!killMap || !killMapData) return;
+
+            const showKills = document.getElementById('show-kills')?.checked ?? true;
+            const showDeaths = document.getElementById('show-deaths')?.checked ?? true;
+            const playerFilter = document.getElementById('heatmap-player-filter')?.value || 'all';
+            const roundFilter = document.getElementById('heatmap-round-filter')?.value || 'all';
+
+            // Clear existing markers
+            killMapLayers.kills.clearLayers();
+            killMapLayers.deaths.clearLayers();
+
+            const allMarkerBounds = [];
+
+            // Plot kill markers
+            if (showKills && killMapData.kill_positions) {
+                killMapData.kill_positions.forEach(kill => {
+                    // Apply filters
+                    if (playerFilter !== 'all' && kill.player !== playerFilter && kill.victim !== playerFilter) {
+                        return;
                     }
+                    if (roundFilter !== 'all' && kill.round != roundFilter) {
+                        return;
+                    }
+
+                    // Normalize coordinates (CS2 uses large coords, we scale them)
+                    const x = kill.x || 0;
+                    const y = kill.y || 0;
+
+                    // Leaflet uses [lat, lng] = [y, x]
+                    const latLng = [y / 50, x / 50]; // Scale down for better display
+
+                    // Determine marker color based on attacker team
+                    const team = (kill.attacker_team || '').toUpperCase();
+                    const isHeadshot = kill.headshot === true;
+                    let color, fillColor;
+
+                    if (isHeadshot) {
+                        color = '#facc15'; // Yellow for headshot
+                        fillColor = 'rgba(250, 204, 21, 0.6)';
+                    } else if (team.includes('CT')) {
+                        color = '#4a90d9'; // CT blue
+                        fillColor = 'rgba(74, 144, 217, 0.6)';
+                    } else if (team.includes('T') || team === 'T') {
+                        color = '#de9b35'; // T orange
+                        fillColor = 'rgba(222, 155, 53, 0.6)';
+                    } else {
+                        color = '#22c55e'; // Default green
+                        fillColor = 'rgba(34, 197, 94, 0.6)';
+                    }
+
+                    // Create circle marker
+                    const marker = L.circleMarker(latLng, {
+                        radius: isHeadshot ? 8 : 6,
+                        color: color,
+                        fillColor: fillColor,
+                        fillOpacity: 0.7,
+                        weight: 2
+                    });
+
+                    // Create popup content
+                    const weaponDisplay = kill.weapon ? kill.weapon.replace('weapon_', '').toUpperCase() : 'Unknown';
+                    const hsIcon = isHeadshot ? ' <span style="color: #facc15;">&#9733;</span>' : '';
+                    const popupContent = `
+                        <div style="font-family: 'Inter', sans-serif; min-width: 180px;">
+                            <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px; color: #fff;">
+                                ${escapeHtml(kill.player || kill.attacker || 'Unknown')}${hsIcon}
+                            </div>
+                            <div style="font-size: 12px; color: #94a3b8;">
+                                <div style="margin-bottom: 4px;">
+                                    <span style="color: #ef4444;">killed</span>
+                                    <span style="color: #fff; font-weight: 500;">${escapeHtml(kill.victim || 'Unknown')}</span>
+                                </div>
+                                <div style="margin-bottom: 4px;">
+                                    <span style="color: #64748b;">with</span>
+                                    <span style="color: #00d4ff; font-weight: 500;">${weaponDisplay}</span>
+                                </div>
+                                ${kill.round ? `<div style="color: #64748b;">Round ${kill.round}</div>` : ''}
+                                ${isHeadshot ? '<div style="color: #facc15; font-weight: 500;">Headshot!</div>' : ''}
+                            </div>
+                        </div>
+                    `;
+
+                    marker.bindPopup(popupContent, {
+                        className: 'killmap-popup',
+                        closeButton: true,
+                        autoPan: true
+                    });
+
+                    marker.addTo(killMapLayers.kills);
+                    allMarkerBounds.push(latLng);
                 });
             }
 
-            // Add event listeners for checkboxes
-            document.getElementById('show-kills').onchange = () => initHeatmap(heatmapData);
-            document.getElementById('show-deaths').onchange = () => initHeatmap(heatmapData);
+            // Plot death markers
+            if (showDeaths && killMapData.death_positions) {
+                killMapData.death_positions.forEach(death => {
+                    // Apply filters
+                    if (playerFilter !== 'all' && death.player !== playerFilter && death.attacker !== playerFilter) {
+                        return;
+                    }
+                    if (roundFilter !== 'all' && death.round != roundFilter) {
+                        return;
+                    }
+
+                    const x = death.x || 0;
+                    const y = death.y || 0;
+                    const latLng = [y / 50, x / 50];
+
+                    // Death markers are red X-shaped
+                    const marker = L.circleMarker(latLng, {
+                        radius: 5,
+                        color: '#ef4444',
+                        fillColor: 'rgba(239, 68, 68, 0.5)',
+                        fillOpacity: 0.6,
+                        weight: 2
+                    });
+
+                    const popupContent = `
+                        <div style="font-family: 'Inter', sans-serif; min-width: 150px;">
+                            <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px; color: #ef4444;">
+                                ${escapeHtml(death.player || 'Unknown')} died
+                            </div>
+                            <div style="font-size: 12px; color: #94a3b8;">
+                                ${death.attacker ? `<div style="margin-bottom: 4px;">Killed by <span style="color: #fff;">${escapeHtml(death.attacker)}</span></div>` : ''}
+                                ${death.round ? `<div style="color: #64748b;">Round ${death.round}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+
+                    marker.bindPopup(popupContent, {
+                        className: 'killmap-popup',
+                        closeButton: true,
+                        autoPan: true
+                    });
+
+                    marker.addTo(killMapLayers.deaths);
+                    allMarkerBounds.push(latLng);
+                });
+            }
+
+            // Fit bounds to all markers
+            if (allMarkerBounds.length > 0) {
+                const bounds = L.latLngBounds(allMarkerBounds);
+                killMap.fitBounds(bounds, {
+                    padding: [50, 50],
+                    maxZoom: 2
+                });
+            }
+        }
+
+        /**
+         * Update the stats display below the map
+         */
+        function updateKillMapStats() {
+            if (!killMapData) return;
+
+            const playerFilter = document.getElementById('heatmap-player-filter')?.value || 'all';
+            const roundFilter = document.getElementById('heatmap-round-filter')?.value || 'all';
+
+            let totalKills = 0;
+            let totalDeaths = 0;
+            let headshots = 0;
+
+            if (killMapData.kill_positions) {
+                killMapData.kill_positions.forEach(k => {
+                    if (playerFilter !== 'all' && k.player !== playerFilter && k.victim !== playerFilter) return;
+                    if (roundFilter !== 'all' && k.round != roundFilter) return;
+                    totalKills++;
+                    if (k.headshot) headshots++;
+                });
+            }
+
+            if (killMapData.death_positions) {
+                killMapData.death_positions.forEach(d => {
+                    if (playerFilter !== 'all' && d.player !== playerFilter && d.attacker !== playerFilter) return;
+                    if (roundFilter !== 'all' && d.round != roundFilter) return;
+                    totalDeaths++;
+                });
+            }
+
+            const hsRate = totalKills > 0 ? Math.round((headshots / totalKills) * 100) : 0;
+
+            document.getElementById('stat-total-kills').textContent = totalKills;
+            document.getElementById('stat-total-deaths').textContent = totalDeaths;
+            document.getElementById('stat-headshots').textContent = headshots;
+            document.getElementById('stat-hs-rate').textContent = hsRate + '%';
+        }
+
+        /**
+         * Set up event listeners for map controls
+         */
+        function setupKillMapListeners() {
+            // Checkbox listeners
+            document.getElementById('show-kills')?.addEventListener('change', () => {
+                updateKillMapMarkers();
+                updateKillMapStats();
+            });
+            document.getElementById('show-deaths')?.addEventListener('change', () => {
+                updateKillMapMarkers();
+                updateKillMapStats();
+            });
+
+            // Filter listeners
+            document.getElementById('heatmap-player-filter')?.addEventListener('change', () => {
+                updateKillMapMarkers();
+                updateKillMapStats();
+            });
+            document.getElementById('heatmap-round-filter')?.addEventListener('change', () => {
+                updateKillMapMarkers();
+                updateKillMapStats();
+            });
+
+            // Reset view button
+            document.getElementById('killmap-reset-view')?.addEventListener('click', () => {
+                if (killMap) {
+                    updateKillMapMarkers(); // This will re-fit bounds
+                }
+            });
+        }
+
+        /**
+         * Clean up map on tab change or data refresh
+         */
+        function destroyKillMap() {
+            if (killMap) {
+                killMap.remove();
+                killMap = null;
+                killMapLayers = { kills: null, deaths: null };
+            }
+        }
+
+        /**
+         * Escape HTML to prevent XSS in popups
+         */
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // ============================================
