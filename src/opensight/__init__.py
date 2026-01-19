@@ -1,23 +1,27 @@
 """
-OpenSight - Local CS2 Analytics Framework
+OpenSight - Professional CS2 Demo Analyzer
 
-A locally-operated analytics system for Counter-Strike 2 that provides
-professional-grade metrics without cloud dependencies.
+A universal Counter-Strike 2 demo analysis tool that works with any demo from any source.
+Provides industry-standard metrics (HLTV 2.0 Rating, KAST%, ADR) and multiple output formats.
+
+Usage:
+    from opensight import parse_demo, analyze_demo
+
+    demo = parse_demo("match.dem")
+    analysis = analyze_demo(demo)
+
+    for player in analysis.get_leaderboard():
+        print(f"{player.name}: {player.hltv_rating:.2f}")
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "OpenSight Contributors"
 
 
 def __getattr__(name):
     """Lazy import for heavy dependencies."""
-    if name == "decode_sharecode":
-        from opensight.sharecode import decode_sharecode
-        return decode_sharecode
-    elif name == "ShareCodeInfo":
-        from opensight.sharecode import ShareCodeInfo
-        return ShareCodeInfo
-    elif name == "DemoParser":
+    # Parser
+    if name == "DemoParser":
         from opensight.parser import DemoParser
         return DemoParser
     elif name == "DemoData":
@@ -57,8 +61,9 @@ def __getattr__(name):
 
 
 __all__ = [
-    "decode_sharecode",
-    "ShareCodeInfo",
+    # Version
+    "__version__",
+    # Parser
     "DemoParser",
     "DemoData",
     "calculate_ttd",
