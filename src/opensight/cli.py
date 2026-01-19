@@ -284,122 +284,58 @@ def _display_economy_metrics(data: DemoData, steam_id: Optional[int]) -> None:
     """Display economy metrics table."""
     econ_results = calculate_economy_metrics(data, steam_id)
 
-    if not econ_results:
-        console.print("[yellow]No economy metrics available[/yellow]")
-        return
+    metrics = calculate_engagement_metrics(data, steam_id)
+    ttd = calculate_ttd(data, steam_id)
+    cp = calculate_crosshair_placement(data, steam_id)
 
-    table = Table(title="Economy Metrics")
-    table.add_column("Player", style="cyan")
-    table.add_column("Spent", justify="right")
-    table.add_column("Efficiency", justify="right")
-    table.add_column("Favorite", justify="right")
-    table.add_column("Eco K", justify="right")
-    table.add_column("Force K", justify="right")
-    table.add_column("Full K", justify="right")
+    results = {
+        "demo_info": {
+            "file": str(data.file_path),
+            "map": data.map_name,
+            "duration_seconds": data.duration_seconds,
+            "tick_rate": data.tick_rate,
+        },
+        "players": {},
+    }
 
-    for sid, econ in sorted(econ_results.items(), key=lambda x: x[1].weapon_efficiency, reverse=True):
-        table.add_row(
-            econ.player_name,
-            f"${econ.total_money_spent:,}",
-            f"{econ.weapon_efficiency:.2f}",
-            econ.favorite_weapon,
-            str(econ.eco_round_kills),
-            str(econ.force_buy_kills),
-            str(econ.full_buy_kills),
-        )
+    for sid in data.player_names:
+        player_data = {
+            "name": data.player_names[sid],
+            "team": data.player_teams.get(sid, 0),
+        }
 
-    console.print(table)
-    console.print()
+        if sid in metrics:
+            m = metrics[sid]
+            player_data["engagement"] = {
+                "kills": m.total_kills,
+                "deaths": m.total_deaths,
+                "headshot_percentage": m.headshot_percentage,
+                "damage_per_round": m.damage_per_round,
+            }
 
+        if sid in ttd:
+            t = ttd[sid]
+            player_data["ttd"] = {
+                "engagement_count": t.engagement_count,
+                "mean_ms": t.mean_ttd_ms,
+                "median_ms": t.median_ttd_ms,
+                "min_ms": t.min_ttd_ms,
+                "max_ms": t.max_ttd_ms,
+            }
 
-def _display_utility_metrics(data: DemoData, steam_id: Optional[int]) -> None:
-    """Display utility metrics table."""
-    util_results = calculate_utility_metrics(data, steam_id)
+        if sid in cp:
+            c = cp[sid]
+            player_data["crosshair_placement"] = {
+                "sample_count": c.sample_count,
+                "mean_angle_deg": c.mean_angle_deg,
+                "median_angle_deg": c.median_angle_deg,
+                "score": c.placement_score,
+            }
 
-    if not util_results:
-        console.print("[yellow]No utility metrics available[/yellow]")
-        return
+        results["players"][str(sid)] = player_data
 
-    table = Table(title="Utility Usage")
-    table.add_column("Player", style="cyan")
-    table.add_column("Total", justify="right")
-    table.add_column("Smokes", justify="right")
-    table.add_column("Flashes", justify="right")
-    table.add_column("HEs", justify="right")
-    table.add_column("Molotovs", justify="right")
-    table.add_column("Damage", justify="right")
-
-    for sid, util in sorted(util_results.items(), key=lambda x: x[1].utility_damage, reverse=True):
-        table.add_row(
-            util.player_name,
-            str(util.total_grenades_used),
-            str(util.smokes_thrown),
-            str(util.flashes_thrown),
-            str(util.he_grenades_thrown),
-            str(util.molotovs_thrown),
-            f"{util.utility_damage:.0f}",
-        )
-
-    console.print(table)
-    console.print()
-
-
-def _display_trade_metrics(data: DemoData, steam_id: Optional[int]) -> None:
-    """Display trade metrics table."""
-    trade_results = calculate_trade_metrics(data, steam_id)
-
-    if not trade_results:
-        console.print("[yellow]No trade metrics available[/yellow]")
-        return
-
-    table = Table(title="Trade Kills")
-    table.add_column("Player", style="cyan")
-    table.add_column("Trades", justify="right")
-    table.add_column("Traded", justify="right")
-    table.add_column("Success %", justify="right")
-    table.add_column("Avg Time", justify="right")
-
-    for sid, trade in sorted(trade_results.items(), key=lambda x: x[1].trades_completed, reverse=True):
-        table.add_row(
-            trade.player_name,
-            str(trade.trades_completed),
-            str(trade.deaths_traded),
-            f"{trade.trade_success_rate:.1f}%",
-            f"{trade.avg_trade_time_ms:.0f}ms",
-        )
-
-    console.print(table)
-    console.print()
-
-
-def _display_opening_metrics(data: DemoData, steam_id: Optional[int]) -> None:
-    """Display opening duel metrics table."""
-    opening_results = calculate_opening_metrics(data, steam_id)
-
-    if not opening_results:
-        console.print("[yellow]No opening duel metrics available[/yellow]")
-        return
-
-    table = Table(title="Opening Duels")
-    table.add_column("Player", style="cyan")
-    table.add_column("OK", justify="right")
-    table.add_column("OD", justify="right")
-    table.add_column("Attempts", justify="right")
-    table.add_column("Success", justify="right")
-    table.add_column("Weapon", justify="right")
-
-    for sid, opening in sorted(opening_results.items(), key=lambda x: x[1].opening_success_rate, reverse=True):
-        table.add_row(
-            opening.player_name,
-            str(opening.opening_kills),
-            str(opening.opening_deaths),
-            str(opening.opening_attempts),
-            f"{opening.opening_success_rate:.1f}%",
-            opening.opening_weapon,
-        )
-
-    console.print(table)
-    console.print()
+    with open(output, "w") as f:
+        json.dump(results, f, indent=2)
 
 
 @app.command()
