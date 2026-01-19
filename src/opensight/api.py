@@ -1,7 +1,7 @@
 """
 OpenSight Web API
 
-FastAPI application for CS2 demo analysis with advanced metrics.
+FastAPI application for CS2 demo analysis with professional-grade metrics.
 """
 
 from pathlib import Path
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="OpenSight API",
-    description="CS2 demo analyzer - professional-grade metrics including TTD and Crosshair Placement",
+    description="CS2 demo analyzer - professional-grade metrics including HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement",
     version=__version__,
 )
 
@@ -84,6 +84,7 @@ async def analyze_demo(file: UploadFile = File(...)):
 
     Returns comprehensive player stats including:
     - Basic stats: Kills, Deaths, Assists, K/D, ADR, HS%
+    - Professional metrics: HLTV 2.0 Rating, KAST%, Impact
     - Advanced metrics: TTD (Time to Damage), Crosshair Placement
     - Weapon breakdown
 
@@ -140,62 +141,155 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         # Run advanced analytics
         analyzer = DemoAnalyzer(data)
-        player_analytics = analyzer.analyze()
+        analysis = analyzer.analyze()
 
         # Build response
         result = {
             "demo_info": {
-                "map": data.map_name,
+                "map": analysis.map_name,
                 "duration_seconds": round(data.duration_seconds, 1),
                 "duration_minutes": round(data.duration_seconds / 60, 1),
                 "tick_rate": data.tick_rate,
-                "rounds": data.num_rounds,
-                "player_count": len(data.player_stats),
+                "rounds": analysis.total_rounds,
+                "score": f"{analysis.team1_score} - {analysis.team2_score}",
+                "player_count": len(analysis.players),
                 "total_kills": len(data.kills),
                 "total_damage_events": len(data.damages),
             },
+            "mvp": None,
             "players": {}
         }
 
-        # Add player stats with advanced metrics
-        for steam_id, analytics in player_analytics.items():
+        # Add MVP
+        mvp = analysis.get_mvp()
+        if mvp:
+            result["mvp"] = {
+                "steam_id": str(mvp.steam_id),
+                "name": mvp.name,
+                "rating": mvp.hltv_rating,
+            }
+
+        # Add player stats with advanced metrics (sorted by rating)
+        for player in analysis.get_leaderboard():
+            steam_id = player.steam_id
+
             # Build weapon stats
             weapon_stats = []
-            for weapon, count in sorted(analytics.weapon_kills.items(), key=lambda x: -x[1]):
+            for weapon, count in sorted(player.weapon_kills.items(), key=lambda x: -x[1]):
                 weapon_stats.append({"weapon": weapon, "kills": count})
 
             result["players"][str(steam_id)] = {
-                "name": analytics.name,
-                "team": analytics.team,
+                "name": player.name,
+                "team": player.team,
                 "stats": {
                     # Basic stats
-                    "kills": analytics.kills,
-                    "deaths": analytics.deaths,
-                    "assists": analytics.assists,
-                    "kd_ratio": round(analytics.kills / max(analytics.deaths, 1), 2),
-                    "headshots": data.player_stats[steam_id]["headshots"],
-                    "headshot_pct": analytics.hs_percent,
-                    "total_damage": data.player_stats[steam_id]["total_damage"],
-                    "adr": analytics.adr,
+                    "kills": player.kills,
+                    "deaths": player.deaths,
+                    "assists": player.assists,
+                    "kd_ratio": player.kd_ratio,
+                    "kd_diff": player.kd_diff,
+                    "headshots": player.headshots,
+                    "headshot_pct": player.headshot_percentage,
+                    "total_damage": player.total_damage,
+                    "adr": player.adr,
+                },
+                "rating": {
+                    # HLTV 2.0 Rating components
+                    "hltv_rating": player.hltv_rating,
+                    "impact_rating": player.impact_rating,
+                    "kast_percentage": player.kast_percentage,
+                    "kills_per_round": player.kills_per_round,
+                    "deaths_per_round": player.deaths_per_round,
+                    "survival_rate": player.survival_rate,
+                    # Leetify-style composite ratings
+                    "aim_rating": player.aim_rating,
+                    "utility_rating": player.utility_rating,
+                    "entry_success_rate": player.entry_success_rate,
+                },
+                "duels": {
+                    # Opening duels
+                    "opening_attempts": player.opening_duels.attempts,
+                    "opening_wins": player.opening_duels.wins,
+                    "opening_losses": player.opening_duels.losses,
+                    "opening_win_rate": player.opening_duels.win_rate,
+                    # Trades
+                    "kills_traded": player.trades.kills_traded,
+                    "deaths_traded": player.trades.deaths_traded,
+                },
+                "clutches": {
+                    "total_situations": player.clutches.total_situations,
+                    "total_wins": player.clutches.total_wins,
+                    "1v1": {"attempts": player.clutches.situations_1v1, "wins": player.clutches.wins_1v1},
+                    "1v2": {"attempts": player.clutches.situations_1v2, "wins": player.clutches.wins_1v2},
+                    "1v3": {"attempts": player.clutches.situations_1v3, "wins": player.clutches.wins_1v3},
+                    "1v4": {"attempts": player.clutches.situations_1v4, "wins": player.clutches.wins_1v4},
+                    "1v5": {"attempts": player.clutches.situations_1v5, "wins": player.clutches.wins_1v5},
+                },
+                "multi_kills": {
+                    "rounds_with_2k": player.multi_kills.rounds_with_2k,
+                    "rounds_with_3k": player.multi_kills.rounds_with_3k,
+                    "rounds_with_4k": player.multi_kills.rounds_with_4k,
+                    "rounds_with_5k": player.multi_kills.rounds_with_5k,
                 },
                 "advanced": {
                     # TTD Stats
-                    "ttd_median_ms": round(analytics.ttd_median_ms, 1) if analytics.ttd_median_ms else None,
-                    "ttd_mean_ms": round(analytics.ttd_mean_ms, 1) if analytics.ttd_mean_ms else None,
-                    "ttd_min_ms": round(analytics.ttd_min_ms, 1) if analytics.ttd_min_ms else None,
-                    "ttd_max_ms": round(analytics.ttd_max_ms, 1) if analytics.ttd_max_ms else None,
-                    "ttd_std_ms": round(analytics.ttd_std_ms, 1) if analytics.ttd_std_ms else None,
-                    "ttd_samples": analytics.ttd_count,
-                    "prefire_kills": analytics.prefire_count,
+                    "ttd_median_ms": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
+                    "ttd_mean_ms": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
+                    "ttd_samples": len(player.ttd_values),
+                    "prefire_kills": player.prefire_count,
                     # Crosshair Placement Stats
-                    "cp_median_error_deg": round(analytics.cp_median_error_deg, 1) if analytics.cp_median_error_deg else None,
-                    "cp_mean_error_deg": round(analytics.cp_mean_error_deg, 1) if analytics.cp_mean_error_deg else None,
-                    "cp_pitch_bias_deg": round(analytics.cp_pitch_bias_deg, 1) if analytics.cp_pitch_bias_deg else None,
+                    "cp_median_error_deg": round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None,
+                    "cp_mean_error_deg": round(player.cp_mean_error_deg, 1) if player.cp_mean_error_deg else None,
+                    "cp_samples": len(player.cp_values),
+                },
+                "utility": {
+                    # Flash stats (Leetify style)
+                    "flash_assists": player.utility.flash_assists,
+                    "flashbangs_thrown": player.utility.flashbangs_thrown,
+                    "enemies_flashed": player.utility.enemies_flashed,
+                    "teammates_flashed": player.utility.teammates_flashed,
+                    "enemies_flashed_per_flash": round(player.utility.enemies_flashed_per_flash, 2),
+                    "avg_blind_time": round(player.utility.avg_blind_time, 2),
+                    # HE stats
+                    "he_thrown": player.utility.he_thrown,
+                    "he_damage": player.utility.he_damage,
+                    "he_team_damage": player.utility.he_team_damage,
+                    "he_damage_per_nade": round(player.utility.he_damage_per_nade, 1),
+                    # Molotov stats
+                    "molotov_thrown": player.utility.molotov_thrown,
+                    "molotov_damage": player.utility.molotov_damage,
+                    # Ratings
+                    "utility_quantity_rating": player.utility_quantity_rating,
+                    "utility_quality_rating": player.utility_quality_rating,
+                },
+                "side_stats": {
+                    # CT-side performance
+                    "ct": {
+                        "kills": player.ct_stats.kills,
+                        "deaths": player.ct_stats.deaths,
+                        "kd_ratio": player.ct_stats.kd_ratio,
+                        "adr": player.ct_stats.adr,
+                        "rounds_played": player.ct_stats.rounds_played,
+                    },
+                    # T-side performance
+                    "t": {
+                        "kills": player.t_stats.kills,
+                        "deaths": player.t_stats.deaths,
+                        "kd_ratio": player.t_stats.kd_ratio,
+                        "adr": player.t_stats.adr,
+                        "rounds_played": player.t_stats.rounds_played,
+                    },
+                },
+                "mistakes": {
+                    "team_kills": player.mistakes.team_kills,
+                    "team_damage": player.mistakes.team_damage,
+                    "teammates_flashed": player.mistakes.teammates_flashed,
+                    "total_mistakes": player.mistakes.total_mistakes,
                 },
                 "weapons": weapon_stats,
             }
 
-        logger.info(f"Analysis complete: {len(result['players'])} players, {data.num_rounds} rounds")
+        logger.info(f"Analysis complete: {len(result['players'])} players, {analysis.total_rounds} rounds")
         return JSONResponse(content=result)
 
     except HTTPException:
@@ -207,7 +301,8 @@ async def analyze_demo(file: UploadFile = File(...)):
         if tmp_path and tmp_path.exists():
             try:
                 tmp_path.unlink()
-            except:
+            except OSError:
+                # Ignore cleanup errors - temp file will be cleaned up by OS
                 pass
 
 
@@ -217,7 +312,7 @@ async def about():
     return {
         "name": "OpenSight",
         "version": __version__,
-        "description": "Local CS2 analytics framework - professional-grade metrics",
+        "description": "Local CS2 analytics framework - Leetify/Scope.gg style professional-grade metrics",
         "metrics": {
             "basic": {
                 "kills": "Total eliminations",
@@ -227,16 +322,88 @@ async def about():
                 "adr": "Average Damage per Round",
                 "headshot_pct": "Percentage of kills that were headshots",
             },
+            "rating": {
+                "hltv_rating": "HLTV 2.0 Rating - industry standard performance metric (1.0 = average)",
+                "impact_rating": "Impact component - measures round-winning contributions",
+                "kast_percentage": "KAST% - rounds with Kill, Assist, Survived, or Traded",
+                "aim_rating": "Leetify-style Aim Rating (0-100, 50 = average) - based on TTD, CP, HS%",
+                "utility_rating": "Leetify-style Utility Rating (0-100) - geometric mean of quantity and quality",
+                "entry_success_rate": "Percentage of opening duels won",
+            },
             "advanced": {
                 "ttd_median_ms": "Time to Damage (median) - milliseconds from engagement start to damage dealt",
                 "ttd_mean_ms": "Time to Damage (mean)",
                 "cp_median_error_deg": "Crosshair Placement error (median) - degrees off-target when engaging",
-                "cp_pitch_bias_deg": "Vertical aim bias - negative means aiming too low",
                 "prefire_kills": "Kills where damage was dealt before/instantly upon visibility (prediction shots)",
-            }
+            },
+            "duels": {
+                "opening_wins": "First kills of the round won",
+                "opening_losses": "First deaths of the round",
+                "kills_traded": "Times you avenged a teammate within 5 seconds",
+                "deaths_traded": "Times a teammate avenged your death within 5 seconds",
+            },
+            "utility": {
+                "flash_assists": "Kills on enemies you flashed",
+                "enemies_flashed": "Total enemies blinded >1.1s",
+                "teammates_flashed": "Times you blinded teammates (mistake)",
+                "enemies_flashed_per_flash": "Average enemies blinded per flashbang (Leetify metric)",
+                "avg_blind_time": "Average enemy blind duration per flash",
+                "he_damage": "Total HE grenade damage to enemies",
+                "he_damage_per_nade": "Average damage per HE grenade",
+                "molotov_damage": "Total molotov/incendiary damage",
+                "utility_quantity_rating": "How much utility thrown vs expected (3/round)",
+                "utility_quality_rating": "Flash/HE effectiveness composite",
+            },
+            "side_stats": {
+                "ct_kills": "Kills while playing CT side",
+                "ct_deaths": "Deaths while playing CT side",
+                "ct_adr": "ADR on CT side",
+                "t_kills": "Kills while playing T side",
+                "t_deaths": "Deaths while playing T side",
+                "t_adr": "ADR on T side",
+            },
+            "mistakes": {
+                "team_kills": "Friendly fire kills (bad)",
+                "team_damage": "Total damage dealt to teammates",
+                "teammates_flashed": "Times you blinded your teammates",
+                "total_mistakes": "Composite mistake score",
+            },
+        },
+        "rating_interpretation": {
+            "hltv_rating": {
+                "below_0.8": "Below average",
+                "0.8_to_1.0": "Average",
+                "1.0_to_1.2": "Above average",
+                "1.2_to_1.5": "Excellent",
+                "above_1.5": "Exceptional",
+            },
+            "aim_rating": {
+                "0_to_30": "Poor",
+                "30_to_45": "Below average",
+                "45_to_55": "Average",
+                "55_to_70": "Good",
+                "70_to_100": "Excellent",
+            },
+            "utility_rating": {
+                "0_to_20": "Rarely uses utility",
+                "20_to_40": "Below average",
+                "40_to_60": "Average",
+                "60_to_80": "Good utility player",
+                "80_to_100": "Utility specialist",
+            },
         },
         "methodology": {
+            "hltv_rating": "Rating = 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + 0.2372*Impact + 0.0032*ADR + 0.1587*RMK",
+            "trade_window": "5.0 seconds (industry standard from Leetify/Stratbook)",
             "ttd": "TTD measures reaction time from first damage to kill. Lower is better. Values under 200ms indicate fast reactions.",
             "crosshair_placement": "CP measures how far your crosshair was from the enemy when engaging. Lower is better. Under 5 degrees is elite-level.",
+            "aim_rating": "Composite of TTD, CP, HS%, and prefire rate. 50 = average, adjusted by component performance.",
+            "utility_rating": "Geometric mean of Quantity (utility thrown) and Quality (effectiveness). Leetify methodology.",
+            "enemies_flashed_threshold": "Only counts enemies blinded for >1.1 seconds (excludes half-blinds).",
+        },
+        "comparisons": {
+            "leetify": "Aim Rating, Utility Rating, and detailed flash stats follow Leetify methodology",
+            "scope_gg": "Mistakes tracking and side-based stats follow Scope.gg methodology",
+            "hltv": "HLTV 2.0 Rating formula and KAST% calculation",
         }
     }
