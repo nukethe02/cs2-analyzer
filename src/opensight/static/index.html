@@ -756,18 +756,44 @@
                 order: 1;
             }
 
-            .match-info-center {
-                order: 0;
-            }
+        <!-- Demo Analyzer -->
+        <div class="card">
+            <h2>Analyze Demo File</h2>
+            <div class="info-box">
+                Upload a CS2 demo file (.dem) to get comprehensive analytics including <strong>Time to Damage (TTD)</strong> and <strong>Crosshair Placement</strong> metrics. Analysis may take 30-60 seconds for full matches.
+            </div>
+            <form id="analyze-form">
+                <div class="form-group">
+                    <label for="demofile">Upload .dem File</label>
+                    <input type="file" id="demofile" accept=".dem,.dem.gz" required>
+                </div>
+                <button type="submit">Analyze Demo</button>
+            </form>
+            <div id="analyze-results" class="results"></div>
+        </div>
 
             .mvp-banner {
                 flex-direction: column;
                 text-align: center;
             }
 
-            .mvp-stats {
-                flex-wrap: wrap;
-                justify-content: center;
+    <script>
+        // Escape HTML to prevent XSS attacks from player names
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        // Helper to safely parse JSON response
+        async function parseResponse(response) {
+            const text = await response.text();
+            if (!text) return null;
+            try {
+                return JSON.parse(text);
+            } catch {
+                return null;
             }
 
             .player-quick-stats {
@@ -859,12 +885,23 @@
             uploadZone.classList.remove('dragover');
         });
 
-        uploadZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZone.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            if (file && file.name.endsWith('.dem')) {
-                analyzeFile(file);
+                resultsDiv.innerHTML = `
+                    <h3>Decoded Information</h3>
+                    <div class="result-item">
+                        <span class="result-label">Match ID</span>
+                        <span class="result-value">${data.match_id}</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Outcome ID</span>
+                        <span class="result-value">${data.outcome_id}</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Token</span>
+                        <span class="result-value">${data.token}</span>
+                    </div>
+                `;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
             }
         });
 
@@ -903,13 +940,37 @@
             }
         }
 
-        // Get rating class based on HLTV rating
-        function getRatingClass(rating) {
-            if (rating >= 1.3) return 'elite';
-            if (rating >= 1.1) return 'high';
-            if (rating >= 0.9) return 'avg';
-            return 'low';
-        }
+                // Build match info
+                let html = `
+                    <h3>Match Overview</h3>
+                    <div class="match-info-grid">
+                        <div class="match-stat">
+                            <div class="match-stat-value">${escapeHtml(data.demo_info.map) || 'Unknown'}</div>
+                            <div class="match-stat-label">Map</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${data.demo_info.rounds || 'N/A'}</div>
+                            <div class="match-stat-label">Rounds</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${Math.round(data.demo_info.duration_minutes || 0)}m</div>
+                            <div class="match-stat-label">Duration</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${data.demo_info.player_count || 0}</div>
+                            <div class="match-stat-label">Players</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${data.demo_info.total_kills || 0}</div>
+                            <div class="match-stat-label">Total Kills</div>
+                        </div>
+                        <div class="match-stat">
+                            <div class="match-stat-value">${data.demo_info.tick_rate || 64}</div>
+                            <div class="match-stat-label">Tick Rate</div>
+                        </div>
+                    </div>
+                    <h3>Player Performance</h3>
+                `;
 
         // Format value with fallback
         function fmt(val, suffix = '', decimals = 1) {
@@ -963,98 +1024,10 @@
                 const mvpPlayer = players.find(p => p.id === String(mvp.steam_id));
                 if (mvpPlayer) {
                     html += `
-                        <div class="mvp-banner">
-                            <div class="mvp-badge">
-                                <div class="mvp-badge-label">MVP</div>
-                                <div class="mvp-badge-rating">${mvp.rating.toFixed(2)}</div>
-                            </div>
-                            <div class="mvp-info">
-                                <div class="mvp-name">${mvp.name}</div>
-                                <div class="mvp-stats">
-                                    <div><span>${mvpPlayer.stats?.kills || 0}</span> Kills</div>
-                                    <div><span>${mvpPlayer.stats?.adr || 0}</span> ADR</div>
-                                    <div><span>${mvpPlayer.rating?.kast_percentage || 0}%</span> KAST</div>
-                                    <div><span>${mvpPlayer.rating?.aim_rating || 50}</span> Aim Rating</div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-            }
-
-            // Player Cards
-            html += '<div class="players-grid">';
-            players.forEach((player, index) => {
-                const s = player.stats || {};
-                const r = player.rating || {};
-                const adv = player.advanced || {};
-                const util = player.utility || {};
-                const duels = player.duels || {};
-                const clutches = player.clutches || {};
-                const mk = player.multi_kills || {};
-                const side = player.side_stats || {};
-                const mistakes = player.mistakes || {};
-                const weapons = player.weapons || [];
-
-                const teamClass = (player.team === 'CT') ? 'ct' : (player.team === 'T') ? 't' : '';
-                const ratingClass = getRatingClass(r.hltv_rating || 0);
-
-                html += `
-                    <div class="player-card" onclick="this.classList.toggle('expanded')">
-                        <div class="player-card-header">
-                            <div class="player-rank ${index < 3 ? 'top-3' : ''}">#${index + 1}</div>
-                            <div class="player-identity">
-                                <span class="player-name">${player.name || 'Unknown'}</span>
-                                <span class="player-team-badge ${teamClass}">${player.team || '?'}</span>
-                            </div>
-                            <div class="player-quick-stats">
-                                <div class="quick-stat">
-                                    <div class="quick-stat-value">${s.kills || 0}/${s.deaths || 0}/${s.assists || 0}</div>
-                                    <div class="quick-stat-label">K/D/A</div>
-                                </div>
-                                <div class="quick-stat">
-                                    <div class="quick-stat-value">${s.adr || 0}</div>
-                                    <div class="quick-stat-label">ADR</div>
-                                </div>
-                                <div class="quick-stat">
-                                    <div class="quick-stat-value">${r.kast_percentage || 0}%</div>
-                                    <div class="quick-stat-label">KAST</div>
-                                </div>
-                            </div>
-                            <div class="rating-badge ${ratingClass}">${(r.hltv_rating || 0).toFixed(2)}</div>
-                            <span class="expand-indicator">&#9660;</span>
-                        </div>
-
-                        <div class="player-details">
-                            <!-- Ratings -->
-                            <div class="ratings-row">
-                                <div class="rating-gauge">
-                                    <div class="rating-gauge-header">
-                                        <span class="rating-gauge-label">Aim Rating</span>
-                                        <span class="rating-gauge-value">${r.aim_rating || 50}/100</span>
-                                    </div>
-                                    <div class="rating-bar">
-                                        <div class="rating-bar-fill aim" style="width: ${r.aim_rating || 50}%"></div>
-                                    </div>
-                                </div>
-                                <div class="rating-gauge">
-                                    <div class="rating-gauge-header">
-                                        <span class="rating-gauge-label">Utility Rating</span>
-                                        <span class="rating-gauge-value">${r.utility_rating || 0}/100</span>
-                                    </div>
-                                    <div class="rating-bar">
-                                        <div class="rating-bar-fill utility" style="width: ${r.utility_rating || 0}%"></div>
-                                    </div>
-                                </div>
-                                <div class="rating-gauge">
-                                    <div class="rating-gauge-header">
-                                        <span class="rating-gauge-label">KAST%</span>
-                                        <span class="rating-gauge-value">${r.kast_percentage || 0}%</span>
-                                    </div>
-                                    <div class="rating-bar">
-                                        <div class="rating-bar-fill kast" style="width: ${r.kast_percentage || 0}%"></div>
-                                    </div>
-                                </div>
+                        <div class="player-card">
+                            <div class="player-header">
+                                <span class="player-name">${escapeHtml(player.name) || 'Unknown'}</span>
+                                <span class="player-team ${getTeamClass(player.team)}">${escapeHtml(player.team) || 'Unknown'}</span>
                             </div>
 
                             <!-- Combat Stats -->
@@ -1212,12 +1185,9 @@
                             ${weapons.length > 0 ? `
                                 <div class="stats-section">
                                     <div class="stats-section-title">Weapons Used</div>
-                                    <div class="weapons-list">
-                                        ${weapons.slice(0, 8).map(w => `
-                                            <div class="weapon-pill">
-                                                ${w.weapon}
-                                                <span class="weapon-kills">${w.kills}</span>
-                                            </div>
+                                    <div class="weapon-stats">
+                                        ${weapons.map(w => `
+                                            <span class="weapon-tag">${escapeHtml(w.weapon)}<span class="weapon-kills">${w.kills}</span></span>
                                         `).join('')}
                                     </div>
                                 </div>
@@ -1269,8 +1239,7 @@
                 `;
                 resultsDiv.classList.add('show');
             } catch (error) {
-                resultsDiv.innerHTML = `<div class="error-box">${error.message}</div>`;
-                resultsDiv.classList.add('show');
+                resultsDiv.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
             }
         });
     </script>
