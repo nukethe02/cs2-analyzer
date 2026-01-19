@@ -1,5 +1,5 @@
 """
-OpenSight - Local CS2 Analytics Framework
+OpenSight - Professional CS2 Demo Analyzer
 
 A locally-operated analytics system for Counter-Strike 2 that provides
 professional-grade metrics without cloud dependencies.
@@ -11,7 +11,7 @@ Features:
 - Export to multiple formats (JSON, CSV, Excel, HTML)
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "OpenSight Contributors"
 
 # Core functionality
