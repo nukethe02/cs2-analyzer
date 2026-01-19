@@ -21,11 +21,22 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 __version__ = "0.4.0"
+
+
+# =============================================================================
+# Request/Response Models
+# =============================================================================
+
+class PlayerCompareRequest(BaseModel):
+    """Request body for player comparison endpoint."""
+    player_a: str
+    player_b: str
 
 # Security constants
 MAX_FILE_SIZE_MB = 500
@@ -455,7 +466,7 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         # Import and run analysis
         from opensight.parser import DemoParser
-        from opensight.analytics import DemoAnalyzer, compute_kill_positions
+        from opensight.analytics import DemoAnalyzer, compute_kill_positions, compute_utility_metrics
 
         # Parse the demo
         logger.info("Starting demo parsing...")
@@ -485,22 +496,24 @@ async def analyze_demo(file: UploadFile = File(...)):
         }
 
         # Kill Map data for radar visualization (detailed kill positions)
-        result["kill_map"] = compute_kill_positions(data)
+        response["kill_map"] = compute_kill_positions(match_data)
 
         # Grenade trajectory data for utility visualization (limit to 1000 positions)
-        result["grenade_data"] = {
+        response["grenade_data"] = {
             "positions": analysis.grenade_positions[:1000],
             "team_stats": analysis.grenade_team_stats,
         }
 
         # Utility stats per player (Scope.gg style nade stats)
-        utility_metrics = compute_utility_metrics(data)
-        result["utility_stats"] = [
+        utility_metrics = compute_utility_metrics(match_data)
+        response["utility_stats"] = [
             metrics.to_dict() for metrics in utility_metrics.values()
         ]
 
         # AI Coaching insights
-        result["coaching"] = analysis.coaching_insights
+        response["coaching"] = analysis.coaching_insights
+
+        return response
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
