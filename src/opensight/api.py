@@ -586,6 +586,310 @@ async def readiness():
     return JSONResponse(content=response, status_code=200 if all_ready else 503)
 
 
+@app.post("/compare")
+async def compare_players_endpoint(
+    file: UploadFile = File(...),
+    player_a: str = Query(..., description="Name of the first player to compare"),
+    player_b: str = Query(..., description="Name of the second player to compare"),
+):
+    """
+    Compare two players from a demo file using Scope.gg-style radar chart.
+
+    This endpoint accepts a demo file and two player names, parses the demo,
+    computes all metrics, and returns comparison data suitable for radar chart
+    visualization.
+
+    The comparison includes 5 axes:
+    - ADR: Average Damage per Round
+    - Opening Success %: Percentage of opening duels won
+    - Clutch Win %: Percentage of clutch situations won
+    - Trade Success %: Percentage of trade opportunities converted
+    - Utility Usage: Grenades thrown per round (scaled)
+
+    Returns normalized scores (0-100) for radar chart plus raw values for display.
+    """
+    # Validate file extension
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    filename_lower = file.filename.lower()
+    if not filename_lower.endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
+        )
+
+    # Verify analysis modules are available
+    try:
+        from opensight.parser import DemoParser
+        from opensight.analytics import DemoAnalyzer, compare_players
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Demo analysis not available. Missing: {str(e)}"
+        )
+
+    # Read and validate file
+    content = await file.read()
+    file_size_bytes = len(content)
+    file_size_mb = file_size_bytes / (1024 * 1024)
+
+    if file_size_bytes > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB"
+        )
+
+    if file_size_bytes == 0:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+    tmp_path = None
+    try:
+        # Save file to temp location
+        suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
+        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
+        # Parse the demo
+        parser = DemoParser(tmp_path)
+        data = parser.parse()
+
+        # Run analytics
+        analyzer = DemoAnalyzer(data)
+        analysis = analyzer.analyze()
+
+        # Perform player comparison
+        try:
+            comparison = compare_players(analysis, player_a, player_b)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Return comparison data
+        return JSONResponse(content={
+            "status": "success",
+            "demo_info": {
+                "map": analysis.map_name,
+                "rounds": analysis.total_rounds,
+                "score": f"{analysis.team1_score} - {analysis.team2_score}",
+            },
+            "comparison": comparison,
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Compare endpoint failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        # Clean up temp file
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+
+@app.post("/compare/{job_id}")
+async def compare_players_from_job(
+    job_id: str,
+    request: PlayerCompareRequest,
+):
+    """
+    Compare two players using data from a completed analysis job.
+
+    This is more efficient than re-analyzing the demo if you've already
+    run /analyze - it uses the cached job results.
+
+    Args:
+        job_id: The job ID from a completed /analyze request
+        request: JSON body with player_a and player_b names
+
+    Returns normalized scores (0-100) for radar chart plus raw values for display.
+    """
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    if job.status != JobStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not completed. Current status: {job.status.value}"
+        )
+
+    if not job.result:
+        raise HTTPException(status_code=500, detail="Job completed but no result available")
+
+    # Find players in the result
+    players = job.result.get("players", {})
+    if not players:
+        raise HTTPException(status_code=400, detail="No players found in job result")
+
+    player_a_data = None
+    player_b_data = None
+
+    for steam_id, player in players.items():
+        name = player.get("name", "").lower()
+        if name == request.player_a.lower():
+            player_a_data = {"steam_id": steam_id, **player}
+        elif name == request.player_b.lower():
+            player_b_data = {"steam_id": steam_id, **player}
+
+    if player_a_data is None:
+        raise HTTPException(status_code=400, detail=f"Player '{request.player_a}' not found in job")
+    if player_b_data is None:
+        raise HTTPException(status_code=400, detail=f"Player '{request.player_b}' not found in job")
+
+    # Helper functions for normalization (matching compare_players in analytics.py)
+    def normalize_adr(adr):
+        return round(min(100, max(0, (adr / 150) * 100)), 1)
+
+    def normalize_percentage(pct):
+        return round(min(100, max(0, pct)), 1)
+
+    def normalize_utility_usage(player):
+        utility = player.get("utility", {})
+        rounds = player.get("stats", {}).get("rounds_played", 1) or 1
+        # Use stats from the result - need to infer rounds from other data
+        demo_info = job.result.get("demo_info", {})
+        total_rounds = demo_info.get("rounds", 1) or 1
+        # Estimate player rounds (they played most/all rounds typically)
+        total_utility = (
+            utility.get("flashbangs_thrown", 0) +
+            utility.get("he_thrown", 0) +
+            utility.get("molotov_thrown", 0) +
+            utility.get("smokes_thrown", 0)
+        )
+        utility_per_round = total_utility / total_rounds
+        return round(min(100, max(0, (utility_per_round / 4) * 100)), 1)
+
+    def get_utility_per_round(player):
+        utility = player.get("utility", {})
+        demo_info = job.result.get("demo_info", {})
+        total_rounds = demo_info.get("rounds", 1) or 1
+        total_utility = (
+            utility.get("flashbangs_thrown", 0) +
+            utility.get("he_thrown", 0) +
+            utility.get("molotov_thrown", 0) +
+            utility.get("smokes_thrown", 0)
+        )
+        return round(total_utility / total_rounds, 2)
+
+    # Extract values for player A
+    stats_a = player_a_data.get("stats", {})
+    duels_a = player_a_data.get("duels", {})
+    clutches_a = player_a_data.get("clutches", {})
+    utility_a = player_a_data.get("utility", {})
+    rating_a = player_a_data.get("rating", {})
+    advanced_a = player_a_data.get("advanced", {})
+
+    # Extract values for player B
+    stats_b = player_b_data.get("stats", {})
+    duels_b = player_b_data.get("duels", {})
+    clutches_b = player_b_data.get("clutches", {})
+    utility_b = player_b_data.get("utility", {})
+    rating_b = player_b_data.get("rating", {})
+    advanced_b = player_b_data.get("advanced", {})
+
+    # Calculate trade rate (need to compute from available data)
+    # trade_rate = kills_traded / trade_attempts, but we don't have trade_attempts in job result
+    # Estimate from deaths_traded as proxy
+    def get_trade_rate(duels):
+        # Simplified: use kills_traded as indicator (higher is better)
+        # No direct trade_attempts in job result, so normalize kills_traded
+        return min(100, duels.get("kills_traded", 0) * 20)  # 5 trades = 100
+
+    # Define axes
+    axes = [
+        "ADR",
+        "Opening Success %",
+        "Clutch Win %",
+        "Trade Success %",
+        "Utility Usage"
+    ]
+
+    # Calculate scores
+    scores_a = [
+        normalize_adr(stats_a.get("adr", 0)),
+        normalize_percentage(duels_a.get("opening_win_rate", 0)),
+        normalize_percentage(
+            (clutches_a.get("total_wins", 0) / max(1, clutches_a.get("total_situations", 1))) * 100
+        ),
+        get_trade_rate(duels_a),
+        normalize_utility_usage(player_a_data)
+    ]
+
+    scores_b = [
+        normalize_adr(stats_b.get("adr", 0)),
+        normalize_percentage(duels_b.get("opening_win_rate", 0)),
+        normalize_percentage(
+            (clutches_b.get("total_wins", 0) / max(1, clutches_b.get("total_situations", 1))) * 100
+        ),
+        get_trade_rate(duels_b),
+        normalize_utility_usage(player_b_data)
+    ]
+
+    # Build response
+    comparison = {
+        "player_a_name": player_a_data.get("name"),
+        "player_b_name": player_b_data.get("name"),
+        "player_a_team": player_a_data.get("team"),
+        "player_b_team": player_b_data.get("team"),
+        "player_a_steam_id": player_a_data.get("steam_id"),
+        "player_b_steam_id": player_b_data.get("steam_id"),
+        "axes": axes,
+        "scores_a": scores_a,
+        "scores_b": scores_b,
+        "raw_values_a": {
+            "adr": stats_a.get("adr", 0),
+            "opening_success_pct": duels_a.get("opening_win_rate", 0),
+            "opening_attempts": duels_a.get("opening_attempts", 0),
+            "opening_wins": duels_a.get("opening_wins", 0),
+            "clutch_win_pct": round(
+                (clutches_a.get("total_wins", 0) / max(1, clutches_a.get("total_situations", 1))) * 100, 1
+            ),
+            "clutch_situations": clutches_a.get("total_situations", 0),
+            "clutch_wins": clutches_a.get("total_wins", 0),
+            "trade_kills": duels_a.get("kills_traded", 0),
+            "utility_per_round": get_utility_per_round(player_a_data),
+            "kills": stats_a.get("kills", 0),
+            "deaths": stats_a.get("deaths", 0),
+            "kd_ratio": stats_a.get("kd_ratio", 0),
+            "headshot_pct": stats_a.get("headshot_pct", 0),
+            "hltv_rating": rating_a.get("hltv_rating", 0),
+            "kast_pct": rating_a.get("kast_percentage", 0),
+            "ttd_median_ms": advanced_a.get("ttd_median_ms"),
+        },
+        "raw_values_b": {
+            "adr": stats_b.get("adr", 0),
+            "opening_success_pct": duels_b.get("opening_win_rate", 0),
+            "opening_attempts": duels_b.get("opening_attempts", 0),
+            "opening_wins": duels_b.get("opening_wins", 0),
+            "clutch_win_pct": round(
+                (clutches_b.get("total_wins", 0) / max(1, clutches_b.get("total_situations", 1))) * 100, 1
+            ),
+            "clutch_situations": clutches_b.get("total_situations", 0),
+            "clutch_wins": clutches_b.get("total_wins", 0),
+            "trade_kills": duels_b.get("kills_traded", 0),
+            "utility_per_round": get_utility_per_round(player_b_data),
+            "kills": stats_b.get("kills", 0),
+            "deaths": stats_b.get("deaths", 0),
+            "kd_ratio": stats_b.get("kd_ratio", 0),
+            "headshot_pct": stats_b.get("headshot_pct", 0),
+            "hltv_rating": rating_b.get("hltv_rating", 0),
+            "kast_pct": rating_b.get("kast_percentage", 0),
+            "ttd_median_ms": advanced_b.get("ttd_median_ms"),
+        },
+    }
+
+    return JSONResponse(content={
+        "status": "success",
+        "demo_info": job.result.get("demo_info", {}),
+        "comparison": comparison,
+    })
+
+
 @app.get("/about")
 async def about():
     """API documentation and metric descriptions."""

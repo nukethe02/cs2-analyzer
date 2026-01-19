@@ -3127,6 +3127,196 @@ def get_player_comparison_stats(
     }
 
 
+def compare_players(
+    match_analysis: MatchAnalysis,
+    player_a_name: str,
+    player_b_name: str
+) -> dict:
+    """
+    Compare two players using Scope.gg-style radar chart axes.
+
+    Axes (all normalized to 0-100 score for visualization):
+    - ADR: Average Damage per Round (scaled 0-150, where 100 ADR = 66.7 score)
+    - Opening Success %: Percentage of opening duels won (0-100%)
+    - Clutch Win %: Percentage of clutch situations won (0-100%)
+    - Trade Success %: Percentage of trade opportunities converted (0-100%)
+    - Utility Usage: Total grenades thrown per round (scaled 0-4 per round)
+
+    Args:
+        match_analysis: The MatchAnalysis object containing player data
+        player_a_name: Name of the first player to compare
+        player_b_name: Name of the second player to compare
+
+    Returns:
+        Dict with:
+            - player_a_name: First player's name
+            - player_b_name: Second player's name
+            - axes: List of axis names
+            - scores_a: List of normalized scores (0-100) for player A
+            - scores_b: List of normalized scores (0-100) for player B
+            - raw_values_a: Dict of raw metric values for player A
+            - raw_values_b: Dict of raw metric values for player B
+    """
+    # Find players by name
+    player_a = None
+    player_b = None
+
+    for player in match_analysis.players.values():
+        if player.name.lower() == player_a_name.lower():
+            player_a = player
+        elif player.name.lower() == player_b_name.lower():
+            player_b = player
+
+    if player_a is None:
+        raise ValueError(f"Player '{player_a_name}' not found in match")
+    if player_b is None:
+        raise ValueError(f"Player '{player_b_name}' not found in match")
+
+    def normalize_adr(adr: float) -> float:
+        """
+        Normalize ADR to 0-100 scale.
+        Scale: 0 ADR -> 0, 150 ADR -> 100 (linear)
+        Most pros average 70-90 ADR, exceptional is 100+
+        """
+        return round(min(100, max(0, (adr / 150) * 100)), 1)
+
+    def normalize_percentage(pct: float) -> float:
+        """
+        Normalize a percentage (0-100) to 0-100 score.
+        Already in the right range, just ensure bounds.
+        """
+        return round(min(100, max(0, pct)), 1)
+
+    def normalize_utility_usage(player: PlayerMatchStats) -> float:
+        """
+        Normalize utility usage to 0-100 scale.
+        Based on grenades thrown per round.
+        Scale: 0 per round -> 0, 4+ per round -> 100
+        Average player uses ~2-3 utility per round.
+        """
+        if player.rounds_played == 0:
+            return 0.0
+        total_utility = (
+            player.utility.flashbangs_thrown +
+            player.utility.he_thrown +
+            player.utility.molotovs_thrown +
+            player.utility.smokes_thrown
+        )
+        utility_per_round = total_utility / player.rounds_played
+        # Scale: 4 grenades per round = 100
+        return round(min(100, max(0, (utility_per_round / 4) * 100)), 1)
+
+    def get_utility_per_round(player: PlayerMatchStats) -> float:
+        """Get raw utility usage per round."""
+        if player.rounds_played == 0:
+            return 0.0
+        total_utility = (
+            player.utility.flashbangs_thrown +
+            player.utility.he_thrown +
+            player.utility.molotovs_thrown +
+            player.utility.smokes_thrown
+        )
+        return round(total_utility / player.rounds_played, 2)
+
+    # Define axes
+    axes = [
+        "ADR",
+        "Opening Success %",
+        "Clutch Win %",
+        "Trade Success %",
+        "Utility Usage"
+    ]
+
+    # Calculate normalized scores for player A
+    scores_a = [
+        normalize_adr(player_a.adr),
+        normalize_percentage(player_a.opening_duels.win_rate),
+        normalize_percentage(player_a.clutches.win_rate),
+        normalize_percentage(player_a.trades.trade_rate),
+        normalize_utility_usage(player_a)
+    ]
+
+    # Calculate normalized scores for player B
+    scores_b = [
+        normalize_adr(player_b.adr),
+        normalize_percentage(player_b.opening_duels.win_rate),
+        normalize_percentage(player_b.clutches.win_rate),
+        normalize_percentage(player_b.trades.trade_rate),
+        normalize_utility_usage(player_b)
+    ]
+
+    # Raw values for display
+    raw_values_a = {
+        "adr": round(player_a.adr, 1),
+        "opening_success_pct": round(player_a.opening_duels.win_rate, 1),
+        "opening_attempts": player_a.opening_duels.attempts,
+        "opening_wins": player_a.opening_duels.wins,
+        "clutch_win_pct": round(player_a.clutches.win_rate, 1),
+        "clutch_situations": player_a.clutches.total_situations,
+        "clutch_wins": player_a.clutches.total_wins,
+        "trade_success_pct": round(player_a.trades.trade_rate, 1),
+        "trade_kills": player_a.trades.kills_traded,
+        "trade_attempts": player_a.trades.trade_attempts,
+        "utility_per_round": get_utility_per_round(player_a),
+        "total_utility": (
+            player_a.utility.flashbangs_thrown +
+            player_a.utility.he_thrown +
+            player_a.utility.molotovs_thrown +
+            player_a.utility.smokes_thrown
+        ),
+        # Additional stats for the comparison table
+        "kills": player_a.kills,
+        "deaths": player_a.deaths,
+        "kd_ratio": player_a.kd_ratio,
+        "headshot_pct": round(player_a.headshot_percentage, 1),
+        "hltv_rating": round(player_a.hltv_rating, 2),
+        "kast_pct": round(player_a.kast_percentage, 1),
+        "ttd_median_ms": round(player_a.ttd_median_ms, 1) if player_a.ttd_median_ms else None,
+    }
+
+    raw_values_b = {
+        "adr": round(player_b.adr, 1),
+        "opening_success_pct": round(player_b.opening_duels.win_rate, 1),
+        "opening_attempts": player_b.opening_duels.attempts,
+        "opening_wins": player_b.opening_duels.wins,
+        "clutch_win_pct": round(player_b.clutches.win_rate, 1),
+        "clutch_situations": player_b.clutches.total_situations,
+        "clutch_wins": player_b.clutches.total_wins,
+        "trade_success_pct": round(player_b.trades.trade_rate, 1),
+        "trade_kills": player_b.trades.kills_traded,
+        "trade_attempts": player_b.trades.trade_attempts,
+        "utility_per_round": get_utility_per_round(player_b),
+        "total_utility": (
+            player_b.utility.flashbangs_thrown +
+            player_b.utility.he_thrown +
+            player_b.utility.molotovs_thrown +
+            player_b.utility.smokes_thrown
+        ),
+        # Additional stats for the comparison table
+        "kills": player_b.kills,
+        "deaths": player_b.deaths,
+        "kd_ratio": player_b.kd_ratio,
+        "headshot_pct": round(player_b.headshot_percentage, 1),
+        "hltv_rating": round(player_b.hltv_rating, 2),
+        "kast_pct": round(player_b.kast_percentage, 1),
+        "ttd_median_ms": round(player_b.ttd_median_ms, 1) if player_b.ttd_median_ms else None,
+    }
+
+    return {
+        "player_a_name": player_a.name,
+        "player_b_name": player_b.name,
+        "player_a_team": player_a.team,
+        "player_b_team": player_b.team,
+        "player_a_steam_id": str(player_a.steam_id),
+        "player_b_steam_id": str(player_b.steam_id),
+        "axes": axes,
+        "scores_a": scores_a,
+        "scores_b": scores_b,
+        "raw_values_a": raw_values_a,
+        "raw_values_b": raw_values_b,
+    }
+
+
 # Alias for backward compatibility
 PlayerAnalytics = PlayerMatchStats
 

@@ -3784,9 +3784,65 @@
             placeholder.classList.add('hidden');
             container.classList.remove('hidden');
 
-            // Leaderboard table
+            // Store players globally for comparison
+            window.comparisonPlayers = players;
+
+            // Build player selection UI with radar chart
             container.innerHTML = `
-                <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+                <!-- Player Selection -->
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-6">
+                    <h3 class="text-lg font-semibold text-white mb-4">Select Players to Compare</h3>
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Player A</label>
+                            <select id="compare-player-a" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500">
+                                <option value="">Select player...</option>
+                                ${players.map(p => `<option value="${p.id}">${esc(p.name)} (${p.team})</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="text-2xl font-bold text-slate-500 self-end pb-2">VS</div>
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Player B</label>
+                            <select id="compare-player-b" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500">
+                                <option value="">Select player...</option>
+                                ${players.map(p => `<option value="${p.id}">${esc(p.name)} (${p.team})</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Comparison Display Area -->
+                <div id="comparison-result" class="hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Radar Chart -->
+                        <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                            <h3 class="text-lg font-semibold text-white mb-4">Performance Radar</h3>
+                            <div class="relative" style="height: 350px;">
+                                <canvas id="compare-radar-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Stats Table -->
+                        <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                            <h3 class="text-lg font-semibold text-white mb-4">Detailed Stats</h3>
+                            <div id="compare-stats-table"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Placeholder for when no players selected -->
+                <div id="comparison-placeholder-inner" class="bg-slate-800/50 rounded-xl border border-slate-700 p-12 text-center">
+                    <svg class="w-12 h-12 mx-auto text-slate-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                    <p class="text-slate-500">Select two different players above to compare</p>
+                </div>
+
+                <!-- Leaderboard -->
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden mt-6">
+                    <div class="px-6 py-4 border-b border-slate-700">
+                        <h3 class="text-lg font-semibold text-white">Match Leaderboard</h3>
+                    </div>
                     <table class="w-full">
                         <thead>
                             <tr class="bg-slate-900/50 text-left">
@@ -3796,16 +3852,13 @@
                                 <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Rating</th>
                                 <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">K</th>
                                 <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">D</th>
-                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">A</th>
-                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">K/D</th>
                                 <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">ADR</th>
                                 <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">HS%</th>
-                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">KAST</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0)).map((p, i) => `
-                                <tr class="border-t border-slate-700/50 hover:bg-slate-700/20">
+                                <tr class="border-t border-slate-700/50 hover:bg-slate-700/20 cursor-pointer" onclick="selectPlayerForComparison('${p.id}')">
                                     <td class="px-4 py-3 font-mono text-slate-500">${i + 1}</td>
                                     <td class="px-4 py-3 font-semibold text-white">${esc(p.name)}</td>
                                     <td class="px-4 py-3">
@@ -3816,13 +3869,349 @@
                                     </td>
                                     <td class="px-4 py-3 text-center font-mono">${p.stats?.kills || 0}</td>
                                     <td class="px-4 py-3 text-center font-mono">${p.stats?.deaths || 0}</td>
-                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.assists || 0}</td>
-                                    <td class="px-4 py-3 text-center font-mono ${(p.stats?.kd_ratio || 0) >= 1 ? 'text-green-400' : 'text-red-400'}">${p.stats?.kd_ratio || '-'}</td>
                                     <td class="px-4 py-3 text-center font-mono">${p.stats?.adr || 0}</td>
                                     <td class="px-4 py-3 text-center font-mono">${p.stats?.headshot_pct || 0}%</td>
-                                    <td class="px-4 py-3 text-center font-mono">${formatNumber(p.rating?.kast_percentage, 0)}%</td>
                                 </tr>
                             `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            // Add event listeners for comparison
+            document.getElementById('compare-player-a').addEventListener('change', updateComparison);
+            document.getElementById('compare-player-b').addEventListener('change', updateComparison);
+        }
+
+        // Helper to select player from leaderboard click
+        function selectPlayerForComparison(playerId) {
+            const selectA = document.getElementById('compare-player-a');
+            const selectB = document.getElementById('compare-player-b');
+
+            if (!selectA.value) {
+                selectA.value = playerId;
+            } else if (!selectB.value && selectA.value !== playerId) {
+                selectB.value = playerId;
+            } else if (selectA.value === playerId) {
+                // Already selected as A, do nothing
+                return;
+            } else {
+                // Both filled, replace B
+                selectB.value = playerId;
+            }
+            updateComparison();
+        }
+
+        // Scope.gg-style comparison calculation
+        function getScopeggComparisonStats(playerA, playerB) {
+            const axes = ['ADR', 'Opening Success %', 'Clutch Win %', 'Trade Success %', 'Utility Usage'];
+
+            // Normalization functions
+            function normalizeAdr(adr) {
+                // 0 ADR -> 0, 150 ADR -> 100
+                return Math.round(Math.min(100, Math.max(0, (adr / 150) * 100)));
+            }
+
+            function normalizePct(pct) {
+                return Math.round(Math.min(100, Math.max(0, pct)));
+            }
+
+            function getUtilityUsage(player) {
+                const utility = player.utility || {};
+                const totalRounds = analysisData?.demo_info?.rounds || 1;
+                const total = (utility.flashbangs_thrown || 0) +
+                             (utility.he_thrown || 0) +
+                             (utility.molotov_thrown || 0) +
+                             (utility.smokes_thrown || 0);
+                const perRound = total / totalRounds;
+                // 4 grenades per round = 100 score
+                return Math.round(Math.min(100, Math.max(0, (perRound / 4) * 100)));
+            }
+
+            function getUtilityPerRound(player) {
+                const utility = player.utility || {};
+                const totalRounds = analysisData?.demo_info?.rounds || 1;
+                const total = (utility.flashbangs_thrown || 0) +
+                             (utility.he_thrown || 0) +
+                             (utility.molotov_thrown || 0) +
+                             (utility.smokes_thrown || 0);
+                return (total / totalRounds).toFixed(2);
+            }
+
+            function getOpeningSuccessPct(player) {
+                const duels = player.duels || {};
+                return duels.opening_win_rate || 0;
+            }
+
+            function getClutchWinPct(player) {
+                const clutches = player.clutches || {};
+                const situations = clutches.total_situations || 0;
+                const wins = clutches.total_wins || 0;
+                return situations > 0 ? (wins / situations * 100) : 0;
+            }
+
+            function getTradeSuccessPct(player) {
+                const duels = player.duels || {};
+                // Estimate trade rate from kills_traded (5 trades = 100%)
+                return Math.min(100, (duels.kills_traded || 0) * 20);
+            }
+
+            // Calculate scores
+            const scoresA = [
+                normalizeAdr(playerA.stats?.adr || 0),
+                normalizePct(getOpeningSuccessPct(playerA)),
+                normalizePct(getClutchWinPct(playerA)),
+                getTradeSuccessPct(playerA),
+                getUtilityUsage(playerA)
+            ];
+
+            const scoresB = [
+                normalizeAdr(playerB.stats?.adr || 0),
+                normalizePct(getOpeningSuccessPct(playerB)),
+                normalizePct(getClutchWinPct(playerB)),
+                getTradeSuccessPct(playerB),
+                getUtilityUsage(playerB)
+            ];
+
+            // Raw values for display
+            const rawA = {
+                adr: (playerA.stats?.adr || 0).toFixed(1),
+                openingPct: getOpeningSuccessPct(playerA).toFixed(1) + '%',
+                openingWins: playerA.duels?.opening_wins || 0,
+                openingAttempts: playerA.duels?.opening_attempts || 0,
+                clutchPct: getClutchWinPct(playerA).toFixed(1) + '%',
+                clutchWins: playerA.clutches?.total_wins || 0,
+                clutchSituations: playerA.clutches?.total_situations || 0,
+                tradeKills: playerA.duels?.kills_traded || 0,
+                utilityPerRound: getUtilityPerRound(playerA),
+                kills: playerA.stats?.kills || 0,
+                deaths: playerA.stats?.deaths || 0,
+                kdRatio: (playerA.stats?.kd_ratio || 0).toFixed(2),
+                hsPct: (playerA.stats?.headshot_pct || 0).toFixed(1) + '%',
+                hltvRating: (playerA.rating?.hltv_rating || 0).toFixed(2),
+                kastPct: (playerA.rating?.kast_percentage || 0).toFixed(1) + '%',
+                ttd: playerA.advanced?.ttd_median_ms ? Math.round(playerA.advanced.ttd_median_ms) + 'ms' : 'N/A'
+            };
+
+            const rawB = {
+                adr: (playerB.stats?.adr || 0).toFixed(1),
+                openingPct: getOpeningSuccessPct(playerB).toFixed(1) + '%',
+                openingWins: playerB.duels?.opening_wins || 0,
+                openingAttempts: playerB.duels?.opening_attempts || 0,
+                clutchPct: getClutchWinPct(playerB).toFixed(1) + '%',
+                clutchWins: playerB.clutches?.total_wins || 0,
+                clutchSituations: playerB.clutches?.total_situations || 0,
+                tradeKills: playerB.duels?.kills_traded || 0,
+                utilityPerRound: getUtilityPerRound(playerB),
+                kills: playerB.stats?.kills || 0,
+                deaths: playerB.stats?.deaths || 0,
+                kdRatio: (playerB.stats?.kd_ratio || 0).toFixed(2),
+                hsPct: (playerB.stats?.headshot_pct || 0).toFixed(1) + '%',
+                hltvRating: (playerB.rating?.hltv_rating || 0).toFixed(2),
+                kastPct: (playerB.rating?.kast_percentage || 0).toFixed(1) + '%',
+                ttd: playerB.advanced?.ttd_median_ms ? Math.round(playerB.advanced.ttd_median_ms) + 'ms' : 'N/A'
+            };
+
+            return {
+                axes,
+                scoresA,
+                scoresB,
+                rawA,
+                rawB,
+                playerA: { name: playerA.name, team: playerA.team },
+                playerB: { name: playerB.name, team: playerB.team }
+            };
+        }
+
+        // Update comparison display
+        function updateComparison() {
+            const selectA = document.getElementById('compare-player-a');
+            const selectB = document.getElementById('compare-player-b');
+            const resultDiv = document.getElementById('comparison-result');
+            const placeholderDiv = document.getElementById('comparison-placeholder-inner');
+
+            if (!selectA || !selectB || !window.comparisonPlayers) return;
+
+            const idA = selectA.value;
+            const idB = selectB.value;
+
+            if (!idA || !idB || idA === idB) {
+                resultDiv.classList.add('hidden');
+                placeholderDiv.classList.remove('hidden');
+                return;
+            }
+
+            const playerA = window.comparisonPlayers.find(p => p.id === idA);
+            const playerB = window.comparisonPlayers.find(p => p.id === idB);
+
+            if (!playerA || !playerB) {
+                resultDiv.classList.add('hidden');
+                placeholderDiv.classList.remove('hidden');
+                return;
+            }
+
+            // Show results, hide placeholder
+            resultDiv.classList.remove('hidden');
+            placeholderDiv.classList.add('hidden');
+
+            // Get comparison stats
+            const comparison = getScopeggComparisonStats(playerA, playerB);
+
+            // Render radar chart
+            renderCompareRadarChart(comparison);
+
+            // Render stats table
+            renderCompareStatsTable(comparison);
+        }
+
+        // Render radar chart for comparison
+        let compareRadarChart = null;
+        function renderCompareRadarChart(comparison) {
+            const ctx = document.getElementById('compare-radar-chart');
+            if (!ctx) return;
+
+            // Destroy existing chart
+            if (compareRadarChart) {
+                compareRadarChart.destroy();
+            }
+
+            // Colors based on team
+            const colorA = comparison.playerA.team === 'CT' ? 'rgba(74, 144, 217, 0.7)' : 'rgba(222, 155, 53, 0.7)';
+            const borderA = comparison.playerA.team === 'CT' ? 'rgba(74, 144, 217, 1)' : 'rgba(222, 155, 53, 1)';
+            let colorB = comparison.playerB.team === 'CT' ? 'rgba(74, 144, 217, 0.7)' : 'rgba(222, 155, 53, 0.7)';
+            let borderB = comparison.playerB.team === 'CT' ? 'rgba(74, 144, 217, 1)' : 'rgba(222, 155, 53, 1)';
+
+            // Different color if same team
+            if (comparison.playerA.team === comparison.playerB.team) {
+                colorB = 'rgba(124, 58, 237, 0.7)';
+                borderB = 'rgba(124, 58, 237, 1)';
+            }
+
+            compareRadarChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: comparison.axes,
+                    datasets: [
+                        {
+                            label: comparison.playerA.name,
+                            data: comparison.scoresA,
+                            fill: true,
+                            backgroundColor: colorA.replace('0.7', '0.2'),
+                            borderColor: borderA,
+                            pointBackgroundColor: borderA,
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: borderA,
+                            borderWidth: 2
+                        },
+                        {
+                            label: comparison.playerB.name,
+                            data: comparison.scoresB,
+                            fill: true,
+                            backgroundColor: colorB.replace('0.7', '0.2'),
+                            borderColor: borderB,
+                            pointBackgroundColor: borderB,
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: borderB,
+                            borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                color: '#a0a0b0',
+                                font: { size: 12 },
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw}/100`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        r: {
+                            min: 0,
+                            max: 100,
+                            beginAtZero: true,
+                            angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            pointLabels: {
+                                color: '#a0a0b0',
+                                font: { size: 11 }
+                            },
+                            ticks: {
+                                color: '#606070',
+                                backdropColor: 'transparent',
+                                stepSize: 20
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Render stats comparison table
+        function renderCompareStatsTable(comparison) {
+            const container = document.getElementById('compare-stats-table');
+            if (!container) return;
+
+            const teamClassA = comparison.playerA.team === 'CT' ? 'text-ct' : 'text-t';
+            const teamClassB = comparison.playerB.team === 'CT' ? 'text-ct' : 'text-t';
+
+            // Determine which values are better
+            function getBetter(valA, valB, lowerIsBetter = false) {
+                const a = parseFloat(valA) || 0;
+                const b = parseFloat(valB) || 0;
+                if (lowerIsBetter) return a < b ? 'a' : (b < a ? 'b' : '');
+                return a > b ? 'a' : (b > a ? 'b' : '');
+            }
+
+            const stats = [
+                { label: 'HLTV Rating', valA: comparison.rawA.hltvRating, valB: comparison.rawB.hltvRating },
+                { label: 'K/D Ratio', valA: comparison.rawA.kdRatio, valB: comparison.rawB.kdRatio },
+                { label: 'ADR', valA: comparison.rawA.adr, valB: comparison.rawB.adr },
+                { label: 'Headshot %', valA: comparison.rawA.hsPct, valB: comparison.rawB.hsPct },
+                { label: 'KAST %', valA: comparison.rawA.kastPct, valB: comparison.rawB.kastPct },
+                { label: 'TTD (Reaction)', valA: comparison.rawA.ttd, valB: comparison.rawB.ttd, lowerIsBetter: true },
+                { label: 'Opening Duels', valA: `${comparison.rawA.openingWins}/${comparison.rawA.openingAttempts}`, valB: `${comparison.rawB.openingWins}/${comparison.rawB.openingAttempts}` },
+                { label: 'Opening Success', valA: comparison.rawA.openingPct, valB: comparison.rawB.openingPct },
+                { label: 'Clutches', valA: `${comparison.rawA.clutchWins}/${comparison.rawA.clutchSituations}`, valB: `${comparison.rawB.clutchWins}/${comparison.rawB.clutchSituations}` },
+                { label: 'Clutch Win %', valA: comparison.rawA.clutchPct, valB: comparison.rawB.clutchPct },
+                { label: 'Trade Kills', valA: comparison.rawA.tradeKills, valB: comparison.rawB.tradeKills },
+                { label: 'Utility/Round', valA: comparison.rawA.utilityPerRound, valB: comparison.rawB.utilityPerRound },
+            ];
+
+            container.innerHTML = `
+                <div class="overflow-hidden rounded-lg border border-slate-700">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-slate-900/50">
+                                <th class="px-3 py-2 text-left text-slate-400 font-medium">Metric</th>
+                                <th class="px-3 py-2 text-center ${teamClassA} font-semibold">${esc(comparison.playerA.name)}</th>
+                                <th class="px-3 py-2 text-center ${teamClassB} font-semibold">${esc(comparison.playerB.name)}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${stats.map(stat => {
+                                const better = getBetter(stat.valA, stat.valB, stat.lowerIsBetter);
+                                return `
+                                    <tr class="border-t border-slate-700/50">
+                                        <td class="px-3 py-2 text-slate-400">${stat.label}</td>
+                                        <td class="px-3 py-2 text-center font-mono ${better === 'a' ? 'text-green-400 font-semibold' : 'text-slate-300'}">${stat.valA}</td>
+                                        <td class="px-3 py-2 text-center font-mono ${better === 'b' ? 'text-green-400 font-semibold' : 'text-slate-300'}">${stat.valB}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
                         </tbody>
                     </table>
                 </div>
