@@ -52,12 +52,93 @@
         .rating-poor { color: #ef4444; }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-200 min-h-screen">
-    <!-- Header -->
-    <header class="bg-slate-800 border-b border-slate-700">
-        <div class="max-w-7xl mx-auto px-4 py-6">
-            <h1 class="text-2xl font-bold text-white">CS2 Demo Analyzer</h1>
-            <p class="text-slate-400 mt-1">Local analysis powered by awpy</p>
+<body class="bg-slate-900 text-slate-200 font-sans min-h-screen flex">
+
+    <!-- Fixed Sidebar Navigation -->
+    <aside id="sidebar" class="fixed left-0 top-0 h-screen w-64 bg-slate-950 border-r border-slate-800 flex flex-col z-50">
+        <!-- Logo -->
+        <div class="p-6 border-b border-slate-800">
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
+                OpenSight
+            </h1>
+            <p class="text-xs text-slate-500 mt-1">CS2 Analytics Platform</p>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="flex-1 py-4">
+            <div class="px-3 mb-2">
+                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Analysis</span>
+            </div>
+
+            <button class="sidebar-item active w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3" data-tab="overview">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                </svg>
+                Overview
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="heatmaps">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                </svg>
+                Heatmaps
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="killmap">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Kill Map
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="utility">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"/>
+                </svg>
+                Utility
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="compare">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                Compare
+            </button>
+
+            <div class="px-3 mt-6 mb-2">
+                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Match Data</span>
+            </div>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="players">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
+                </svg>
+                Players
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="timeline">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Timeline
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="coaching">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                AI Coaching
+            </button>
+        </nav>
+
+        <!-- Footer -->
+        <div class="p-4 border-t border-slate-800">
+            <div class="text-xs text-slate-500">
+                <p>100% Free &amp; Local</p>
+                <a href="https://github.com/nukethe02/cs2-analyzer" target="_blank" class="text-cyan-400 hover:underline">GitHub</a>
+            </div>
         </div>
     </header>
 
@@ -142,9 +223,147 @@
                         <h3 class="text-slate-400 text-sm font-medium uppercase tracking-wider mb-3">Score</h3>
                         <p id="match-score" class="text-2xl font-bold text-white">-</p>
                     </div>
-                    <div class="bg-slate-800 rounded-lg p-6">
-                        <h3 class="text-slate-400 text-sm font-medium uppercase tracking-wider mb-3">Rounds</h3>
-                        <p id="match-rounds" class="text-2xl font-bold text-white">-</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Kill Map Tab -->
+        <section id="tab-killmap" class="tab-content hidden p-8">
+            <div id="killmap-content" class="max-w-6xl mx-auto">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">Kill Map</h2>
+                        <p class="text-slate-400 mt-1">Visualize kill locations on the radar</p>
+                    </div>
+                </div>
+
+                <div id="killmap-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
+                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <p class="text-slate-500">Upload a demo file to view kill map</p>
+                </div>
+
+                <div id="killmap-display" class="hidden">
+                    <!-- Kill Map controls and radar -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                        <!-- Filters -->
+                        <div class="flex flex-wrap gap-4 mb-6 items-center justify-between">
+                            <div class="flex gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="killmap-show-ct" checked class="w-4 h-4 accent-ct">
+                                    <span class="text-sm text-ct font-medium">CT Kills</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="killmap-show-t" checked class="w-4 h-4 accent-t">
+                                    <span class="text-sm text-t font-medium">T Kills</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="killmap-show-hs" checked class="w-4 h-4 accent-yellow-500">
+                                    <span class="text-sm text-slate-300">Highlight Headshots</span>
+                                </label>
+                            </div>
+                            <div class="flex gap-4">
+                                <select id="killmap-player-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm">
+                                    <option value="all">All Players</option>
+                                </select>
+                                <select id="killmap-round-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm">
+                                    <option value="all">All Rounds</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Map Container -->
+                        <div id="killmap-container" class="relative w-full max-w-4xl mx-auto aspect-square rounded-lg overflow-hidden bg-slate-900">
+                            <!-- Radar background image -->
+                            <div id="killmap-radar" class="absolute inset-0 bg-center bg-contain bg-no-repeat"></div>
+                            <!-- Kill dots overlay -->
+                            <div id="killmap-overlay" class="absolute inset-0"></div>
+                            <!-- Tooltip -->
+                            <div id="killmap-tooltip" class="absolute hidden bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm pointer-events-none z-50 shadow-xl"></div>
+                            <!-- Loading/Error state -->
+                            <div id="killmap-loading" class="absolute inset-0 flex items-center justify-center text-slate-500 hidden">
+                                Loading map...
+                            </div>
+                            <div id="killmap-no-map" class="absolute inset-0 flex items-center justify-center text-slate-500 hidden">
+                                <div class="text-center">
+                                    <svg class="w-12 h-12 mx-auto mb-2 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                                    </svg>
+                                    <p>Map preview not available for this map</p>
+                                    <p class="text-xs mt-1">Kill data is still shown in the table below</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Legend -->
+                        <div class="flex justify-center gap-8 mt-4 text-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-ct shadow-lg shadow-ct/40"></span>
+                                <span class="text-slate-400">CT Kill</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-t shadow-lg shadow-t/40"></span>
+                                <span class="text-slate-400">T Kill</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-yellow-400 ring-2 ring-yellow-300/50"></span>
+                                <span class="text-slate-400">Headshot</span>
+                            </div>
+                        </div>
+
+                        <!-- Stats Summary -->
+                        <div id="killmap-stats" class="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-700">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-ct" id="killmap-ct-kills">0</div>
+                                <div class="text-xs text-slate-500 uppercase">CT Kills</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-t" id="killmap-t-kills">0</div>
+                                <div class="text-xs text-slate-500 uppercase">T Kills</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-yellow-400" id="killmap-headshots">0</div>
+                                <div class="text-xs text-slate-500 uppercase">Headshots</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-slate-300" id="killmap-total">0</div>
+                                <div class="text-xs text-slate-500 uppercase">Total Kills</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Kill List Table -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mt-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Kill Feed</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-slate-400 border-b border-slate-700">
+                                        <th class="text-left py-2 px-3">Round</th>
+                                        <th class="text-left py-2 px-3">Attacker</th>
+                                        <th class="text-left py-2 px-3">Weapon</th>
+                                        <th class="text-left py-2 px-3">Victim</th>
+                                        <th class="text-center py-2 px-3">HS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="killmap-table-body" class="divide-y divide-slate-700/50">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Utility Tab -->
+        <section id="tab-utility" class="tab-content hidden p-8">
+            <div id="utility-content" class="max-w-6xl mx-auto">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">Utility Analysis</h2>
+                        <p class="text-slate-400 mt-1">Flash, smoke, molotov, and HE effectiveness</p>
                     </div>
                 </div>
 
@@ -260,21 +479,86 @@
 
     <script>
         // DOM Elements
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const uploadContent = document.getElementById('upload-content');
-        const progressSection = document.getElementById('progress-section');
-        const progressText = document.getElementById('progress-text');
-        const progressBar = document.getElementById('progress-bar');
-        const progressDetail = document.getElementById('progress-detail');
-        const errorSection = document.getElementById('error-section');
-        const errorMessage = document.getElementById('error-message');
-        const resultsSection = document.getElementById('results-section');
-        const playersTableBody = document.getElementById('players-table-body');
-        const advancedTableBody = document.getElementById('advanced-table-body');
+        // ============================================
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('demo-file');
+        const loading = document.getElementById('loading');
+        const loadingDetails = document.getElementById('loading-details');
+        const uploadSection = document.getElementById('upload-section');
+        const resultsOverview = document.getElementById('results-overview');
 
-        // XSS Protection
-        function escapeHtml(text) {
+        // Global state
+        let analysisData = null;
+        let charts = {};
+
+        // ============================================
+        // Tab Navigation
+        // ============================================
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const tab = item.dataset.tab;
+
+                // Update sidebar active state
+                document.querySelectorAll('.sidebar-item').forEach(i => {
+                    i.classList.remove('active', 'text-cyan-400');
+                    i.classList.add('text-slate-400');
+                });
+                item.classList.add('active');
+                item.classList.remove('text-slate-400');
+
+                // Update content visibility
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.add('hidden');
+                    content.classList.remove('block');
+                });
+                const tabContent = document.getElementById(`tab-${tab}`);
+                if (tabContent) {
+                    tabContent.classList.remove('hidden');
+                    tabContent.classList.add('block');
+                }
+
+                // Initialize tab-specific content if data exists
+                if (analysisData) {
+                    if (tab === 'heatmaps') initHeatmap(analysisData.heatmap_data || {});
+                    if (tab === 'killmap') renderKillMapContent();
+                }
+            });
+        });
+
+        // ============================================
+        // File Upload Handlers
+        // ============================================
+        uploadZone.addEventListener('click', () => fileInput.click());
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('border-cyan-500', 'animate-pulse-glow');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('border-cyan-500', 'animate-pulse-glow');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('border-cyan-500', 'animate-pulse-glow');
+            const file = e.dataTransfer.files[0];
+            if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
+                analyzeFile(file);
+            } else {
+                showToast('Please upload a .dem or .dem.gz file', 'error');
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) analyzeFile(file);
+        });
+
+        // ============================================
+        // Utility Functions
+        // ============================================
+        function esc(text) {
             if (text === null || text === undefined) return '';
             const div = document.createElement('div');
             div.textContent = String(text);
@@ -327,9 +611,67 @@
                 btn.classList.remove('border-transparent', 'text-slate-400');
                 btn.classList.add('border-blue-500', 'text-blue-400');
 
-                // Show/hide content
-                document.querySelectorAll('.tab-content').forEach(content => {
-                    content.classList.remove('active');
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Analysis failed');
+                }
+
+                analysisData = data;
+                renderResults(data);
+                showToast('Analysis complete!', 'success');
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                loading.classList.add('hidden');
+                loading.classList.remove('flex');
+            }
+        }
+
+        // ============================================
+        // Render Results
+        // ============================================
+        function renderResults(data) {
+            const info = data.demo_info || {};
+            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            const ctPlayers = players.filter(p => p.team === 'CT');
+            const tPlayers = players.filter(p => p.team === 'T');
+
+            // Hide upload, show results
+            uploadSection.classList.add('hidden');
+            resultsOverview.classList.remove('hidden');
+
+            // Render overview
+            resultsOverview.innerHTML = renderOverviewContent(data, players, info);
+
+            // Show placeholders become real content
+            renderPlayersContent(ctPlayers, tPlayers);
+            renderUtilityContent(players);
+            renderTimelineContent(data.rounds || []);
+            renderCoachingContent(data.coaching || []);
+            renderCompareContent(players);
+            renderHeatmapContent();
+            renderKillMapContent();
+
+            // Initialize charts
+            initCharts(players);
+
+            // Add new analysis button handler
+            const newAnalysisBtn = document.getElementById('btn-new-analysis');
+            if (newAnalysisBtn) {
+                newAnalysisBtn.addEventListener('click', () => {
+                    uploadSection.classList.remove('hidden');
+                    resultsOverview.classList.add('hidden');
+                    resultsOverview.innerHTML = '';
+                    analysisData = null;
+
+                    // Reset all placeholders
+                    ['players', 'utility', 'timeline', 'coaching', 'compare', 'heatmap', 'killmap'].forEach(tab => {
+                        const display = document.getElementById(`${tab}-display`);
+                        const placeholder = document.getElementById(`${tab}-placeholder`);
+                        if (display) display.classList.add('hidden');
+                        if (placeholder) placeholder.classList.remove('hidden');
+                    });
                 });
                 document.getElementById(`content-${tabId}`).classList.add('active');
             });
@@ -560,6 +902,3413 @@
                 `;
             }).join('');
         }
+
+        .map-stat-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .map-stat-value.ct { color: var(--ct-color); }
+        .map-stat-value.t { color: var(--t-color); }
+
+        .map-stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .kill-map-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .kill-map-error {
+            padding: 32px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        /* Grenade Radar Visualization */
+        .grenade-radar-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 24px;
+        }
+
+        .grenade-radar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .grenade-radar-header h3 {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin: 0;
+        }
+
+        .grenade-controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .grenade-player-select {
+            padding: 8px 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            min-width: 180px;
+        }
+
+        .grenade-player-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .grenade-filter-btn {
+            padding: 8px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .grenade-filter-btn:hover { background: var(--bg-card-hover); }
+        .grenade-filter-btn.active {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .grenade-filter-btn .grenade-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .grenade-dot-flash { background: #f1c40f; }
+        .grenade-dot-smoke { background: #9b59b6; }
+        .grenade-dot-molotov { background: #e67e22; }
+        .grenade-dot-he { background: #e74c3c; }
+
+        .grenade-radar-canvas {
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 1;
+            margin: 0 auto;
+            display: block;
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+
+        .grenade-legend {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .grenade-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .grenade-stats-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .grenade-stat-item {
+            text-align: center;
+            padding: 10px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .grenade-stat-value {
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+
+        .grenade-stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Coaching Panel */
+        .coaching-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .coaching-player {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .coaching-player:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .coaching-player-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+        }
+
+        .insight {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .insight.warning { background: rgba(245, 158, 11, 0.1); border-left: 3px solid var(--warning); }
+        .insight.positive { background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--success); }
+        .insight.mistake { background: rgba(239, 68, 68, 0.1); border-left: 3px solid var(--danger); }
+
+        .insight-icon {
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .insight-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .insight-category {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Error Box */
+        .error-box {
+            background: var(--danger-bg);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 24px;
+            color: var(--danger);
+            text-align: center;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 32px 20px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            margin-top: 48px;
+        }
+
+        footer a { color: var(--accent); text-decoration: none; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .score-display { font-size: 2rem; gap: 16px; }
+            .tabs { overflow-x: auto; flex-wrap: nowrap; }
+            .stats-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+
+        /* Tooltip */
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+
+        .tooltip:hover::after { opacity: 1; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .players-grid { grid-template-columns: 1fr; }
+        }
+
+        /* Player Comparison Section */
+        .comparison-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .comparison-section .section-title {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .comparison-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+
+        .comparison-dropdown {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .comparison-dropdown label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .comparison-select {
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            cursor: pointer;
+            min-width: 200px;
+            transition: all 0.2s;
+        }
+
+        .comparison-select:hover {
+            border-color: var(--accent);
+        }
+
+        .comparison-select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent-dim);
+        }
+
+        .comparison-vs {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .comparison-chart-container {
+            display: flex;
+            gap: 32px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .comparison-chart-wrapper {
+            flex: 1;
+            min-width: 350px;
+            max-width: 500px;
+            height: 400px;
+            position: relative;
+        }
+
+        .comparison-stats {
+            flex: 1;
+            min-width: 280px;
+            max-width: 400px;
+        }
+
+        .comparison-player-stats {
+            margin-bottom: 20px;
+        }
+
+        .comparison-player-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .comparison-player-header.player-a {
+            border-color: var(--ct-color);
+        }
+
+        .comparison-player-header.player-b {
+            border-color: var(--t-color);
+        }
+
+        .comparison-player-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .comparison-player-team {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .comparison-stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.9rem;
+        }
+
+        .comparison-stat-label {
+            color: var(--text-muted);
+        }
+
+        .comparison-stat-value {
+            font-weight: 500;
+        }
+
+        .comparison-stat-value.better {
+            color: var(--success);
+        }
+
+        .comparison-stat-value.worse {
+            color: var(--danger);
+        }
+
+        .comparison-placeholder {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-muted);
+        }
+
+        .comparison-placeholder p {
+            font-size: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .comparison-controls {
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .comparison-select {
+                width: 100%;
+                min-width: unset;
+            }
+
+            .comparison-chart-container {
+                flex-direction: column;
+            }
+
+            .comparison-chart-wrapper {
+                max-width: 100%;
+                height: 300px;
+            }
+        }
+
+        /* Replay Viewer */
+        .replay-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .replay-viewer {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .replay-canvas-container {
+            flex: 1;
+            min-width: 400px;
+            position: relative;
+        }
+
+        .replay-canvas {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+
+        .replay-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .replay-btn {
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .replay-btn:hover { background: var(--bg-hover); }
+        .replay-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+        .replay-slider {
+            flex: 1;
+            min-width: 200px;
+            height: 8px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            outline: none;
+        }
+
+        .replay-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .replay-info {
+            display: flex;
+            gap: 20px;
+            margin-top: 12px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .replay-sidebar {
+            width: 280px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .replay-player-list h4 {
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .replay-player-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            border-radius: 6px;
+            margin-bottom: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .replay-player-item:hover { background: var(--bg-hover); }
+        .replay-player-item.selected { background: var(--accent-dim); }
+        .replay-player-item.dead { opacity: 0.4; }
+
+        .player-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .player-dot.ct { background: var(--ct-color); }
+        .player-dot.t { background: var(--t-color); }
+
+        .player-health {
+            margin-left: auto;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* Keyboard Shortcuts Panel */
+        .shortcuts-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            z-index: 50;
+            display: none;
+        }
+
+        .shortcuts-panel.show { display: block; }
+
+        .shortcuts-panel h4 {
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 4px;
+        }
+
+        .shortcut-key {
+            background: var(--bg-secondary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>OpenSight</h1>
+        <p>Professional CS2 Analytics - Leetify & Scope.gg Style Metrics</p>
+        <p>Professional CS2 Analytics - Free, Local, No Subscriptions</p>
+    </header>
+
+    <main class="container">
+        <section class="upload-section" id="upload-section">
+            <div class="upload-zone" id="upload-zone">
+                <h3>Drop your .dem file here</h3>
+                <p>or click to browse (supports .dem and .dem.gz up to 500MB)</p>
+                <input type="file" id="demo-file" accept=".dem,.dem.gz">
+            </div>
+        </section>
+
+        <div id="results" class="results"></div>
+    </main>
+
+    <div id="loading" class="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Analyzing demo...</div>
+        <div id="loading-details" style="color: #606070; margin-top: 8px;"></div>
+    </div>
+
+    <footer>
+        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer" target="_blank">OpenSight</a> - Local CS2 Analytics</p>
+        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer">OpenSight</a> - 100% Free CS2 Analytics</p>
+    </footer>
+
+    <div id="shortcuts-panel" class="shortcuts-panel">
+        <h4>Keyboard Shortcuts</h4>
+        <div class="shortcut-item"><span>Overview</span><span class="shortcut-key">1</span></div>
+        <div class="shortcut-item"><span>Timeline</span><span class="shortcut-key">2</span></div>
+        <div class="shortcut-item"><span>Kill Matrix</span><span class="shortcut-key">3</span></div>
+        <div class="shortcut-item"><span>Heatmap</span><span class="shortcut-key">4</span></div>
+        <div class="shortcut-item"><span>Coaching</span><span class="shortcut-key">5</span></div>
+        <div class="shortcut-item"><span>2D Replay</span><span class="shortcut-key">6</span></div>
+        <div class="shortcut-item"><span>Play/Pause</span><span class="shortcut-key">Space</span></div>
+        <div class="shortcut-item"><span>Prev Frame</span><span class="shortcut-key">&larr;</span></div>
+        <div class="shortcut-item"><span>Next Frame</span><span class="shortcut-key">&rarr;</span></div>
+        <div class="shortcut-item"><span>Toggle Shortcuts</span><span class="shortcut-key">?</span></div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('demo-file');
+        const loading = document.getElementById('loading');
+        const loadingDetails = document.getElementById('loading-details');
+        const resultsDiv = document.getElementById('results');
+        const uploadSection = document.getElementById('upload-section');
+
+        // Global state
+        let analysisData = null;
+        let charts = {};
+
+        // Click to upload
+        uploadZone.addEventListener('click', () => fileInput.click());
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
+                analyzeFile(file);
+            } else {
+                alert('Please upload a .dem or .dem.gz file');
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) analyzeFile(file);
+        });
+
+        // Utility Functions
+        function esc(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        function formatNumber(num, decimals = 1) {
+            if (num === null || num === undefined) return '-';
+            return Number(num).toFixed(decimals);
+        }
+
+        function getRatingClass(rating) {
+            if (rating >= 1.3) return 'elite';
+            if (rating >= 1.1) return 'good';
+            if (rating >= 0.9) return 'average';
+            return 'poor';
+        }
+
+        function getStatClass(value, thresholds) {
+            if (value >= thresholds.elite) return 'elite';
+            if (value >= thresholds.good) return 'good';
+            if (value >= thresholds.warning) return 'warning';
+            return 'bad';
+        }
+
+        function getBenchmarkPercentile(value, metric) {
+            const benchmarks = {
+                hltv_rating: { min: 0.5, max: 1.8, avg: 1.0 },
+                adr: { min: 40, max: 120, avg: 75 },
+                kast: { min: 40, max: 90, avg: 70 },
+                aim_rating: { min: 20, max: 80, avg: 50 },
+                utility_rating: { min: 20, max: 80, avg: 50 },
+                ttd: { min: 150, max: 600, avg: 350, inverted: true },
+                cp: { min: 3, max: 25, avg: 12, inverted: true }
+            };
+
+            const b = benchmarks[metric];
+            if (!b) return 50;
+
+            let percentile;
+            if (b.inverted) {
+                percentile = 100 - ((value - b.min) / (b.max - b.min) * 100);
+            } else {
+                percentile = ((value - b.min) / (b.max - b.min) * 100);
+            }
+            return Math.max(0, Math.min(100, percentile));
+        }
+
+        // Main Analysis Function
+        async function analyzeFile(file) {
+            const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+            loading.classList.add('show');
+            loadingDetails.textContent = `Processing ${file.name} (${sizeMB} MB)`;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Analysis failed');
+                }
+
+                analysisData = data;
+                renderResults(data);
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error-box"><strong>Error:</strong> ${esc(error.message)}</div>`;
+                resultsDiv.classList.add('show');
+            } finally {
+                loading.classList.remove('show');
+            }
+        }
+
+        // Main Render Function
+        // Rating class helper
+        function getRatingClass(rating) {
+            if (rating >= 1.2) return 'good';
+            if (rating <= 0.8) return 'bad';
+            return '';
+        }
+
+        // Render results
+        function renderResults(data) {
+            const info = data.demo_info || {};
+            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            const ctPlayers = players.filter(p => p.team === 'CT');
+            const tPlayers = players.filter(p => p.team === 'T');
+
+            // Hide upload section
+            uploadSection.style.display = 'none';
+
+            let html = `
+                ${renderMatchHeader(info, data.mvp)}
+
+                <div class="tabs">
+                    <div class="tab active" data-tab="overview">Overview</div>
+                    <div class="tab" data-tab="players">Players</div>
+                    <div class="tab" data-tab="charts">Charts</div>
+                    <div class="tab" data-tab="utility">Utility</div>
+                    <div class="tab" data-tab="leaderboard">Leaderboard</div>
+                </div>
+
+                <div id="tab-overview" class="tab-content active">
+                    ${renderOverviewTab(players, info)}
+                </div>
+
+                <div id="tab-players" class="tab-content">
+                    ${renderPlayersTab(ctPlayers, tPlayers)}
+                </div>
+
+                <div id="tab-charts" class="tab-content">
+                    ${renderChartsTab()}
+                </div>
+
+                <div id="tab-utility" class="tab-content">
+                    ${renderUtilityTab(players)}
+                </div>
+
+                <div id="tab-leaderboard" class="tab-content">
+                    ${renderLeaderboardTab(players)}
+                </div>
+            `;
+
+            resultsDiv.innerHTML = html;
+            resultsDiv.classList.add('show');
+
+            // Initialize event listeners and charts
+            initTabs();
+            initPlayerCards();
+            initCharts(players);
+            initPlayerComparison();
+            initExportButtons(data);
+        }
+
+        // Render Functions
+        function renderMatchHeader(info, mvp) {
+            const scores = (info.score || '0 - 0').split(' - ');
+            return `
+                <div class="match-header fade-in">
+                    <div class="map-name">${esc(info.map) || 'Unknown Map'}</div>
+                    <div class="match-meta">
+                        ${info.rounds || 0} rounds &bull;
+                        ${Math.round(info.duration_minutes || 0)} minutes &bull;
+                        ${info.total_kills || 0} kills &bull;
+                        ${info.player_count || 0} players
+                        ${info.rounds || 0} rounds &bull; ${Math.round(info.duration_minutes || 0)} min &bull; ${info.total_kills || 0} kills
+                    </div>
+                    <div class="score-display">
+                        <span class="score-ct" title="Counter-Terrorists">${scores[0] || '0'}</span>
+                        <span class="score-separator">:</span>
+                        <span class="score-t" title="Terrorists">${scores[1] || '0'}</span>
+                    </div>
+                    ${mvp ? `
+                        <div style="color: var(--text-muted); margin-bottom: 20px;">
+                            MVP: <strong style="color: var(--accent);">${esc(mvp.name)}</strong>
+                            (${formatNumber(mvp.rating, 2)} rating)
+                        </div>
+                    ` : ''}
+                    <div class="action-buttons">
+                        <button class="btn" id="btn-new-analysis">
+                            <span>+</span> New Analysis
+                        </button>
+                        <button class="btn" id="btn-export-json">
+                            <span>{ }</span> Export JSON
+                        </button>
+                        <button class="btn" id="btn-export-csv">
+                            <span>CSV</span> Export CSV
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderOverviewTab(players, info) {
+            // Get rounds data from global analysisData
+            const rounds = analysisData?.rounds || [];
+
+            return `
+                ${rounds.length > 0 ? `
+                <div class="round-timeline">
+                    <h3>Round Timeline</h3>
+                    <div class="timeline-container">
+                        ${rounds.map(r => `
+                            <div class="round-marker ${r.winner === 'CT' ? 'ct-win' : 't-win'}"
+                                 title="Round ${r.round_num}: ${r.winner} win (${r.reason || 'unknown'})">
+                                ${r.round_num}
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div style="display: flex; gap: 24px; margin-top: 12px; color: var(--text-muted); font-size: 0.85rem;">
+                        <span><span style="color: var(--ct-color);">&#9632;</span> CT Wins: ${rounds.filter(r => r.winner === 'CT').length}</span>
+                        <span><span style="color: var(--t-color);">&#9632;</span> T Wins: ${rounds.filter(r => r.winner === 'T').length}</span>
+                    </div>
+                </div>
+                ` : ''}
+
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>Player Ratings</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-ratings"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Kills & Deaths</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-kd"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>ADR Comparison</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-adr"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Aim & Utility Ratings</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-composite"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Player Comparison Section -->
+                <div class="comparison-section">
+                    <h3 class="section-title">Player Comparison</h3>
+                    <div class="comparison-controls">
+                        <div class="comparison-dropdown">
+                            <label for="player-a-select">Player A:</label>
+                            <select id="player-a-select" class="comparison-select">
+                                <option value="">Select Player A</option>
+                                ${players.map(p => `<option value="${p.id}">${esc(p.name)} (${p.team})</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="comparison-vs">VS</div>
+                        <div class="comparison-dropdown">
+                            <label for="player-b-select">Player B:</label>
+                            <select id="player-b-select" class="comparison-select">
+                                <option value="">Select Player B</option>
+                                ${players.map(p => `<option value="${p.id}">${esc(p.name)} (${p.team})</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div id="comparison-chart-container" class="comparison-chart-container" style="display: none;">
+                        <div class="comparison-chart-wrapper">
+                            <canvas id="chart-comparison-radar"></canvas>
+                        </div>
+                        <div id="comparison-stats" class="comparison-stats"></div>
+                    </div>
+                    <div id="comparison-placeholder" class="comparison-placeholder">
+                        <p>Select two players above to compare their performance</p>
+                    </div>
+                </div>
+
+                <div class="players-grid">
+                    ${players.map(p => renderPlayerCard(p, true)).join('')}
+                </div>
+            `;
+        }
+
+        function renderPlayersTab(ctPlayers, tPlayers) {
+            return `
+                <h3 style="color: var(--ct-color); margin-bottom: 16px;">Counter-Terrorists</h3>
+                <div class="players-grid" style="margin-bottom: 32px;">
+                    ${ctPlayers.map(p => renderPlayerCard(p, false)).join('')}
+                </div>
+
+                <h3 style="color: var(--t-color); margin-bottom: 16px;">Terrorists</h3>
+                <div class="players-grid">
+                    ${tPlayers.map(p => renderPlayerCard(p, false)).join('')}
+                </div>
+                    ${data.mvp ? `
+                        <div class="mvp-banner">
+                            MVP: <span>${esc(data.mvp.name)}</span> (${data.mvp.rating?.toFixed(2) || '-'} Rating)
+                        </div>
+                    ` : ''}
+                </div>
+
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="overview" title="Press 1">Overview</button>
+                    <button class="tab-btn" data-tab="timeline" title="Press 2">Round Timeline</button>
+                    <button class="tab-btn" data-tab="matrix" title="Press 3">Kill Matrix</button>
+                    <button class="tab-btn" data-tab="heatmap" title="Press 4">Heatmap</button>
+                    <button class="tab-btn" data-tab="coaching" title="Press 5">AI Coaching</button>
+                    <button class="tab-btn" data-tab="replay" title="Press 6">2D Replay</button>
+                </div>
+
+                <div class="tab-content active" id="tab-overview">
+                    ${renderOverview(players)}
+                </div>
+
+                <div class="tab-content" id="tab-timeline">
+                    ${renderTimeline(data.round_timeline || [])}
+                </div>
+
+                <div class="tab-content" id="tab-matrix">
+                    ${renderKillMatrix(data.kill_matrix || [], players)}
+                </div>
+
+                <div class="tab-content" id="tab-heatmap">
+                    ${renderHeatmap(data.heatmap_data || {}, info.map || 'unknown')}
+                </div>
+
+                <div class="tab-content" id="tab-coaching">
+                    ${renderCoaching(data.coaching || [])}
+                </div>
+
+                <div class="tab-content" id="tab-replay">
+                    ${renderReplayViewer(players, info.map || 'unknown')}
+                </div>
+            `;
+        }
+
+        function renderPlayerCard(player, compact = false) {
+            const s = player.stats || {};
+            const r = player.rating || {};
+            const d = player.duels || {};
+            const c = player.clutches || {};
+            const mk = player.multi_kills || {};
+            const adv = player.advanced || {};
+            const util = player.utility || {};
+            const side = player.side_stats || {};
+            const mistakes = player.mistakes || {};
+            resultsDiv.innerHTML = html;
+            resultsDiv.classList.add('show');
+
+            // Tab switching
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+
+                    // Initialize heatmap and kill map when tab is shown
+                    if (btn.dataset.tab === 'heatmap') {
+                        initHeatmap(data.heatmap_data || {});
+                        initKillMap(data.heatmap_data || {}, info.map || 'unknown', players);
+                    }
+
+                    // Initialize replay viewer when tab is shown
+                    if (btn.dataset.tab === 'replay') {
+                        initReplayViewer(data.heatmap_data || {}, players);
+                    }
+                });
+            });
+        }
+
+        // Render Overview Tab
+        function renderOverview(players) {
+            let html = '<div class="players-grid">';
+
+            for (const player of players) {
+                const s = player.stats || {};
+                const r = player.rating || {};
+                const adv = player.advanced || {};
+                const util = player.utility || {};
+                const teamClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
+                const ratingClass = getRatingClass(r.hltv_rating);
+
+                html += `
+                <div class="player-card fade-in" data-player-id="${player.id}">
+                    <div class="player-main">
+                        <div class="player-header">
+                            <div class="player-info">
+                                <span class="player-name">${esc(player.name) || 'Unknown'}</span>
+                                <span class="player-team ${teamClass}">${esc(player.team) || '?'}</span>
+                            </div>
+                            <div class="player-badges">
+                                <span class="rating-badge ${ratingClass}" title="HLTV 2.0 Rating">
+                                    ${formatNumber(r.hltv_rating, 2)}
+                                </span>
+                                <span class="expand-icon">&#9660;</span>
+                            </div>
+                        </div>
+                        <div class="stats-grid">
+                            <div class="stat highlight tooltip" data-tooltip="Total Kills">
+                                <div class="stat-value">${s.kills || 0}</div>
+                                <div class="stat-label">Kills</div>
+                            </div>
+                            <div class="stat tooltip" data-tooltip="Total Deaths">
+                                <div class="stat-value">${s.deaths || 0}</div>
+                                <div class="stat-label">Deaths</div>
+                            </div>
+                            <div class="stat tooltip" data-tooltip="Kill Assists">
+                                <div class="stat-value">${s.assists || 0}</div>
+                                <div class="stat-label">Assists</div>
+                            </div>
+                            <div class="stat tooltip" data-tooltip="Kill/Death Ratio">
+                                <div class="stat-value ${(s.kd_ratio || 0) >= 1 ? 'good' : 'bad'}">${s.kd_ratio || '-'}</div>
+                                <div class="stat-label">K/D</div>
+                            </div>
+                            <div class="stat highlight tooltip" data-tooltip="Average Damage per Round">
+                                <div class="stat-value ${getStatClass(s.adr || 0, {elite: 90, good: 75, warning: 60})}">${s.adr || 0}</div>
+                                <div class="stat-label">ADR</div>
+                            </div>
+                            <div class="stat tooltip" data-tooltip="Headshot Percentage">
+                                <div class="stat-value">${s.headshot_pct || 0}%</div>
+                                <div class="stat-label">HS%</div>
+                            </div>
+                            <div class="stat tooltip" data-tooltip="Kill/Assist/Survived/Traded %">
+                                <div class="stat-value ${getStatClass(r.kast_percentage || 0, {elite: 80, good: 70, warning: 60})}">${formatNumber(r.kast_percentage, 0)}%</div>
+                                <div class="stat-label">KAST</div>
+                            </div>
+                            <div class="stat tooltip" data-tooltip="Impact Rating">
+                                <div class="stat-value">${formatNumber(r.impact_rating, 2)}</div>
+                                <div class="stat-label">Impact</div>
+                            <div class="stat">
+                                <div class="stat-value ${r.kast_percentage >= 70 ? 'good' : r.kast_percentage < 50 ? 'bad' : ''}">${r.kast_percentage || 0}%</div>
+                                <div class="stat-label">KAST</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value ${r.aim_rating >= 60 ? 'good' : r.aim_rating < 40 ? 'bad' : ''}">${r.aim_rating || 0}</div>
+                                <div class="stat-label">Aim</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</div>
+                                <div class="stat-label">TTD</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</div>
+                                <div class="stat-label">CP</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value">${util.flashbangs_thrown || 0}</div>
+                                <div class="stat-label">Flashes</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value ${r.utility_rating >= 60 ? 'good' : r.utility_rating < 30 ? 'bad' : ''}">${r.utility_rating || 0}</div>
+                                <div class="stat-label">Util</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="player-details">
+                        <div class="details-grid">
+                            <!-- Advanced Aim Stats -->
+                            <div class="detail-section">
+                                <h4>Aim Performance</h4>
+                                <div class="benchmark-row">
+                                    <div class="benchmark-header">
+                                        <span class="benchmark-label">Aim Rating</span>
+                                        <span class="benchmark-value">${formatNumber(r.aim_rating, 0)}/100</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill accent" style="width: ${r.aim_rating || 0}%"></div>
+                                    </div>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Time to Damage (Median)</span>
+                                    <span class="detail-value">${adv.ttd_median_ms ? formatNumber(adv.ttd_median_ms, 0) + 'ms' : '-'}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Crosshair Placement</span>
+                                    <span class="detail-value">${adv.cp_median_error_deg ? formatNumber(adv.cp_median_error_deg, 1) + '°' : '-'}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Prefire Kills</span>
+                                    <span class="detail-value">${adv.prefire_kills || 0}</span>
+                                </div>
+                            </div>
+
+                            <!-- Utility Stats -->
+                            <div class="detail-section">
+                                <h4>Utility Usage</h4>
+                                <div class="benchmark-row">
+                                    <div class="benchmark-header">
+                                        <span class="benchmark-label">Utility Rating</span>
+                                        <span class="benchmark-value">${formatNumber(r.utility_rating, 0)}/100</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill success" style="width: ${r.utility_rating || 0}%"></div>
+                                    </div>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Enemies Flashed</span>
+                                    <span class="detail-value">${util.enemies_flashed || 0} (${formatNumber(util.enemies_flashed_per_flash, 2)}/flash)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">HE Damage</span>
+                                    <span class="detail-value">${util.he_damage || 0} (${formatNumber(util.he_damage_per_nade, 1)}/nade)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Molotov Damage</span>
+                                    <span class="detail-value">${util.molotov_damage || 0}</span>
+                                </div>
+                            </div>
+
+                            <!-- Duels & Clutches -->
+                            <div class="detail-section">
+                                <h4>Duels & Clutches</h4>
+                                <div class="detail-row">
+                                    <span class="detail-label">Opening Duels</span>
+                                    <span class="detail-value ${(d.opening_win_rate || 0) >= 50 ? 'good' : 'bad'}">${d.opening_wins || 0}W / ${d.opening_losses || 0}L (${formatNumber(d.opening_win_rate, 0)}%)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Trade Kills</span>
+                                    <span class="detail-value">${d.kills_traded || 0}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Clutches Won</span>
+                                    <span class="detail-value">${c.total_wins || 0} / ${c.total_situations || 0}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Multi-Kills</span>
+                                    <span class="detail-value">2k: ${mk.rounds_with_2k || 0} | 3k: ${mk.rounds_with_3k || 0} | 4k: ${mk.rounds_with_4k || 0} | 5k: ${mk.rounds_with_5k || 0}</span>
+                                </div>
+                            </div>
+
+                            <!-- Side Performance -->
+                            <div class="detail-section">
+                                <h4>Side Performance</h4>
+                                <div class="detail-row">
+                                    <span class="detail-label" style="color: var(--ct-color);">CT Side</span>
+                                    <span class="detail-value">${side.ct?.kills || 0}K / ${side.ct?.deaths || 0}D (${formatNumber(side.ct?.adr, 0)} ADR)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label" style="color: var(--t-color);">T Side</span>
+                                    <span class="detail-value">${side.t?.kills || 0}K / ${side.t?.deaths || 0}D (${formatNumber(side.t?.adr, 0)} ADR)</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Survival Rate</span>
+                                    <span class="detail-value">${formatNumber(r.survival_rate, 0)}%</span>
+                                </div>
+                            </div>
+
+                            <!-- Weapons -->
+                            <div class="detail-section">
+                                <h4>Top Weapons</h4>
+                                ${(player.weapons || []).slice(0, 5).map(w => `
+                                    <div class="detail-row">
+                                        <span class="detail-label">${esc(w.weapon)}</span>
+                                        <span class="detail-value">${w.kills} kills</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+
+                            <!-- Mistakes -->
+                            <div class="detail-section">
+                                <h4>Mistakes</h4>
+                                <div class="detail-row">
+                                    <span class="detail-label">Team Kills</span>
+                                    <span class="detail-value ${(mistakes.team_kills || 0) > 0 ? 'bad' : ''}">${mistakes.team_kills || 0}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Team Damage</span>
+                                    <span class="detail-value">${mistakes.team_damage || 0}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Teammates Flashed</span>
+                                    <span class="detail-value">${mistakes.teammates_flashed || 0}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        function renderChartsTab() {
+            return `
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>HLTV Rating Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-rating-dist"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Time to Damage (TTD)</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-ttd"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Crosshair Placement</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-cp"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Opening Duel Win Rate</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-opening"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>KAST Percentage</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-kast"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Headshot Percentage</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-hs"></canvas>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderUtilityTab(players) {
+            // Calculate team totals
+            const totals = players.reduce((acc, p) => {
+                const u = p.utility || {};
+                acc.flashesThrown += u.flashbangs_thrown || 0;
+                acc.enemiesFlashed += u.enemies_flashed || 0;
+                acc.teammatesFlashed += u.teammates_flashed || 0;
+                acc.heThrown += u.he_thrown || 0;
+                acc.heDamage += u.he_damage || 0;
+                acc.molotovThrown += u.molotov_thrown || 0;
+                acc.molotovDamage += u.molotov_damage || 0;
+                acc.smokesThrown += u.smokes_thrown || 0;
+                acc.flashAssists += u.flash_assists || 0;
+                return acc;
+            }, { flashesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, smokesThrown: 0, flashAssists: 0 });
+
+            // Calculate flash efficiency
+            const flashEfficiency = totals.flashesThrown > 0
+                ? (totals.enemiesFlashed / totals.flashesThrown).toFixed(2)
+                : '0.00';
+
+            return `
+                <div class="utility-grid">
+                    <div class="utility-card">
+                        <div class="utility-icon">&#128165;</div>
+                        <div class="utility-value" style="color: #f1c40f;">${totals.flashesThrown}</div>
+                        <div class="utility-label">Flashbangs Thrown</div>
+                        <div class="utility-sub">${totals.enemiesFlashed} enemies blinded (${flashEfficiency}/flash)</div>
+                    </div>
+                    <div class="utility-card">
+                        <div class="utility-icon">&#128168;</div>
+                        <div class="utility-value" style="color: #9b59b6;">${totals.smokesThrown}</div>
+                        <div class="utility-label">Smokes Thrown</div>
+                        <div class="utility-sub">Vision control utility</div>
+                    </div>
+                    <div class="utility-card">
+                        <div class="utility-icon">&#128163;</div>
+                        <div class="utility-value" style="color: #e74c3c;">${totals.heDamage}</div>
+                        <div class="utility-label">HE Grenade Damage</div>
+                        <div class="utility-sub">${totals.heThrown} grenades thrown</div>
+                    </div>
+                    <div class="utility-card">
+                        <div class="utility-icon">&#128293;</div>
+                        <div class="utility-value" style="color: #e67e22;">${totals.molotovDamage}</div>
+                        <div class="utility-label">Molotov Damage</div>
+                        <div class="utility-sub">${totals.molotovThrown} molotovs thrown</div>
+                    </div>
+                </div>
+
+                <!-- Grenade Radar Visualization -->
+                <div class="grenade-radar-container">
+                    <div class="grenade-radar-header">
+                        <h3>Grenade Landing Positions</h3>
+                        <div class="grenade-controls">
+                            <select id="grenade-player-select" class="grenade-player-select">
+                                <option value="all">All Players</option>
+                                ${players.map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${esc(p.team)})</option>`).join('')}
+                            </select>
+                            <button class="grenade-filter-btn active" data-type="flash">
+                                <span class="grenade-dot grenade-dot-flash"></span>
+                                Flash
+                            </button>
+                            <button class="grenade-filter-btn active" data-type="smoke">
+                                <span class="grenade-dot grenade-dot-smoke"></span>
+                                Smoke
+                            </button>
+                            <button class="grenade-filter-btn active" data-type="molotov">
+                                <span class="grenade-dot grenade-dot-molotov"></span>
+                                Molotov
+                            </button>
+                            <button class="grenade-filter-btn active" data-type="he">
+                                <span class="grenade-dot grenade-dot-he"></span>
+                                HE
+                            </button>
+                        </div>
+                    </div>
+                    <canvas id="grenade-radar-canvas" class="grenade-radar-canvas"></canvas>
+                    <div class="grenade-legend">
+                        <div class="grenade-legend-item">
+                            <span class="grenade-dot grenade-dot-flash"></span>
+                            <span>Flashbang</span>
+                        </div>
+                        <div class="grenade-legend-item">
+                            <span class="grenade-dot grenade-dot-smoke"></span>
+                            <span>Smoke</span>
+                        </div>
+                        <div class="grenade-legend-item">
+                            <span class="grenade-dot grenade-dot-molotov"></span>
+                            <span>Molotov/Incendiary</span>
+                        </div>
+                        <div class="grenade-legend-item">
+                            <span class="grenade-dot grenade-dot-he"></span>
+                            <span>HE Grenade</span>
+                        </div>
+                    </div>
+                    <div id="grenade-stats-summary" class="grenade-stats-summary"></div>
+                </div>
+
+                <h3 style="margin: 32px 0 16px; color: var(--text-secondary);">Utility by Player</h3>
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>Flash Effectiveness</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-flash"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Grenade Damage</h3>
+                        <div class="chart-container">
+                            <canvas id="chart-nade-damage"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 style="margin: 32px 0 16px; color: var(--text-secondary);">Flashbang Efficiency</h3>
+                <div class="players-grid">
+                    ${players.sort((a, b) => {
+                        const aEff = (a.utility?.flashbangs_thrown > 0) ? a.utility.enemies_flashed / a.utility.flashbangs_thrown : 0;
+                        const bEff = (b.utility?.flashbangs_thrown > 0) ? b.utility.enemies_flashed / b.utility.flashbangs_thrown : 0;
+                        return bEff - aEff;
+                    }).map(p => {
+                        const flashEff = (p.utility?.flashbangs_thrown > 0)
+                            ? (p.utility.enemies_flashed / p.utility.flashbangs_thrown).toFixed(2)
+                            : '0.00';
+                        const effClass = flashEff >= 0.7 ? 'good' : flashEff >= 0.4 ? 'warning' : 'bad';
+                        return `
+                        <div class="player-card fade-in" style="padding: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <span class="player-name">${esc(p.name)}</span>
+                                <span class="rating-badge" style="background: var(--${effClass === 'good' ? 'success' : effClass === 'warning' ? 'warning' : 'danger'});">${flashEff}/flash</span>
+                            </div>
+                            <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
+                                <div class="stat">
+                                    <div class="stat-value">${p.utility?.flashbangs_thrown || 0}</div>
+                                    <div class="stat-label">Flashes</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value ${effClass}">${p.utility?.enemies_flashed || 0}</div>
+                                    <div class="stat-label">Enemies</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${p.utility?.teammates_flashed || 0}</div>
+                                    <div class="stat-label">Teammates</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${p.utility?.smokes_thrown || 0}</div>
+                                    <div class="stat-label">Smokes</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${(p.utility?.molotovs_thrown || 0) + (p.utility?.he_thrown || 0)}</div>
+                                    <div class="stat-label">HE/Molly</div>
+                                </div>
+                            </div>
+                        </div>
+                    `}).join('')}
+                </div>
+            `;
+        }
+
+        function renderLeaderboardTab(players) {
+            return `
+                <div class="leaderboard">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Player</th>
+                                <th>Team</th>
+                                <th data-sort="rating">Rating</th>
+                                <th data-sort="kills">K</th>
+                                <th data-sort="deaths">D</th>
+                                <th data-sort="assists">A</th>
+                                <th data-sort="kd">K/D</th>
+                                <th data-sort="adr">ADR</th>
+                                <th data-sort="hs">HS%</th>
+                                <th data-sort="kast">KAST</th>
+                                <th data-sort="aim">Aim</th>
+                                <th data-sort="util">Util</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${players.map((p, i) => `
+                                <tr>
+                                    <td>${i + 1}</td>
+                                    <td><strong>${esc(p.name)}</strong></td>
+                                    <td><span class="player-team ${p.team === 'CT' ? 'team-ct' : 'team-t'}">${p.team}</span></td>
+                                    <td><span class="rating-badge ${getRatingClass(p.rating?.hltv_rating)}" style="padding: 4px 10px; font-size: 0.85rem;">${formatNumber(p.rating?.hltv_rating, 2)}</span></td>
+                                    <td>${p.stats?.kills || 0}</td>
+                                    <td>${p.stats?.deaths || 0}</td>
+                                    <td>${p.stats?.assists || 0}</td>
+                                    <td class="${(p.stats?.kd_ratio || 0) >= 1 ? 'good' : 'bad'}">${p.stats?.kd_ratio || '-'}</td>
+                                    <td>${p.stats?.adr || 0}</td>
+                                    <td>${p.stats?.headshot_pct || 0}%</td>
+                                    <td>${formatNumber(p.rating?.kast_percentage, 0)}%</td>
+                                    <td>${formatNumber(p.rating?.aim_rating, 0)}</td>
+                                    <td>${formatNumber(p.rating?.utility_rating, 0)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // Initialize Functions
+        function initTabs() {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+                    tab.classList.add('active');
+                    const tabId = tab.dataset.tab;
+                    document.getElementById(`tab-${tabId}`).classList.add('active');
+
+                    // Initialize charts when switching to charts tab
+                    if (tabId === 'charts' && analysisData) {
+                        setTimeout(() => initAdvancedCharts(Object.entries(analysisData.players).map(([id, p]) => ({ id, ...p }))), 100);
+                    }
+                    if (tabId === 'utility' && analysisData) {
+                        const players = Object.entries(analysisData.players).map(([id, p]) => ({ id, ...p }));
+                        setTimeout(() => {
+                            initUtilityCharts(players);
+                            initGrenadeRadar(analysisData.grenade_data, players);
+                        }, 100);
+                    }
+                });
+            });
+        }
+
+        function initPlayerCards() {
+            document.querySelectorAll('.player-card').forEach(card => {
+                const main = card.querySelector('.player-main');
+                if (main) {
+                    main.addEventListener('click', () => {
+                        card.classList.toggle('expanded');
+                    });
+                }
+            });
+        }
+
+        function initExportButtons(data) {
+            document.getElementById('btn-new-analysis')?.addEventListener('click', () => {
+                resultsDiv.classList.remove('show');
+                resultsDiv.innerHTML = '';
+                uploadSection.style.display = 'block';
+                fileInput.value = '';
+            });
+
+            document.getElementById('btn-export-json')?.addEventListener('click', () => {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                downloadBlob(blob, `opensight-analysis-${Date.now()}.json`);
+            });
+
+            document.getElementById('btn-export-csv')?.addEventListener('click', () => {
+                const csv = generateCSV(data);
+                const blob = new Blob([csv], { type: 'text/csv' });
+                downloadBlob(blob, `opensight-analysis-${Date.now()}.csv`);
+            });
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function generateCSV(data) {
+            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            const headers = ['Name', 'Team', 'Rating', 'Kills', 'Deaths', 'Assists', 'K/D', 'ADR', 'HS%', 'KAST%', 'Impact', 'Aim Rating', 'Utility Rating', 'TTD (ms)', 'CP (deg)', 'Opening Win%', 'Flash Assists', 'HE Damage'];
+            const rows = players.map(p => [
+                p.name,
+                p.team,
+                p.rating?.hltv_rating,
+                p.stats?.kills,
+                p.stats?.deaths,
+                p.stats?.assists,
+                p.stats?.kd_ratio,
+                p.stats?.adr,
+                p.stats?.headshot_pct,
+                p.rating?.kast_percentage,
+                p.rating?.impact_rating,
+                p.rating?.aim_rating,
+                p.rating?.utility_rating,
+                p.advanced?.ttd_median_ms,
+                p.advanced?.cp_median_error_deg,
+                p.duels?.opening_win_rate,
+                p.utility?.flash_assists,
+                p.utility?.he_damage
+            ].join(','));
+            return [headers.join(','), ...rows].join('\n');
+        }
+
+        // Chart Functions
+        function initCharts(players) {
+            const names = players.map(p => p.name?.substring(0, 12) || 'Unknown');
+            const teams = players.map(p => p.team);
+
+            // Color helper
+            const getColor = (team, alpha = 1) => team === 'CT'
+                ? `rgba(74, 144, 217, ${alpha})`
+                : `rgba(222, 155, 53, ${alpha})`;
+
+            // Destroy existing charts
+            Object.values(charts).forEach(c => c?.destroy?.());
+            charts = {};
+
+            // Rating Chart
+            const ratingsCtx = document.getElementById('chart-ratings');
+            if (ratingsCtx) {
+                charts.ratings = new Chart(ratingsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'HLTV Rating',
+                            data: players.map(p => p.rating?.hltv_rating || 0),
+                            backgroundColor: teams.map(t => getColor(t, 0.7)),
+                            borderColor: teams.map(t => getColor(t)),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            annotation: {
+                                annotations: {
+                                    line1: {
+                                        type: 'line',
+                                        yMin: 1.0,
+                                        yMax: 1.0,
+                                        borderColor: 'rgba(255, 255, 255, 0.3)',
+                                        borderWidth: 2,
+                                        borderDash: [5, 5]
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 2,
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                ticks: { color: '#a0a0b0' }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: '#a0a0b0' }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // K/D Chart
+            const kdCtx = document.getElementById('chart-kd');
+            if (kdCtx) {
+                charts.kd = new Chart(kdCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [
+                            {
+                                label: 'Kills',
+                                data: players.map(p => p.stats?.kills || 0),
+                                backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                                borderColor: 'rgba(34, 197, 94, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Deaths',
+                                data: players.map(p => p.stats?.deaths || 0),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                                borderColor: 'rgba(239, 68, 68, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // ADR Chart
+            const adrCtx = document.getElementById('chart-adr');
+            if (adrCtx) {
+                charts.adr = new Chart(adrCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'ADR',
+                            data: players.map(p => p.stats?.adr || 0),
+                            backgroundColor: teams.map(t => getColor(t, 0.7)),
+                            borderColor: teams.map(t => getColor(t)),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            y: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // Composite Rating Chart (Aim vs Utility)
+            const compositeCtx = document.getElementById('chart-composite');
+            if (compositeCtx) {
+                charts.composite = new Chart(compositeCtx, {
+                    type: 'scatter',
+                    data: {
+                        datasets: [{
+                            label: 'Players',
+                            data: players.map(p => ({
+                                x: p.rating?.aim_rating || 0,
+                                y: p.rating?.utility_rating || 0,
+                                name: p.name
+                            })),
+                            backgroundColor: teams.map(t => getColor(t, 0.8)),
+                            pointRadius: 10,
+                            pointHoverRadius: 12
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => `${ctx.raw.name}: Aim ${ctx.raw.x}, Utility ${ctx.raw.y}`
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: 'Aim Rating', color: '#a0a0b0' },
+                                min: 0, max: 100,
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                ticks: { color: '#a0a0b0' }
+                            },
+                            y: {
+                                title: { display: true, text: 'Utility Rating', color: '#a0a0b0' },
+                                min: 0, max: 100,
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                ticks: { color: '#a0a0b0' }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        function initAdvancedCharts(players) {
+            const names = players.map(p => p.name?.substring(0, 12) || 'Unknown');
+            const teams = players.map(p => p.team);
+            const getColor = (team, alpha = 1) => team === 'CT'
+                ? `rgba(74, 144, 217, ${alpha})`
+                : `rgba(222, 155, 53, ${alpha})`;
+
+            // Rating Distribution
+            const ratingDistCtx = document.getElementById('chart-rating-dist');
+            if (ratingDistCtx && !charts.ratingDist) {
+                charts.ratingDist = new Chart(ratingDistCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Elite (1.3+)', 'Good (1.1-1.3)', 'Average (0.9-1.1)', 'Below (< 0.9)'],
+                        datasets: [{
+                            data: [
+                                players.filter(p => (p.rating?.hltv_rating || 0) >= 1.3).length,
+                                players.filter(p => (p.rating?.hltv_rating || 0) >= 1.1 && (p.rating?.hltv_rating || 0) < 1.3).length,
+                                players.filter(p => (p.rating?.hltv_rating || 0) >= 0.9 && (p.rating?.hltv_rating || 0) < 1.1).length,
+                                players.filter(p => (p.rating?.hltv_rating || 0) < 0.9).length
+                            ],
+                            backgroundColor: ['#ffd700', '#22c55e', '#f59e0b', '#ef4444']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } }
+                    }
+                });
+            }
+
+            // TTD Chart
+            const ttdCtx = document.getElementById('chart-ttd');
+            if (ttdCtx && !charts.ttd) {
+                charts.ttd = new Chart(ttdCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'TTD (ms)',
+                            data: players.map(p => p.advanced?.ttd_median_ms || 0),
+                            backgroundColor: players.map(p => {
+                                const ttd = p.advanced?.ttd_median_ms || 999;
+                                if (ttd < 250) return 'rgba(34, 197, 94, 0.7)';
+                                if (ttd < 400) return 'rgba(245, 158, 11, 0.7)';
+                                return 'rgba(239, 68, 68, 0.7)';
+                            }),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // Crosshair Placement Chart
+            const cpCtx = document.getElementById('chart-cp');
+            if (cpCtx && !charts.cp) {
+                charts.cp = new Chart(cpCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'CP Error (degrees)',
+                            data: players.map(p => p.advanced?.cp_median_error_deg || 0),
+                            backgroundColor: players.map(p => {
+                                const cp = p.advanced?.cp_median_error_deg || 999;
+                                if (cp < 8) return 'rgba(34, 197, 94, 0.7)';
+                                if (cp < 15) return 'rgba(245, 158, 11, 0.7)';
+                                return 'rgba(239, 68, 68, 0.7)';
+                            }),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // Opening Duels Chart
+            const openingCtx = document.getElementById('chart-opening');
+            if (openingCtx && !charts.opening) {
+                charts.opening = new Chart(openingCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [
+                            {
+                                label: 'Wins',
+                                data: players.map(p => p.duels?.opening_wins || 0),
+                                backgroundColor: 'rgba(34, 197, 94, 0.7)'
+                            },
+                            {
+                                label: 'Losses',
+                                data: players.map(p => p.duels?.opening_losses || 0),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } },
+                        scales: {
+                            y: { beginAtZero: true, stacked: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { stacked: true, grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // KAST Chart
+            const kastCtx = document.getElementById('chart-kast');
+            if (kastCtx && !charts.kast) {
+                charts.kast = new Chart(kastCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'KAST %',
+                            data: players.map(p => p.rating?.kast_percentage || 0),
+                            backgroundColor: teams.map(t => getColor(t, 0.7)),
+                            borderColor: teams.map(t => getColor(t)),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // HS% Chart
+            const hsCtx = document.getElementById('chart-hs');
+            if (hsCtx && !charts.hs) {
+                charts.hs = new Chart(hsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [{
+                            label: 'HS %',
+                            data: players.map(p => p.stats?.headshot_pct || 0),
+                            backgroundColor: 'rgba(0, 212, 255, 0.7)',
+                            borderColor: 'rgba(0, 212, 255, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+        }
+
+        function initUtilityCharts(players) {
+            const names = players.map(p => p.name?.substring(0, 12) || 'Unknown');
+
+            // Flash Effectiveness Chart
+            const flashCtx = document.getElementById('chart-flash');
+            if (flashCtx && !charts.flash) {
+                charts.flash = new Chart(flashCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [
+                            {
+                                label: 'Enemies Flashed',
+                                data: players.map(p => p.utility?.enemies_flashed || 0),
+                                backgroundColor: 'rgba(0, 212, 255, 0.7)'
+                            },
+                            {
+                                label: 'Teammates Flashed',
+                                data: players.map(p => p.utility?.teammates_flashed || 0),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+
+            // Grenade Damage Chart
+            const nadeDmgCtx = document.getElementById('chart-nade-damage');
+            if (nadeDmgCtx && !charts.nadeDmg) {
+                charts.nadeDmg = new Chart(nadeDmgCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: names,
+                        datasets: [
+                            {
+                                label: 'HE Damage',
+                                data: players.map(p => p.utility?.he_damage || 0),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)'
+                            },
+                            {
+                                label: 'Molotov Damage',
+                                data: players.map(p => p.utility?.molotov_damage || 0),
+                                backgroundColor: 'rgba(245, 158, 11, 0.7)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#a0a0b0' } } },
+                        scales: {
+                            y: { beginAtZero: true, stacked: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
+                            x: { stacked: true, grid: { display: false }, ticks: { color: '#a0a0b0' } }
+                        }
+                    }
+                });
+            }
+        }
+
+        // =====================================================
+        // Player Comparison Radar Chart
+        // =====================================================
+
+        /**
+         * Calculate comparison stats for two players
+         * Returns normalized values (0-100) suitable for radar chart
+         */
+        function getPlayerComparisonStats(playerA, playerB) {
+            const labels = ['HLTV Rating', 'Impact Score', 'TTD (Reaction)', 'Headshot %', 'Utility Damage'];
+
+            // Helper to normalize TTD (lower is better, so we invert)
+            function getTtdScore(player) {
+                const ttd = player.advanced?.ttd_median_ms;
+                if (ttd === null || ttd === undefined) return 50; // Default to average
+                // TTD ranges from ~100ms (elite) to ~600ms (slow)
+                // Invert so lower (faster) TTD gives higher score
+                const clamped = Math.max(100, Math.min(600, ttd));
+                return Math.round(100 - ((clamped - 100) / 500 * 100));
+            }
+
+            // Helper to normalize HLTV rating
+            function getHltvScore(player) {
+                const rating = player.rating?.hltv_rating || 0;
+                // HLTV rating ranges from ~0.5 to ~2.0
+                const clamped = Math.max(0.5, Math.min(2.0, rating));
+                return Math.round((clamped - 0.5) / 1.5 * 100);
+            }
+
+            // Helper to normalize impact rating
+            function getImpactScore(player) {
+                const impact = player.rating?.impact_rating || 0;
+                // Impact typically ranges from 0 to 2
+                const clamped = Math.max(0, Math.min(2.0, impact));
+                return Math.round(clamped / 2.0 * 100);
+            }
+
+            // Helper to get headshot percentage (already 0-100)
+            function getHsScore(player) {
+                return Math.round(player.stats?.headshot_pct || 0);
+            }
+
+            // Helper to normalize utility damage
+            function getUtilityDamageScore(player) {
+                const heDmg = player.utility?.he_damage || 0;
+                const molotovDmg = player.utility?.molotov_damage || 0;
+                const total = heDmg + molotovDmg;
+                // Utility damage can range from 0 to 500+
+                const clamped = Math.max(0, Math.min(500, total));
+                return Math.round(clamped / 500 * 100);
+            }
+
+            // Calculate normalized metrics for both players
+            const metricsA = [
+                getHltvScore(playerA),
+                getImpactScore(playerA),
+                getTtdScore(playerA),
+                getHsScore(playerA),
+                getUtilityDamageScore(playerA)
+            ];
+
+            const metricsB = [
+                getHltvScore(playerB),
+                getImpactScore(playerB),
+                getTtdScore(playerB),
+                getHsScore(playerB),
+                getUtilityDamageScore(playerB)
+            ];
+
+            // Raw values for display
+            const rawA = {
+                hltv: (playerA.rating?.hltv_rating || 0).toFixed(2),
+                impact: (playerA.rating?.impact_rating || 0).toFixed(2),
+                ttd: playerA.advanced?.ttd_median_ms ? Math.round(playerA.advanced.ttd_median_ms) + 'ms' : 'N/A',
+                hs: (playerA.stats?.headshot_pct || 0).toFixed(1) + '%',
+                util: (playerA.utility?.he_damage || 0) + (playerA.utility?.molotov_damage || 0)
+            };
+
+            const rawB = {
+                hltv: (playerB.rating?.hltv_rating || 0).toFixed(2),
+                impact: (playerB.rating?.impact_rating || 0).toFixed(2),
+                ttd: playerB.advanced?.ttd_median_ms ? Math.round(playerB.advanced.ttd_median_ms) + 'ms' : 'N/A',
+                hs: (playerB.stats?.headshot_pct || 0).toFixed(1) + '%',
+                util: (playerB.utility?.he_damage || 0) + (playerB.utility?.molotov_damage || 0)
+            };
+
+            return {
+                labels,
+                metricsA,
+                metricsB,
+                rawA,
+                rawB,
+                playerA: {
+                    name: playerA.name,
+                    team: playerA.team,
+                    id: playerA.id
+                },
+                playerB: {
+                    name: playerB.name,
+                    team: playerB.team,
+                    id: playerB.id
+                }
+            };
+        }
+
+        /**
+         * Render the comparison radar chart and stats panel
+         */
+        function renderComparisonChart(playerA, playerB) {
+            const container = document.getElementById('comparison-chart-container');
+            const placeholder = document.getElementById('comparison-placeholder');
+            const statsDiv = document.getElementById('comparison-stats');
+
+            if (!playerA || !playerB) {
+                if (container) container.style.display = 'none';
+                if (placeholder) placeholder.style.display = 'block';
+                return;
+            }
+
+            if (container) container.style.display = 'flex';
+            if (placeholder) placeholder.style.display = 'none';
+
+            const comparison = getPlayerComparisonStats(playerA, playerB);
+
+            // Colors based on team
+            const colorA = playerA.team === 'CT' ? 'rgba(74, 144, 217, 0.7)' : 'rgba(222, 155, 53, 0.7)';
+            const borderA = playerA.team === 'CT' ? 'rgba(74, 144, 217, 1)' : 'rgba(222, 155, 53, 1)';
+            const colorB = playerB.team === 'CT' ? 'rgba(74, 144, 217, 0.7)' : 'rgba(222, 155, 53, 0.7)';
+            const borderB = playerB.team === 'CT' ? 'rgba(74, 144, 217, 1)' : 'rgba(222, 155, 53, 1)';
+
+            // Ensure different colors if same team
+            const finalColorA = colorA;
+            const finalBorderA = borderA;
+            const finalColorB = playerA.team === playerB.team ? 'rgba(124, 58, 237, 0.7)' : colorB;
+            const finalBorderB = playerA.team === playerB.team ? 'rgba(124, 58, 237, 1)' : borderB;
+
+            // Destroy existing chart if present
+            if (charts.comparisonRadar) {
+                charts.comparisonRadar.destroy();
+            }
+
+            // Create radar chart
+            const ctx = document.getElementById('chart-comparison-radar');
+            if (ctx) {
+                charts.comparisonRadar = new Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: comparison.labels,
+                        datasets: [
+                            {
+                                label: comparison.playerA.name,
+                                data: comparison.metricsA,
+                                fill: true,
+                                backgroundColor: finalColorA.replace('0.7', '0.2'),
+                                borderColor: finalBorderA,
+                                pointBackgroundColor: finalBorderA,
+                                pointBorderColor: '#fff',
+                                pointHoverBackgroundColor: '#fff',
+                                pointHoverBorderColor: finalBorderA,
+                                borderWidth: 2
+                            },
+                            {
+                                label: comparison.playerB.name,
+                                data: comparison.metricsB,
+                                fill: true,
+                                backgroundColor: finalColorB.replace('0.7', '0.2'),
+                                borderColor: finalBorderB,
+                                pointBackgroundColor: finalBorderB,
+                                pointBorderColor: '#fff',
+                                pointHoverBackgroundColor: '#fff',
+                                pointHoverBorderColor: finalBorderB,
+                                borderWidth: 2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: '#a0a0b0',
+                                    font: { size: 12 },
+                                    padding: 20
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.dataset.label || '';
+                                        const value = context.raw || 0;
+                                        return `${label}: ${value}/100`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            r: {
+                                min: 0,
+                                max: 100,
+                                beginAtZero: true,
+                                angleLines: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                pointLabels: {
+                                    color: '#a0a0b0',
+                                    font: { size: 11 }
+                                },
+                                ticks: {
+                                    color: '#606070',
+                                    backdropColor: 'transparent',
+                                    stepSize: 20
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Render stats comparison table
+            if (statsDiv) {
+                const teamClassA = playerA.team === 'CT' ? 'team-ct' : 'team-t';
+                const teamClassB = playerB.team === 'CT' ? 'team-ct' : 'team-t';
+
+                // Determine which values are better
+                const hltvBetter = parseFloat(comparison.rawA.hltv) > parseFloat(comparison.rawB.hltv) ? 'a' : 'b';
+                const impactBetter = parseFloat(comparison.rawA.impact) > parseFloat(comparison.rawB.impact) ? 'a' : 'b';
+                const ttdBetter = comparison.rawA.ttd !== 'N/A' && comparison.rawB.ttd !== 'N/A'
+                    ? (parseInt(comparison.rawA.ttd) < parseInt(comparison.rawB.ttd) ? 'a' : 'b')
+                    : '';
+                const hsBetter = parseFloat(comparison.rawA.hs) > parseFloat(comparison.rawB.hs) ? 'a' : 'b';
+                const utilBetter = comparison.rawA.util > comparison.rawB.util ? 'a' : 'b';
+
+                statsDiv.innerHTML = `
+                    <div class="comparison-player-stats">
+                        <div class="comparison-player-header player-a">
+                            <span class="comparison-player-name">${esc(comparison.playerA.name)}</span>
+                            <span class="comparison-player-team ${teamClassA}">${comparison.playerA.team}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">HLTV Rating</span>
+                            <span class="comparison-stat-value ${hltvBetter === 'a' ? 'better' : ''}">${comparison.rawA.hltv}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Impact Score</span>
+                            <span class="comparison-stat-value ${impactBetter === 'a' ? 'better' : ''}">${comparison.rawA.impact}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">TTD (Reaction)</span>
+                            <span class="comparison-stat-value ${ttdBetter === 'a' ? 'better' : ''}">${comparison.rawA.ttd}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Headshot %</span>
+                            <span class="comparison-stat-value ${hsBetter === 'a' ? 'better' : ''}">${comparison.rawA.hs}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Utility Damage</span>
+                            <span class="comparison-stat-value ${utilBetter === 'a' ? 'better' : ''}">${comparison.rawA.util}</span>
+                        </div>
+                    </div>
+
+                    <div class="comparison-player-stats">
+                        <div class="comparison-player-header player-b">
+                            <span class="comparison-player-name">${esc(comparison.playerB.name)}</span>
+                            <span class="comparison-player-team ${teamClassB}">${comparison.playerB.team}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">HLTV Rating</span>
+                            <span class="comparison-stat-value ${hltvBetter === 'b' ? 'better' : ''}">${comparison.rawB.hltv}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Impact Score</span>
+                            <span class="comparison-stat-value ${impactBetter === 'b' ? 'better' : ''}">${comparison.rawB.impact}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">TTD (Reaction)</span>
+                            <span class="comparison-stat-value ${ttdBetter === 'b' ? 'better' : ''}">${comparison.rawB.ttd}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Headshot %</span>
+                            <span class="comparison-stat-value ${hsBetter === 'b' ? 'better' : ''}">${comparison.rawB.hs}</span>
+                        </div>
+                        <div class="comparison-stat-row">
+                            <span class="comparison-stat-label">Utility Damage</span>
+                            <span class="comparison-stat-value ${utilBetter === 'b' ? 'better' : ''}">${comparison.rawB.util}</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Initialize player comparison dropdowns
+         */
+        function initPlayerComparison() {
+            const selectA = document.getElementById('player-a-select');
+            const selectB = document.getElementById('player-b-select');
+
+            if (!selectA || !selectB || !analysisData) return;
+
+            const players = Object.entries(analysisData.players || {}).map(([id, p]) => ({ id, ...p }));
+
+            function onSelectionChange() {
+                const idA = selectA.value;
+                const idB = selectB.value;
+
+                if (idA && idB && idA !== idB) {
+                    const playerA = players.find(p => p.id === idA);
+                    const playerB = players.find(p => p.id === idB);
+                    renderComparisonChart(playerA, playerB);
+                } else {
+                    renderComparisonChart(null, null);
+                }
+            }
+
+            selectA.addEventListener('change', onSelectionChange);
+            selectB.addEventListener('change', onSelectionChange);
+        }
+
+        // Render Timeline Tab
+        function renderTimeline(timeline) {
+            if (!timeline.length) {
+                return '<div class="timeline-container"><p style="color: var(--text-muted);">No round timeline data available.</p></div>';
+            }
+
+            let html = '<div class="timeline-container"><div class="timeline">';
+
+            for (const round of timeline) {
+                const isCtWin = round.winner === 'CT';
+                const isTWin = round.winner === 'T';
+                const cls = isCtWin ? 'ct-win' : isTWin ? 't-win' : '';
+                const title = `Round ${round.round_num}: ${round.winner} wins (${round.win_reason})\nFirst kill: ${round.first_kill || 'Unknown'}\nFirst death: ${round.first_death || 'Unknown'}`;
+
+                // Add half marker after round 12
+                if (round.round_num === 13) {
+                    html += '<div class="round-box half-marker">|</div>';
+                }
+
+                html += `<div class="round-box ${cls}" title="${esc(title)}">${round.round_num}</div>`;
+            }
+
+            html += '</div></div>';
+            return html;
+        }
+
+        // Render Kill Matrix Tab
+        function renderKillMatrix(matrix, players) {
+            if (!matrix.length || players.length < 2) {
+                return '<div class="matrix-container"><p style="color: var(--text-muted);">No kill matrix data available.</p></div>';
+            }
+
+            // Build matrix data
+            const playerNames = [...new Set(players.map(p => p.name))];
+            const matrixData = {};
+
+            for (const entry of matrix) {
+                if (!matrixData[entry.attacker]) matrixData[entry.attacker] = {};
+                matrixData[entry.attacker][entry.victim] = entry.count;
+            }
+
+            let html = '<div class="matrix-container"><table class="matrix-table"><thead><tr><th>Killer \\ Victim</th>';
+
+            for (const name of playerNames) {
+                html += `<th>${esc(name)}</th>`;
+            }
+            html += '</tr></thead><tbody>';
+
+            for (const attacker of playerNames) {
+                html += `<tr><th>${esc(attacker)}</th>`;
+                for (const victim of playerNames) {
+                    if (attacker === victim) {
+                        html += '<td>-</td>';
+                    } else {
+                        const kills = matrixData[attacker]?.[victim] || 0;
+                        const cls = kills >= 3 ? 'highlight' : kills > 0 ? 'killer' : '';
+                        html += `<td class="${cls}">${kills || '-'}</td>`;
+                    }
+                }
+                html += '</tr>';
+            }
+
+            html += '</tbody></table></div>';
+            return html;
+        }
+
+            return `
+                <div class="stat-card bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden transition-all duration-200 ${teamClass}">
+                    <div class="p-5">
+                        <!-- Header -->
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <span class="font-semibold text-white">${esc(player.name) || 'Unknown'}</span>
+                                <span class="px-2 py-0.5 rounded text-xs font-bold ${teamBadgeClass}">${player.team}</span>
+                            </div>
+                            <div class="px-3 py-1 rounded-lg border ${getRatingBg(r.hltv_rating)}">
+                                <span class="font-mono data-value text-lg ${getRatingClass(r.hltv_rating)}">${formatNumber(r.hltv_rating, 2)}</span>
+                            </div>
+                        </div>
+
+                        <!-- Stats Grid -->
+                        <div class="grid grid-cols-4 gap-3">
+                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
+                                <p class="font-mono data-value text-xl text-white">${s.kills || 0}</p>
+                                <p class="text-xs text-slate-500 uppercase">Kills</p>
+                            </div>
+                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
+                                <p class="font-mono data-value text-xl text-white">${s.deaths || 0}</p>
+                                <p class="text-xs text-slate-500 uppercase">Deaths</p>
+                            </div>
+                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
+                                <p class="font-mono data-value text-xl ${(s.kd_ratio || 0) >= 1 ? 'text-green-400' : 'text-red-400'}">${s.kd_ratio || '-'}</p>
+                                <p class="text-xs text-slate-500 uppercase">K/D</p>
+                            </div>
+                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
+                                <p class="font-mono data-value text-xl ${getStatColor(s.adr || 0, {elite: 90, good: 75, avg: 60})}">${s.adr || 0}</p>
+                                <p class="text-xs text-slate-500 uppercase">ADR</p>
+                            </div>
+                        </div>
+
+                        <!-- Secondary Stats -->
+                        <div class="grid grid-cols-4 gap-3 mt-3">
+                            <div class="text-center">
+                                <p class="font-mono data-value text-sm text-slate-300">${s.headshot_pct || 0}%</p>
+                                <p class="text-xs text-slate-600">HS%</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="font-mono data-value text-sm text-slate-300">${formatNumber(r.kast_percentage, 0)}%</p>
+                                <p class="text-xs text-slate-600">KAST</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="font-mono data-value text-sm text-slate-300">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</p>
+                                <p class="text-xs text-slate-600">TTD</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="font-mono data-value text-sm text-slate-300">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</p>
+                                <p class="text-xs text-slate-600">CP</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // Tab-specific Content Renderers
+        // ============================================
+        function renderPlayersContent(ctPlayers, tPlayers) {
+            const container = document.getElementById('players-display');
+            const placeholder = document.getElementById('players-placeholder');
+
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
+
+            container.innerHTML = `
+                <h3 class="text-lg font-semibold text-ct mb-4 flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-ct"></span> Counter-Terrorists
+                </h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+                    ${ctPlayers.map(p => renderDetailedPlayerCard(p)).join('')}
+                </div>
+
+                <h3 class="text-lg font-semibold text-t mb-4 flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-t"></span> Terrorists
+                </h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    ${tPlayers.map(p => renderDetailedPlayerCard(p)).join('')}
+                </div>
+            `;
+        }
+
+        function renderDetailedPlayerCard(player) {
+            const s = player.stats || {};
+            const r = player.rating || {};
+            const adv = player.advanced || {};
+            const util = player.utility || {};
+            const d = player.duels || {};
+            const c = player.clutches || {};
+            const mk = player.multi_kills || {};
+
+            return `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h4 class="font-semibold text-white text-lg">${esc(player.name)}</h4>
+                        <span class="font-mono data-value text-2xl ${getRatingClass(r.hltv_rating)}">${formatNumber(r.hltv_rating, 2)}</span>
+                    </div>
+
+                    <!-- Aim Performance -->
+                    <div class="mb-6">
+                        <h5 class="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-3">Aim Performance</h5>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-slate-400">Aim Rating</span>
+                                <span class="font-mono data-value">${formatNumber(r.aim_rating, 0)}/100</span>
+                            </div>
+                            <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                                <div class="h-full bg-cyan-400 progress-bar-fill" style="width: ${r.aim_rating || 0}%"></div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">TTD (Median)</span>
+                                <span class="font-mono data-value">${adv.ttd_median_ms ? formatNumber(adv.ttd_median_ms, 0) + 'ms' : '-'}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Crosshair Placement</span>
+                                <span class="font-mono data-value">${adv.cp_median_error_deg ? formatNumber(adv.cp_median_error_deg, 1) + '°' : '-'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Utility -->
+                    <div class="mb-6">
+                        <h5 class="text-xs font-semibold text-green-400 uppercase tracking-wider mb-3">Utility Usage</h5>
+                        <div class="grid grid-cols-4 gap-2 text-center text-sm">
+                            <div>
+                                <p class="font-mono data-value text-white">${util.flashbangs_thrown || 0}</p>
+                                <p class="text-xs text-slate-500">Flashes</p>
+                            </div>
+                            <div>
+                                <p class="font-mono data-value text-white">${util.enemies_flashed || 0}</p>
+                                <p class="text-xs text-slate-500">Blinded</p>
+                            </div>
+                            <div>
+                                <p class="font-mono data-value text-white">${util.he_damage || 0}</p>
+                                <p class="text-xs text-slate-500">HE Dmg</p>
+                            </div>
+                            <div>
+                                <p class="font-mono data-value text-white">${util.molotov_damage || 0}</p>
+                                <p class="text-xs text-slate-500">Molly Dmg</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Duels & Clutches -->
+                    <div>
+                        <h5 class="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-3">Duels & Clutches</h5>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Opening Duels</span>
+                                <span class="font-mono data-value ${(d.opening_win_rate || 0) >= 50 ? 'text-green-400' : 'text-red-400'}">
+                                    ${d.opening_wins || 0}W/${d.opening_losses || 0}L
+                                </span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Clutches</span>
+                                <span class="font-mono data-value">${c.total_wins || 0}/${c.total_situations || 0}</span>
+                            </div>
+                            <div class="flex justify-between col-span-2">
+                                <span class="text-slate-500">Multi-Kills</span>
+                                <span class="font-mono data-value text-xs">
+                                    2k: ${mk.rounds_with_2k || 0} | 3k: ${mk.rounds_with_3k || 0} | 4k: ${mk.rounds_with_4k || 0} | 5k: ${mk.rounds_with_5k || 0}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderUtilityContent(players) {
+            const container = document.getElementById('utility-display');
+            const placeholder = document.getElementById('utility-placeholder');
+
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
+
+            const totals = players.reduce((acc, p) => {
+                const u = p.utility || {};
+                acc.flashesThrown += u.flashbangs_thrown || 0;
+                acc.enemiesFlashed += u.enemies_flashed || 0;
+                acc.teammatesFlashed += u.teammates_flashed || 0;
+                acc.heThrown += u.he_thrown || 0;
+                acc.heDamage += u.he_damage || 0;
+                acc.molotovThrown += u.molotov_thrown || 0;
+                acc.molotovDamage += u.molotov_damage || 0;
+                acc.flashAssists += u.flash_assists || 0;
+                return acc;
+            }, { flashesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, flashAssists: 0 });
+
+            container.innerHTML = `
+                <!-- Team Totals -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
+                        <div class="text-3xl mb-2">⚡</div>
+                        <p class="font-mono data-value text-3xl text-cyan-400">${totals.flashesThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">Flashbangs Thrown</p>
+                        <p class="text-xs text-slate-500 mt-2">${totals.enemiesFlashed} enemies blinded</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
+                        <div class="text-3xl mb-2">💥</div>
+                        <p class="font-mono data-value text-3xl text-red-400">${totals.heDamage}</p>
+                        <p class="text-sm text-slate-400 mt-1">HE Grenade Damage</p>
+                        <p class="text-xs text-slate-500 mt-2">${totals.heThrown} grenades thrown</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
+                        <div class="text-3xl mb-2">🔥</div>
+                        <p class="font-mono data-value text-3xl text-orange-400">${totals.molotovDamage}</p>
+                        <p class="text-sm text-slate-400 mt-1">Molotov Damage</p>
+                        <p class="text-xs text-slate-500 mt-2">${totals.molotovThrown} molotovs thrown</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
+                        <div class="text-3xl mb-2">✨</div>
+                        <p class="font-mono data-value text-3xl text-green-400">${totals.flashAssists}</p>
+                        <p class="text-sm text-slate-400 mt-1">Flash Assists</p>
+                        <p class="text-xs text-slate-500 mt-2">${totals.teammatesFlashed} teammates flashed</p>
+                    </div>
+                </div>
+
+                <!-- Player Utility Rankings -->
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Utility Ratings by Player</h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    ${players.sort((a, b) => (b.rating?.utility_rating || 0) - (a.rating?.utility_rating || 0)).map(p => `
+                        <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
+                            <div class="flex justify-between items-center mb-4">
+                                <span class="font-semibold text-white">${esc(p.name)}</span>
+                                <span class="px-3 py-1 rounded-lg bg-green-500/20 text-green-400 font-mono data-value">${formatNumber(p.rating?.utility_rating, 0)}</span>
+                            </div>
+                            <div class="grid grid-cols-4 gap-2 text-center">
+                                <div>
+                                    <p class="font-mono data-value text-white">${p.utility?.flashbangs_thrown || 0}</p>
+                                    <p class="text-xs text-slate-500">Flashes</p>
+                                </div>
+                                <div>
+                                    <p class="font-mono data-value text-white">${p.utility?.enemies_flashed || 0}</p>
+                                    <p class="text-xs text-slate-500">Blinded</p>
+                                </div>
+                                <div>
+                                    <p class="font-mono data-value text-white">${p.utility?.he_damage || 0}</p>
+                                    <p class="text-xs text-slate-500">HE Dmg</p>
+                                </div>
+                                <div>
+                                    <p class="font-mono data-value text-white">${p.utility?.molotov_damage || 0}</p>
+                                    <p class="text-xs text-slate-500">Molly</p>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderTimelineContent(rounds) {
+            const container = document.getElementById('timeline-display');
+            const placeholder = document.getElementById('timeline-placeholder');
+
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
+
+            if (rounds.length === 0) {
+                container.innerHTML = '<p class="text-slate-500">No round data available</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                    <div class="flex flex-wrap gap-2">
+                        ${rounds.map(r => `
+                            <div class="w-12 h-16 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-transform hover:scale-105 ${
+                                r.winner === 'CT'
+                                    ? 'bg-ct-bg text-ct border border-ct/30'
+                                    : 'bg-t-bg text-t border border-t/30'
+                            }">
+                                <span class="font-mono data-value text-lg font-bold">${r.round_num}</span>
+                                <span class="text-xs opacity-70">${r.winner}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <div class="mt-6 grid grid-cols-2 gap-8">
+                        <div class="text-center p-4 bg-ct-bg rounded-lg">
+                            <p class="text-xs text-slate-400 uppercase mb-1">CT Rounds Won</p>
+                            <p class="font-mono data-value text-4xl text-ct">${rounds.filter(r => r.winner === 'CT').length}</p>
+                        </div>
+                        <div class="text-center p-4 bg-t-bg rounded-lg">
+                            <p class="text-xs text-slate-400 uppercase mb-1">T Rounds Won</p>
+                            <p class="font-mono data-value text-4xl text-t">${rounds.filter(r => r.winner === 'T').length}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCoachingContent(coaching) {
+            const container = document.getElementById('coaching-display');
+            const placeholder = document.getElementById('coaching-placeholder');
+
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
+
+            if (!coaching || coaching.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-8 text-center">
+                        <p class="text-slate-400">No coaching insights available for this demo</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = coaching.map(player => `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-4">
+                    <h4 class="font-semibold text-white text-lg mb-4">${esc(player.player_name)}</h4>
+                    <div class="space-y-3">
+                        ${(player.insights || []).map(insight => `
+                            <div class="flex items-start gap-3 p-3 rounded-lg ${
+                                insight.type === 'positive' ? 'bg-green-500/10 border-l-2 border-green-500' :
+                                insight.type === 'warning' ? 'bg-yellow-500/10 border-l-2 border-yellow-500' :
+                                'bg-red-500/10 border-l-2 border-red-500'
+                            }">
+                                <span class="text-lg">${
+                                    insight.type === 'positive' ? '✓' :
+                                    insight.type === 'warning' ? '⚠' : '✗'
+                                }</span>
+                                <div>
+                                    <p class="text-sm text-slate-300">${esc(insight.message)}</p>
+                                    <p class="text-xs text-slate-500 mt-1">${esc(insight.category)}</p>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderCompareContent(players) {
+            const container = document.getElementById('compare-display');
+            const placeholder = document.getElementById('compare-placeholder');
+
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
+
+            // Leaderboard table
+            container.innerHTML = `
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="bg-slate-900/50 text-left">
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">#</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Player</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Team</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Rating</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">K</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">D</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">A</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">K/D</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">ADR</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">HS%</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">KAST</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0)).map((p, i) => `
+                                <tr class="border-t border-slate-700/50 hover:bg-slate-700/20">
+                                    <td class="px-4 py-3 font-mono text-slate-500">${i + 1}</td>
+                                    <td class="px-4 py-3 font-semibold text-white">${esc(p.name)}</td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-0.5 rounded text-xs font-bold ${p.team === 'CT' ? 'bg-ct-bg text-ct' : 'bg-t-bg text-t'}">${p.team}</span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="font-mono data-value ${getRatingClass(p.rating?.hltv_rating)}">${formatNumber(p.rating?.hltv_rating, 2)}</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.kills || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.deaths || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.assists || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono ${(p.stats?.kd_ratio || 0) >= 1 ? 'text-green-400' : 'text-red-400'}">${p.stats?.kd_ratio || '-'}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.adr || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.headshot_pct || 0}%</td>
+                                    <td class="px-4 py-3 text-center font-mono">${formatNumber(p.rating?.kast_percentage, 0)}%</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderHeatmapContent() {
+            // This is initialized when the tab is clicked
+        }
+
+        // ============================================
+        // Chart Initialization
+        // ============================================
+        function initCharts(players) {
+            const chartConfig = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    }
+                }
+            };
+
+            const labels = players.map(p => p.name?.substring(0, 8) || 'Unknown');
+            const teamColors = players.map(p => p.team === 'CT' ? '#4a90d9' : '#de9b35');
+
+            // Ratings Chart
+            const ratingsCtx = document.getElementById('chart-ratings');
+            if (ratingsCtx) {
+                new Chart(ratingsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: players.map(p => p.rating?.hltv_rating || 0),
+                            backgroundColor: teamColors,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: chartConfig
+                });
+            }
+
+            // K/D Chart
+            const kdCtx = document.getElementById('chart-kd');
+            if (kdCtx) {
+                new Chart(kdCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Kills',
+                                data: players.map(p => p.stats?.kills || 0),
+                                backgroundColor: '#22c55e',
+                                borderRadius: 4,
+                            },
+                            {
+                                label: 'Deaths',
+                                data: players.map(p => p.stats?.deaths || 0),
+                                backgroundColor: '#ef4444',
+                                borderRadius: 4,
+                            }
+                        ]
+                    },
+                    options: { ...chartConfig, plugins: { legend: { display: true, labels: { color: '#94a3b8' } } } }
+                });
+            }
+
+            // ADR Chart
+            const adrCtx = document.getElementById('chart-adr');
+            if (adrCtx) {
+                new Chart(adrCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: players.map(p => p.stats?.adr || 0),
+                            backgroundColor: '#00d4ff',
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: chartConfig
+                });
+            }
+
+            // HS% Chart
+            const hsCtx = document.getElementById('chart-hs');
+            if (hsCtx) {
+                new Chart(hsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: players.map(p => p.stats?.headshot_pct || 0),
+                            backgroundColor: '#a855f7',
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: chartConfig
+                });
+            }
+        }
+
+        // ============================================
+        // Heatmap
+        // ============================================
+        function initHeatmap(heatmapData) {
+            const display = document.getElementById('heatmap-display');
+            const placeholder = document.getElementById('heatmap-placeholder');
+
+            if (!heatmapData || (!heatmapData.kills && !heatmapData.deaths)) {
+                return;
+            }
+
+            placeholder.classList.add('hidden');
+            display.classList.remove('hidden');
+
+            const canvas = document.getElementById('heatmap-canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Set canvas size
+            canvas.width = 800;
+            canvas.height = 800;
+
+            // Clear and draw background
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(0, 212, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 10; i++) {
+                const pos = (canvas.width / 10) * i;
+                ctx.beginPath();
+                ctx.moveTo(pos, 0);
+                ctx.lineTo(pos, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, pos);
+                ctx.lineTo(canvas.width, pos);
+                ctx.stroke();
+            }
+
+            // Draw kills (green dots)
+            if (heatmapData.kills && document.getElementById('show-kills').checked) {
+                heatmapData.kills.forEach(k => {
+                    if (k.x !== undefined && k.y !== undefined) {
+                        const x = (k.x / 100) * canvas.width;
+                        const y = (k.y / 100) * canvas.height;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 6, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(34, 197, 94, 0.7)';
+                        ctx.fill();
+                    }
+                });
+            }
+
+            // Draw deaths (red dots)
+            if (heatmapData.deaths && document.getElementById('show-deaths').checked) {
+                heatmapData.deaths.forEach(d => {
+                    if (d.x !== undefined && d.y !== undefined) {
+                        const x = (d.x / 100) * canvas.width;
+                        const y = (d.y / 100) * canvas.height;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 6, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(239, 68, 68, 0.7)';
+                        ctx.fill();
+                    }
+                });
+            }
+
+            // Add event listeners for checkboxes
+            document.getElementById('show-kills').onchange = () => initHeatmap(heatmapData);
+            document.getElementById('show-deaths').onchange = () => initHeatmap(heatmapData);
+        }
+
+        // ============================================
+        // Kill Map Visualization
+        // ============================================
+
+        // Map radar image URLs and coordinate transform parameters
+        // Based on CS2 map files - pos_x, pos_y are top-left corner, scale is units per pixel
+        const MAP_CONFIGS = {
+            'de_dust2': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png',
+                pos_x: -2476, pos_y: 3239, scale: 4.4
+            },
+            'de_mirage': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png',
+                pos_x: -3230, pos_y: 1713, scale: 5.0
+            },
+            'de_inferno': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png',
+                pos_x: -2087, pos_y: 3870, scale: 4.9
+            },
+            'de_nuke': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png',
+                pos_x: -3453, pos_y: 2887, scale: 7.0
+            },
+            'de_overpass': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png',
+                pos_x: -4831, pos_y: 1781, scale: 5.2
+            },
+            'de_vertigo': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png',
+                pos_x: -3168, pos_y: 1762, scale: 4.0
+            },
+            'de_ancient': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png',
+                pos_x: -2953, pos_y: 2164, scale: 5.0
+            },
+            'de_anubis': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png',
+                pos_x: -2796, pos_y: 3328, scale: 5.22
+            }
+        };
+
+        // Store current kill map state
+        let killMapState = {
+            kills: [],
+            mapName: '',
+            mapConfig: null,
+            players: []
+        };
+
+        /**
+         * Transform game coordinates to percentage position on the radar image
+         * @param {number} x - Game X coordinate
+         * @param {number} y - Game Y coordinate
+         * @param {object} config - Map configuration with pos_x, pos_y, scale
+         * @returns {object} {x: percent, y: percent} for CSS positioning
+         */
+        function gameToRadarPercent(x, y, config) {
+            // Standard radar image is 1024x1024 pixels
+            const radarSize = 1024;
+
+            // Transform game coordinates to radar pixels
+            // pixel_x = (game_x - pos_x) / scale
+            // pixel_y = (pos_y - game_y) / scale  (Y is inverted)
+            const pixelX = (x - config.pos_x) / config.scale;
+            const pixelY = (config.pos_y - y) / config.scale;
+
+            // Convert to percentage
+            const percentX = (pixelX / radarSize) * 100;
+            const percentY = (pixelY / radarSize) * 100;
+
+            return {
+                x: Math.max(0, Math.min(100, percentX)),
+                y: Math.max(0, Math.min(100, percentY))
+            };
+        }
+
+        /**
+         * Initialize the Kill Map visualization
+         * @param {array} killMapData - Array of kill positions from API
+         * @param {string} mapName - Internal map name (e.g., 'de_dust2')
+         * @param {array} players - Array of player objects for filtering
+         */
+        function initKillMap(killMapData, mapName, players) {
+            const display = document.getElementById('killmap-display');
+            const placeholder = document.getElementById('killmap-placeholder');
+            const radarEl = document.getElementById('killmap-radar');
+            const overlayEl = document.getElementById('killmap-overlay');
+            const loadingEl = document.getElementById('killmap-loading');
+            const noMapEl = document.getElementById('killmap-no-map');
+
+            if (!killMapData || killMapData.length === 0) {
+                placeholder.classList.remove('hidden');
+                display.classList.add('hidden');
+                return;
+            }
+
+            placeholder.classList.add('hidden');
+            display.classList.remove('hidden');
+
+            // Store state
+            killMapState.kills = killMapData;
+            killMapState.mapName = mapName ? mapName.toLowerCase() : '';
+            killMapState.mapConfig = MAP_CONFIGS[killMapState.mapName] || null;
+            killMapState.players = players || [];
+
+            // Populate filters
+            populateKillMapFilters(killMapData, players);
+
+            // Set up map background
+            if (killMapState.mapConfig) {
+                loadingEl.classList.remove('hidden');
+                noMapEl.classList.add('hidden');
+
+                const img = new Image();
+                img.onload = () => {
+                    radarEl.style.backgroundImage = `url('${killMapState.mapConfig.radar_url}')`;
+                    loadingEl.classList.add('hidden');
+                    renderKillDots();
+                };
+                img.onerror = () => {
+                    loadingEl.classList.add('hidden');
+                    noMapEl.classList.remove('hidden');
+                    // Still render kills without background
+                    renderKillDots();
+                };
+                img.src = killMapState.mapConfig.radar_url;
+            } else {
+                // No map config available
+                radarEl.style.backgroundImage = '';
+                noMapEl.classList.remove('hidden');
+                loadingEl.classList.add('hidden');
+                // Still render kills (will use fallback positioning)
+                renderKillDots();
+            }
+
+            // Render the kill table
+            renderKillTable(killMapData);
+
+            // Update stats
+            updateKillMapStats(killMapData);
+
+            // Set up event listeners for filters
+            document.getElementById('killmap-show-ct').onchange = renderKillDots;
+            document.getElementById('killmap-show-t').onchange = renderKillDots;
+            document.getElementById('killmap-show-hs').onchange = renderKillDots;
+            document.getElementById('killmap-player-filter').onchange = renderKillDots;
+            document.getElementById('killmap-round-filter').onchange = renderKillDots;
+        }
+
+        /**
+         * Populate filter dropdowns
+         */
+        function populateKillMapFilters(kills, players) {
+            // Player filter
+            const playerFilter = document.getElementById('killmap-player-filter');
+            playerFilter.innerHTML = '<option value="all">All Players</option>';
+            const playerNames = new Set();
+            kills.forEach(k => {
+                if (k.attacker_name) playerNames.add(k.attacker_name);
+                if (k.victim_name) playerNames.add(k.victim_name);
+            });
+            Array.from(playerNames).sort().forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                playerFilter.appendChild(opt);
+            });
+
+            // Round filter
+            const roundFilter = document.getElementById('killmap-round-filter');
+            roundFilter.innerHTML = '<option value="all">All Rounds</option>';
+            const rounds = new Set(kills.map(k => k.round_num).filter(r => r > 0));
+            Array.from(rounds).sort((a, b) => a - b).forEach(round => {
+                const opt = document.createElement('option');
+                opt.value = round;
+                opt.textContent = `Round ${round}`;
+                roundFilter.appendChild(opt);
+            });
+        }
+
+        /**
+         * Get filtered kills based on current filter settings
+         */
+        function getFilteredKills() {
+            const showCT = document.getElementById('killmap-show-ct').checked;
+            const showT = document.getElementById('killmap-show-t').checked;
+            const playerFilter = document.getElementById('killmap-player-filter').value;
+            const roundFilter = document.getElementById('killmap-round-filter').value;
+
+            return killMapState.kills.filter(k => {
+                // Team filter
+                const team = k.attacker_team?.toUpperCase() || '';
+                if (team === 'CT' && !showCT) return false;
+                if (team === 'T' && !showT) return false;
+
+                // Player filter
+                if (playerFilter !== 'all') {
+                    if (k.attacker_name !== playerFilter && k.victim_name !== playerFilter) {
+                        return false;
+                    }
+                }
+
+                // Round filter
+                if (roundFilter !== 'all' && k.round_num !== parseInt(roundFilter)) {
+                    return false;
+                }
+
+                return true;
+            });
+        }
+
+        /**
+         * Render kill dots on the map overlay
+         */
+        function renderKillDots() {
+            const overlayEl = document.getElementById('killmap-overlay');
+            const highlightHS = document.getElementById('killmap-show-hs').checked;
+            overlayEl.innerHTML = '';
+
+            const filteredKills = getFilteredKills();
+
+            filteredKills.forEach((kill, index) => {
+                const dot = document.createElement('div');
+                dot.className = 'absolute w-3 h-3 rounded-full cursor-pointer transition-transform hover:scale-150 hover:z-20';
+
+                // Position
+                let position;
+                if (killMapState.mapConfig && kill.x != null && kill.y != null) {
+                    position = gameToRadarPercent(kill.x, kill.y, killMapState.mapConfig);
+                } else {
+                    // Fallback: spread kills across the map area
+                    position = {
+                        x: 10 + (index % 10) * 8,
+                        y: 10 + Math.floor(index / 10) * 8
+                    };
+                }
+
+                dot.style.left = `${position.x}%`;
+                dot.style.top = `${position.y}%`;
+                dot.style.transform = 'translate(-50%, -50%)';
+
+                // Color based on attacker team
+                const team = kill.attacker_team?.toUpperCase() || '';
+                if (team === 'CT') {
+                    dot.classList.add('bg-ct');
+                    dot.style.boxShadow = '0 0 6px rgba(74, 144, 217, 0.8)';
+                } else if (team === 'T') {
+                    dot.classList.add('bg-t');
+                    dot.style.boxShadow = '0 0 6px rgba(222, 155, 53, 0.8)';
+                } else {
+                    dot.classList.add('bg-slate-400');
+                }
+
+                // Headshot highlight
+                if (kill.is_headshot && highlightHS) {
+                    dot.classList.add('ring-2', 'ring-yellow-400', 'ring-offset-1', 'ring-offset-transparent');
+                }
+
+                // Tooltip on hover
+                dot.addEventListener('mouseenter', (e) => showKillTooltip(e, kill));
+                dot.addEventListener('mouseleave', hideKillTooltip);
+
+                overlayEl.appendChild(dot);
+            });
+
+            // Update stats for filtered data
+            updateKillMapStats(filteredKills);
+        }
+
+        /**
+         * Show tooltip for a kill dot
+         */
+        function showKillTooltip(e, kill) {
+            const tooltip = document.getElementById('killmap-tooltip');
+            const rect = e.target.getBoundingClientRect();
+            const containerRect = document.getElementById('killmap-container').getBoundingClientRect();
+
+            tooltip.innerHTML = `
+                <div class="font-medium">${esc(kill.attacker_name)} <span class="text-slate-400">&#8594;</span> ${esc(kill.victim_name)}</div>
+                <div class="text-xs text-slate-400 mt-1">
+                    <span class="text-cyan-400">${esc(kill.weapon)}</span>
+                    ${kill.is_headshot ? '<span class="text-yellow-400 ml-1">&#9733; HS</span>' : ''}
+                    ${kill.round_num ? `<span class="ml-2">R${kill.round_num}</span>` : ''}
+                </div>
+            `;
+
+            // Position tooltip above the dot
+            const x = rect.left - containerRect.left + rect.width / 2;
+            const y = rect.top - containerRect.top - 10;
+
+            tooltip.style.left = `${x}px`;
+            tooltip.style.top = `${y}px`;
+            tooltip.style.transform = 'translate(-50%, -100%)';
+            tooltip.classList.remove('hidden');
+        }
+
+        /**
+         * Hide the kill tooltip
+         */
+        function hideKillTooltip() {
+            const tooltip = document.getElementById('killmap-tooltip');
+            tooltip.classList.add('hidden');
+        }
+
+        /**
+         * Update kill map statistics display
+         */
+        function updateKillMapStats(kills) {
+            const ctKills = kills.filter(k => k.attacker_team?.toUpperCase() === 'CT').length;
+            const tKills = kills.filter(k => k.attacker_team?.toUpperCase() === 'T').length;
+            const headshots = kills.filter(k => k.is_headshot).length;
+
+            document.getElementById('killmap-ct-kills').textContent = ctKills;
+            document.getElementById('killmap-t-kills').textContent = tKills;
+            document.getElementById('killmap-headshots').textContent = headshots;
+            document.getElementById('killmap-total').textContent = kills.length;
+        }
+
+        /**
+         * Render the kill feed table
+         */
+        function renderKillTable(kills) {
+            const tbody = document.getElementById('killmap-table-body');
+            tbody.innerHTML = '';
+
+            // Show most recent kills first, limit to 100
+            const sortedKills = [...kills].reverse().slice(0, 100);
+
+            sortedKills.forEach(kill => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-700/30 transition-colors';
+
+                const attackerTeamClass = kill.attacker_team?.toUpperCase() === 'CT' ? 'text-ct' : 'text-t';
+                const victimTeamClass = kill.victim_team?.toUpperCase() === 'CT' ? 'text-ct' : 'text-t';
+
+                tr.innerHTML = `
+                    <td class="py-2 px-3 text-slate-400">${kill.round_num || '-'}</td>
+                    <td class="py-2 px-3 ${attackerTeamClass} font-medium">${esc(kill.attacker_name)}</td>
+                    <td class="py-2 px-3 text-cyan-400 font-mono text-xs">${esc(kill.weapon)}</td>
+                    <td class="py-2 px-3 ${victimTeamClass}">${esc(kill.victim_name)}</td>
+                    <td class="py-2 px-3 text-center">${kill.is_headshot ? '<span class="text-yellow-400">&#9733;</span>' : ''}</td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        /**
+         * Render Kill Map content (called from renderResults)
+         */
+        function renderKillMapContent() {
+            if (!analysisData) return;
+
+            const killMapData = analysisData.kill_map || [];
+            const mapName = analysisData.demo_info?.map || '';
+            const players = Object.entries(analysisData.players || {}).map(([id, p]) => ({ id, ...p }));
+
+            initKillMap(killMapData, mapName, players);
+        }
+
+        // ============================================
+        // Export Functions
+        // ============================================
+        function exportJSON(data) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `opensight_analysis_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('JSON exported!', 'success');
+        }
+
+        function exportCSV(data) {
+            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            const headers = ['Name', 'Team', 'Rating', 'Kills', 'Deaths', 'Assists', 'K/D', 'ADR', 'HS%', 'KAST'];
+            const rows = players.map(p => [
+                p.name,
+                p.team,
+                p.rating?.hltv_rating?.toFixed(2) || '',
+                p.stats?.kills || 0,
+                p.stats?.deaths || 0,
+                p.stats?.assists || 0,
+                p.stats?.kd_ratio || '',
+                p.stats?.adr || 0,
+                p.stats?.headshot_pct || 0,
+                p.rating?.kast_percentage?.toFixed(0) || ''
+            ]);
+
+            const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `opensight_analysis_${Date.now()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('CSV exported!', 'success');
+        }
+
+        // ============================================
+        // Keyboard Shortcuts
+        // ============================================
+        document.addEventListener('keydown', (e) => {
+            const tabs = ['overview', 'heatmaps', 'killmap', 'utility', 'compare', 'players', 'timeline', 'coaching'];
+            const num = parseInt(e.key);
+            if (num >= 1 && num <= tabs.length) {
+                const tabBtn = document.querySelector(`[data-tab="${tabs[num - 1]}"]`);
+                if (tabBtn) tabBtn.click();
+            }
+        });
     </script>
 </body>
 </html>

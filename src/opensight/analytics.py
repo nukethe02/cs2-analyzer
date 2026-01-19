@@ -86,6 +86,86 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def compute_kill_positions(match_data) -> list[dict]:
+    """
+    Compute kill positions for Kill Map visualization.
+
+    Extracts kill data from match_data.kills for plotting on map radar images.
+    Uses victim position as the kill location (where the player died).
+
+    Args:
+        match_data: MatchData or DemoData object with kills list and player_names dict.
+
+    Returns:
+        List of dicts with kill information:
+        - attacker_name: Name of the player who got the kill
+        - victim_name: Name of the player who died
+        - attacker_team: Team of attacker ("CT" or "T")
+        - victim_team: Team of victim ("CT" or "T")
+        - weapon: Weapon used for the kill
+        - is_headshot: Whether it was a headshot
+        - x: X coordinate (victim position)
+        - y: Y coordinate (victim position)
+        - z: Z coordinate (victim position)
+        - round_num: Round number when the kill occurred
+    """
+    kill_positions = []
+
+    # Handle both DemoData (with kills list) and MatchData
+    kills = getattr(match_data, 'kills', [])
+    player_names = getattr(match_data, 'player_names', {})
+
+    for kill in kills:
+        try:
+            # Get player names
+            attacker_name = player_names.get(kill.attacker_steamid, kill.attacker_name or "Unknown")
+            victim_name = player_names.get(kill.victim_steamid, kill.victim_name or "Unknown")
+
+            # Use victim position as the kill location (where the death occurred)
+            x = kill.victim_x if kill.victim_x is not None else kill.attacker_x
+            y = kill.victim_y if kill.victim_y is not None else kill.attacker_y
+            z = kill.victim_z if kill.victim_z is not None else (kill.attacker_z or 0)
+
+            if x is None or y is None:
+                continue
+
+            # Determine attacker team from side info
+            attacker_team = "Unknown"
+            if hasattr(kill, 'attacker_side') and kill.attacker_side:
+                side = str(kill.attacker_side).upper()
+                if "CT" in side:
+                    attacker_team = "CT"
+                elif "T" in side and "CT" not in side:
+                    attacker_team = "T"
+
+            victim_team = "Unknown"
+            if hasattr(kill, 'victim_side') and kill.victim_side:
+                side = str(kill.victim_side).upper()
+                if "CT" in side:
+                    victim_team = "CT"
+                elif "T" in side and "CT" not in side:
+                    victim_team = "T"
+
+            kill_positions.append({
+                "attacker_name": attacker_name,
+                "victim_name": victim_name,
+                "attacker_team": attacker_team,
+                "victim_team": victim_team,
+                "weapon": kill.weapon or "Unknown",
+                "is_headshot": bool(kill.headshot),
+                "x": float(x),
+                "y": float(y),
+                "z": float(z) if z else 0.0,
+                "round_num": kill.round_num or 0,
+            })
+        except Exception as e:
+            logger.debug(f"Error extracting kill position: {e}")
+            continue
+
+    logger.info(f"Computed {len(kill_positions)} kill positions for Kill Map")
+    return kill_positions
+
+
 @dataclass
 class TTDResult:
     """Time to Damage result for a single engagement."""
@@ -2786,3 +2866,475 @@ def get_player_comparison_stats(
 
 # Alias for backward compatibility
 PlayerAnalytics = PlayerMatchStats
+
+
+# =============================================================================
+# Tier 1 Player Metrics - Clean MatchData Interface
+# =============================================================================
+
+@dataclass
+class PlayerMetrics:
+    """
+    Tier 1 player metrics computed from awpy MatchData.
+
+    This is a simpler, focused dataclass for core player statistics
+    that consumes the awpy-based MatchData structure directly.
+
+    Fields:
+        player_name: Display name of the player
+        kills: Total kill count
+        deaths: Total death count
+        assists: Total assist count
+        headshot_kills: Number of kills that were headshots
+        damage_total: Total damage dealt to enemies
+        adr: Average Damage per Round
+        mean_ttd_ms: Mean Time to Damage in milliseconds (None if no data)
+        median_crosshair_error_deg: Median crosshair placement error in degrees (None if no data)
+    """
+    player_name: str
+    kills: int
+    deaths: int
+    assists: int
+    headshot_kills: int
+    damage_total: int
+    adr: float
+    mean_ttd_ms: Optional[float] = None
+    median_crosshair_error_deg: Optional[float] = None
+
+    # Optional extended metrics
+    headshot_percentage: float = 0.0
+    median_ttd_ms: Optional[float] = None
+    mean_crosshair_error_deg: Optional[float] = None
+
+    def __post_init__(self):
+        """Calculate derived metrics after initialization."""
+        if self.kills > 0:
+            self.headshot_percentage = round(self.headshot_kills / self.kills * 100, 1)
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """
+    Safely convert a value to float.
+
+    Args:
+        value: Any value to convert
+        default: Default value if conversion fails
+
+    Returns:
+        Float value or default
+    """
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    """
+    Safely convert a value to int.
+
+    Args:
+        value: Any value to convert
+        default: Default value if conversion fails
+
+    Returns:
+        Integer value or default
+    """
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def _compute_view_direction(pitch_deg: float, yaw_deg: float) -> np.ndarray:
+    """
+    Convert pitch and yaw angles (in degrees) to a normalized 3D direction vector.
+
+    Uses Source Engine conventions:
+    - Yaw: rotation around Z axis (0 = +X, 90 = +Y)
+    - Pitch: rotation around horizontal (positive = looking down in Source)
+
+    Args:
+        pitch_deg: Pitch angle in degrees
+        yaw_deg: Yaw angle in degrees
+
+    Returns:
+        Normalized 3D direction vector as numpy array [x, y, z]
+    """
+    pitch_rad = np.radians(pitch_deg)
+    yaw_rad = np.radians(yaw_deg)
+
+    # View direction from Euler angles (Source Engine convention)
+    x = np.cos(yaw_rad) * np.cos(pitch_rad)
+    y = np.sin(yaw_rad) * np.cos(pitch_rad)
+    z = -np.sin(pitch_rad)  # Negative because positive pitch = looking down
+
+    return np.array([x, y, z])
+
+
+def _compute_angular_error(
+    attacker_pos: np.ndarray,
+    attacker_pitch: float,
+    attacker_yaw: float,
+    victim_pos: np.ndarray
+) -> Optional[float]:
+    """
+    Compute the angular error between where the attacker was looking
+    and where they needed to look to hit the victim.
+
+    Args:
+        attacker_pos: Attacker position [x, y, z]
+        attacker_pitch: Attacker pitch angle in degrees
+        attacker_yaw: Attacker yaw angle in degrees
+        victim_pos: Victim position [x, y, z]
+
+    Returns:
+        Angular error in degrees, or None if computation fails
+    """
+    try:
+        # Direction the attacker was actually looking
+        view_vec = _compute_view_direction(attacker_pitch, attacker_yaw)
+
+        # Ideal direction from attacker to victim
+        ideal_vec = victim_pos - attacker_pos
+        distance = np.linalg.norm(ideal_vec)
+
+        if distance < 0.001:
+            return 0.0  # Extremely close, no error
+
+        ideal_vec = ideal_vec / distance  # Normalize
+
+        # Compute angle between vectors using dot product
+        dot = np.clip(np.dot(view_vec, ideal_vec), -1.0, 1.0)
+        angular_error_rad = np.arccos(dot)
+        angular_error_deg = np.degrees(angular_error_rad)
+
+        return float(angular_error_deg)
+
+    except Exception:
+        return None
+
+
+def calculate_player_metrics(match_data: DemoData) -> dict[str, PlayerMetrics]:
+    """
+    Calculate tier 1 player metrics from awpy MatchData.
+
+    Computes core metrics for each player in the match:
+    - Basic stats (K/D/A, damage, ADR)
+    - Time to Damage (TTD) - reaction time metric
+    - Crosshair Placement (CP) - aim accuracy metric
+
+    Args:
+        match_data: Parsed match data from awpy DemoParser
+
+    Returns:
+        Dictionary mapping player_name to PlayerMetrics
+
+    TTD Calculation:
+        For each kill, find the first damage event from the same attacker
+        to the same victim in the same round, before the kill tick.
+        TTD = (kill_tick - first_damage_tick) * (1000.0 / tick_rate)
+
+    Crosshair Placement Calculation:
+        For each kill with position/angle data:
+        1. Get attacker's position and view angles
+        2. Convert view angles to a 3D direction vector
+        3. Compute direction from attacker to victim
+        4. Calculate angle between the two vectors using arccos(dot product)
+
+    Missing Data Handling:
+        - Uses .get() on dicts and .fillna() on DataFrames
+        - Skips kills missing required position/angle data for CP
+        - Skips kills with no prior damage events for TTD
+        - Returns None for TTD/CP if no valid measurements
+    """
+    kills_df = match_data.kills_df
+    damages_df = match_data.damages_df
+    num_rounds = max(match_data.num_rounds, 1)
+    tick_rate = match_data.tick_rate if match_data.tick_rate > 0 else CS2_TICK_RATE
+
+    # Initialize player data structures
+    player_data: dict[str, dict[str, Any]] = {}
+
+    # Get player names from match_data
+    for steam_id, name in match_data.player_names.items():
+        player_data[name] = {
+            "steam_id": steam_id,
+            "kills": 0,
+            "deaths": 0,
+            "assists": 0,
+            "headshot_kills": 0,
+            "damage_total": 0,
+            "ttd_values": [],
+            "cp_values": [],
+        }
+
+    # ===========================================
+    # Calculate basic stats from DataFrames
+    # ===========================================
+
+    # Find column names (handle various naming conventions)
+    def find_column(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+        for col in options:
+            if col in df.columns:
+                return col
+        return None
+
+    att_steamid_col = find_column(kills_df, ["attacker_steamid", "attacker_steam_id"])
+    vic_steamid_col = find_column(kills_df, ["victim_steamid", "user_steamid", "victim_steam_id"])
+    round_col = find_column(kills_df, ["round_num", "round", "total_rounds_played"])
+
+    dmg_att_col = find_column(damages_df, ["attacker_steamid", "attacker_steam_id"])
+    dmg_vic_col = find_column(damages_df, ["victim_steamid", "user_steamid", "victim_steam_id"])
+    dmg_round_col = find_column(damages_df, ["round_num", "round", "total_rounds_played"])
+    dmg_amount_col = find_column(damages_df, ["damage", "dmg_health", "health_damage", "dmg"])
+
+    # Count kills, deaths, assists, headshots per player
+    for steam_id, name in match_data.player_names.items():
+        if name not in player_data:
+            continue
+
+        # Kills and headshots
+        if not kills_df.empty and att_steamid_col:
+            player_kills = kills_df[kills_df[att_steamid_col].fillna(0).astype(float) == float(steam_id)]
+            player_data[name]["kills"] = len(player_kills)
+
+            if "headshot" in kills_df.columns:
+                player_data[name]["headshot_kills"] = int(player_kills["headshot"].fillna(False).sum())
+
+        # Deaths
+        if not kills_df.empty and vic_steamid_col:
+            player_deaths = kills_df[kills_df[vic_steamid_col].fillna(0).astype(float) == float(steam_id)]
+            player_data[name]["deaths"] = len(player_deaths)
+
+        # Assists
+        if not kills_df.empty and "assister_steamid" in kills_df.columns:
+            player_assists = kills_df[kills_df["assister_steamid"].fillna(0).astype(float) == float(steam_id)]
+            player_data[name]["assists"] = len(player_assists)
+
+        # Total damage
+        if not damages_df.empty and dmg_att_col and dmg_amount_col:
+            player_dmg = damages_df[damages_df[dmg_att_col].fillna(0).astype(float) == float(steam_id)]
+            player_data[name]["damage_total"] = int(player_dmg[dmg_amount_col].fillna(0).sum())
+
+    # ===========================================
+    # Calculate TTD (Time to Damage)
+    # ===========================================
+    #
+    # For each kill:
+    # 1. Find the first damage event in the same round
+    # 2. From the same attacker to the same victim
+    # 3. Before the kill tick
+    # 4. Compute TTD = (kill_tick - first_damage_tick) * (1000 / tick_rate)
+
+    ms_per_tick = 1000.0 / tick_rate
+    ttd_min_ms = 0.0
+    ttd_max_ms = 1500.0  # Filter out unreasonable values
+
+    if not kills_df.empty and not damages_df.empty and att_steamid_col and vic_steamid_col:
+        if dmg_att_col and dmg_vic_col and "tick" in kills_df.columns and "tick" in damages_df.columns:
+
+            for _, kill_row in kills_df.iterrows():
+                try:
+                    att_id = kill_row.get(att_steamid_col)
+                    vic_id = kill_row.get(vic_steamid_col)
+                    kill_tick = _safe_int(kill_row.get("tick"))
+                    kill_round = kill_row.get(round_col) if round_col else None
+
+                    if pd.isna(att_id) or pd.isna(vic_id) or kill_tick <= 0:
+                        continue
+
+                    att_id = float(att_id)
+                    vic_id = float(vic_id)
+
+                    # Find first damage from this attacker to this victim before the kill
+                    # Optionally filter by round if available
+                    dmg_mask = (
+                        (damages_df[dmg_att_col].fillna(0).astype(float) == att_id) &
+                        (damages_df[dmg_vic_col].fillna(0).astype(float) == vic_id) &
+                        (damages_df["tick"].fillna(0) <= kill_tick)
+                    )
+
+                    if kill_round is not None and dmg_round_col and not pd.isna(kill_round):
+                        dmg_mask = dmg_mask & (damages_df[dmg_round_col].fillna(-1) == kill_round)
+
+                    relevant_damages = damages_df[dmg_mask].sort_values("tick")
+
+                    if relevant_damages.empty:
+                        continue  # No damage found before kill
+
+                    first_dmg_tick = _safe_int(relevant_damages.iloc[0]["tick"])
+                    if first_dmg_tick <= 0:
+                        continue
+
+                    ttd_ticks = kill_tick - first_dmg_tick
+                    ttd_ms = ttd_ticks * ms_per_tick
+
+                    # Filter reasonable TTD values
+                    if ttd_min_ms < ttd_ms <= ttd_max_ms:
+                        # Find player name for this attacker
+                        attacker_name = match_data.player_names.get(int(att_id))
+                        if attacker_name and attacker_name in player_data:
+                            player_data[attacker_name]["ttd_values"].append(ttd_ms)
+
+                except Exception:
+                    continue  # Skip problematic kills
+
+    # ===========================================
+    # Calculate Crosshair Placement (CP)
+    # ===========================================
+    #
+    # For each kill with position/angle data:
+    # 1. Get attacker position (X, Y, Z) and view angles (pitch, yaw)
+    # 2. Get victim position (X, Y, Z)
+    # 3. Convert view angles to a normalized 3D direction vector
+    # 4. Compute direction from attacker to victim, normalized
+    # 5. Compute angle between vectors: arccos(dot(view_vec, ideal_vec))
+
+    # Eye height offset (player eye level above origin)
+    EYE_HEIGHT = 64.0
+
+    # Try to compute CP from KillEvent objects first (have embedded position data)
+    kills_with_pos = [
+        k for k in match_data.kills
+        if k.attacker_x is not None and k.attacker_pitch is not None and k.victim_x is not None
+    ]
+
+    if kills_with_pos:
+        for kill in kills_with_pos:
+            try:
+                att_name = match_data.player_names.get(kill.attacker_steamid)
+                if not att_name or att_name not in player_data:
+                    continue
+
+                # Attacker position (add eye height)
+                att_x = _safe_float(kill.attacker_x)
+                att_y = _safe_float(kill.attacker_y)
+                att_z = _safe_float(kill.attacker_z) + EYE_HEIGHT
+
+                # Victim position (add eye height for head-level)
+                vic_x = _safe_float(kill.victim_x)
+                vic_y = _safe_float(kill.victim_y)
+                vic_z = _safe_float(kill.victim_z) + EYE_HEIGHT
+
+                # Skip if positions are at origin (bad data)
+                if abs(att_x) < 0.001 and abs(att_y) < 0.001:
+                    continue
+                if abs(vic_x) < 0.001 and abs(vic_y) < 0.001:
+                    continue
+
+                att_pos = np.array([att_x, att_y, att_z])
+                vic_pos = np.array([vic_x, vic_y, vic_z])
+
+                att_pitch = _safe_float(kill.attacker_pitch)
+                att_yaw = _safe_float(kill.attacker_yaw)
+
+                angular_error = _compute_angular_error(att_pos, att_pitch, att_yaw, vic_pos)
+
+                if angular_error is not None and 0 <= angular_error <= 180:
+                    player_data[att_name]["cp_values"].append(angular_error)
+
+            except Exception:
+                continue
+
+    else:
+        # Fallback: try to compute from DataFrame columns
+        pos_cols = ["attacker_X", "attacker_Y", "attacker_Z", "victim_X", "victim_Y", "victim_Z"]
+        angle_cols = ["attacker_pitch", "attacker_yaw"]
+
+        has_pos = all(col in kills_df.columns for col in pos_cols)
+        has_angles = all(col in kills_df.columns for col in angle_cols)
+
+        if not kills_df.empty and has_pos and has_angles and att_steamid_col:
+            for _, row in kills_df.iterrows():
+                try:
+                    att_id = row.get(att_steamid_col)
+                    if pd.isna(att_id):
+                        continue
+
+                    att_name = match_data.player_names.get(int(float(att_id)))
+                    if not att_name or att_name not in player_data:
+                        continue
+
+                    # Attacker position
+                    att_x = _safe_float(row.get("attacker_X"))
+                    att_y = _safe_float(row.get("attacker_Y"))
+                    att_z = _safe_float(row.get("attacker_Z")) + EYE_HEIGHT
+
+                    # Victim position
+                    vic_x = _safe_float(row.get("victim_X"))
+                    vic_y = _safe_float(row.get("victim_Y"))
+                    vic_z = _safe_float(row.get("victim_Z")) + EYE_HEIGHT
+
+                    # Skip origin positions
+                    if abs(att_x) < 0.001 and abs(att_y) < 0.001:
+                        continue
+                    if abs(vic_x) < 0.001 and abs(vic_y) < 0.001:
+                        continue
+
+                    att_pos = np.array([att_x, att_y, att_z])
+                    vic_pos = np.array([vic_x, vic_y, vic_z])
+
+                    att_pitch = _safe_float(row.get("attacker_pitch"))
+                    att_yaw = _safe_float(row.get("attacker_yaw"))
+
+                    angular_error = _compute_angular_error(att_pos, att_pitch, att_yaw, vic_pos)
+
+                    if angular_error is not None and 0 <= angular_error <= 180:
+                        player_data[att_name]["cp_values"].append(angular_error)
+
+                except Exception:
+                    continue
+
+    # ===========================================
+    # Build final PlayerMetrics objects
+    # ===========================================
+
+    result: dict[str, PlayerMetrics] = {}
+
+    for name, data in player_data.items():
+        kills = data["kills"]
+        damage_total = data["damage_total"]
+        ttd_values = data["ttd_values"]
+        cp_values = data["cp_values"]
+
+        # Compute ADR
+        adr = round(damage_total / num_rounds, 1) if num_rounds > 0 else 0.0
+
+        # Compute TTD statistics
+        mean_ttd = None
+        median_ttd = None
+        if ttd_values:
+            mean_ttd = float(np.mean(ttd_values))
+            median_ttd = float(np.median(ttd_values))
+
+        # Compute CP statistics
+        median_cp = None
+        mean_cp = None
+        if cp_values:
+            median_cp = float(np.median(cp_values))
+            mean_cp = float(np.mean(cp_values))
+
+        result[name] = PlayerMetrics(
+            player_name=name,
+            kills=kills,
+            deaths=data["deaths"],
+            assists=data["assists"],
+            headshot_kills=data["headshot_kills"],
+            damage_total=damage_total,
+            adr=adr,
+            mean_ttd_ms=mean_ttd,
+            median_crosshair_error_deg=median_cp,
+            median_ttd_ms=median_ttd,
+            mean_crosshair_error_deg=mean_cp,
+        )
+
+    return result
