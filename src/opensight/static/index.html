@@ -1124,22 +1124,33 @@
         async function analyzeFile(file) {
             const sizeMB = (file.size / 1024 / 1024).toFixed(1);
             loading.classList.add('show');
-            loadingDetails.textContent = `Processing ${file.name} (${sizeMB} MB)`;
+            loadingDetails.textContent = `Uploading ${file.name} (${sizeMB} MB)...`;
 
             const formData = new FormData();
             formData.append('file', file);
 
             try {
-                const response = await fetch('/analyze', {
+                // Step 1: Submit the file for analysis (returns 202 with job_id)
+                const submitResponse = await fetch('/analyze', {
                     method: 'POST',
                     body: formData
                 });
 
-                const data = await response.json();
+                const submitData = await submitResponse.json();
 
-                if (!response.ok) {
-                    throw new Error(data.detail || 'Analysis failed');
+                if (!submitResponse.ok) {
+                    throw new Error(submitData.detail || 'Failed to submit analysis');
                 }
+
+                const jobId = submitData.job_id;
+                if (!jobId) {
+                    throw new Error('No job ID returned from server');
+                }
+
+                loadingDetails.textContent = `Analyzing ${file.name}...`;
+
+                // Step 2: Poll for job completion
+                const data = await pollJobStatus(jobId, file.name);
 
                 analysisData = data;
                 renderResults(data);
@@ -1149,6 +1160,46 @@
             } finally {
                 loading.classList.remove('show');
             }
+        }
+
+        // Poll job status until complete or failed
+        async function pollJobStatus(jobId, filename) {
+            const pollInterval = 1000; // 1 second
+            const maxAttempts = 300;   // 5 minutes max
+            let attempts = 0;
+
+            while (attempts < maxAttempts) {
+                const response = await fetch(`/analyze/${jobId}`);
+                const jobData = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(jobData.detail || 'Failed to check job status');
+                }
+
+                const status = jobData.status;
+                const progress = jobData.progress || 0;
+
+                // Update loading message with progress
+                loadingDetails.textContent = `Analyzing ${filename}... ${progress}%`;
+
+                if (status === 'completed') {
+                    // Return the full result
+                    if (jobData.result) {
+                        return jobData.result;
+                    }
+                    throw new Error('Job completed but no result data');
+                }
+
+                if (status === 'failed') {
+                    throw new Error(jobData.error || 'Analysis failed');
+                }
+
+                // Wait before next poll
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+                attempts++;
+            }
+
+            throw new Error('Analysis timed out. Please try again.');
         }
 
         // Main Render Function
