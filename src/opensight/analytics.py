@@ -565,6 +565,15 @@ class DemoAnalyzer:
                 return col
         return None
 
+    def _match_steamid(self, df: pd.DataFrame, col: str, steam_id: int) -> pd.DataFrame:
+        """Match steamid handling type differences (int vs float)."""
+        try:
+            # Convert both to float for comparison to handle int/float mismatch
+            return df[df[col].astype(float) == float(steam_id)]
+        except (ValueError, TypeError):
+            # Fallback to direct comparison
+            return df[df[col] == steam_id]
+
     def _init_column_cache(self) -> None:
         """Initialize column name cache for kills DataFrame."""
         kills_df = self.data.kills_df
@@ -638,6 +647,7 @@ class DemoAnalyzer:
 
     def _init_player_stats(self) -> None:
         """Initialize PlayerMatchStats for each player."""
+        logger.info(f"Initializing stats for {len(self.data.player_names)} players")
         for steam_id, name in self.data.player_names.items():
             team = self.data.player_teams.get(steam_id, "Unknown")
             self._players[steam_id] = PlayerMatchStats(
@@ -651,6 +661,7 @@ class DemoAnalyzer:
                 total_damage=0,
                 rounds_played=self.data.num_rounds,
             )
+            logger.debug(f"Initialized player: {name} (steamid={steam_id}, team={team})")
 
     def _calculate_basic_stats(self) -> None:
         """Calculate basic K/D/A and damage stats."""
@@ -665,10 +676,19 @@ class DemoAnalyzer:
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
         dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"]) if not damages_df.empty else None
 
+        # Log DataFrame info for debugging
+        if not kills_df.empty and att_id_col in kills_df.columns:
+            unique_attackers = kills_df[att_id_col].dropna().unique()
+            logger.info(f"DataFrame has {len(unique_attackers)} unique attackers in column '{att_id_col}'")
+            logger.info(f"Player steamids: {list(self._players.keys())[:5]}...")
+            logger.info(f"DataFrame attacker steamids (sample): {list(unique_attackers[:5])}")
+            logger.info(f"Attacker column dtype: {kills_df[att_id_col].dtype}")
+
         for steam_id, player in self._players.items():
             # Kills - use cached column
             if not kills_df.empty and att_id_col in kills_df.columns:
-                player_kills = kills_df[kills_df[att_id_col] == steam_id]
+                # Convert to same type for comparison (handle float vs int issue)
+                player_kills = kills_df[kills_df[att_id_col].astype(float) == float(steam_id)]
                 player.kills = len(player_kills)
 
                 if "headshot" in kills_df.columns:
@@ -679,24 +699,29 @@ class DemoAnalyzer:
 
             # Deaths - use cached column (handles user_steamid vs victim_steamid)
             if not kills_df.empty and vic_id_col in kills_df.columns:
-                player.deaths = len(kills_df[kills_df[vic_id_col] == steam_id])
+                player.deaths = len(kills_df[kills_df[vic_id_col].astype(float) == float(steam_id)])
 
             # Assists
             if not kills_df.empty and "assister_steamid" in kills_df.columns:
-                player.assists = len(kills_df[kills_df["assister_steamid"] == steam_id])
+                player.assists = len(kills_df[kills_df["assister_steamid"].astype(float) == float(steam_id)])
 
             # Damage - use dynamic column finding
             if dmg_att_col and dmg_col:
-                player_dmg = damages_df[damages_df[dmg_att_col] == steam_id]
+                player_dmg = damages_df[damages_df[dmg_att_col].astype(float) == float(steam_id)]
                 player.total_damage = int(player_dmg[dmg_col].sum())
 
             # Flash assists
             if not kills_df.empty and "flash_assist" in kills_df.columns and "assister_steamid" in kills_df.columns:
                 flash_assists = kills_df[
-                    (kills_df["assister_steamid"] == steam_id) &
+                    (kills_df["assister_steamid"].astype(float) == float(steam_id)) &
                     (kills_df["flash_assist"] == True)
                 ]
                 player.utility.flash_assists = len(flash_assists)
+
+        # Log results
+        total_kills = sum(p.kills for p in self._players.values())
+        total_deaths = sum(p.deaths for p in self._players.values())
+        logger.info(f"Basic stats calculated: {total_kills} total kills, {total_deaths} total deaths across {len(self._players)} players")
 
     def _calculate_multi_kills(self) -> None:
         """Calculate multi-kill rounds for each player."""
@@ -706,7 +731,9 @@ class DemoAnalyzer:
             return
 
         for steam_id, player in self._players.items():
-            player_kills = kills_df[kills_df[self._att_id_col] == steam_id]
+            player_kills = kills_df[kills_df[self._att_id_col].astype(float) == float(steam_id)]
+            if player_kills.empty:
+                continue
             kills_per_round = player_kills.groupby(self._round_col).size()
 
             player.multi_kills.rounds_with_1k = int((kills_per_round == 1).sum())
