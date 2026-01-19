@@ -1,139 +1,55 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenSight - CS2 Analytics</title>
-
-    <!-- Tailwind CSS CDN -->
+    <title>CS2 Demo Analyzer - OpenSight</title>
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-
-    <!-- Leaflet.js for interactive maps -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-
-    <!-- Google Fonts - Roboto Mono for tech feel -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                        mono: ['Roboto Mono', 'monospace'],
-                    },
-                    colors: {
-                        accent: {
-                            DEFAULT: '#00d4ff',
-                            dim: 'rgba(0, 212, 255, 0.15)',
-                            glow: 'rgba(0, 212, 255, 0.4)',
-                        },
-                        ct: {
-                            DEFAULT: '#4a90d9',
-                            bg: 'rgba(74, 144, 217, 0.15)',
-                        },
-                        t: {
-                            DEFAULT: '#de9b35',
-                            bg: 'rgba(222, 155, 53, 0.15)',
-                        },
-                    },
-                    animation: {
-                        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
-                        'scan-line': 'scan-line 3s ease-in-out infinite',
-                    },
-                    keyframes: {
-                        'pulse-glow': {
-                            '0%, 100%': { boxShadow: '0 0 20px rgba(0, 212, 255, 0.2), inset 0 0 20px rgba(0, 212, 255, 0.05)' },
-                            '50%': { boxShadow: '0 0 40px rgba(0, 212, 255, 0.4), inset 0 0 40px rgba(0, 212, 255, 0.1)' },
-                        },
-                        'scan-line': {
-                            '0%': { transform: 'translateY(-100%)', opacity: '0' },
-                            '50%': { opacity: '1' },
-                            '100%': { transform: 'translateY(100%)', opacity: '0' },
-                        },
-                    },
-                },
-            },
-        }
-    </script>
-
     <style>
-        /* Custom scrollbar */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #1e293b; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
-
-        /* Cyber grid background */
-        .cyber-grid {
-            background-image:
-                linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
-            background-size: 50px 50px;
+        /* Custom scrollbar for dark theme */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
         }
 
-        /* Glowing border effect */
-        .glow-border {
-            box-shadow: 0 0 20px rgba(0, 212, 255, 0.2), inset 0 0 20px rgba(0, 212, 255, 0.05);
+        /* Drop zone animation */
+        .drop-zone-active {
+            border-color: #3b82f6 !important;
+            background-color: rgba(59, 130, 246, 0.1) !important;
         }
 
-        /* Scanner effect for dropzone */
-        .scanner-line {
-            position: absolute;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, #00d4ff, transparent);
-            animation: scan-line 3s ease-in-out infinite;
+        /* Spinner animation */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .spinner {
+            animation: spin 1s linear infinite;
         }
 
-        /* Chart.js dark theme */
-        .chart-container canvas { max-height: 250px; }
-
-        /* Data value styling */
-        .data-value {
-            font-family: 'Roboto Mono', monospace;
-            font-weight: 600;
-            letter-spacing: -0.02em;
+        /* Tab transitions */
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
         }
 
-        /* Sidebar transition */
-        .sidebar-item {
-            transition: all 0.2s ease;
-        }
-
-        .sidebar-item:hover {
-            background: rgba(0, 212, 255, 0.1);
-            border-left-color: #00d4ff;
-        }
-
-        .sidebar-item.active {
-            background: rgba(0, 212, 255, 0.15);
-            border-left-color: #00d4ff;
-            color: #00d4ff;
-        }
-
-        /* Card hover effects */
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.3);
-        }
-
-        /* Progress bar animation */
-        .progress-bar-fill {
-            transition: width 0.8s ease-out;
-        }
-
-        /* Team color accents */
-        .team-ct { border-left: 3px solid #4a90d9; }
-        .team-t { border-left: 3px solid #de9b35; }
+        /* Rating color classes */
+        .rating-excellent { color: #22c55e; }
+        .rating-good { color: #84cc16; }
+        .rating-average { color: #eab308; }
+        .rating-below { color: #f97316; }
+        .rating-poor { color: #ef4444; }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-200 font-sans min-h-screen flex">
@@ -166,6 +82,14 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
                 </svg>
                 Heatmaps
+            </button>
+
+            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="killmap">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Kill Map
             </button>
 
             <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="utility">
@@ -216,515 +140,644 @@
                 <a href="https://github.com/nukethe02/cs2-analyzer" target="_blank" class="text-cyan-400 hover:underline">GitHub</a>
             </div>
         </div>
-    </aside>
+    </header>
 
-    <!-- Main Content Area -->
-    <main class="flex-1 ml-64 min-h-screen cyber-grid">
-
-        <!-- Overview Tab (Default - with Upload) -->
-        <section id="tab-overview" class="tab-content block p-8">
-
-            <!-- Upload Section (visible when no data) -->
-            <div id="upload-section" class="max-w-4xl mx-auto">
-                <!-- Hero Header -->
-                <div class="text-center mb-12">
-                    <h2 class="text-4xl font-bold mb-4">
-                        <span class="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 bg-clip-text text-transparent">
-                            Analyze Your Demo
-                        </span>
-                    </h2>
-                    <p class="text-slate-400 text-lg">
-                        Get professional-grade CS2 analytics like Scope.gg &amp; Leetify - completely free
-                    </p>
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Upload Section -->
+        <section id="upload-section" class="mb-8">
+            <div
+                id="drop-zone"
+                class="border-2 border-dashed border-slate-600 rounded-lg p-12 text-center cursor-pointer hover:border-slate-500 hover:bg-slate-800/50 transition-all duration-200"
+            >
+                <div id="upload-content">
+                    <svg class="mx-auto h-12 w-12 text-slate-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <p class="text-lg text-slate-300 mb-2">Drop your demo file here</p>
+                    <p class="text-sm text-slate-500 mb-4">or click to browse</p>
+                    <p class="text-xs text-slate-600">Supports .dem and .dem.gz files up to 500MB</p>
                 </div>
+                <input type="file" id="file-input" class="hidden" accept=".dem,.dem.gz">
+            </div>
 
-                <!-- High-Tech Drop Zone -->
-                <div id="upload-zone" class="relative bg-slate-950/80 border-2 border-dashed border-slate-700 rounded-2xl p-16 text-center cursor-pointer transition-all duration-300 hover:border-cyan-500 hover:animate-pulse-glow group overflow-hidden">
-
-                    <!-- Scanner Line Effect -->
-                    <div class="scanner-line opacity-0 group-hover:opacity-100"></div>
-
-                    <!-- Corner Accents -->
-                    <div class="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-cyan-500/50"></div>
-                    <div class="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-cyan-500/50"></div>
-                    <div class="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-cyan-500/50"></div>
-                    <div class="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-cyan-500/50"></div>
-
-                    <!-- Upload Icon -->
-                    <div class="mb-6">
-                        <svg class="w-20 h-20 mx-auto text-slate-600 group-hover:text-cyan-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                        </svg>
+            <!-- Progress Indicator -->
+            <div id="progress-section" class="hidden mt-6">
+                <div class="bg-slate-800 rounded-lg p-6 text-center">
+                    <svg class="spinner mx-auto h-10 w-10 text-blue-500 mb-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p id="progress-text" class="text-slate-300">Uploading demo...</p>
+                    <div class="mt-4 w-full bg-slate-700 rounded-full h-2">
+                        <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
                     </div>
-
-                    <!-- Text -->
-                    <h3 class="text-xl font-semibold text-slate-300 mb-2 group-hover:text-cyan-400 transition-colors">
-                        Drop your .dem file here
-                    </h3>
-                    <p class="text-slate-500 text-sm mb-4">
-                        or click to browse
-                    </p>
-
-                    <!-- Supported Formats -->
-                    <div class="flex items-center justify-center gap-4 text-xs text-slate-600">
-                        <span class="px-3 py-1 bg-slate-800 rounded-full font-mono">.dem</span>
-                        <span class="px-3 py-1 bg-slate-800 rounded-full font-mono">.dem.gz</span>
-                        <span class="text-slate-700">|</span>
-                        <span>Max 500MB</span>
-                    </div>
-
-                    <!-- Hidden File Input -->
-                    <input type="file" id="demo-file" accept=".dem,.dem.gz" class="hidden">
-                </div>
-
-                <!-- Feature Cards -->
-                <div class="grid grid-cols-3 gap-6 mt-12">
-                    <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
-                        <div class="w-12 h-12 bg-cyan-500/10 rounded-lg flex items-center justify-center mb-4">
-                            <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                            </svg>
-                        </div>
-                        <h4 class="font-semibold text-white mb-2">Time to Damage</h4>
-                        <p class="text-sm text-slate-400">Measure your reaction speed from first damage to kill</p>
-                    </div>
-
-                    <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
-                        <div class="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center mb-4">
-                            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                            </svg>
-                        </div>
-                        <h4 class="font-semibold text-white mb-2">Crosshair Placement</h4>
-                        <p class="text-sm text-slate-400">Angular error analysis at moment of kill</p>
-                    </div>
-
-                    <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
-                        <div class="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center mb-4">
-                            <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                        <h4 class="font-semibold text-white mb-2">HLTV 2.0 Rating</h4>
-                        <p class="text-sm text-slate-400">Professional-grade performance metrics</p>
-                    </div>
+                    <p id="progress-detail" class="text-sm text-slate-500 mt-2"></p>
                 </div>
             </div>
 
-            <!-- Results Section (hidden until analysis) -->
-            <div id="results-overview" class="hidden">
-                <!-- Populated by JavaScript -->
+            <!-- Error Message -->
+            <div id="error-section" class="hidden mt-6">
+                <div class="bg-red-900/30 border border-red-800 rounded-lg p-4">
+                    <div class="flex items-start">
+                        <svg class="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <div>
+                            <h3 class="text-red-400 font-medium">Analysis Error</h3>
+                            <p id="error-message" class="text-red-300 text-sm mt-1"></p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
-        <!-- Heatmaps Tab -->
-        <section id="tab-heatmaps" class="tab-content hidden p-8">
-            <div id="heatmaps-content" class="max-w-6xl mx-auto">
+        <!-- Results Section -->
+        <section id="results-section" class="hidden">
+            <!-- Tab Navigation -->
+            <div class="flex border-b border-slate-700 mb-6">
+                <button
+                    id="tab-overview"
+                    class="tab-btn px-6 py-3 text-sm font-medium border-b-2 border-blue-500 text-blue-400"
+                    data-tab="overview"
+                >
+                    Overview
+                </button>
+                <button
+                    id="tab-advanced"
+                    class="tab-btn px-6 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-300"
+                    data-tab="advanced"
+                >
+                    Advanced
+                </button>
+            </div>
+
+            <!-- Overview Tab -->
+            <div id="content-overview" class="tab-content active">
+                <!-- Match Overview Card -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div class="bg-slate-800 rounded-lg p-6">
+                        <h3 class="text-slate-400 text-sm font-medium uppercase tracking-wider mb-3">Map</h3>
+                        <p id="match-map" class="text-2xl font-bold text-white">-</p>
+                    </div>
+                    <div class="bg-slate-800 rounded-lg p-6">
+                        <h3 class="text-slate-400 text-sm font-medium uppercase tracking-wider mb-3">Score</h3>
+                        <p id="match-score" class="text-2xl font-bold text-white">-</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Kill Map Tab -->
+        <section id="tab-killmap" class="tab-content hidden p-8">
+            <div id="killmap-content" class="max-w-6xl mx-auto">
                 <div class="flex items-center justify-between mb-8">
                     <div>
-                        <h2 class="text-2xl font-bold text-white">Interactive Kill Map</h2>
-                        <p class="text-slate-400 mt-1">Zoom, pan, and click markers for kill details</p>
+                        <h2 class="text-2xl font-bold text-white">Kill Map</h2>
+                        <p class="text-slate-400 mt-1">Visualize kill locations on the radar</p>
                     </div>
                 </div>
 
-                <div id="heatmap-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
+                <div id="killmap-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
                     <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
                     </svg>
-                    <p class="text-slate-500">Upload a demo file to view the interactive kill map</p>
+                    <p class="text-slate-500">Upload a demo file to view kill map</p>
                 </div>
+            </div>
+        </nav>
 
-                <div id="heatmap-display" class="hidden">
-                    <!-- Interactive Kill Map with Leaflet -->
+                <div id="killmap-display" class="hidden">
+                    <!-- Kill Map controls and radar -->
                     <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
-                        <!-- Map Controls -->
-                        <div class="flex flex-wrap items-center gap-4 mb-4">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" id="show-kills" checked class="w-4 h-4 accent-green-500">
-                                <span class="text-sm text-slate-300">Kills</span>
-                                <span class="w-3 h-3 rounded-full bg-green-500 ml-1"></span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" id="show-deaths" checked class="w-4 h-4 accent-red-500">
-                                <span class="text-sm text-slate-300">Deaths</span>
-                                <span class="w-3 h-3 rounded-full bg-red-500 ml-1"></span>
-                            </label>
-                            <div class="h-6 w-px bg-slate-600"></div>
-                            <select id="heatmap-player-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
-                                <option value="all">All Players</option>
-                            </select>
-                            <select id="heatmap-round-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
-                                <option value="all">All Rounds</option>
-                            </select>
-                            <div class="h-6 w-px bg-slate-600"></div>
-                            <button id="killmap-reset-view" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg text-sm text-white transition-colors">
-                                Reset View
-                            </button>
+                        <!-- Filters -->
+                        <div class="flex flex-wrap gap-4 mb-6 items-center justify-between">
+                            <div class="flex gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="killmap-show-ct" checked class="w-4 h-4 accent-ct">
+                                    <span class="text-sm text-ct font-medium">CT Kills</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="killmap-show-t" checked class="w-4 h-4 accent-t">
+                                    <span class="text-sm text-t font-medium">T Kills</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="killmap-show-hs" checked class="w-4 h-4 accent-yellow-500">
+                                    <span class="text-sm text-slate-300">Highlight Headshots</span>
+                                </label>
+                            </div>
+                            <div class="flex gap-4">
+                                <select id="killmap-player-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm">
+                                    <option value="all">All Players</option>
+                                </select>
+                                <select id="killmap-round-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm">
+                                    <option value="all">All Rounds</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Map Container -->
+                        <div id="killmap-container" class="relative w-full max-w-4xl mx-auto aspect-square rounded-lg overflow-hidden bg-slate-900">
+                            <!-- Radar background image -->
+                            <div id="killmap-radar" class="absolute inset-0 bg-center bg-contain bg-no-repeat"></div>
+                            <!-- Kill dots overlay -->
+                            <div id="killmap-overlay" class="absolute inset-0"></div>
+                            <!-- Tooltip -->
+                            <div id="killmap-tooltip" class="absolute hidden bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm pointer-events-none z-50 shadow-xl"></div>
+                            <!-- Loading/Error state -->
+                            <div id="killmap-loading" class="absolute inset-0 flex items-center justify-center text-slate-500 hidden">
+                                Loading map...
+                            </div>
+                            <div id="killmap-no-map" class="absolute inset-0 flex items-center justify-center text-slate-500 hidden">
+                                <div class="text-center">
+                                    <svg class="w-12 h-12 mx-auto mb-2 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                                    </svg>
+                                    <p>Map preview not available for this map</p>
+                                    <p class="text-xs mt-1">Kill data is still shown in the table below</p>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Legend -->
-                        <div class="flex flex-wrap items-center gap-6 mb-4 text-xs text-slate-400">
+                        <div class="flex justify-center gap-8 mt-4 text-sm">
                             <div class="flex items-center gap-2">
-                                <span class="w-4 h-4 rounded-full border-2 border-blue-500 bg-blue-500/30"></span>
-                                <span>CT Kill</span>
+                                <span class="w-3 h-3 rounded-full bg-ct shadow-lg shadow-ct/40"></span>
+                                <span class="text-slate-400">CT Kill</span>
                             </div>
                             <div class="flex items-center gap-2">
-                                <span class="w-4 h-4 rounded-full border-2 border-orange-500 bg-orange-500/30"></span>
-                                <span>T Kill</span>
+                                <span class="w-3 h-3 rounded-full bg-t shadow-lg shadow-t/40"></span>
+                                <span class="text-slate-400">T Kill</span>
                             </div>
                             <div class="flex items-center gap-2">
-                                <span class="w-4 h-4 rounded-full border-2 border-red-500 bg-red-500/30"></span>
-                                <span>Death Location</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-4 h-4 rounded-full border-2 border-yellow-400 bg-yellow-400/30"></span>
-                                <span>Headshot</span>
+                                <span class="w-3 h-3 rounded-full bg-yellow-400 ring-2 ring-yellow-300/50"></span>
+                                <span class="text-slate-400">Headshot</span>
                             </div>
                         </div>
 
-                        <!-- Leaflet Map Container -->
-                        <div id="killmap" class="w-full rounded-lg overflow-hidden border border-slate-600" style="height: 600px; background: #0f172a;"></div>
-
-                        <!-- Map Stats -->
-                        <div id="killmap-stats" class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                            <div class="bg-slate-900/50 rounded-lg p-3">
-                                <div id="stat-total-kills" class="text-2xl font-bold text-green-400">0</div>
-                                <div class="text-xs text-slate-500">Total Kills</div>
+                        <!-- Stats Summary -->
+                        <div id="killmap-stats" class="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-700">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-ct" id="killmap-ct-kills">0</div>
+                                <div class="text-xs text-slate-500 uppercase">CT Kills</div>
                             </div>
-                            <div class="bg-slate-900/50 rounded-lg p-3">
-                                <div id="stat-total-deaths" class="text-2xl font-bold text-red-400">0</div>
-                                <div class="text-xs text-slate-500">Total Deaths</div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-t" id="killmap-t-kills">0</div>
+                                <div class="text-xs text-slate-500 uppercase">T Kills</div>
                             </div>
-                            <div class="bg-slate-900/50 rounded-lg p-3">
-                                <div id="stat-headshots" class="text-2xl font-bold text-yellow-400">0</div>
-                                <div class="text-xs text-slate-500">Headshots</div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-yellow-400" id="killmap-headshots">0</div>
+                                <div class="text-xs text-slate-500 uppercase">Headshots</div>
                             </div>
-                            <div class="bg-slate-900/50 rounded-lg p-3">
-                                <div id="stat-hs-rate" class="text-2xl font-bold text-cyan-400">0%</div>
-                                <div class="text-xs text-slate-500">HS Rate</div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-slate-300" id="killmap-total">0</div>
+                                <div class="text-xs text-slate-500 uppercase">Total Kills</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Fallback Canvas Heatmap (hidden by default, can toggle) -->
-                    <div class="mt-6 bg-slate-800/50 rounded-xl border border-slate-700 p-6 hidden" id="canvas-heatmap-section">
-                        <h3 class="text-lg font-semibold text-white mb-4">Classic Heatmap View</h3>
-                        <canvas id="heatmap-canvas" class="w-full max-w-3xl mx-auto rounded-lg bg-slate-900"></canvas>
+                    <!-- Kill List Table -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mt-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Kill Feed</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-slate-400 border-b border-slate-700">
+                                        <th class="text-left py-2 px-3">Round</th>
+                                        <th class="text-left py-2 px-3">Attacker</th>
+                                        <th class="text-left py-2 px-3">Weapon</th>
+                                        <th class="text-left py-2 px-3">Victim</th>
+                                        <th class="text-center py-2 px-3">HS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="killmap-table-body" class="divide-y divide-slate-700/50">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Share Code Decode -->
+                    <div class="mt-6 p-6 bg-slate-800 rounded-xl">
+                        <h3 class="text-lg font-semibold text-white mb-3">Or Decode Share Code</h3>
+                        <div class="flex gap-3">
+                            <input type="text" id="sharecode-input" placeholder="CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
+                                   class="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500">
+                            <button id="decode-btn" class="px-6 py-2 bg-slate-600 hover:bg-slate-500 text-white font-medium rounded-lg transition-colors">
+                                Decode
+                            </button>
+                        </div>
+                        <div id="decode-result" class="mt-3 text-sm hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Match Info Row -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    <div class="bg-slate-800 rounded-lg p-4">
+                        <h4 class="text-slate-500 text-xs uppercase tracking-wider mb-1">Tick Rate</h4>
+                        <p id="match-tickrate" class="text-lg font-semibold text-slate-200">-</p>
+                    </div>
+                    <div class="bg-slate-800 rounded-lg p-4">
+                        <h4 class="text-slate-500 text-xs uppercase tracking-wider mb-1">Duration</h4>
+                        <p id="match-duration" class="text-lg font-semibold text-slate-200">-</p>
+                    </div>
+                    <div class="bg-slate-800 rounded-lg p-4">
+                        <h4 class="text-slate-500 text-xs uppercase tracking-wider mb-1">Total Kills</h4>
+                        <p id="match-kills" class="text-lg font-semibold text-slate-200">-</p>
+                    </div>
+                    <div class="bg-slate-800 rounded-lg p-4">
+                        <h4 class="text-slate-500 text-xs uppercase tracking-wider mb-1">MVP</h4>
+                        <p id="match-mvp" class="text-lg font-semibold text-slate-200">-</p>
+                    </div>
+                </div>
+
+                <!-- Players Table -->
+                <div class="bg-slate-800 rounded-lg overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-700">
+                        <h2 class="text-lg font-semibold text-white">Player Statistics</h2>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-slate-700/50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Player</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">K</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">D</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">A</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">K/D</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">HS%</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">ADR</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Rating</th>
+                                </tr>
+                            </thead>
+                            <tbody id="players-table-body" class="divide-y divide-slate-700">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Tab -->
+            <div id="content-advanced" class="tab-content">
+                <!-- Advanced Metrics Table -->
+                <div class="bg-slate-800 rounded-lg overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-700">
+                        <h2 class="text-lg font-semibold text-white">Advanced Metrics</h2>
+                        <p class="text-sm text-slate-400 mt-1">Time to Damage (TTD) and Crosshair Placement (CP) analysis</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-slate-700/50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Player</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">ADR</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">KAST%</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Mean TTD (ms)</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Median CP (deg)</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Aim Rating</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Entry Rate</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Utility</th>
+                                </tr>
+                            </thead>
+                            <tbody id="advanced-table-body" class="divide-y divide-slate-700">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Metric Benchmarks -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div class="bg-slate-800 rounded-lg p-6">
+                        <h3 class="text-white font-semibold mb-4">TTD Benchmarks</h3>
+                        <ul class="space-y-2 text-sm">
+                            <li class="flex justify-between"><span class="text-slate-400">Elite</span><span class="rating-excellent">&lt;200ms</span></li>
+                            <li class="flex justify-between"><span class="text-slate-400">Good</span><span class="rating-good">200-350ms</span></li>
+                            <li class="flex justify-between"><span class="text-slate-400">Average</span><span class="rating-average">350-500ms</span></li>
+                            <li class="flex justify-between"><span class="text-slate-400">Slow</span><span class="rating-poor">&gt;500ms</span></li>
+                        </ul>
+                    </div>
+                    <div class="bg-slate-800 rounded-lg p-6">
+                        <h3 class="text-white font-semibold mb-4">Crosshair Placement Benchmarks</h3>
+                        <ul class="space-y-2 text-sm">
+                            <li class="flex justify-between"><span class="text-slate-400">Elite</span><span class="rating-excellent">&lt;5&deg;</span></li>
+                            <li class="flex justify-between"><span class="text-slate-400">Good</span><span class="rating-good">5-15&deg;</span></li>
+                            <li class="flex justify-between"><span class="text-slate-400">Average</span><span class="rating-average">15-25&deg;</span></li>
+                            <li class="flex justify-between"><span class="text-slate-400">Needs Work</span><span class="rating-poor">&gt;25&deg;</span></li>
+                        </ul>
                     </div>
                 </div>
             </div>
         </section>
-
-        <!-- Utility Tab -->
-        <section id="tab-utility" class="tab-content hidden p-8">
-            <div id="utility-content" class="max-w-6xl mx-auto">
-                <div class="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 class="text-2xl font-bold text-white">Utility Analysis</h2>
-                        <p class="text-slate-400 mt-1">Flash, smoke, molotov, and HE effectiveness</p>
-                    </div>
-                </div>
-
-                <div id="utility-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
-                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
-                    </svg>
-                    <p class="text-slate-500">Upload a demo file to view utility stats</p>
-                </div>
-
-                <div id="utility-display" class="hidden">
-                    <!-- Populated by JavaScript -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Compare Tab -->
-        <section id="tab-compare" class="tab-content hidden p-8">
-            <div id="compare-content" class="max-w-6xl mx-auto">
-                <div class="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 class="text-2xl font-bold text-white">Player Comparison</h2>
-                        <p class="text-slate-400 mt-1">Compare stats between players</p>
-                    </div>
-                </div>
-
-                <div id="compare-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
-                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                    </svg>
-                    <p class="text-slate-500">Upload a demo file to compare players</p>
-                </div>
-
-                <div id="compare-display" class="hidden">
-                    <!-- Populated by JavaScript -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Players Tab -->
-        <section id="tab-players" class="tab-content hidden p-8">
-            <div id="players-content" class="max-w-6xl mx-auto">
-                <div class="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 class="text-2xl font-bold text-white">Player Stats</h2>
-                        <p class="text-slate-400 mt-1">Detailed individual performance</p>
-                    </div>
-                </div>
-
-                <div id="players-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
-                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
-                    </svg>
-                    <p class="text-slate-500">Upload a demo file to view player stats</p>
-                </div>
-
-                <div id="players-display" class="hidden">
-                    <!-- Populated by JavaScript -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Timeline Tab -->
-        <section id="tab-timeline" class="tab-content hidden p-8">
-            <div id="timeline-content" class="max-w-6xl mx-auto">
-                <div class="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 class="text-2xl font-bold text-white">Round Timeline</h2>
-                        <p class="text-slate-400 mt-1">Match progression round by round</p>
-                    </div>
-                </div>
-
-                <div id="timeline-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
-                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <p class="text-slate-500">Upload a demo file to view timeline</p>
-                </div>
-
-                <div id="timeline-display" class="hidden">
-                    <!-- Populated by JavaScript -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Coaching Tab -->
-        <section id="tab-coaching" class="tab-content hidden p-8">
-            <div id="coaching-content" class="max-w-6xl mx-auto">
-                <div class="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 class="text-2xl font-bold text-white">AI Coaching</h2>
-                        <p class="text-slate-400 mt-1">Personalized improvement suggestions</p>
-                    </div>
-                </div>
-
-                <div id="coaching-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
-                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                    </svg>
-                    <p class="text-slate-500">Upload a demo file to get AI coaching insights</p>
-                </div>
-
-                <div id="coaching-display" class="hidden">
-                    <!-- Populated by JavaScript -->
-                </div>
-            </div>
-        </section>
-
     </main>
 
-    <!-- Loading Overlay -->
-    <div id="loading" class="fixed inset-0 bg-slate-950/95 z-[100] hidden items-center justify-center flex-col">
-        <div class="relative">
-            <!-- Spinning ring -->
-            <div class="w-20 h-20 border-4 border-slate-700 border-t-cyan-400 rounded-full animate-spin"></div>
-            <!-- Inner pulse -->
-            <div class="absolute inset-0 flex items-center justify-center">
-                <div class="w-8 h-8 bg-cyan-400/20 rounded-full animate-ping"></div>
-            </div>
+    <!-- Footer -->
+    <footer class="bg-slate-800 border-t border-slate-700 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <p class="text-center text-sm text-slate-500">
+                OpenSight - Professional-grade CS2 demo analysis
+            </p>
         </div>
-        <p class="mt-6 text-lg text-slate-300">Analyzing demo...</p>
-        <p id="loading-details" class="mt-2 text-sm text-slate-500"></p>
-    </div>
+    </footer>
 
-    <!-- JavaScript -->
     <script>
-        // ============================================
         // DOM Elements
-        // ============================================
-        const uploadZone = document.getElementById('upload-zone');
-        const fileInput = document.getElementById('demo-file');
-        const loading = document.getElementById('loading');
-        const loadingDetails = document.getElementById('loading-details');
+        // =============================================================================
         const uploadSection = document.getElementById('upload-section');
-        const resultsOverview = document.getElementById('results-overview');
+        const dashboardContent = document.getElementById('dashboard-content');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const browseBtn = document.getElementById('browse-btn');
+        const sharecodeInput = document.getElementById('sharecode-input');
+        const decodeBtn = document.getElementById('decode-btn');
+        const decodeResult = document.getElementById('decode-result');
+        const newAnalysisBtn = document.getElementById('new-analysis-btn');
 
-        // Global state
-        let analysisData = null;
-        let charts = {};
+        // Navigation buttons
+        const navBtns = {
+            overview: document.getElementById('nav-overview'),
+            advanced: document.getElementById('nav-advanced'),
+            compare: document.getElementById('nav-compare')
+        };
 
-        // ============================================
-        // Tab Navigation
-        // ============================================
-        document.querySelectorAll('.sidebar-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const tab = item.dataset.tab;
+        // Tab contents
+        const tabContents = {
+            overview: document.getElementById('tab-overview'),
+            advanced: document.getElementById('tab-advanced'),
+            compare: document.getElementById('tab-compare')
+        };
 
-                // Update sidebar active state
-                document.querySelectorAll('.sidebar-item').forEach(i => {
-                    i.classList.remove('active', 'text-cyan-400');
-                    i.classList.add('text-slate-400');
-                });
-                item.classList.add('active');
-                item.classList.remove('text-slate-400');
-
-                // Update content visibility
-                document.querySelectorAll('.tab-content').forEach(content => {
-                    content.classList.add('hidden');
-                    content.classList.remove('block');
-                });
-                const tabContent = document.getElementById(`tab-${tab}`);
-                if (tabContent) {
-                    tabContent.classList.remove('hidden');
-                    tabContent.classList.add('block');
-                }
-
-                // Initialize tab-specific content if data exists
-                if (analysisData) {
-                    if (tab === 'heatmaps') {
-                        const players = Object.entries(analysisData.players || {}).map(([id, p]) => ({ id, ...p }));
-                        initHeatmap(analysisData.heatmap_data || {}, players);
-                    }
-                }
-            });
-        });
-
-        // ============================================
-        // File Upload Handlers
-        // ============================================
-        uploadZone.addEventListener('click', () => fileInput.click());
-
-        uploadZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZone.classList.add('border-cyan-500', 'animate-pulse-glow');
-        });
-
-        uploadZone.addEventListener('dragleave', () => {
-            uploadZone.classList.remove('border-cyan-500', 'animate-pulse-glow');
-        });
-
-        uploadZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZone.classList.remove('border-cyan-500', 'animate-pulse-glow');
-            const file = e.dataTransfer.files[0];
-            if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
-                analyzeFile(file);
-            } else {
-                showToast('Please upload a .dem or .dem.gz file', 'error');
-            }
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) analyzeFile(file);
-        });
-
-        // ============================================
+        // =============================================================================
         // Utility Functions
-        // ============================================
-        function esc(text) {
-            if (text === null || text === undefined) return '';
+        // =============================================================================
+        function escapeHtml(text) {
             const div = document.createElement('div');
-            div.textContent = String(text);
+            div.textContent = text;
             return div.innerHTML;
         }
 
+        function formatNumber(num, decimals = 1) {
+            if (num === null || num === undefined) return 'N/A';
+            return Number(num).toFixed(decimals);
+        }
+
+        function getRatingColor(rating) {
+            if (rating >= 1.3) return 'text-green-400';
+            if (rating >= 1.1) return 'text-emerald-400';
+            if (rating >= 0.9) return 'text-yellow-400';
+            if (rating >= 0.7) return 'text-orange-400';
+            return 'text-red-400';
+        }
+
+        function getTeamBadge(team) {
+            if (team === 'CT') {
+                return '<span class="px-2 py-1 text-xs font-semibold rounded bg-blue-500/20 text-blue-400">CT</span>';
+            } else {
+                return '<span class="px-2 py-1 text-xs font-semibold rounded bg-yellow-500/20 text-yellow-400">T</span>';
+            }
+        }
+
+        function getTierBadge(value, thresholds, labels, inverse = false) {
+            let tier, color;
+            if (inverse) {
+                if (value <= thresholds[0]) { tier = labels[0]; color = 'bg-green-500/20 text-green-400'; }
+                else if (value <= thresholds[1]) { tier = labels[1]; color = 'bg-emerald-500/20 text-emerald-400'; }
+                else if (value <= thresholds[2]) { tier = labels[2]; color = 'bg-yellow-500/20 text-yellow-400'; }
+                else { tier = labels[3]; color = 'bg-red-500/20 text-red-400'; }
+            } else {
+                if (value >= thresholds[0]) { tier = labels[0]; color = 'bg-green-500/20 text-green-400'; }
+                else if (value >= thresholds[1]) { tier = labels[1]; color = 'bg-emerald-500/20 text-emerald-400'; }
+                else if (value >= thresholds[2]) { tier = labels[2]; color = 'bg-yellow-500/20 text-yellow-400'; }
+                else { tier = labels[3]; color = 'bg-red-500/20 text-red-400'; }
+            }
+            return `<span class="px-2 py-1 text-xs font-semibold rounded ${color}">${tier}</span>`;
+        }
+
+        // =============================================================================
+        // Navigation
+        // =============================================================================
+        function switchTab(tabName) {
+            // Update nav buttons
+            Object.keys(navBtns).forEach(key => {
+                navBtns[key].classList.remove('active', 'bg-slate-700', 'text-white');
+                navBtns[key].classList.add('text-slate-400', 'hover:bg-slate-700/50', 'hover:text-white');
+            });
+            navBtns[tabName].classList.add('active', 'bg-slate-700', 'text-white');
+            navBtns[tabName].classList.remove('text-slate-400', 'hover:bg-slate-700/50', 'hover:text-white');
+
+                // Initialize tab-specific content if data exists
+                if (analysisData) {
+                    if (tab === 'heatmaps') initHeatmap(analysisData.heatmap_data || {});
+                    if (tab === 'killmap') renderKillMapContent();
+                }
+            });
+            tabContents[tabName].classList.add('active');
+
+            // Re-render compare chart if switching to compare tab
+            if (tabName === 'compare' && currentMatchData) {
+                setTimeout(() => renderCompare(), 100);
+            }
+        }
+
+        // Add event listeners to nav buttons
+        Object.keys(navBtns).forEach(key => {
+            navBtns[key].addEventListener('click', () => switchTab(key));
+        });
+
+        // Initialize nav button styles
+        switchTab('overview');
+
+        // =============================================================================
+        // File Upload
+        // =============================================================================
+        browseBtn.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0]);
+            }
+        });
+
+        // Drag and drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                uploadFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        async function uploadFile(file) {
+            // Validate file
+            const validExtensions = ['.dem', '.dem.gz'];
+            const fileName = file.name.toLowerCase();
+            if (!validExtensions.some(ext => fileName.endsWith(ext))) {
+                alert('Please upload a .dem or .dem.gz file');
+                return;
+            }
+
+            if (file.size > 500 * 1024 * 1024) {
+                alert('File size exceeds 500MB limit');
+                return;
+            }
+
+        // Format numbers
         function formatNumber(num, decimals = 1) {
             if (num === null || num === undefined) return '-';
             return Number(num).toFixed(decimals);
         }
 
+        // Get rating class based on HLTV rating
         function getRatingClass(rating) {
-            if (rating >= 1.3) return 'text-yellow-400';
-            if (rating >= 1.1) return 'text-green-400';
-            if (rating >= 0.9) return 'text-slate-300';
-            return 'text-red-400';
+            if (rating >= 1.3) return 'rating-excellent';
+            if (rating >= 1.1) return 'rating-good';
+            if (rating >= 0.9) return 'rating-average';
+            if (rating >= 0.7) return 'rating-below';
+            return 'rating-poor';
         }
 
-        function getRatingBg(rating) {
-            if (rating >= 1.3) return 'bg-yellow-500/20 border-yellow-500/30';
-            if (rating >= 1.1) return 'bg-green-500/20 border-green-500/30';
-            if (rating >= 0.9) return 'bg-slate-500/20 border-slate-500/30';
-            return 'bg-red-500/20 border-red-500/30';
+        // Get TTD rating class
+        function getTtdClass(ttd) {
+            if (ttd === null || ttd === undefined) return '';
+            if (ttd < 200) return 'rating-excellent';
+            if (ttd < 350) return 'rating-good';
+            if (ttd < 500) return 'rating-average';
+            return 'rating-poor';
         }
 
-        function getStatColor(value, thresholds) {
-            if (value >= thresholds.elite) return 'text-yellow-400';
-            if (value >= thresholds.good) return 'text-green-400';
-            if (value >= thresholds.avg) return 'text-slate-300';
-            return 'text-red-400';
+        // Get CP rating class
+        function getCpClass(cp) {
+            if (cp === null || cp === undefined) return '';
+            if (cp < 5) return 'rating-excellent';
+            if (cp < 15) return 'rating-good';
+            if (cp < 25) return 'rating-average';
+            return 'rating-poor';
         }
 
-        function showToast(message, type = 'info') {
-            // Simple toast notification
-            const toast = document.createElement('div');
-            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg z-[200] transition-all transform ${
-                type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-cyan-500'
-            } text-white font-medium`;
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
+        // Tab Navigation
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabId = btn.dataset.tab;
 
-        // ============================================
-        // Main Analysis Function
-        // ============================================
-        async function analyzeFile(file) {
-            const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-            loading.classList.remove('hidden');
-            loading.classList.add('flex');
-            loadingDetails.textContent = `Processing ${file.name} (${sizeMB} MB)`;
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch('/analyze', {
-                    method: 'POST',
-                    body: formData
+                // Update button states
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('border-blue-500', 'text-blue-400');
+                    b.classList.add('border-transparent', 'text-slate-400');
                 });
+                btn.classList.remove('border-transparent', 'text-slate-400');
+                btn.classList.add('border-blue-500', 'text-blue-400');
 
                 const data = await response.json();
+                decodeResult.classList.remove('hidden');
 
-                if (!response.ok) {
-                    throw new Error(data.detail || 'Analysis failed');
+                if (response.ok) {
+                    decodeResult.className = 'mt-3 text-sm p-3 bg-slate-700 rounded-lg';
+                    decodeResult.innerHTML = `
+                        <p class="text-green-400 font-semibold mb-2">Decoded Successfully</p>
+                        <p><span class="text-slate-400">Match ID:</span> <span class="font-mono-num">${escapeHtml(data.match_id || 'N/A')}</span></p>
+                        <p><span class="text-slate-400">Outcome ID:</span> <span class="font-mono-num">${escapeHtml(data.outcome_id || 'N/A')}</span></p>
+                        <p><span class="text-slate-400">Token:</span> <span class="font-mono-num">${escapeHtml(data.token || 'N/A')}</span></p>
+                    `;
+                } else {
+                    decodeResult.className = 'mt-3 text-sm p-3 bg-red-900/30 rounded-lg text-red-400';
+                    decodeResult.textContent = data.detail || 'Failed to decode share code';
                 }
-
-                analysisData = data;
-                renderResults(data);
-                showToast('Analysis complete!', 'success');
             } catch (error) {
-                showToast(error.message, 'error');
-            } finally {
-                loading.classList.add('hidden');
-                loading.classList.remove('flex');
+                decodeResult.classList.remove('hidden');
+                decodeResult.className = 'mt-3 text-sm p-3 bg-red-900/30 rounded-lg text-red-400';
+                decodeResult.textContent = 'Error: ' + error.message;
             }
+        });
+
+        // =============================================================================
+        // Dashboard Display
+        // =============================================================================
+        function showDashboard() {
+            uploadSection.classList.add('hidden');
+            dashboardContent.classList.remove('hidden');
+            renderMatchHeader();
+            renderOverview();
+            renderAdvanced();
+            populatePlayerSelects();
         }
 
-        // ============================================
-        // Render Results
-        // ============================================
-        function renderResults(data) {
-            const info = data.demo_info || {};
-            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
-            const ctPlayers = players.filter(p => p.team === 'CT');
-            const tPlayers = players.filter(p => p.team === 'T');
+        newAnalysisBtn.addEventListener('click', () => {
+            currentMatchData = null;
+            dashboardContent.classList.add('hidden');
+            uploadSection.classList.remove('hidden');
+            fileInput.value = '';
+        });
 
-            // Hide upload, show results
-            uploadSection.classList.add('hidden');
-            resultsOverview.classList.remove('hidden');
+        // =============================================================================
+        // Render Match Header
+        // =============================================================================
+        function renderMatchHeader() {
+            const data = currentMatchData;
+            document.getElementById('map-name').textContent = escapeHtml(data.map_name || 'Unknown Map');
+            document.getElementById('match-score').textContent = `${data.team1_score || 0} - ${data.team2_score || 0}`;
+            document.getElementById('match-rounds').textContent = `${data.total_rounds || 0} rounds`;
+            document.getElementById('tick-rate').textContent = `${data.tick_rate || 64} tick`;
+        }
 
-            // Render overview
-            resultsOverview.innerHTML = renderOverviewContent(data, players, info);
+        // =============================================================================
+        // Render Overview Tab
+        // =============================================================================
+        function renderOverview() {
+            const players = Object.values(currentMatchData.players || {});
+
+            // Sort by rating descending
+            players.sort((a, b) => (b.hltv_rating || 0) - (a.hltv_rating || 0));
+
+            const tableBody = document.getElementById('players-table');
+            tableBody.innerHTML = players.map((p, i) => {
+                const kdDiff = (p.kills || 0) - (p.deaths || 0);
+                const kdDiffClass = kdDiff > 0 ? 'text-green-400' : kdDiff < 0 ? 'text-red-400' : 'text-slate-400';
+                const kdDiffStr = kdDiff > 0 ? `+${kdDiff}` : kdDiff.toString();
+                const rowBg = i % 2 === 0 ? 'bg-slate-800' : 'bg-slate-800/50';
+
+                return `
+                    <tr class="${rowBg} hover:bg-slate-700/50 transition-colors">
+                        <td class="px-6 py-4">
+                            <span class="font-medium text-white">${escapeHtml(p.name || 'Unknown')}</span>
+                        </td>
+                        <td class="px-6 py-4 text-center">${getTeamBadge(p.team)}</td>
+                        <td class="px-6 py-4 text-center font-mono-num">${p.kills || 0}</td>
+                        <td class="px-6 py-4 text-center font-mono-num">${p.deaths || 0}</td>
+                        <td class="px-6 py-4 text-center font-mono-num">${p.assists || 0}</td>
+                        <td class="px-6 py-4 text-center font-mono-num ${kdDiffClass}">${kdDiffStr}</td>
+                        <td class="px-6 py-4 text-center font-mono-num">${formatNumber(p.adr, 1)}</td>
+                        <td class="px-6 py-4 text-center font-mono-num">${formatNumber(p.headshot_percentage, 0)}%</td>
+                        <td class="px-6 py-4 text-center font-mono-num">${formatNumber(p.kast_percentage, 0)}%</td>
+                        <td class="px-6 py-4 text-center">
+                            <span class="font-mono-num font-semibold ${getRatingColor(p.hltv_rating || 0)}">${formatNumber(p.hltv_rating, 2)}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Render kill matrix
+            renderKillMatrix(players);
+        }
+
+        function renderKillMatrix(players) {
+            const container = document.getElementById('kill-matrix-container');
+            const killMatrix = currentMatchData.kill_matrix || [];
+
+            if (players.length === 0) {
+                container.innerHTML = '<p class="text-slate-400">No kill data available</p>';
+                return;
+            }
 
             // Show placeholders become real content
             renderPlayersContent(ctPlayers, tPlayers);
@@ -733,385 +786,254 @@
             renderCoachingContent(data.coaching || []);
             renderCompareContent(players);
             renderHeatmapContent();
+            renderKillMapContent();
 
-            // Initialize charts
-            initCharts(players);
+            // Create table
+            let html = '<table class="min-w-full text-sm">';
 
-            // Add new analysis button handler
-            const newAnalysisBtn = document.getElementById('btn-new-analysis');
-            if (newAnalysisBtn) {
-                newAnalysisBtn.addEventListener('click', () => {
-                    uploadSection.classList.remove('hidden');
-                    resultsOverview.classList.add('hidden');
-                    resultsOverview.innerHTML = '';
-                    analysisData = null;
+            // Header row
+            html += '<thead><tr><th class="px-3 py-2 text-left text-slate-400 font-medium">Attacker \\ Victim</th>';
+            players.forEach(p => {
+                html += `<th class="px-3 py-2 text-center text-slate-300 font-medium">${escapeHtml(p.name?.substring(0, 10) || '?')}</th>`;
+            });
+            html += '</tr></thead><tbody>';
 
                     // Reset all placeholders
-                    ['players', 'utility', 'timeline', 'coaching', 'compare', 'heatmap'].forEach(tab => {
+                    ['players', 'utility', 'timeline', 'coaching', 'compare', 'heatmap', 'killmap'].forEach(tab => {
                         const display = document.getElementById(`${tab}-display`);
                         const placeholder = document.getElementById(`${tab}-placeholder`);
                         if (display) display.classList.add('hidden');
                         if (placeholder) placeholder.classList.remove('hidden');
                     });
                 });
+                document.getElementById(`content-${tabId}`).classList.add('active');
+            });
+        });
+
+        // File Input Handlers
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drop-zone-active');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drop-zone-active');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drop-zone-active');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                handleFile(fileInput.files[0]);
+            }
+        });
+
+        // Show/Hide UI States
+        function showProgress() {
+            progressSection.classList.remove('hidden');
+            errorSection.classList.add('hidden');
+            resultsSection.classList.add('hidden');
+        }
+
+        function showError(message) {
+            progressSection.classList.add('hidden');
+            errorSection.classList.remove('hidden');
+            errorMessage.textContent = message;
+        }
+
+        function showResults() {
+            progressSection.classList.add('hidden');
+            errorSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+        }
+
+        function updateProgress(text, percent, detail = '') {
+            progressText.textContent = text;
+            progressBar.style.width = `${percent}%`;
+            progressDetail.textContent = detail;
+        }
+
+        // Poll for job status
+        async function pollJobStatus(jobId) {
+            const pollInterval = 1000; // 1 second
+            const maxAttempts = 600; // 10 minutes max
+            let attempts = 0;
+
+            while (attempts < maxAttempts) {
+                try {
+                    const response = await fetch(`/analyze/${jobId}`);
+                    const data = await response.json();
+
+                    if (data.status === 'completed') {
+                        updateProgress('Analysis complete!', 100);
+                        return data.result;
+                    } else if (data.status === 'failed') {
+                        throw new Error(data.error || 'Analysis failed');
+                    } else if (data.status === 'processing') {
+                        const progress = data.progress || 0;
+                        updateProgress('Analyzing demo...', Math.max(10, progress), `${progress}% complete`);
+                    } else {
+                        updateProgress('Waiting in queue...', 5, 'Job queued');
+                    }
+                } catch (error) {
+                    throw error;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+                attempts++;
             }
 
-            // Export handlers
-            document.getElementById('btn-export-json')?.addEventListener('click', () => exportJSON(data));
-            document.getElementById('btn-export-csv')?.addEventListener('click', () => exportCSV(data));
+            throw new Error('Analysis timed out');
         }
 
-        function renderOverviewContent(data, players, info) {
-            const scores = (info.score || '0 - 0').split(' - ');
-            const rounds = data.rounds || [];
+        // Handle File Upload
+        async function handleFile(file) {
+            // Validate file
+            const validExtensions = ['.dem', '.dem.gz'];
+            const fileName = file.name.toLowerCase();
+            const isValid = validExtensions.some(ext => fileName.endsWith(ext));
 
-            return `
-                <!-- Match Header Card -->
-                <div class="bg-gradient-to-r from-slate-800/80 to-slate-800/40 rounded-2xl border border-slate-700 p-8 mb-8">
-                    <div class="flex items-center justify-between mb-6">
-                        <div>
-                            <h2 class="text-3xl font-bold text-white">${esc(info.map) || 'Unknown Map'}</h2>
-                            <p class="text-slate-400 mt-1">
-                                <span class="font-mono data-value">${info.rounds || 0}</span> rounds &bull;
-                                <span class="font-mono data-value">${Math.round(info.duration_minutes || 0)}</span> min &bull;
-                                <span class="font-mono data-value">${info.total_kills || 0}</span> kills
-                            </p>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <button id="btn-new-analysis" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors flex items-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                                </svg>
-                                New Analysis
-                            </button>
-                            <button id="btn-export-json" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors font-mono text-sm">
-                                { } JSON
-                            </button>
-                            <button id="btn-export-csv" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors font-mono text-sm">
-                                CSV
-                            </button>
-                        </div>
-                    </div>
+            if (!isValid) {
+                showError('Invalid file type. Please upload a .dem or .dem.gz file.');
+                return;
+            }
 
-                    <!-- Score Display -->
-                    <div class="flex items-center justify-center gap-8 py-6">
-                        <div class="text-center">
-                            <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Counter-Terrorists</p>
-                            <p class="text-5xl font-bold font-mono data-value text-ct">${scores[0] || '0'}</p>
-                        </div>
-                        <div class="text-3xl text-slate-600 font-light">:</div>
-                        <div class="text-center">
-                            <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Terrorists</p>
-                            <p class="text-5xl font-bold font-mono data-value text-t">${scores[1] || '0'}</p>
-                        </div>
-                    </div>
+            if (file.size > 500 * 1024 * 1024) {
+                showError('File too large. Maximum size is 500MB.');
+                return;
+            }
 
-                    ${data.mvp ? `
-                        <div class="flex items-center justify-center gap-2 mt-4 text-slate-400">
-                            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
-                            </svg>
-                            MVP: <span class="text-cyan-400 font-semibold">${esc(data.mvp.name)}</span>
-                            <span class="font-mono data-value">(${formatNumber(data.mvp.rating, 2)})</span>
-                        </div>
-                    ` : ''}
-                </div>
+            showProgress();
+            updateProgress('Uploading demo...', 0, `${(file.size / 1024 / 1024).toFixed(1)} MB`);
 
-                <!-- Round Timeline -->
-                ${rounds.length > 0 ? `
-                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-8">
-                    <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Round Timeline</h3>
-                    <div class="flex flex-wrap gap-1">
-                        ${rounds.map(r => `
-                            <div class="w-8 h-10 rounded flex items-center justify-center text-xs font-mono font-bold cursor-pointer transition-transform hover:scale-110 ${
-                                r.winner === 'CT'
-                                    ? 'bg-ct-bg text-ct border border-ct/30'
-                                    : 'bg-t-bg text-t border border-t/30'
-                            }" title="Round ${r.round_num}: ${r.winner} win">
-                                ${r.round_num}
+            try {
+                // Upload file
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const uploadResponse = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadResponse.ok) {
+                    const errorData = await uploadResponse.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `Upload failed: ${uploadResponse.status}`);
+                }
+
+                const uploadResult = await uploadResponse.json();
+                updateProgress('Processing demo...', 10, 'Job submitted');
+
+                // Poll for results
+                const result = await pollJobStatus(uploadResult.job_id);
+
+                // Display results
+                displayResults(result);
+                showResults();
+
+            } catch (error) {
+                console.error('Analysis error:', error);
+                showError(error.message || 'An unexpected error occurred');
+            }
+        }
+
+        // Display Results
+        function displayResults(data) {
+            const demoInfo = data.demo_info || {};
+            const players = data.players || {};
+
+            // Match Overview
+            document.getElementById('match-map').textContent = escapeHtml(demoInfo.map || 'Unknown');
+            document.getElementById('match-score').textContent = escapeHtml(demoInfo.score || '-');
+            document.getElementById('match-rounds').textContent = demoInfo.rounds || '-';
+            document.getElementById('match-tickrate').textContent = demoInfo.tick_rate ? `${demoInfo.tick_rate} tick` : '-';
+            document.getElementById('match-duration').textContent = demoInfo.duration_minutes ? `${formatNumber(demoInfo.duration_minutes, 1)} min` : '-';
+            document.getElementById('match-kills').textContent = demoInfo.total_kills || '-';
+
+            // MVP
+            if (data.mvp) {
+                document.getElementById('match-mvp').textContent = escapeHtml(data.mvp.name);
+            } else {
+                document.getElementById('match-mvp').textContent = '-';
+            }
+
+            // Convert players object to array and sort by rating
+            const playerList = Object.entries(players).map(([steamId, player]) => ({
+                steamId,
+                ...player
+            })).sort((a, b) => {
+                const ratingA = a.rating?.hltv_rating || 0;
+                const ratingB = b.rating?.hltv_rating || 0;
+                return ratingB - ratingA;
+            });
+
+            // Populate Overview Table
+            playersTableBody.innerHTML = playerList.map(player => {
+                const stats = player.stats || {};
+                const rating = player.rating || {};
+                const ratingValue = rating.hltv_rating || 0;
+                const ratingClass = getRatingClass(ratingValue);
+                const teamClass = player.team === 'CT' ? 'text-blue-400' : 'text-yellow-400';
+
+                return `
+                    <tr class="hover:bg-slate-700/50">
+                        <td class="px-4 py-3">
+                            <div class="flex items-center">
+                                <span class="${teamClass} font-medium mr-2">${escapeHtml(player.team || '')}</span>
+                                <span class="text-white font-medium">${escapeHtml(player.name || 'Unknown')}</span>
                             </div>
-                        `).join('')}
-                    </div>
-                    <div class="flex gap-6 mt-4 text-sm text-slate-400">
-                        <span><span class="inline-block w-3 h-3 rounded bg-ct mr-2"></span>CT Wins: <span class="font-mono data-value">${rounds.filter(r => r.winner === 'CT').length}</span></span>
-                        <span><span class="inline-block w-3 h-3 rounded bg-t mr-2"></span>T Wins: <span class="font-mono data-value">${rounds.filter(r => r.winner === 'T').length}</span></span>
-                    </div>
-                </div>
-                ` : ''}
+                        </td>
+                        <td class="px-4 py-3 text-center text-slate-300">${stats.kills || 0}</td>
+                        <td class="px-4 py-3 text-center text-slate-300">${stats.deaths || 0}</td>
+                        <td class="px-4 py-3 text-center text-slate-300">${stats.assists || 0}</td>
+                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(stats.kd_ratio, 2)}</td>
+                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(stats.headshot_pct, 0)}%</td>
+                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(stats.adr, 1)}</td>
+                        <td class="px-4 py-3 text-center font-semibold ${ratingClass}">${formatNumber(ratingValue, 2)}</td>
+                    </tr>
+                `;
+            }).join('');
 
-                <!-- Stats Grid -->
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                    <div class="chart-card bg-slate-800/50 rounded-xl border border-slate-700 p-5">
-                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Player Ratings</h3>
-                        <div class="h-48">
-                            <canvas id="chart-ratings"></canvas>
-                        </div>
-                    </div>
-                    <div class="chart-card bg-slate-800/50 rounded-xl border border-slate-700 p-5">
-                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Kills & Deaths</h3>
-                        <div class="h-48">
-                            <canvas id="chart-kd"></canvas>
-                        </div>
-                    </div>
-                    <div class="chart-card bg-slate-800/50 rounded-xl border border-slate-700 p-5">
-                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">ADR Comparison</h3>
-                        <div class="h-48">
-                            <canvas id="chart-adr"></canvas>
-                        </div>
-                    </div>
-                    <div class="chart-card bg-slate-800/50 rounded-xl border border-slate-700 p-5">
-                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Headshot %</h3>
-                        <div class="h-48">
-                            <canvas id="chart-hs"></canvas>
-                        </div>
-                    </div>
-                </div>
+            // Populate Advanced Table
+            advancedTableBody.innerHTML = playerList.map(player => {
+                const stats = player.stats || {};
+                const rating = player.rating || {};
+                const advanced = player.advanced || {};
+                const utility = player.utility || {};
 
-                <!-- Player Cards Grid -->
-                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Player Performance</h3>
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    ${players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0)).map(p => renderPlayerCard(p)).join('')}
-                </div>
-            `;
-        }
+                const ttdValue = advanced.ttd_mean_ms;
+                const cpValue = advanced.cp_median_error_deg;
+                const ttdClass = getTtdClass(ttdValue);
+                const cpClass = getCpClass(cpValue);
+                const teamClass = player.team === 'CT' ? 'text-blue-400' : 'text-yellow-400';
 
-        .matrix-table td.highlight {
-            background: var(--accent-dim);
-            color: var(--accent);
-            font-weight: 600;
-        }
-
-        .matrix-table td.victim { background: rgba(239, 68, 68, 0.1); }
-        .matrix-table td.killer { background: rgba(34, 197, 94, 0.1); }
-
-        /* Heatmap Canvas */
-        .heatmap-container {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-        }
-
-        .heatmap-canvas {
-            max-width: 100%;
-            border-radius: 8px;
-            background: var(--bg-secondary);
-        }
-
-        .heatmap-controls {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            margin-bottom: 16px;
-        }
-
-        .heatmap-controls label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            cursor: pointer;
-            color: var(--text-secondary);
-        }
-
-        .heatmap-controls input[type="checkbox"] {
-            accent-color: var(--accent);
-        }
-
-        /* Kill Map Radar Visualization */
-        .kill-map-section {
-            margin-top: 32px;
-            padding-top: 24px;
-            border-top: 1px solid var(--border);
-        }
-
-        .kill-map-container {
-            position: relative;
-            width: 100%;
-            max-width: 1024px;
-            margin: 0 auto;
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .kill-map-radar {
-            position: relative;
-            width: 100%;
-            padding-bottom: 100%; /* 1:1 aspect ratio */
-            background-size: contain;
-            background-repeat: no-repeat;
-            background-position: center;
-            background-color: var(--bg-secondary);
-        }
-
-        .kill-map-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-
-        .kill-dot {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            cursor: pointer;
-            pointer-events: auto;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-            z-index: 10;
-        }
-
-        .kill-dot:hover {
-            transform: translate(-50%, -50%) scale(1.6);
-            z-index: 20;
-        }
-
-        .kill-dot.ct-kill {
-            background: var(--ct-color);
-            box-shadow: 0 0 6px var(--ct-color), 0 0 12px rgba(74, 144, 217, 0.4);
-        }
-
-        .kill-dot.ct-kill:hover {
-            box-shadow: 0 0 10px var(--ct-color), 0 0 20px rgba(74, 144, 217, 0.6);
-        }
-
-        .kill-dot.t-kill {
-            background: var(--t-color);
-            box-shadow: 0 0 6px var(--t-color), 0 0 12px rgba(222, 155, 53, 0.4);
-        }
-
-        .kill-dot.t-kill:hover {
-            box-shadow: 0 0 10px var(--t-color), 0 0 20px rgba(222, 155, 53, 0.6);
-        }
-
-        .kill-dot.headshot::after {
-            content: '';
-            position: absolute;
-            top: -3px;
-            left: -3px;
-            right: -3px;
-            bottom: -3px;
-            border: 2px solid #ffd700;
-            border-radius: 50%;
-            animation: pulse-ring 1.5s ease-out infinite;
-        }
-
-        @keyframes pulse-ring {
-            0% { transform: scale(1); opacity: 0.8; }
-            100% { transform: scale(1.5); opacity: 0; }
-        }
-
-        .kill-tooltip {
-            position: absolute;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-size: 0.85rem;
-            color: var(--text-primary);
-            pointer-events: none;
-            z-index: 100;
-            white-space: nowrap;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-            transform: translate(-50%, -100%);
-            margin-top: -12px;
-            opacity: 0;
-            transition: opacity 0.15s ease;
-        }
-
-        .kill-tooltip.visible {
-            opacity: 1;
-        }
-
-        .kill-tooltip .weapon {
-            color: var(--accent);
-            font-weight: 600;
-        }
-
-        .kill-tooltip .headshot-badge {
-            color: #ffd700;
-            margin-left: 6px;
-        }
-
-        .kill-map-legend {
-            display: flex;
-            justify-content: center;
-            gap: 24px;
-            margin-top: 16px;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-        }
-
-        .legend-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-        }
-
-        .legend-dot.ct { background: var(--ct-color); }
-        .legend-dot.t { background: var(--t-color); }
-        .legend-dot.headshot {
-            background: linear-gradient(135deg, var(--accent), var(--ct-color));
-            border: 2px solid #ffd700;
-        }
-
-        .kill-map-filters {
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-            margin-bottom: 16px;
-            flex-wrap: wrap;
-        }
-
-        .filter-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .filter-group label {
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-        }
-
-        .filter-group select {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 6px 12px;
-            color: var(--text-primary);
-            font-size: 0.85rem;
-            cursor: pointer;
-        }
-
-        .filter-group select:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-
-        .kill-map-stats {
-            display: flex;
-            justify-content: center;
-            gap: 32px;
-            margin-top: 16px;
-            padding: 12px;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-        }
-
-        .map-stat {
-            text-align: center;
+                return `
+                    <tr class="hover:bg-slate-700/50">
+                        <td class="px-4 py-3">
+                            <div class="flex items-center">
+                                <span class="${teamClass} font-medium mr-2">${escapeHtml(player.team || '')}</span>
+                                <span class="text-white font-medium">${escapeHtml(player.name || 'Unknown')}</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(stats.adr, 1)}</td>
+                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(rating.kast_percentage, 0)}%</td>
+                        <td class="px-4 py-3 text-center ${ttdClass}">${ttdValue !== null && ttdValue !== undefined ? formatNumber(ttdValue, 0) : '-'}</td>
+                        <td class="px-4 py-3 text-center ${cpClass}">${cpValue !== null && cpValue !== undefined ? formatNumber(cpValue, 1) + '°' : '-'}</td>
+                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(rating.aim_rating, 0)}</td>
+                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(rating.entry_success_rate, 0)}%</td>
+                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(rating.utility_rating, 0)}</td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         .map-stat-value {
@@ -3727,28 +3649,14 @@
                                 <p class="font-mono data-value text-white">${util.molotov_damage || 0}</p>
                                 <p class="text-xs text-slate-500">Molly Dmg</p>
                             </div>
-                        </div>
-                    </div>
 
-                    <!-- Duels & Clutches -->
-                    <div>
-                        <h5 class="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-3">Duels & Clutches</h5>
-                        <div class="grid grid-cols-2 gap-4 text-sm">
-                            <div class="flex justify-between">
-                                <span class="text-slate-500">Opening Duels</span>
-                                <span class="font-mono data-value ${(d.opening_win_rate || 0) >= 50 ? 'text-green-400' : 'text-red-400'}">
-                                    ${d.opening_wins || 0}W/${d.opening_losses || 0}L
-                                </span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-slate-500">Clutches</span>
-                                <span class="font-mono data-value">${c.total_wins || 0}/${c.total_situations || 0}</span>
-                            </div>
-                            <div class="flex justify-between col-span-2">
-                                <span class="text-slate-500">Multi-Kills</span>
-                                <span class="font-mono data-value text-xs">
-                                    2k: ${mk.rounds_with_2k || 0} | 3k: ${mk.rounds_with_3k || 0} | 4k: ${mk.rounds_with_4k || 0} | 5k: ${mk.rounds_with_5k || 0}
-                                </span>
+                            <!-- Crosshair Placement -->
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-slate-400">Crosshair Placement</p>
+                                    <p class="text-xl font-semibold font-mono-num text-white">${cp !== null ? formatNumber(cp, 1) + '°' : 'N/A'}</p>
+                                </div>
+                                ${cpBadge}
                             </div>
                         </div>
                     </div>
@@ -3766,6 +3674,7 @@
             const totals = players.reduce((acc, p) => {
                 const u = p.utility || {};
                 acc.flashesThrown += u.flashbangs_thrown || 0;
+                acc.smokesThrown += u.smokes_thrown || 0;
                 acc.enemiesFlashed += u.enemies_flashed || 0;
                 acc.teammatesFlashed += u.teammates_flashed || 0;
                 acc.heThrown += u.he_thrown || 0;
@@ -3773,67 +3682,182 @@
                 acc.molotovThrown += u.molotov_thrown || 0;
                 acc.molotovDamage += u.molotov_damage || 0;
                 acc.flashAssists += u.flash_assists || 0;
+                acc.totalUtilityDamage += (u.he_damage || 0) + (u.molotov_damage || 0);
                 return acc;
-            }, { flashesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, flashAssists: 0 });
+            }, { flashesThrown: 0, smokesThrown: 0, enemiesFlashed: 0, teammatesFlashed: 0, heThrown: 0, heDamage: 0, molotovThrown: 0, molotovDamage: 0, flashAssists: 0, totalUtilityDamage: 0 });
+
+            // Calculate max values for bar widths
+            const maxFlashes = Math.max(...players.map(p => p.utility?.flashbangs_thrown || 0), 1);
+            const maxSmokes = Math.max(...players.map(p => p.utility?.smokes_thrown || 0), 1);
+            const maxHE = Math.max(...players.map(p => p.utility?.he_thrown || 0), 1);
+            const maxMolotovs = Math.max(...players.map(p => p.utility?.molotov_thrown || 0), 1);
+            const maxUtilityDmg = Math.max(...players.map(p => (p.utility?.he_damage || 0) + (p.utility?.molotov_damage || 0)), 1);
 
             container.innerHTML = `
                 <!-- Team Totals -->
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
-                        <div class="text-3xl mb-2">⚡</div>
-                        <p class="font-mono data-value text-3xl text-cyan-400">${totals.flashesThrown}</p>
-                        <p class="text-sm text-slate-400 mt-1">Flashbangs Thrown</p>
-                        <p class="text-xs text-slate-500 mt-2">${totals.enemiesFlashed} enemies blinded</p>
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2" style="color: #f1c40f;">&#9889;</div>
+                        <p class="font-mono data-value text-2xl" style="color: #f1c40f;">${totals.flashesThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">Flashbangs</p>
+                        <p class="text-xs text-slate-500 mt-1">${totals.enemiesFlashed} blinded</p>
                     </div>
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
-                        <div class="text-3xl mb-2">💥</div>
-                        <p class="font-mono data-value text-3xl text-red-400">${totals.heDamage}</p>
-                        <p class="text-sm text-slate-400 mt-1">HE Grenade Damage</p>
-                        <p class="text-xs text-slate-500 mt-2">${totals.heThrown} grenades thrown</p>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2" style="color: #9b59b6;">&#128168;</div>
+                        <p class="font-mono data-value text-2xl" style="color: #9b59b6;">${totals.smokesThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">Smokes</p>
+                        <p class="text-xs text-slate-500 mt-1">vision control</p>
                     </div>
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
-                        <div class="text-3xl mb-2">🔥</div>
-                        <p class="font-mono data-value text-3xl text-orange-400">${totals.molotovDamage}</p>
-                        <p class="text-sm text-slate-400 mt-1">Molotov Damage</p>
-                        <p class="text-xs text-slate-500 mt-2">${totals.molotovThrown} molotovs thrown</p>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2" style="color: #e74c3c;">&#128163;</div>
+                        <p class="font-mono data-value text-2xl" style="color: #e74c3c;">${totals.heThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">HE Grenades</p>
+                        <p class="text-xs text-slate-500 mt-1">${totals.heDamage} damage</p>
                     </div>
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 text-center">
-                        <div class="text-3xl mb-2">✨</div>
-                        <p class="font-mono data-value text-3xl text-green-400">${totals.flashAssists}</p>
-                        <p class="text-sm text-slate-400 mt-1">Flash Assists</p>
-                        <p class="text-xs text-slate-500 mt-2">${totals.teammatesFlashed} teammates flashed</p>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2" style="color: #e67e22;">&#128293;</div>
+                        <p class="font-mono data-value text-2xl" style="color: #e67e22;">${totals.molotovThrown}</p>
+                        <p class="text-sm text-slate-400 mt-1">Molotovs</p>
+                        <p class="text-xs text-slate-500 mt-1">${totals.molotovDamage} damage</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5 text-center">
+                        <div class="text-2xl mb-2 text-green-400">&#10024;</div>
+                        <p class="font-mono data-value text-2xl text-green-400">${totals.totalUtilityDamage}</p>
+                        <p class="text-sm text-slate-400 mt-1">Total Utility Dmg</p>
+                        <p class="text-xs text-slate-500 mt-1">${totals.flashAssists} flash assists</p>
                     </div>
                 </div>
 
-                <!-- Player Utility Rankings -->
-                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Utility Ratings by Player</h3>
+                <!-- Per-Player Utility Bars Section -->
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Utility Usage by Player</h3>
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-8">
+                    <div class="space-y-4">
+                        ${players.sort((a, b) => {
+                            const aTotal = (a.utility?.flashbangs_thrown || 0) + (a.utility?.smokes_thrown || 0) + (a.utility?.he_thrown || 0) + (a.utility?.molotov_thrown || 0);
+                            const bTotal = (b.utility?.flashbangs_thrown || 0) + (b.utility?.smokes_thrown || 0) + (b.utility?.he_thrown || 0) + (b.utility?.molotov_thrown || 0);
+                            return bTotal - aTotal;
+                        }).map(p => {
+                            const u = p.utility || {};
+                            const flashes = u.flashbangs_thrown || 0;
+                            const smokes = u.smokes_thrown || 0;
+                            const hes = u.he_thrown || 0;
+                            const mollys = u.molotov_thrown || 0;
+                            const utilDmg = (u.he_damage || 0) + (u.molotov_damage || 0);
+                            const totalNades = flashes + smokes + hes + mollys;
+
+                            return `
+                            <div class="flex items-center gap-4">
+                                <div class="w-32 flex-shrink-0">
+                                    <span class="font-medium text-white text-sm">${esc(p.name)}</span>
+                                    <span class="text-xs text-slate-500 ml-1">(${totalNades})</span>
+                                </div>
+                                <div class="flex-1 flex gap-1 h-6">
+                                    <!-- Flashbangs (yellow) -->
+                                    <div class="h-full rounded transition-all" style="width: ${Math.max((flashes / Math.max(maxFlashes, 1)) * 100, flashes > 0 ? 8 : 0)}%; background: #f1c40f;" title="Flashbangs: ${flashes}"></div>
+                                    <!-- Smokes (purple) -->
+                                    <div class="h-full rounded transition-all" style="width: ${Math.max((smokes / Math.max(maxSmokes, 1)) * 100, smokes > 0 ? 8 : 0)}%; background: #9b59b6;" title="Smokes: ${smokes}"></div>
+                                    <!-- HE (red) -->
+                                    <div class="h-full rounded transition-all" style="width: ${Math.max((hes / Math.max(maxHE, 1)) * 100, hes > 0 ? 8 : 0)}%; background: #e74c3c;" title="HE Grenades: ${hes}"></div>
+                                    <!-- Molotovs (orange) -->
+                                    <div class="h-full rounded transition-all" style="width: ${Math.max((mollys / Math.max(maxMolotovs, 1)) * 100, mollys > 0 ? 8 : 0)}%; background: #e67e22;" title="Molotovs: ${mollys}"></div>
+                                </div>
+                                <div class="w-20 text-right flex-shrink-0">
+                                    <span class="font-mono data-value text-sm ${utilDmg > 100 ? 'text-green-400' : 'text-slate-300'}">${utilDmg}</span>
+                                    <span class="text-xs text-slate-500 ml-1">dmg</span>
+                                </div>
+                            </div>
+                        `}).join('')}
+                    </div>
+                    <!-- Legend -->
+                    <div class="flex gap-6 mt-4 pt-4 border-t border-slate-700 justify-center">
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #f1c40f;"></div><span class="text-xs text-slate-400">Flash</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #9b59b6;"></div><span class="text-xs text-slate-400">Smoke</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #e74c3c;"></div><span class="text-xs text-slate-400">HE</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #e67e22;"></div><span class="text-xs text-slate-400">Molotov</span></div>
+                    </div>
+                </div>
+
+                <!-- Utility Damage by Player -->
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Utility Damage by Player</h3>
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-8">
+                    <div class="space-y-3">
+                        ${players.sort((a, b) => {
+                            const aDmg = (a.utility?.he_damage || 0) + (a.utility?.molotov_damage || 0);
+                            const bDmg = (b.utility?.he_damage || 0) + (b.utility?.molotov_damage || 0);
+                            return bDmg - aDmg;
+                        }).map(p => {
+                            const u = p.utility || {};
+                            const heDmg = u.he_damage || 0;
+                            const mollyDmg = u.molotov_damage || 0;
+                            const totalDmg = heDmg + mollyDmg;
+                            const pct = maxUtilityDmg > 0 ? (totalDmg / maxUtilityDmg * 100) : 0;
+
+                            return `
+                            <div class="flex items-center gap-4">
+                                <div class="w-32 flex-shrink-0">
+                                    <span class="font-medium text-white text-sm">${esc(p.name)}</span>
+                                </div>
+                                <div class="flex-1 bg-slate-700/50 rounded-full h-4 overflow-hidden">
+                                    <div class="h-full rounded-full flex">
+                                        <div class="h-full" style="width: ${(heDmg / Math.max(totalDmg, 1)) * pct}%; background: #e74c3c;" title="HE: ${heDmg}"></div>
+                                        <div class="h-full" style="width: ${(mollyDmg / Math.max(totalDmg, 1)) * pct}%; background: #e67e22;" title="Molotov: ${mollyDmg}"></div>
+                                    </div>
+                                </div>
+                                <div class="w-24 text-right flex-shrink-0 flex items-center justify-end gap-2">
+                                    <span class="font-mono data-value text-sm text-red-400">${heDmg}</span>
+                                    <span class="text-slate-600">/</span>
+                                    <span class="font-mono data-value text-sm text-orange-400">${mollyDmg}</span>
+                                </div>
+                            </div>
+                        `}).join('')}
+                    </div>
+                    <!-- Legend -->
+                    <div class="flex gap-6 mt-4 pt-4 border-t border-slate-700 justify-center">
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #e74c3c;"></div><span class="text-xs text-slate-400">HE Damage</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background: #e67e22;"></div><span class="text-xs text-slate-400">Molotov Damage</span></div>
+                    </div>
+                </div>
+
+                <!-- Player Utility Efficiency Cards -->
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Flash Efficiency</h3>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    ${players.sort((a, b) => (b.rating?.utility_rating || 0) - (a.rating?.utility_rating || 0)).map(p => `
+                    ${players.sort((a, b) => (b.utility?.enemies_flashed || 0) - (a.utility?.enemies_flashed || 0)).map(p => {
+                        const u = p.utility || {};
+                        const flashEff = u.flashbangs_thrown > 0 ? (u.enemies_flashed / u.flashbangs_thrown).toFixed(2) : '0.00';
+                        return `
                         <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-5">
                             <div class="flex justify-between items-center mb-4">
                                 <span class="font-semibold text-white">${esc(p.name)}</span>
-                                <span class="px-3 py-1 rounded-lg bg-green-500/20 text-green-400 font-mono data-value">${formatNumber(p.rating?.utility_rating, 0)}</span>
+                                <span class="px-3 py-1 rounded-lg ${parseFloat(flashEff) >= 1.0 ? 'bg-green-500/20 text-green-400' : parseFloat(flashEff) >= 0.5 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'} font-mono data-value">${flashEff}/flash</span>
                             </div>
-                            <div class="grid grid-cols-4 gap-2 text-center">
+                            <div class="grid grid-cols-5 gap-2 text-center">
                                 <div>
-                                    <p class="font-mono data-value text-white">${p.utility?.flashbangs_thrown || 0}</p>
+                                    <p class="font-mono data-value text-white">${u.flashbangs_thrown || 0}</p>
                                     <p class="text-xs text-slate-500">Flashes</p>
                                 </div>
                                 <div>
-                                    <p class="font-mono data-value text-white">${p.utility?.enemies_flashed || 0}</p>
-                                    <p class="text-xs text-slate-500">Blinded</p>
+                                    <p class="font-mono data-value text-white">${u.smokes_thrown || 0}</p>
+                                    <p class="text-xs text-slate-500">Smokes</p>
                                 </div>
                                 <div>
-                                    <p class="font-mono data-value text-white">${p.utility?.he_damage || 0}</p>
+                                    <p class="font-mono data-value text-white">${u.enemies_flashed || 0}</p>
+                                    <p class="text-xs text-slate-500">Blinded</p>
+                                </div>
+                            </div>
+
+                            <!-- Clutches -->
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="font-mono data-value text-white">${u.he_damage || 0}</p>
                                     <p class="text-xs text-slate-500">HE Dmg</p>
                                 </div>
                                 <div>
-                                    <p class="font-mono data-value text-white">${p.utility?.molotov_damage || 0}</p>
+                                    <p class="font-mono data-value text-white">${u.molotov_damage || 0}</p>
                                     <p class="text-xs text-slate-500">Molly</p>
                                 </div>
                             </div>
                         </div>
-                    `).join('')}
+                    `}).join('')}
                 </div>
             `;
         }
@@ -3850,82 +3874,74 @@
                 return;
             }
 
-            container.innerHTML = `
-                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
-                    <div class="flex flex-wrap gap-2">
-                        ${rounds.map(r => `
-                            <div class="w-12 h-16 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-transform hover:scale-105 ${
-                                r.winner === 'CT'
-                                    ? 'bg-ct-bg text-ct border border-ct/30'
-                                    : 'bg-t-bg text-t border border-t/30'
-                            }">
-                                <span class="font-mono data-value text-lg font-bold">${r.round_num}</span>
-                                <span class="text-xs opacity-70">${r.winner}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-
-                    <div class="mt-6 grid grid-cols-2 gap-8">
-                        <div class="text-center p-4 bg-ct-bg rounded-lg">
-                            <p class="text-xs text-slate-400 uppercase mb-1">CT Rounds Won</p>
-                            <p class="font-mono data-value text-4xl text-ct">${rounds.filter(r => r.winner === 'CT').length}</p>
-                        </div>
-                        <div class="text-center p-4 bg-t-bg rounded-lg">
-                            <p class="text-xs text-slate-400 uppercase mb-1">T Rounds Won</p>
-                            <p class="font-mono data-value text-4xl text-t">${rounds.filter(r => r.winner === 'T').length}</p>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderCoachingContent(coaching) {
-            const container = document.getElementById('coaching-display');
-            const placeholder = document.getElementById('coaching-placeholder');
-
-            placeholder.classList.add('hidden');
-            container.classList.remove('hidden');
-
-            if (!coaching || coaching.length === 0) {
-                container.innerHTML = `
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-8 text-center">
-                        <p class="text-slate-400">No coaching insights available for this demo</p>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = coaching.map(player => `
-                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-4">
-                    <h4 class="font-semibold text-white text-lg mb-4">${esc(player.player_name)}</h4>
-                    <div class="space-y-3">
-                        ${(player.insights || []).map(insight => `
-                            <div class="flex items-start gap-3 p-3 rounded-lg ${
-                                insight.type === 'positive' ? 'bg-green-500/10 border-l-2 border-green-500' :
-                                insight.type === 'warning' ? 'bg-yellow-500/10 border-l-2 border-yellow-500' :
-                                'bg-red-500/10 border-l-2 border-red-500'
-                            }">
-                                <span class="text-lg">${
-                                    insight.type === 'positive' ? '✓' :
-                                    insight.type === 'warning' ? '⚠' : '✗'
-                                }</span>
+                            <!-- KAST -->
+                            <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-sm text-slate-300">${esc(insight.message)}</p>
-                                    <p class="text-xs text-slate-500 mt-1">${esc(insight.category)}</p>
+                                    <p class="text-sm text-slate-400">KAST</p>
+                                    <p class="text-xl font-semibold font-mono-num text-white">${formatNumber(kast, 0)}%</p>
+                                </div>
+                                ${getTierBadge(kast, [80, 70, 60], ['Elite', 'Good', 'Average', 'Low'])}
+                            </div>
+
+                            <!-- Utility Stats -->
+                            <div class="pt-4 border-t border-slate-700">
+                                <p class="text-sm text-slate-400 mb-2">Utility Usage</p>
+                                <div class="grid grid-cols-2 gap-2 text-xs">
+                                    <div class="bg-slate-700/50 rounded px-2 py-1">
+                                        <span class="text-slate-400">Flashes:</span>
+                                        <span class="font-mono-num ml-1">${p.utility?.flashbangs_thrown || 0}</span>
+                                    </div>
+                                    <div class="bg-slate-700/50 rounded px-2 py-1">
+                                        <span class="text-slate-400">HE:</span>
+                                        <span class="font-mono-num ml-1">${p.utility?.he_thrown || 0}</span>
+                                    </div>
+                                    <div class="bg-slate-700/50 rounded px-2 py-1">
+                                        <span class="text-slate-400">Smokes:</span>
+                                        <span class="font-mono-num ml-1">${p.utility?.smokes_thrown || 0}</span>
+                                    </div>
+                                    <div class="bg-slate-700/50 rounded px-2 py-1">
+                                        <span class="text-slate-400">Molotovs:</span>
+                                        <span class="font-mono-num ml-1">${p.utility?.molotovs_thrown || 0}</span>
+                                    </div>
                                 </div>
                             </div>
-                        `).join('')}
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
-        function renderCompareContent(players) {
-            const container = document.getElementById('compare-display');
-            const placeholder = document.getElementById('compare-placeholder');
+        // =============================================================================
+        // Render Compare Tab
+        // =============================================================================
+        function populatePlayerSelects() {
+            const players = Object.values(currentMatchData.players || {});
+            const selectA = document.getElementById('player-a-select');
+            const selectB = document.getElementById('player-b-select');
 
-            placeholder.classList.add('hidden');
-            container.classList.remove('hidden');
+            const options = players.map((p, i) =>
+                `<option value="${i}">${escapeHtml(p.name || 'Unknown')} (${p.team || '?'})</option>`
+            ).join('');
+
+            selectA.innerHTML = options;
+            selectB.innerHTML = options;
+
+            // Select different players by default
+            if (players.length >= 2) {
+                selectB.selectedIndex = 1;
+            }
+
+            // Add change listeners
+            selectA.addEventListener('change', renderCompare);
+            selectB.addEventListener('change', renderCompare);
+        }
+
+        function renderCompare() {
+            const players = Object.values(currentMatchData.players || {});
+            const selectA = document.getElementById('player-a-select');
+            const selectB = document.getElementById('player-b-select');
+
+            if (players.length < 2) return;
 
             // Store players globally for comparison
             window.comparisonPlayers = players;
@@ -4361,570 +4377,471 @@
             `;
         }
 
-        function renderHeatmapContent() {
-            // Initialize interactive kill map if data is available
-            if (analysisData && analysisData.heatmap_data) {
-                const players = Object.entries(analysisData.players || {}).map(([id, p]) => ({ id, ...p }));
-                initHeatmap(analysisData.heatmap_data, players);
+            // Normalize values to 0-100 scale
+            function normalize(value, min, max, inverse = false) {
+                if (value === null || value === undefined) return 50;
+                const clamped = Math.max(min, Math.min(max, value));
+                const normalized = ((clamped - min) / (max - min)) * 100;
+                return inverse ? 100 - normalized : normalized;
             }
-        }
 
-        // ============================================
-        // Chart Initialization
-        // ============================================
-        function initCharts(players) {
-            const chartConfig = {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                },
-                scales: {
-                    x: {
-                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
-                        ticks: { color: '#94a3b8', font: { size: 10 } }
+            const metricsA = {
+                adr: normalize(playerA.adr, 0, 130),
+                hsPercent: playerA.headshot_percentage || 0,
+                openingWin: playerA.opening_duels?.win_rate || 0,
+                clutchWin: playerA.clutches?.win_rate || 0,
+                kast: playerA.kast_percentage || 0,
+                reflex: normalize(playerA.ttd_mean_ms || 400, 100, 600, true) // Inverse: lower TTD = higher score
+            };
+
+            const metricsB = {
+                adr: normalize(playerB.adr, 0, 130),
+                hsPercent: playerB.headshot_percentage || 0,
+                openingWin: playerB.opening_duels?.win_rate || 0,
+                clutchWin: playerB.clutches?.win_rate || 0,
+                kast: playerB.kast_percentage || 0,
+                reflex: normalize(playerB.ttd_mean_ms || 400, 100, 600, true)
+            };
+
+            // Update or create chart
+            const ctx = document.getElementById('compare-chart').getContext('2d');
+
+            const chartData = {
+                labels: ['ADR', 'HS%', 'Opening Win', 'Clutch Win', 'KAST', 'Reflex'],
+                datasets: [
+                    {
+                        label: playerA.name || 'Player A',
+                        data: [metricsA.adr, metricsA.hsPercent, metricsA.openingWin, metricsA.clutchWin, metricsA.kast, metricsA.reflex],
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgba(59, 130, 246, 1)'
                     },
-                    y: {
-                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
-                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    {
+                        label: playerB.name || 'Player B',
+                        data: [metricsB.adr, metricsB.hsPercent, metricsB.openingWin, metricsB.clutchWin, metricsB.kast, metricsB.reflex],
+                        backgroundColor: 'rgba(234, 179, 8, 0.2)',
+                        borderColor: 'rgba(234, 179, 8, 1)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgba(234, 179, 8, 1)'
+                    }
+                ]
+            };
+
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20,
+                            color: '#94a3b8',
+                            backdropColor: 'transparent'
+                        },
+                        grid: {
+                            color: '#334155'
+                        },
+                        angleLines: {
+                            color: '#334155'
+                        },
+                        pointLabels: {
+                            color: '#e2e8f0',
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#e2e8f0',
+                            padding: 20,
+                            font: {
+                                size: 12
+                            }
+                        }
                     }
                 }
             };
 
-            const labels = players.map(p => p.name?.substring(0, 8) || 'Unknown');
-            const teamColors = players.map(p => p.team === 'CT' ? '#4a90d9' : '#de9b35');
-
-            // Ratings Chart
-            const ratingsCtx = document.getElementById('chart-ratings');
-            if (ratingsCtx) {
-                new Chart(ratingsCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            data: players.map(p => p.rating?.hltv_rating || 0),
-                            backgroundColor: teamColors,
-                            borderRadius: 4,
-                        }]
-                    },
-                    options: chartConfig
+            if (radarChart) {
+                radarChart.data = chartData;
+                radarChart.update();
+            } else {
+                radarChart = new Chart(ctx, {
+                    type: 'radar',
+                    data: chartData,
+                    options: chartOptions
                 });
             }
 
-            // K/D Chart
-            const kdCtx = document.getElementById('chart-kd');
-            if (kdCtx) {
-                new Chart(kdCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [
-                            {
-                                label: 'Kills',
-                                data: players.map(p => p.stats?.kills || 0),
-                                backgroundColor: '#22c55e',
-                                borderRadius: 4,
-                            },
-                            {
-                                label: 'Deaths',
-                                data: players.map(p => p.stats?.deaths || 0),
-                                backgroundColor: '#ef4444',
-                                borderRadius: 4,
-                            }
-                        ]
-                    },
-                    options: { ...chartConfig, plugins: { legend: { display: true, labels: { color: '#94a3b8' } } } }
-                });
-            }
-
-            // ADR Chart
-            const adrCtx = document.getElementById('chart-adr');
-            if (adrCtx) {
-                new Chart(adrCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            data: players.map(p => p.stats?.adr || 0),
-                            backgroundColor: '#00d4ff',
-                            borderRadius: 4,
-                        }]
-                    },
-                    options: chartConfig
-                });
-            }
-
-            // HS% Chart
-            const hsCtx = document.getElementById('chart-hs');
-            if (hsCtx) {
-                new Chart(hsCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            data: players.map(p => p.stats?.headshot_pct || 0),
-                            backgroundColor: '#a855f7',
-                            borderRadius: 4,
-                        }]
-                    },
-                    options: chartConfig
-                });
-            }
+            // Add event listeners for checkboxes
+            document.getElementById('show-kills').onchange = () => initHeatmap(heatmapData);
+            document.getElementById('show-deaths').onchange = () => initHeatmap(heatmapData);
         }
 
         // ============================================
-        // Interactive Kill Map with Leaflet.js
+        // Kill Map Visualization
         // ============================================
 
-        // Global kill map state
-        let killMap = null;
-        let killMapLayers = {
-            kills: null,
-            deaths: null
+        // Map radar image URLs and coordinate transform parameters
+        // Based on CS2 map files - pos_x, pos_y are top-left corner, scale is units per pixel
+        const MAP_CONFIGS = {
+            'de_dust2': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png',
+                pos_x: -2476, pos_y: 3239, scale: 4.4
+            },
+            'de_mirage': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png',
+                pos_x: -3230, pos_y: 1713, scale: 5.0
+            },
+            'de_inferno': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png',
+                pos_x: -2087, pos_y: 3870, scale: 4.9
+            },
+            'de_nuke': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png',
+                pos_x: -3453, pos_y: 2887, scale: 7.0
+            },
+            'de_overpass': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png',
+                pos_x: -4831, pos_y: 1781, scale: 5.2
+            },
+            'de_vertigo': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png',
+                pos_x: -3168, pos_y: 1762, scale: 4.0
+            },
+            'de_ancient': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png',
+                pos_x: -2953, pos_y: 2164, scale: 5.0
+            },
+            'de_anubis': {
+                radar_url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png',
+                pos_x: -2796, pos_y: 3328, scale: 5.22
+            }
         };
-        let killMapData = null;
-        let killMapPlayers = [];
 
-        // CS2 map coordinate bounds (approximate, varies by map)
-        // These are normalized coordinates for a generic representation
-        const CS2_MAP_BOUNDS = {
-            min: [-4096, -4096],
-            max: [4096, 4096]
+        // Store current kill map state
+        let killMapState = {
+            kills: [],
+            mapName: '',
+            mapConfig: null,
+            players: []
         };
 
         /**
-         * Initialize the interactive Leaflet kill map
+         * Transform game coordinates to percentage position on the radar image
+         * @param {number} x - Game X coordinate
+         * @param {number} y - Game Y coordinate
+         * @param {object} config - Map configuration with pos_x, pos_y, scale
+         * @returns {object} {x: percent, y: percent} for CSS positioning
          */
-        function initHeatmap(heatmapData, players = []) {
-            const display = document.getElementById('heatmap-display');
-            const placeholder = document.getElementById('heatmap-placeholder');
-            const mapContainer = document.getElementById('killmap');
+        function gameToRadarPercent(x, y, config) {
+            // Standard radar image is 1024x1024 pixels
+            const radarSize = 1024;
 
-            // Check if we have data
-            const hasKills = heatmapData?.kill_positions?.length > 0;
-            const hasDeaths = heatmapData?.death_positions?.length > 0;
+            // Transform game coordinates to radar pixels
+            // pixel_x = (game_x - pos_x) / scale
+            // pixel_y = (pos_y - game_y) / scale  (Y is inverted)
+            const pixelX = (x - config.pos_x) / config.scale;
+            const pixelY = (config.pos_y - y) / config.scale;
 
-            if (!heatmapData || (!hasKills && !hasDeaths)) {
-                // No data - show placeholder
-                if (placeholder) placeholder.classList.remove('hidden');
-                if (display) display.classList.add('hidden');
+            // Convert to percentage
+            const percentX = (pixelX / radarSize) * 100;
+            const percentY = (pixelY / radarSize) * 100;
+
+            return {
+                x: Math.max(0, Math.min(100, percentX)),
+                y: Math.max(0, Math.min(100, percentY))
+            };
+        }
+
+        /**
+         * Initialize the Kill Map visualization
+         * @param {array} killMapData - Array of kill positions from API
+         * @param {string} mapName - Internal map name (e.g., 'de_dust2')
+         * @param {array} players - Array of player objects for filtering
+         */
+        function initKillMap(killMapData, mapName, players) {
+            const display = document.getElementById('killmap-display');
+            const placeholder = document.getElementById('killmap-placeholder');
+            const radarEl = document.getElementById('killmap-radar');
+            const overlayEl = document.getElementById('killmap-overlay');
+            const loadingEl = document.getElementById('killmap-loading');
+            const noMapEl = document.getElementById('killmap-no-map');
+
+            if (!killMapData || killMapData.length === 0) {
+                placeholder.classList.remove('hidden');
+                display.classList.add('hidden');
                 return;
             }
 
-            // Show display, hide placeholder
-            if (placeholder) placeholder.classList.add('hidden');
-            if (display) display.classList.remove('hidden');
+            placeholder.classList.add('hidden');
+            display.classList.remove('hidden');
 
-            // Store data for filtering
-            killMapData = heatmapData;
-            killMapPlayers = players || [];
+            // Store state
+            killMapState.kills = killMapData;
+            killMapState.mapName = mapName ? mapName.toLowerCase() : '';
+            killMapState.mapConfig = MAP_CONFIGS[killMapState.mapName] || null;
+            killMapState.players = players || [];
 
-            // Initialize map if not already done
-            if (!killMap) {
-                initLeafletMap();
+            // Populate filters
+            populateKillMapFilters(killMapData, players);
+
+            // Set up map background
+            if (killMapState.mapConfig) {
+                loadingEl.classList.remove('hidden');
+                noMapEl.classList.add('hidden');
+
+                const img = new Image();
+                img.onload = () => {
+                    radarEl.style.backgroundImage = `url('${killMapState.mapConfig.radar_url}')`;
+                    loadingEl.classList.add('hidden');
+                    renderKillDots();
+                };
+                img.onerror = () => {
+                    loadingEl.classList.add('hidden');
+                    noMapEl.classList.remove('hidden');
+                    // Still render kills without background
+                    renderKillDots();
+                };
+                img.src = killMapState.mapConfig.radar_url;
+            } else {
+                // No map config available
+                radarEl.style.backgroundImage = '';
+                noMapEl.classList.remove('hidden');
+                loadingEl.classList.add('hidden');
+                // Still render kills (will use fallback positioning)
+                renderKillDots();
             }
 
-            // Populate player filter dropdown
-            populateKillMapFilters();
-
-            // Plot markers
-            updateKillMapMarkers();
+            // Render the kill table
+            renderKillTable(killMapData);
 
             // Update stats
-            updateKillMapStats();
+            updateKillMapStats(killMapData);
 
-            // Set up event listeners
-            setupKillMapListeners();
+            // Set up event listeners for filters
+            document.getElementById('killmap-show-ct').onchange = renderKillDots;
+            document.getElementById('killmap-show-t').onchange = renderKillDots;
+            document.getElementById('killmap-show-hs').onchange = renderKillDots;
+            document.getElementById('killmap-player-filter').onchange = renderKillDots;
+            document.getElementById('killmap-round-filter').onchange = renderKillDots;
         }
 
         /**
-         * Initialize the Leaflet map instance
+         * Populate filter dropdowns
          */
-        function initLeafletMap() {
-            const mapContainer = document.getElementById('killmap');
-            if (!mapContainer || killMap) return;
-
-            // Create a simple CRS for CS2 coordinates
-            const cs2CRS = L.CRS.Simple;
-
-            // Initialize map with simple CRS (no geographic projection)
-            killMap = L.map('killmap', {
-                crs: cs2CRS,
-                minZoom: -2,
-                maxZoom: 4,
-                zoomSnap: 0.25,
-                zoomDelta: 0.5,
-                attributionControl: false,
-                zoomControl: true
-            });
-
-            // Set initial view to center of CS2 coordinate system
-            killMap.setView([0, 0], 0);
-
-            // Add a dark tile background (grid pattern)
-            addMapBackground();
-
-            // Add custom zoom control position
-            killMap.zoomControl.setPosition('topright');
-
-            // Add scale control
-            L.control.scale({
-                position: 'bottomleft',
-                maxWidth: 200,
-                metric: true,
-                imperial: false
-            }).addTo(killMap);
-
-            // Initialize layer groups
-            killMapLayers.kills = L.layerGroup().addTo(killMap);
-            killMapLayers.deaths = L.layerGroup().addTo(killMap);
-        }
-
-        /**
-         * Add a grid background to the map
-         */
-        function addMapBackground() {
-            if (!killMap) return;
-
-            // Create a custom grid layer using canvas
-            const GridLayer = L.GridLayer.extend({
-                createTile: function(coords) {
-                    const tile = document.createElement('canvas');
-                    const tileSize = this.getTileSize();
-                    tile.width = tileSize.x;
-                    tile.height = tileSize.y;
-
-                    const ctx = tile.getContext('2d');
-
-                    // Dark background
-                    ctx.fillStyle = '#0f172a';
-                    ctx.fillRect(0, 0, tile.width, tile.height);
-
-                    // Grid lines
-                    ctx.strokeStyle = 'rgba(0, 212, 255, 0.08)';
-                    ctx.lineWidth = 1;
-
-                    // Draw grid
-                    const gridSize = 32;
-                    for (let x = 0; x <= tile.width; x += gridSize) {
-                        ctx.beginPath();
-                        ctx.moveTo(x, 0);
-                        ctx.lineTo(x, tile.height);
-                        ctx.stroke();
-                    }
-                    for (let y = 0; y <= tile.height; y += gridSize) {
-                        ctx.beginPath();
-                        ctx.moveTo(0, y);
-                        ctx.lineTo(tile.width, y);
-                        ctx.stroke();
-                    }
-
-                    // Add subtle corner markers
-                    ctx.fillStyle = 'rgba(0, 212, 255, 0.15)';
-                    ctx.fillRect(0, 0, 2, 2);
-
-                    return tile;
-                }
-            });
-
-            new GridLayer({
-                tileSize: 256,
-                opacity: 1
-            }).addTo(killMap);
-        }
-
-        /**
-         * Populate the player and round filter dropdowns
-         */
-        function populateKillMapFilters() {
-            const playerFilter = document.getElementById('heatmap-player-filter');
-            const roundFilter = document.getElementById('heatmap-round-filter');
-
-            if (!playerFilter || !killMapData) return;
-
-            // Get unique players from kill data
-            const playerNames = new Set();
-            const rounds = new Set();
-
-            if (killMapData.kill_positions) {
-                killMapData.kill_positions.forEach(k => {
-                    if (k.player) playerNames.add(k.player);
-                    if (k.victim) playerNames.add(k.victim);
-                    if (k.round) rounds.add(k.round);
-                });
-            }
-            if (killMapData.death_positions) {
-                killMapData.death_positions.forEach(d => {
-                    if (d.player) playerNames.add(d.player);
-                    if (d.attacker) playerNames.add(d.attacker);
-                    if (d.round) rounds.add(d.round);
-                });
-            }
-
-            // Populate player dropdown
+        function populateKillMapFilters(kills, players) {
+            // Player filter
+            const playerFilter = document.getElementById('killmap-player-filter');
             playerFilter.innerHTML = '<option value="all">All Players</option>';
+            const playerNames = new Set();
+            kills.forEach(k => {
+                if (k.attacker_name) playerNames.add(k.attacker_name);
+                if (k.victim_name) playerNames.add(k.victim_name);
+            });
             Array.from(playerNames).sort().forEach(name => {
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name;
-                playerFilter.appendChild(option);
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                playerFilter.appendChild(opt);
             });
 
-            // Populate round dropdown
-            if (roundFilter) {
-                roundFilter.innerHTML = '<option value="all">All Rounds</option>';
-                Array.from(rounds).sort((a, b) => a - b).forEach(round => {
-                    const option = document.createElement('option');
-                    option.value = round;
-                    option.textContent = `Round ${round}`;
-                    roundFilter.appendChild(option);
-                });
-            }
+            // Round filter
+            const roundFilter = document.getElementById('killmap-round-filter');
+            roundFilter.innerHTML = '<option value="all">All Rounds</option>';
+            const rounds = new Set(kills.map(k => k.round_num).filter(r => r > 0));
+            Array.from(rounds).sort((a, b) => a - b).forEach(round => {
+                const opt = document.createElement('option');
+                opt.value = round;
+                opt.textContent = `Round ${round}`;
+                roundFilter.appendChild(opt);
+            });
         }
 
         /**
-         * Update markers based on current filter settings
+         * Get filtered kills based on current filter settings
          */
-        function updateKillMapMarkers() {
-            if (!killMap || !killMapData) return;
+        function getFilteredKills() {
+            const showCT = document.getElementById('killmap-show-ct').checked;
+            const showT = document.getElementById('killmap-show-t').checked;
+            const playerFilter = document.getElementById('killmap-player-filter').value;
+            const roundFilter = document.getElementById('killmap-round-filter').value;
 
-            const showKills = document.getElementById('show-kills')?.checked ?? true;
-            const showDeaths = document.getElementById('show-deaths')?.checked ?? true;
-            const playerFilter = document.getElementById('heatmap-player-filter')?.value || 'all';
-            const roundFilter = document.getElementById('heatmap-round-filter')?.value || 'all';
+            return killMapState.kills.filter(k => {
+                // Team filter
+                const team = k.attacker_team?.toUpperCase() || '';
+                if (team === 'CT' && !showCT) return false;
+                if (team === 'T' && !showT) return false;
 
-            // Clear existing markers
-            killMapLayers.kills.clearLayers();
-            killMapLayers.deaths.clearLayers();
-
-            const allMarkerBounds = [];
-
-            // Plot kill markers
-            if (showKills && killMapData.kill_positions) {
-                killMapData.kill_positions.forEach(kill => {
-                    // Apply filters
-                    if (playerFilter !== 'all' && kill.player !== playerFilter && kill.victim !== playerFilter) {
-                        return;
+                // Player filter
+                if (playerFilter !== 'all') {
+                    if (k.attacker_name !== playerFilter && k.victim_name !== playerFilter) {
+                        return false;
                     }
-                    if (roundFilter !== 'all' && kill.round != roundFilter) {
-                        return;
-                    }
-
-                    // Normalize coordinates (CS2 uses large coords, we scale them)
-                    const x = kill.x || 0;
-                    const y = kill.y || 0;
-
-                    // Leaflet uses [lat, lng] = [y, x]
-                    const latLng = [y / 50, x / 50]; // Scale down for better display
-
-                    // Determine marker color based on attacker team
-                    const team = (kill.attacker_team || '').toUpperCase();
-                    const isHeadshot = kill.headshot === true;
-                    let color, fillColor;
-
-                    if (isHeadshot) {
-                        color = '#facc15'; // Yellow for headshot
-                        fillColor = 'rgba(250, 204, 21, 0.6)';
-                    } else if (team.includes('CT')) {
-                        color = '#4a90d9'; // CT blue
-                        fillColor = 'rgba(74, 144, 217, 0.6)';
-                    } else if (team.includes('T') || team === 'T') {
-                        color = '#de9b35'; // T orange
-                        fillColor = 'rgba(222, 155, 53, 0.6)';
-                    } else {
-                        color = '#22c55e'; // Default green
-                        fillColor = 'rgba(34, 197, 94, 0.6)';
-                    }
-
-                    // Create circle marker
-                    const marker = L.circleMarker(latLng, {
-                        radius: isHeadshot ? 8 : 6,
-                        color: color,
-                        fillColor: fillColor,
-                        fillOpacity: 0.7,
-                        weight: 2
-                    });
-
-                    // Create popup content
-                    const weaponDisplay = kill.weapon ? kill.weapon.replace('weapon_', '').toUpperCase() : 'Unknown';
-                    const hsIcon = isHeadshot ? ' <span style="color: #facc15;">&#9733;</span>' : '';
-                    const popupContent = `
-                        <div style="font-family: 'Inter', sans-serif; min-width: 180px;">
-                            <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px; color: #fff;">
-                                ${escapeHtml(kill.player || kill.attacker || 'Unknown')}${hsIcon}
-                            </div>
-                            <div style="font-size: 12px; color: #94a3b8;">
-                                <div style="margin-bottom: 4px;">
-                                    <span style="color: #ef4444;">killed</span>
-                                    <span style="color: #fff; font-weight: 500;">${escapeHtml(kill.victim || 'Unknown')}</span>
-                                </div>
-                                <div style="margin-bottom: 4px;">
-                                    <span style="color: #64748b;">with</span>
-                                    <span style="color: #00d4ff; font-weight: 500;">${weaponDisplay}</span>
-                                </div>
-                                ${kill.round ? `<div style="color: #64748b;">Round ${kill.round}</div>` : ''}
-                                ${isHeadshot ? '<div style="color: #facc15; font-weight: 500;">Headshot!</div>' : ''}
-                            </div>
-                        </div>
-                    `;
-
-                    marker.bindPopup(popupContent, {
-                        className: 'killmap-popup',
-                        closeButton: true,
-                        autoPan: true
-                    });
-
-                    marker.addTo(killMapLayers.kills);
-                    allMarkerBounds.push(latLng);
-                });
-            }
-
-            // Plot death markers
-            if (showDeaths && killMapData.death_positions) {
-                killMapData.death_positions.forEach(death => {
-                    // Apply filters
-                    if (playerFilter !== 'all' && death.player !== playerFilter && death.attacker !== playerFilter) {
-                        return;
-                    }
-                    if (roundFilter !== 'all' && death.round != roundFilter) {
-                        return;
-                    }
-
-                    const x = death.x || 0;
-                    const y = death.y || 0;
-                    const latLng = [y / 50, x / 50];
-
-                    // Death markers are red X-shaped
-                    const marker = L.circleMarker(latLng, {
-                        radius: 5,
-                        color: '#ef4444',
-                        fillColor: 'rgba(239, 68, 68, 0.5)',
-                        fillOpacity: 0.6,
-                        weight: 2
-                    });
-
-                    const popupContent = `
-                        <div style="font-family: 'Inter', sans-serif; min-width: 150px;">
-                            <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px; color: #ef4444;">
-                                ${escapeHtml(death.player || 'Unknown')} died
-                            </div>
-                            <div style="font-size: 12px; color: #94a3b8;">
-                                ${death.attacker ? `<div style="margin-bottom: 4px;">Killed by <span style="color: #fff;">${escapeHtml(death.attacker)}</span></div>` : ''}
-                                ${death.round ? `<div style="color: #64748b;">Round ${death.round}</div>` : ''}
-                            </div>
-                        </div>
-                    `;
-
-                    marker.bindPopup(popupContent, {
-                        className: 'killmap-popup',
-                        closeButton: true,
-                        autoPan: true
-                    });
-
-                    marker.addTo(killMapLayers.deaths);
-                    allMarkerBounds.push(latLng);
-                });
-            }
-
-            // Fit bounds to all markers
-            if (allMarkerBounds.length > 0) {
-                const bounds = L.latLngBounds(allMarkerBounds);
-                killMap.fitBounds(bounds, {
-                    padding: [50, 50],
-                    maxZoom: 2
-                });
-            }
-        }
-
-        /**
-         * Update the stats display below the map
-         */
-        function updateKillMapStats() {
-            if (!killMapData) return;
-
-            const playerFilter = document.getElementById('heatmap-player-filter')?.value || 'all';
-            const roundFilter = document.getElementById('heatmap-round-filter')?.value || 'all';
-
-            let totalKills = 0;
-            let totalDeaths = 0;
-            let headshots = 0;
-
-            if (killMapData.kill_positions) {
-                killMapData.kill_positions.forEach(k => {
-                    if (playerFilter !== 'all' && k.player !== playerFilter && k.victim !== playerFilter) return;
-                    if (roundFilter !== 'all' && k.round != roundFilter) return;
-                    totalKills++;
-                    if (k.headshot) headshots++;
-                });
-            }
-
-            if (killMapData.death_positions) {
-                killMapData.death_positions.forEach(d => {
-                    if (playerFilter !== 'all' && d.player !== playerFilter && d.attacker !== playerFilter) return;
-                    if (roundFilter !== 'all' && d.round != roundFilter) return;
-                    totalDeaths++;
-                });
-            }
-
-            const hsRate = totalKills > 0 ? Math.round((headshots / totalKills) * 100) : 0;
-
-            document.getElementById('stat-total-kills').textContent = totalKills;
-            document.getElementById('stat-total-deaths').textContent = totalDeaths;
-            document.getElementById('stat-headshots').textContent = headshots;
-            document.getElementById('stat-hs-rate').textContent = hsRate + '%';
-        }
-
-        /**
-         * Set up event listeners for map controls
-         */
-        function setupKillMapListeners() {
-            // Checkbox listeners
-            document.getElementById('show-kills')?.addEventListener('change', () => {
-                updateKillMapMarkers();
-                updateKillMapStats();
-            });
-            document.getElementById('show-deaths')?.addEventListener('change', () => {
-                updateKillMapMarkers();
-                updateKillMapStats();
-            });
-
-            // Filter listeners
-            document.getElementById('heatmap-player-filter')?.addEventListener('change', () => {
-                updateKillMapMarkers();
-                updateKillMapStats();
-            });
-            document.getElementById('heatmap-round-filter')?.addEventListener('change', () => {
-                updateKillMapMarkers();
-                updateKillMapStats();
-            });
-
-            // Reset view button
-            document.getElementById('killmap-reset-view')?.addEventListener('click', () => {
-                if (killMap) {
-                    updateKillMapMarkers(); // This will re-fit bounds
                 }
+
+                // Round filter
+                if (roundFilter !== 'all' && k.round_num !== parseInt(roundFilter)) {
+                    return false;
+                }
+
+                return true;
             });
         }
 
         /**
-         * Clean up map on tab change or data refresh
+         * Render kill dots on the map overlay
          */
-        function destroyKillMap() {
-            if (killMap) {
-                killMap.remove();
-                killMap = null;
-                killMapLayers = { kills: null, deaths: null };
-            }
+        function renderKillDots() {
+            const overlayEl = document.getElementById('killmap-overlay');
+            const highlightHS = document.getElementById('killmap-show-hs').checked;
+            overlayEl.innerHTML = '';
+
+            const filteredKills = getFilteredKills();
+
+            filteredKills.forEach((kill, index) => {
+                const dot = document.createElement('div');
+                dot.className = 'absolute w-3 h-3 rounded-full cursor-pointer transition-transform hover:scale-150 hover:z-20';
+
+                // Position
+                let position;
+                if (killMapState.mapConfig && kill.x != null && kill.y != null) {
+                    position = gameToRadarPercent(kill.x, kill.y, killMapState.mapConfig);
+                } else {
+                    // Fallback: spread kills across the map area
+                    position = {
+                        x: 10 + (index % 10) * 8,
+                        y: 10 + Math.floor(index / 10) * 8
+                    };
+                }
+
+                dot.style.left = `${position.x}%`;
+                dot.style.top = `${position.y}%`;
+                dot.style.transform = 'translate(-50%, -50%)';
+
+                // Color based on attacker team
+                const team = kill.attacker_team?.toUpperCase() || '';
+                if (team === 'CT') {
+                    dot.classList.add('bg-ct');
+                    dot.style.boxShadow = '0 0 6px rgba(74, 144, 217, 0.8)';
+                } else if (team === 'T') {
+                    dot.classList.add('bg-t');
+                    dot.style.boxShadow = '0 0 6px rgba(222, 155, 53, 0.8)';
+                } else {
+                    dot.classList.add('bg-slate-400');
+                }
+
+                // Headshot highlight
+                if (kill.is_headshot && highlightHS) {
+                    dot.classList.add('ring-2', 'ring-yellow-400', 'ring-offset-1', 'ring-offset-transparent');
+                }
+
+                // Tooltip on hover
+                dot.addEventListener('mouseenter', (e) => showKillTooltip(e, kill));
+                dot.addEventListener('mouseleave', hideKillTooltip);
+
+                overlayEl.appendChild(dot);
+            });
+
+            // Update stats for filtered data
+            updateKillMapStats(filteredKills);
         }
 
         /**
-         * Escape HTML to prevent XSS in popups
+         * Show tooltip for a kill dot
          */
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        function showKillTooltip(e, kill) {
+            const tooltip = document.getElementById('killmap-tooltip');
+            const rect = e.target.getBoundingClientRect();
+            const containerRect = document.getElementById('killmap-container').getBoundingClientRect();
+
+            tooltip.innerHTML = `
+                <div class="font-medium">${esc(kill.attacker_name)} <span class="text-slate-400">&#8594;</span> ${esc(kill.victim_name)}</div>
+                <div class="text-xs text-slate-400 mt-1">
+                    <span class="text-cyan-400">${esc(kill.weapon)}</span>
+                    ${kill.is_headshot ? '<span class="text-yellow-400 ml-1">&#9733; HS</span>' : ''}
+                    ${kill.round_num ? `<span class="ml-2">R${kill.round_num}</span>` : ''}
+                </div>
+            `;
+
+            // Position tooltip above the dot
+            const x = rect.left - containerRect.left + rect.width / 2;
+            const y = rect.top - containerRect.top - 10;
+
+            tooltip.style.left = `${x}px`;
+            tooltip.style.top = `${y}px`;
+            tooltip.style.transform = 'translate(-50%, -100%)';
+            tooltip.classList.remove('hidden');
+        }
+
+        /**
+         * Hide the kill tooltip
+         */
+        function hideKillTooltip() {
+            const tooltip = document.getElementById('killmap-tooltip');
+            tooltip.classList.add('hidden');
+        }
+
+        /**
+         * Update kill map statistics display
+         */
+        function updateKillMapStats(kills) {
+            const ctKills = kills.filter(k => k.attacker_team?.toUpperCase() === 'CT').length;
+            const tKills = kills.filter(k => k.attacker_team?.toUpperCase() === 'T').length;
+            const headshots = kills.filter(k => k.is_headshot).length;
+
+            document.getElementById('killmap-ct-kills').textContent = ctKills;
+            document.getElementById('killmap-t-kills').textContent = tKills;
+            document.getElementById('killmap-headshots').textContent = headshots;
+            document.getElementById('killmap-total').textContent = kills.length;
+        }
+
+        /**
+         * Render the kill feed table
+         */
+        function renderKillTable(kills) {
+            const tbody = document.getElementById('killmap-table-body');
+            tbody.innerHTML = '';
+
+            // Show most recent kills first, limit to 100
+            const sortedKills = [...kills].reverse().slice(0, 100);
+
+            sortedKills.forEach(kill => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-700/30 transition-colors';
+
+                const attackerTeamClass = kill.attacker_team?.toUpperCase() === 'CT' ? 'text-ct' : 'text-t';
+                const victimTeamClass = kill.victim_team?.toUpperCase() === 'CT' ? 'text-ct' : 'text-t';
+
+                tr.innerHTML = `
+                    <td class="py-2 px-3 text-slate-400">${kill.round_num || '-'}</td>
+                    <td class="py-2 px-3 ${attackerTeamClass} font-medium">${esc(kill.attacker_name)}</td>
+                    <td class="py-2 px-3 text-cyan-400 font-mono text-xs">${esc(kill.weapon)}</td>
+                    <td class="py-2 px-3 ${victimTeamClass}">${esc(kill.victim_name)}</td>
+                    <td class="py-2 px-3 text-center">${kill.is_headshot ? '<span class="text-yellow-400">&#9733;</span>' : ''}</td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        /**
+         * Render Kill Map content (called from renderResults)
+         */
+        function renderKillMapContent() {
+            if (!analysisData) return;
+
+            const killMapData = analysisData.kill_map || [];
+            const mapName = analysisData.demo_info?.map || '';
+            const players = Object.entries(analysisData.players || {}).map(([id, p]) => ({ id, ...p }));
+
+            initKillMap(killMapData, mapName, players);
         }
 
         // ============================================
@@ -4972,7 +4889,7 @@
         // Keyboard Shortcuts
         // ============================================
         document.addEventListener('keydown', (e) => {
-            const tabs = ['overview', 'heatmaps', 'utility', 'compare', 'players', 'timeline', 'coaching'];
+            const tabs = ['overview', 'heatmaps', 'killmap', 'utility', 'compare', 'players', 'timeline', 'coaching'];
             const num = parseInt(e.key);
             if (num >= 1 && num <= tabs.length) {
                 const tabBtn = document.querySelector(`[data-tab="${tabs[num - 1]}"]`);

@@ -54,6 +54,12 @@ def __getattr__(name):
     elif name == "analyze_utility":
         from opensight.utility import analyze_utility
         return analyze_utility
+    elif name == "UtilityMetrics":
+        from opensight.analytics import UtilityMetrics
+        return UtilityMetrics
+    elif name == "compute_utility_metrics":
+        from opensight.analytics import compute_utility_metrics
+        return compute_utility_metrics
 
     # Advanced AI Coaching
     elif name == "AdaptiveCoach":
@@ -240,6 +246,8 @@ __all__ = [
     "analyze_combat",
     "UtilityAnalyzer",
     "analyze_utility",
+    "UtilityMetrics",
+    "compute_utility_metrics",
     # Advanced AI Coaching
     "AdaptiveCoach",
     "generate_coaching_insights",
