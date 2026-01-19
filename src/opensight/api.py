@@ -11,22 +11,29 @@ Provides:
 - HLTV integration for pro player detection
 - Caching for faster repeated analysis
 - Community feedback system
+- Background job processing for large demos
+- Response compression (GZip)
+- Share code caching
 """
 
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 import logging
+from typing import Optional, List, Any, Dict
+from dataclasses import dataclass, field
+from enum import Enum
+from datetime import datetime, timedelta
+import uuid
+import threading
+from functools import lru_cache
 import time
-from typing import Optional, List
+from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Query, Body
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-from typing import Optional, List, Any
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Body
-from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
+from starlette.responses import Response
 from pydantic import BaseModel, Field
 
 from opensight.profiling import (
@@ -43,15 +50,221 @@ MAX_FILE_SIZE_MB = 500  # Maximum demo file size in MB
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = (".dem", ".dem.gz")
 
+# Job processing constants
+MAX_CONCURRENT_JOBS = 4
+JOB_TTL_HOURS = 24  # Jobs expire after 24 hours
+JOB_CLEANUP_INTERVAL_SECONDS = 3600  # Clean up old jobs every hour
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Job Status and Store for Background Processing
+# =============================================================================
+
+class JobStatus(str, Enum):
+    """Status of an analysis job."""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class AnalysisJob:
+    """Represents an analysis job with its metadata and results."""
+    job_id: str
+    status: JobStatus
+    filename: str
+    file_size_bytes: int
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    progress: int = 0  # 0-100 percentage
+
+    def to_status_dict(self) -> Dict[str, Any]:
+        """Return status information without full results."""
+        return {
+            "job_id": self.job_id,
+            "status": self.status.value,
+            "filename": self.filename,
+            "file_size_mb": round(self.file_size_bytes / (1024 * 1024), 1),
+            "created_at": self.created_at.isoformat(),
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "progress": self.progress,
+            "error": self.error,
+            "has_result": self.result is not None,
+        }
+
+
+class JobStore:
+    """Thread-safe store for analysis jobs with automatic cleanup."""
+
+    def __init__(self, ttl_hours: int = JOB_TTL_HOURS):
+        self._jobs: Dict[str, AnalysisJob] = {}
+        self._lock = threading.RLock()
+        self._ttl = timedelta(hours=ttl_hours)
+        self._last_cleanup = datetime.now()
+
+    def create_job(self, filename: str, file_size_bytes: int) -> AnalysisJob:
+        """Create a new pending job."""
+        job = AnalysisJob(
+            job_id=str(uuid.uuid4()),
+            status=JobStatus.PENDING,
+            filename=filename,
+            file_size_bytes=file_size_bytes,
+            created_at=datetime.now(),
+        )
+        with self._lock:
+            self._maybe_cleanup()
+            self._jobs[job.job_id] = job
+        return job
+
+    def get_job(self, job_id: str) -> Optional[AnalysisJob]:
+        """Get a job by ID."""
+        with self._lock:
+            return self._jobs.get(job_id)
+
+    def update_job(
+        self,
+        job_id: str,
+        status: Optional[JobStatus] = None,
+        result: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+        progress: Optional[int] = None,
+    ) -> Optional[AnalysisJob]:
+        """Update a job's status and/or result."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return None
+
+            if status is not None:
+                job.status = status
+                if status == JobStatus.PROCESSING and job.started_at is None:
+                    job.started_at = datetime.now()
+                elif status in (JobStatus.COMPLETED, JobStatus.FAILED):
+                    job.completed_at = datetime.now()
+
+            if result is not None:
+                job.result = result
+            if error is not None:
+                job.error = error
+            if progress is not None:
+                job.progress = min(100, max(0, progress))
+
+            return job
+
+    def list_jobs(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """List recent jobs (status only, not full results)."""
+        with self._lock:
+            jobs = sorted(
+                self._jobs.values(),
+                key=lambda j: j.created_at,
+                reverse=True
+            )[:limit]
+            return [j.to_status_dict() for j in jobs]
+
+    def _maybe_cleanup(self) -> None:
+        """Remove expired jobs if enough time has passed."""
+        now = datetime.now()
+        if (now - self._last_cleanup).total_seconds() < JOB_CLEANUP_INTERVAL_SECONDS:
+            return
+
+        self._last_cleanup = now
+        cutoff = now - self._ttl
+        expired = [
+            job_id for job_id, job in self._jobs.items()
+            if job.created_at < cutoff
+        ]
+        for job_id in expired:
+            del self._jobs[job_id]
+
+        if expired:
+            logger.info(f"Cleaned up {len(expired)} expired jobs")
+
+
+# Global job store and thread pool
+job_store = JobStore()
+executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_JOBS, thread_name_prefix="analysis_")
+
+
+# =============================================================================
+# Share Code Cache with TTL
+# =============================================================================
+
+class ShareCodeCache:
+    """LRU cache for share code decoding with TTL."""
+
+    def __init__(self, maxsize: int = 1000, ttl_minutes: int = 60):
+        self._cache: Dict[str, tuple[Any, float]] = {}
+        self._lock = threading.Lock()
+        self._maxsize = maxsize
+        self._ttl_seconds = ttl_minutes * 60
+
+    def get(self, code: str) -> Optional[Any]:
+        """Get a cached result if not expired."""
+        with self._lock:
+            if code in self._cache:
+                result, timestamp = self._cache[code]
+                if time.time() - timestamp < self._ttl_seconds:
+                    return result
+                else:
+                    del self._cache[code]
+            return None
+
+    def set(self, code: str, result: Any) -> None:
+        """Cache a result with current timestamp."""
+        with self._lock:
+            # Evict oldest entries if at capacity
+            if len(self._cache) >= self._maxsize:
+                oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k][1])
+                del self._cache[oldest_key]
+            self._cache[code] = (result, time.time())
+
+    def clear(self) -> None:
+        """Clear all cached entries."""
+        with self._lock:
+            self._cache.clear()
+
+    def stats(self) -> Dict[str, Any]:
+        """Return cache statistics."""
+        with self._lock:
+            now = time.time()
+            valid_count = sum(
+                1 for _, (_, ts) in self._cache.items()
+                if now - ts < self._ttl_seconds
+            )
+            return {
+                "total_entries": len(self._cache),
+                "valid_entries": valid_count,
+                "maxsize": self._maxsize,
+                "ttl_minutes": self._ttl_seconds // 60,
+            }
+
+
+# Global share code cache
+sharecode_cache = ShareCodeCache(maxsize=1000, ttl_minutes=60)
+
+
+# =============================================================================
+# FastAPI Application Setup
+# =============================================================================
 
 app = FastAPI(
     title="OpenSight API",
     description="CS2 demo analyzer - professional-grade metrics including HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement",
     version=__version__,
 )
+
+# Enable GZip compression for responses > 1KB
+# This significantly reduces bandwidth for large JSON responses
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 class ShareCodeRequest(BaseModel):
@@ -94,10 +307,19 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the main web interface."""
+    """Serve the main web interface with cache headers."""
     html_file = STATIC_DIR / "index.html"
     if html_file.exists():
-        return HTMLResponse(content=html_file.read_text(), status_code=200)
+        content = html_file.read_text()
+        return HTMLResponse(
+            content=content,
+            status_code=200,
+            headers={
+                # Cache for 5 minutes, revalidate after
+                "Cache-Control": "public, max-age=300, must-revalidate",
+                "Vary": "Accept-Encoding",
+            }
+        )
     return HTMLResponse(content="<h1>OpenSight</h1><p>Web interface not found.</p>", status_code=200)
 
 
@@ -109,117 +331,55 @@ async def health():
 
 @app.post("/decode", response_model=ShareCodeResponse)
 async def decode_share_code(request: ShareCodeRequest):
-    """Decode a CS2 share code to extract match metadata."""
+    """Decode a CS2 share code to extract match metadata (cached)."""
+    # Check cache first
+    cached = sharecode_cache.get(request.code)
+    if cached is not None:
+        return cached
+
     try:
         from opensight.sharecode import decode_sharecode
         info = decode_sharecode(request.code)
-        return {
+        result = {
             "match_id": info.match_id,
             "outcome_id": info.outcome_id,
             "token": info.token,
         }
+        # Cache the result
+        sharecode_cache.set(request.code, result)
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"Module not available: {str(e)}")
 
 
-@app.post("/analyze")
-async def analyze_demo(
-    file: UploadFile = File(...),
-    parse_mode: str = Query(
-        default="comprehensive",
-        description="Parsing mode: 'minimal' (TTD/CP only), 'standard' (+accuracy), 'comprehensive' (all events)"
-    ),
-    cp_sample_rate: int = Query(
-        default=1,
-        ge=1,
-        le=128,
-        description="Sample rate for CP calculations (1=all ticks, 4=every 4th tick). Higher = faster/less memory"
-    ),
-    optimize_memory: bool = Query(
-        default=True,
-        description="Optimize DataFrame dtypes to reduce memory usage (~40% reduction)"
-    ),
-):
+# =============================================================================
+# Background Analysis Worker
+# =============================================================================
+
+def _run_analysis(job_id: str, tmp_path: Path, filename: str) -> None:
     """
-    Analyze an uploaded CS2 demo file.
+    Background worker function that performs demo analysis.
 
-    Returns comprehensive player stats including:
-    - Basic stats: Kills, Deaths, Assists, K/D, ADR, HS%
-    - Professional metrics: HLTV 2.0 Rating, KAST%, Impact
-    - Advanced metrics: TTD (Time to Damage), Crosshair Placement
-    - Weapon breakdown
-
-    Performance options:
-    - parse_mode: Use 'minimal' for TTD/CP analysis only (faster)
-    - cp_sample_rate: Use 4 or 8 for long demos to reduce memory
-    - optimize_memory: Enable to use efficient dtypes (recommended)
-
-    Accepts .dem and .dem.gz files up to 500MB.
-
-    Query parameters:
-    - include_timing: If true, includes timing breakdown in the response
+    This runs in a thread pool to avoid blocking the event loop.
     """
-    # Validate file extension
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
-
-    filename_lower = file.filename.lower()
-    if not filename_lower.endswith(ALLOWED_EXTENSIONS):
-        raise HTTPException(
-            status_code=400,
-            detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
-        )
-
     try:
         from opensight.parser import DemoParser, ParseMode
         from opensight.analytics import DemoAnalyzer
-    except ImportError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Demo analysis not available. Missing: {str(e)}"
-        )
 
-    tmp_path = None
-    timing_collector = None
-    slow_logger = SlowJobLogger(threshold_seconds=DEFAULT_SLOW_THRESHOLD_SECONDS)
-    overall_start = time.perf_counter()
+        job_store.update_job(job_id, status=JobStatus.PROCESSING, progress=10)
+        logger.info(f"Job {job_id}: Starting analysis of {filename}")
 
-    try:
-        # Read and validate file size
-        content = await file.read()
-        file_size_bytes = len(content)
-        file_size_mb = file_size_bytes / (1024 * 1024)
-
-        if file_size_bytes > MAX_FILE_SIZE_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB"
-            )
-
-        if file_size_bytes == 0:
-            raise HTTPException(status_code=400, detail="Empty file uploaded")
-
-        logger.info(f"Analyzing demo: {file.filename} ({file_size_mb:.1f} MB)")
-
-        # Save uploaded file temporarily
-        # Use appropriate suffix based on file type
-        suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
-        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
-
-        # Parse the demo with optimization settings
-        parser = DemoParser(tmp_path, optimize_dtypes=optimize_memory)
-        data = parser.parse(
-            parse_mode=parse_mode,
-            cp_sample_rate=cp_sample_rate,
-        )
+        # Parse the demo
+        parser = DemoParser(tmp_path)
+        data = parser.parse()
+        job_store.update_job(job_id, progress=40)
 
         # Run advanced analytics
         analyzer = DemoAnalyzer(data)
         analysis = analyzer.analyze()
+        job_store.update_job(job_id, progress=70)
 
         # Build round-by-round data
         rounds_data = []
@@ -268,6 +428,8 @@ async def analyze_demo(
                 "rating": mvp.hltv_rating,
             }
 
+        job_store.update_job(job_id, progress=80)
+
         # Add player stats with advanced metrics (sorted by rating)
         for player in analysis.get_leaderboard():
             steam_id = player.steam_id
@@ -281,7 +443,6 @@ async def analyze_demo(
                 "name": player.name,
                 "team": player.team,
                 "stats": {
-                    # Basic stats
                     "kills": player.kills,
                     "deaths": player.deaths,
                     "assists": player.assists,
@@ -293,25 +454,21 @@ async def analyze_demo(
                     "adr": player.adr,
                 },
                 "rating": {
-                    # HLTV 2.0 Rating components
                     "hltv_rating": player.hltv_rating,
                     "impact_rating": player.impact_rating,
                     "kast_percentage": player.kast_percentage,
                     "kills_per_round": player.kills_per_round,
                     "deaths_per_round": player.deaths_per_round,
                     "survival_rate": player.survival_rate,
-                    # Leetify-style composite ratings
                     "aim_rating": player.aim_rating,
                     "utility_rating": player.utility_rating,
                     "entry_success_rate": player.entry_success_rate,
                 },
                 "duels": {
-                    # Opening duels
                     "opening_attempts": player.opening_duels.attempts,
                     "opening_wins": player.opening_duels.wins,
                     "opening_losses": player.opening_duels.losses,
                     "opening_win_rate": player.opening_duels.win_rate,
-                    # Trades
                     "kills_traded": player.trades.kills_traded,
                     "deaths_traded": player.trades.deaths_traded,
                 },
@@ -331,38 +488,31 @@ async def analyze_demo(
                     "rounds_with_5k": player.multi_kills.rounds_with_5k,
                 },
                 "advanced": {
-                    # TTD Stats
                     "ttd_median_ms": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
                     "ttd_mean_ms": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
                     "ttd_samples": len(player.ttd_values),
                     "prefire_kills": player.prefire_count,
-                    # Crosshair Placement Stats
                     "cp_median_error_deg": round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None,
                     "cp_mean_error_deg": round(player.cp_mean_error_deg, 1) if player.cp_mean_error_deg else None,
                     "cp_samples": len(player.cp_values),
                 },
                 "utility": {
-                    # Flash stats (Leetify style)
                     "flash_assists": player.utility.flash_assists,
                     "flashbangs_thrown": player.utility.flashbangs_thrown,
                     "enemies_flashed": player.utility.enemies_flashed,
                     "teammates_flashed": player.utility.teammates_flashed,
                     "enemies_flashed_per_flash": round(player.utility.enemies_flashed_per_flash, 2),
                     "avg_blind_time": round(player.utility.avg_blind_time, 2),
-                    # HE stats
                     "he_thrown": player.utility.he_thrown,
                     "he_damage": player.utility.he_damage,
                     "he_team_damage": player.utility.he_team_damage,
                     "he_damage_per_nade": round(player.utility.he_damage_per_nade, 1),
-                    # Molotov stats
                     "molotov_thrown": player.utility.molotov_thrown,
                     "molotov_damage": player.utility.molotov_damage,
-                    # Ratings
                     "utility_quantity_rating": player.utility_quantity_rating,
                     "utility_quality_rating": player.utility_quality_rating,
                 },
                 "side_stats": {
-                    # CT-side performance
                     "ct": {
                         "kills": player.ct_stats.kills,
                         "deaths": player.ct_stats.deaths,
@@ -370,7 +520,6 @@ async def analyze_demo(
                         "adr": player.ct_stats.adr,
                         "rounds_played": player.ct_stats.rounds_played,
                     },
-                    # T-side performance
                     "t": {
                         "kills": player.t_stats.kills,
                         "deaths": player.t_stats.deaths,
@@ -395,6 +544,8 @@ async def analyze_demo(
                 },
                 "weapons": weapon_stats,
             }
+
+        job_store.update_job(job_id, progress=90)
 
         # Add enhanced match-level data
         result["round_timeline"] = [
@@ -434,35 +585,195 @@ async def analyze_demo(
         # AI Coaching insights
         result["coaching"] = analysis.coaching_insights
 
-        # Add timing info if requested
-        if include_timing and timing_collector:
-            timing_collector.finish()
-            stats = timing_collector.get_stats()
-            result["timing"] = stats.summary()
+        # Mark job as completed
+        job_store.update_job(job_id, status=JobStatus.COMPLETED, result=result, progress=100)
+        logger.info(f"Job {job_id}: Analysis complete - {len(result['players'])} players, {analysis.total_rounds} rounds")
 
-        # Add overall timing regardless of include_timing flag
-        overall_duration = time.perf_counter() - overall_start
-        result["demo_info"]["analysis_time_seconds"] = round(overall_duration, 3)
-
-        logger.info(f"Analysis complete: {len(result['players'])} players, {analysis.total_rounds} rounds, {overall_duration:.2f}s")
-        return JSONResponse(content=result)
-
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.exception("Analysis failed")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-    finally:
-        # Clean up timing collector
-        if timing_collector:
-            set_timing_collector(None)
+        logger.exception(f"Job {job_id}: Analysis failed")
+        job_store.update_job(job_id, status=JobStatus.FAILED, error=str(e))
 
+    finally:
+        # Clean up temp file
         if tmp_path and tmp_path.exists():
             try:
                 tmp_path.unlink()
             except OSError:
-                # Ignore cleanup errors - temp file will be cleaned up by OS
                 pass
+
+
+@app.post("/analyze", status_code=202)
+async def analyze_demo(file: UploadFile = File(...)):
+    """
+    Submit a CS2 demo file for analysis.
+
+    Returns a job ID immediately (202 Accepted). Poll GET /analyze/{job_id}
+    to check status and retrieve results when complete.
+
+    Benefits:
+    - No request timeouts on large demos
+    - Server can rate-limit/queue jobs under load
+    - Progress tracking available via status endpoint
+
+    Accepts .dem and .dem.gz files up to 500MB.
+    """
+    # Validate file extension
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    filename_lower = file.filename.lower()
+    if not filename_lower.endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
+        )
+
+    # Verify analysis modules are available
+    try:
+        from opensight.parser import DemoParser
+        from opensight.analytics import DemoAnalyzer
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Demo analysis not available. Missing: {str(e)}"
+        )
+
+    # Read and validate file
+    content = await file.read()
+    file_size_bytes = len(content)
+    file_size_mb = file_size_bytes / (1024 * 1024)
+
+    if file_size_bytes > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB"
+        )
+
+    if file_size_bytes == 0:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+    # Create job
+    job = job_store.create_job(file.filename, file_size_bytes)
+    logger.info(f"Created job {job.job_id} for {file.filename} ({file_size_mb:.1f} MB)")
+
+    # Save file to temp location
+    suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
+    with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
+    # Submit to thread pool
+    executor.submit(_run_analysis, job.job_id, tmp_path, file.filename)
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id": job.job_id,
+            "status": job.status.value,
+            "message": "Analysis job submitted. Poll GET /analyze/{job_id} for status.",
+            "status_url": f"/analyze/{job.job_id}",
+            "download_url": f"/analyze/{job.job_id}/download",
+        }
+    )
+
+
+@app.get("/analyze/{job_id}")
+async def get_analysis_status(job_id: str, include_result: bool = Query(default=True)):
+    """
+    Get the status and result of an analysis job.
+
+    Args:
+        job_id: The job ID returned from POST /analyze
+        include_result: If True (default), include full results when completed.
+                       Set to False for status-only polling.
+
+    Returns:
+        - Job status (pending/processing/completed/failed)
+        - Progress percentage
+        - Full results when completed (if include_result=True)
+    """
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    response = job.to_status_dict()
+
+    if include_result and job.status == JobStatus.COMPLETED and job.result:
+        response["result"] = job.result
+
+    return JSONResponse(content=response)
+
+
+@app.get("/analyze/{job_id}/download")
+async def download_analysis_result(job_id: str, format: str = Query(default="json")):
+    """
+    Download analysis results as a file.
+
+    Useful for large results that may timeout in normal responses.
+    Supports JSON format with optional NDJSON for streaming.
+
+    Args:
+        job_id: The job ID
+        format: Output format - 'json' (default) or 'ndjson' (newline-delimited)
+    """
+    import json
+
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    if job.status != JobStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not completed. Current status: {job.status.value}"
+        )
+
+    if not job.result:
+        raise HTTPException(status_code=500, detail="Job completed but no result available")
+
+    filename_base = Path(job.filename).stem
+
+    if format == "ndjson":
+        # Stream as newline-delimited JSON (useful for very large results)
+        def generate_ndjson():
+            # Emit demo_info first
+            yield json.dumps({"type": "demo_info", "data": job.result.get("demo_info", {})}) + "\n"
+            # Emit each player as separate line
+            for steam_id, player_data in job.result.get("players", {}).items():
+                yield json.dumps({"type": "player", "steam_id": steam_id, "data": player_data}) + "\n"
+            # Emit rounds
+            for round_data in job.result.get("rounds", []):
+                yield json.dumps({"type": "round", "data": round_data}) + "\n"
+
+        return StreamingResponse(
+            generate_ndjson(),
+            media_type="application/x-ndjson",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename_base}_analysis.ndjson"'
+            }
+        )
+    else:
+        # Standard JSON download
+        content = json.dumps(job.result, indent=2)
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename_base}_analysis.json"'
+            }
+        )
+
+
+@app.get("/jobs")
+async def list_analysis_jobs(limit: int = Query(default=50, le=100)):
+    """
+    List recent analysis jobs.
+
+    Returns status info for jobs (not full results).
+    Use GET /analyze/{job_id} to retrieve full results.
+    """
+    jobs = job_store.list_jobs(limit=limit)
+    return JSONResponse(content={"jobs": jobs, "count": len(jobs)})
 
 
 @app.get("/about")
@@ -574,6 +885,23 @@ async def about():
             "sentiment": "/sentiment/* - Sentiment analysis for voice comms",
             "metrics": "/metrics/* - Custom metric builder",
             "collaboration": "/collab/* - Multi-user collaborative analysis",
+        },
+        "api_optimization": {
+            "async_analysis": {
+                "description": "Large demo analysis runs in background threads to avoid timeouts",
+                "submit": "POST /analyze - Returns 202 Accepted with job_id",
+                "poll": "GET /analyze/{job_id} - Poll for status (pending/processing/completed/failed)",
+                "download": "GET /analyze/{job_id}/download - Download results as JSON or NDJSON",
+                "list": "GET /jobs - List recent analysis jobs",
+            },
+            "compression": "GZip middleware enabled for responses >1KB",
+            "caching": {
+                "sharecode": "Share code decoding cached with 60-minute TTL (1000 entries max)",
+                "static_assets": "Cache-Control headers on static files (5 min cache)",
+                "stats": "GET /cache/stats - View cache statistics",
+                "clear": "POST /cache/clear - Clear all caches",
+            },
+            "streaming": "NDJSON format available for large result downloads",
         }
     }
 
@@ -1327,23 +1655,36 @@ async def enrich_analysis(analysis_data: dict = Body(...)):
 
 @app.get("/cache/stats")
 async def get_cache_stats():
-    """Get cache statistics."""
+    """Get cache statistics including sharecode cache."""
+    result = {
+        "sharecode_cache": sharecode_cache.stats(),
+        "job_store": {
+            "active_jobs": len(job_store.list_jobs(limit=1000)),
+        }
+    }
+
     try:
         from opensight.cache import get_cache_stats
-        return get_cache_stats()
-    except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}")
+        result["analysis_cache"] = get_cache_stats()
+    except ImportError:
+        result["analysis_cache"] = {"available": False}
+
+    return result
 
 
 @app.post("/cache/clear")
 async def clear_cache():
-    """Clear all cached analysis data."""
+    """Clear all cached data including sharecode cache."""
+    # Clear sharecode cache
+    sharecode_cache.clear()
+
     try:
-        from opensight.cache import clear_cache
-        clear_cache()
-        return {"status": "ok", "message": "Cache cleared"}
-    except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}")
+        from opensight.cache import clear_cache as clear_analysis_cache
+        clear_analysis_cache()
+    except ImportError:
+        pass  # Analysis cache module not available
+
+    return {"status": "ok", "message": "All caches cleared"}
 
 
 # =============================================================================
@@ -1710,11 +2051,3 @@ async def export_collab_session(session_id: str, format: str = "json"):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-        logger.exception("Replay generation failed")
-        raise HTTPException(status_code=500, detail=f"Replay generation failed: {str(e)}")
-    finally:
-        if tmp_path and tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
