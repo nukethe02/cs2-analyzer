@@ -320,8 +320,8 @@ def calculate_ttd(
     results: dict[int, TTDResult] = {}
 
     # Get all damage events
-    damage_df = demo_data.damage_events
-    if damage_df.empty:
+    damage_df = demo_data.damages_df
+    if damage_df is None or damage_df.empty:
         logger.warning("No damage events found in demo")
         return results
 
@@ -336,18 +336,30 @@ def calculate_ttd(
 
         ttd_values: list[float] = []
 
+        # Check if tick data is available for position tracking
+        ticks_df = demo_data.ticks_df
+        if ticks_df is None or ticks_df.empty:
+            logger.debug("No tick data available for detailed TTD analysis")
+            continue
+
+        # Find the steamid column in ticks_df
+        steamid_col = None
+        for col in ["steamid", "steam_id", "player_steamid"]:
+            if col in ticks_df.columns:
+                steamid_col = col
+                break
+        if steamid_col is None:
+            logger.debug("No steamid column found in ticks_df")
+            continue
+
         # Analyze each damage event
         for _, event in attacker_damage.iterrows():
-            damage_tick = event["tick"]
-            victim_id = event["victim_id"]
+            damage_tick = event.get("tick", 0)
+            victim_id = event.get("victim_id", event.get("user_steamid", 0))
 
-            # Get position data for attacker and victim
-            attacker_pos = demo_data.player_positions[
-                demo_data.player_positions["steam_id"] == attacker_id
-            ]
-            victim_pos = demo_data.player_positions[
-                demo_data.player_positions["steam_id"] == victim_id
-            ]
+            # Get position data for attacker and victim from ticks_df
+            attacker_pos = ticks_df[ticks_df[steamid_col] == attacker_id]
+            victim_pos = ticks_df[ticks_df[steamid_col] == victim_id]
 
             # Find when attacker first saw victim
             visibility_tick = _find_visibility_start(
@@ -399,17 +411,33 @@ def calculate_crosshair_placement(
     """
     results: dict[int, CrosshairPlacementResult] = {}
 
-    positions = demo_data.player_positions
-    if positions.empty:
-        logger.warning("No position data found in demo")
+    # Use ticks_df for position data
+    positions = demo_data.ticks_df
+    if positions is None or positions.empty:
+        logger.warning("No position data found in demo (ticks_df required)")
         return results
 
     if "pitch" not in positions.columns or "yaw" not in positions.columns:
         logger.warning("View angle data not available")
         return results
 
+    # Find the steamid column
+    steamid_col = None
+    for col in ["steamid", "steam_id", "player_steamid"]:
+        if col in positions.columns:
+            steamid_col = col
+            break
+    if steamid_col is None:
+        logger.warning("No steamid column found in position data")
+        return results
+
+    # Find position columns (may be uppercase or lowercase)
+    x_col = "X" if "X" in positions.columns else "x"
+    y_col = "Y" if "Y" in positions.columns else "y"
+    z_col = "Z" if "Z" in positions.columns else "z"
+
     # Get unique players
-    player_ids = positions["steam_id"].unique()
+    player_ids = positions[steamid_col].unique()
     if steam_id is not None:
         player_ids = [steam_id] if steam_id in player_ids else []
 
@@ -417,11 +445,11 @@ def calculate_crosshair_placement(
         if player_id == 0:
             continue
 
-        player_team = demo_data.teams.get(int(player_id), "Unknown")
+        player_team = demo_data.player_teams.get(int(player_id), 0)
         angle_values: list[float] = []
 
         # Sample positions at intervals
-        player_pos = positions[positions["steam_id"] == player_id]
+        player_pos = positions[positions[steamid_col] == player_id]
         sample_ticks = player_pos["tick"].unique()[::sample_interval_ticks]
 
         for tick in sample_ticks:
@@ -431,9 +459,9 @@ def calculate_crosshair_placement(
 
             player_row = player_at_tick.iloc[0]
             player_xyz = np.array([
-                player_row["x"],
-                player_row["y"],
-                player_row["z"] + 64  # Eye height approximation
+                player_row[x_col],
+                player_row[y_col],
+                player_row[z_col] + 64  # Eye height approximation
             ])
 
             # Get view direction
@@ -445,13 +473,13 @@ def calculate_crosshair_placement(
             # Find enemies at this tick
             enemies_at_tick = positions[
                 (positions["tick"] == tick) &
-                (positions["steam_id"] != player_id)
+                (positions[steamid_col] != player_id)
             ]
 
             # Filter to enemy team only
             enemies_at_tick = enemies_at_tick[
-                enemies_at_tick["steam_id"].apply(
-                    lambda x: demo_data.teams.get(int(x), "") != player_team
+                enemies_at_tick[steamid_col].apply(
+                    lambda x: demo_data.player_teams.get(int(x), 0) != player_team
                 )
             ]
 
@@ -462,9 +490,9 @@ def calculate_crosshair_placement(
             min_angle = float("inf")
             for _, enemy_row in enemies_at_tick.iterrows():
                 enemy_xyz = np.array([
-                    enemy_row["x"],
-                    enemy_row["y"],
-                    enemy_row["z"] + 64  # Eye height
+                    enemy_row[x_col],
+                    enemy_row[y_col],
+                    enemy_row[z_col] + 64  # Eye height
                 ])
 
                 direction = enemy_xyz - player_xyz
@@ -520,29 +548,61 @@ def calculate_engagement_metrics(
     cp_results = calculate_crosshair_placement(demo_data, steam_id)
 
     # Get kill/death stats
-    kills_df = demo_data.kill_events
+    kills_df = demo_data.kills_df
     player_ids = set(demo_data.player_names.keys())
 
     if steam_id is not None:
         player_ids = {steam_id} if steam_id in player_ids else set()
 
     results: dict[int, EngagementMetrics] = {}
-    num_rounds = max(len(demo_data.round_starts), 1)
+    num_rounds = max(demo_data.num_rounds, 1)
+
+    # Helper to find column names
+    def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+        for col in options:
+            if col in df.columns:
+                return col
+        return None
+
+    # Find kill column names
+    att_col = find_col(kills_df, ["attacker_steamid", "attacker_steam_id"]) if not kills_df.empty else None
+    vic_col = find_col(kills_df, ["user_steamid", "victim_steamid"]) if not kills_df.empty else None
+    hs_col = find_col(kills_df, ["headshot"]) if not kills_df.empty else None
+
+    # Find damage column names
+    damage_df = demo_data.damages_df
+    dmg_att_col = find_col(damage_df, ["attacker_steamid", "attacker_steam_id"]) if damage_df is not None and not damage_df.empty else None
+    dmg_col = find_col(damage_df, ["dmg_health", "damage", "dmg"]) if damage_df is not None and not damage_df.empty else None
 
     for player_id in player_ids:
+        total_kills = 0
+        headshots = 0
+        total_deaths = 0
+        total_damage = 0
+
         # Count kills and headshots
-        player_kills = kills_df[kills_df["attacker_id"] == player_id]
-        total_kills = len(player_kills)
-        headshots = player_kills["headshot"].sum() if not player_kills.empty else 0
+        if not kills_df.empty and att_col:
+            player_kills = kills_df[kills_df[att_col] == player_id]
+            total_kills = len(player_kills)
+            if hs_col and total_kills > 0:
+                try:
+                    headshots = int(player_kills[hs_col].sum())
+                except (ValueError, TypeError):
+                    headshots = player_kills[hs_col].apply(lambda x: 1 if x else 0).sum()
+
         hs_percentage = (headshots / total_kills * 100) if total_kills > 0 else 0
 
         # Count deaths
-        total_deaths = len(kills_df[kills_df["victim_id"] == player_id])
+        if not kills_df.empty and vic_col:
+            total_deaths = len(kills_df[kills_df[vic_col] == player_id])
 
         # Calculate damage per round
-        damage_df = demo_data.damage_events
-        player_damage = damage_df[damage_df["attacker_id"] == player_id]
-        total_damage = player_damage["damage"].sum() if not player_damage.empty else 0
+        if damage_df is not None and not damage_df.empty and dmg_att_col and dmg_col:
+            player_damage = damage_df[damage_df[dmg_att_col] == player_id]
+            try:
+                total_damage = int(player_damage[dmg_col].sum())
+            except (ValueError, TypeError):
+                total_damage = 0
         dpr = total_damage / num_rounds
 
         results[int(player_id)] = EngagementMetrics(

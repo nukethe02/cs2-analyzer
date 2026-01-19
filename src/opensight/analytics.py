@@ -13,8 +13,8 @@ Implements industry-standard metrics:
 - Crosshair Placement
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
+from typing import Any, Optional
 import logging
 import math
 
@@ -33,182 +33,24 @@ from opensight.constants import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class OpeningDuelStats:
-    """Opening duel (first kill of round) statistics."""
-    attempts: int = 0       # Times player was in first duel
-    wins: int = 0           # Times player got first kill (Entry Kills)
-    losses: int = 0         # Times player was first death (Entry Deaths)
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """Safely convert a value to float, returning default on failure.
 
-    @property
-    def win_rate(self) -> float:
-        return (self.wins / self.attempts * 100) if self.attempts > 0 else 0.0
+    Args:
+        value: The value to convert.
+        default: The default value to return if conversion fails.
 
-
-@dataclass
-class LurkStats:
-    """Lurk statistics (kills/deaths when far from team)."""
-    kills: int = 0          # Kills while lurking (>1500 units from team)
-    deaths: int = 0         # Deaths while lurking
-
-
-@dataclass
-class TradeStats:
-    """Trade kill statistics."""
-    kills_traded: int = 0       # Times player traded a teammate
-    deaths_traded: int = 0      # Times player was traded by teammate
-    trade_attempts: int = 0     # Opportunities to trade
-
-    @property
-    def trade_success_rate(self) -> float:
-        return (self.kills_traded / self.trade_attempts * 100) if self.trade_attempts > 0 else 0.0
-
-
-@dataclass
-class ClutchStats:
-    """Clutch situation statistics."""
-    situations_1v1: int = 0
-    wins_1v1: int = 0
-    situations_1v2: int = 0
-    wins_1v2: int = 0
-    situations_1v3: int = 0
-    wins_1v3: int = 0
-    situations_1v4: int = 0
-    wins_1v4: int = 0
-    situations_1v5: int = 0
-    wins_1v5: int = 0
-
-    @property
-    def total_situations(self) -> int:
-        return self.situations_1v1 + self.situations_1v2 + self.situations_1v3 + self.situations_1v4 + self.situations_1v5
-
-    @property
-    def total_wins(self) -> int:
-        return self.wins_1v1 + self.wins_1v2 + self.wins_1v3 + self.wins_1v4 + self.wins_1v5
-
-
-@dataclass
-class MultiKillStats:
-    """Multi-kill round statistics."""
-    rounds_with_1k: int = 0
-    rounds_with_2k: int = 0
-    rounds_with_3k: int = 0
-    rounds_with_4k: int = 0
-    rounds_with_5k: int = 0  # Ace
-
-    @property
-    def total_multi_kill_rounds(self) -> int:
-        """Rounds with 2+ kills."""
-        return self.rounds_with_2k + self.rounds_with_3k + self.rounds_with_4k + self.rounds_with_5k
-
-
-@dataclass
-class UtilityStats:
-    """Utility (grenade) statistics - Leetify-style comprehensive tracking."""
-    # Flash stats
-    flash_assists: int = 0
-    flashbangs_thrown: int = 0
-    enemies_flashed: int = 0          # Total enemies blinded >1.1s
-    teammates_flashed: int = 0        # Bad - blinding your own team
-    total_blind_time: float = 0.0     # Total seconds enemies were blind
-
-    # HE stats
-    he_thrown: int = 0
-    he_damage: int = 0                # Total damage to enemies
-    he_team_damage: int = 0           # Bad - damage to teammates
-
-    # Molotov/Incendiary stats
-    molotov_thrown: int = 0
-    molotov_damage: int = 0
-    molotov_team_damage: int = 0
-
-    # Smoke stats
-    smokes_thrown: int = 0
-
-    # Unused utility (at death)
-    unused_utility_value: int = 0     # $ value of utility at death
-    deaths_with_utility: int = 0      # Times died with unused utility
-
-    @property
-    def enemies_flashed_per_flash(self) -> float:
-        """Average enemies flashed per flashbang (Leetify metric)."""
-        return self.enemies_flashed / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
-
-    @property
-    def avg_blind_time(self) -> float:
-        """Average blind time per flashbang (seconds)."""
-        return self.total_blind_time / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
-
-    @property
-    def teammates_flashed_per_flash(self) -> float:
-        """Average teammates flashed per flashbang (bad - should be low)."""
-        return self.teammates_flashed / self.flashbangs_thrown if self.flashbangs_thrown > 0 else 0.0
-
-    @property
-    def he_damage_per_nade(self) -> float:
-        """Average HE damage per grenade."""
-        return self.he_damage / self.he_thrown if self.he_thrown > 0 else 0.0
-
-    @property
-    def molotov_damage_per_nade(self) -> float:
-        """Average molotov damage per grenade."""
-        return self.molotov_damage / self.molotov_thrown if self.molotov_thrown > 0 else 0.0
-
-    @property
-    def utility_thrown_per_round(self) -> float:
-        """Total utility thrown per round (for quantity rating)."""
-        # This needs to be calculated with rounds_played from PlayerMatchStats
-        return 0.0
-
-
-@dataclass
-class SideStats:
-    """CT-side vs T-side performance breakdown (Leetify/Scope.gg style)."""
-    rounds_played: int = 0
-    kills: int = 0
-    deaths: int = 0
-    assists: int = 0
-    total_damage: int = 0
-    opening_kills: int = 0
-    opening_deaths: int = 0
-
-    @property
-    def kd_ratio(self) -> float:
-        return round(self.kills / self.deaths, 2) if self.deaths > 0 else float(self.kills)
-
-    @property
-    def adr(self) -> float:
-        return round(self.total_damage / self.rounds_played, 1) if self.rounds_played > 0 else 0.0
-
-    @property
-    def kills_per_round(self) -> float:
-        return round(self.kills / self.rounds_played, 2) if self.rounds_played > 0 else 0.0
-
-    @property
-    def opening_success_rate(self) -> float:
-        """% of opening duels won."""
-        total = self.opening_kills + self.opening_deaths
-        return round(self.opening_kills / total * 100, 1) if total > 0 else 0.0
-
-
-@dataclass
-class MistakesStats:
-    """Mistakes tracking (Scope.gg style)."""
-    teammates_flashed: int = 0          # Times you blinded teammates
-    team_damage: int = 0                # Damage dealt to teammates
-    team_kills: int = 0                 # Teamkills
-    deaths_with_utility: int = 0        # Died with unused utility
-    eco_round_deaths: int = 0           # Deaths in eco rounds (when you shouldn't die)
-    unnecessary_peeks: int = 0          # Deaths while team had advantage
-
-    @property
-    def total_mistakes(self) -> int:
-        return (
-            self.teammates_flashed +
-            (1 if self.team_damage > 50 else 0) +
-            self.team_kills * 3 +
-            self.deaths_with_utility
-        )
+    Returns:
+        The converted float value, or the default if conversion fails.
+    """
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 
 @dataclass
