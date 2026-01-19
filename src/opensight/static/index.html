@@ -852,6 +852,231 @@
             accent-color: var(--accent);
         }
 
+        /* Kill Map Radar Visualization */
+        .kill-map-section {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .kill-map-container {
+            position: relative;
+            width: 100%;
+            max-width: 1024px;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .kill-map-radar {
+            position: relative;
+            width: 100%;
+            padding-bottom: 100%; /* 1:1 aspect ratio */
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-color: var(--bg-secondary);
+        }
+
+        .kill-map-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .kill-dot {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            pointer-events: auto;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            z-index: 10;
+        }
+
+        .kill-dot:hover {
+            transform: translate(-50%, -50%) scale(1.6);
+            z-index: 20;
+        }
+
+        .kill-dot.ct-kill {
+            background: var(--ct-color);
+            box-shadow: 0 0 6px var(--ct-color), 0 0 12px rgba(74, 144, 217, 0.4);
+        }
+
+        .kill-dot.ct-kill:hover {
+            box-shadow: 0 0 10px var(--ct-color), 0 0 20px rgba(74, 144, 217, 0.6);
+        }
+
+        .kill-dot.t-kill {
+            background: var(--t-color);
+            box-shadow: 0 0 6px var(--t-color), 0 0 12px rgba(222, 155, 53, 0.4);
+        }
+
+        .kill-dot.t-kill:hover {
+            box-shadow: 0 0 10px var(--t-color), 0 0 20px rgba(222, 155, 53, 0.6);
+        }
+
+        .kill-dot.headshot::after {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            border: 2px solid #ffd700;
+            border-radius: 50%;
+            animation: pulse-ring 1.5s ease-out infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(1); opacity: 0.8; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+
+        .kill-tooltip {
+            position: absolute;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            pointer-events: none;
+            z-index: 100;
+            white-space: nowrap;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            transform: translate(-50%, -100%);
+            margin-top: -12px;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+        }
+
+        .kill-tooltip.visible {
+            opacity: 1;
+        }
+
+        .kill-tooltip .weapon {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .kill-tooltip .headshot-badge {
+            color: #ffd700;
+            margin-left: 6px;
+        }
+
+        .kill-map-legend {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 16px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-dot.ct { background: var(--ct-color); }
+        .legend-dot.t { background: var(--t-color); }
+        .legend-dot.headshot {
+            background: linear-gradient(135deg, var(--accent), var(--ct-color));
+            border: 2px solid #ffd700;
+        }
+
+        .kill-map-filters {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-group label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .filter-group select {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .filter-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .kill-map-stats {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-top: 16px;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .map-stat {
+            text-align: center;
+        }
+
+        .map-stat-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .map-stat-value.ct { color: var(--ct-color); }
+        .map-stat-value.t { color: var(--t-color); }
+
+        .map-stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .kill-map-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .kill-map-error {
+            padding: 32px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
         /* Coaching Panel */
         .coaching-panel {
             background: var(--bg-card);
@@ -1731,9 +1956,10 @@
                     btn.classList.add('active');
                     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
 
-                    // Initialize heatmap when tab is shown
+                    // Initialize heatmap and kill map when tab is shown
                     if (btn.dataset.tab === 'heatmap') {
                         initHeatmap(data.heatmap_data || {});
+                        initKillMap(data.heatmap_data || {}, info.map || 'unknown', players);
                     }
 
                     // Initialize replay viewer when tab is shown
