@@ -26,13 +26,23 @@ classifiers = [
 ]
 
 dependencies = [
+    # Core parsing
     "demoparser2>=0.9.0",
     "awpy>=2.0.0",
-    "watchdog>=3.0.0",
+    # Data processing
     "numpy>=1.24.0",
     "pandas>=2.0.0",
+    "polars>=0.20.0",
+    # CLI and utilities
+    "watchdog>=3.0.0",
     "rich>=13.0.0",
     "typer>=0.9.0",
+    # Web API (FastAPI - primary)
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "python-multipart>=0.0.6",
+    "websockets>=11.0.0",
+    # Web API (Flask - legacy)
     "flask>=3.0.0",
     "werkzeug>=3.0.0",
 ]
