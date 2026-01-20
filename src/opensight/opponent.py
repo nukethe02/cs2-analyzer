@@ -484,8 +484,8 @@ class TendencyAnalyzer:
         deaths_per_round = player_stats.get("deaths", 0) / max(rounds, 1)
         utility_used = player_stats.get("utility_per_round", 0)
 
-        # Calculate playstyle scores
-        aggression_score = min(1.0, (opening_attempts / rounds) * 2 + deaths_per_round * 0.5)
+        # Calculate playstyle scores (protect against division by zero)
+        aggression_score = min(1.0, (opening_attempts / max(rounds, 1)) * 2 + deaths_per_round * 0.5)
         utility_score = min(1.0, utility_used / 3)
         aim_score = min(1.0, adr / 100)
 
@@ -658,7 +658,7 @@ class TendencyAnalyzer:
         opening_attempts = player_stats.get("opening_duel_attempts", 0)
         rounds = player_stats.get("rounds_played", 1)
 
-        if opening_attempts / rounds > 0.3:
+        if opening_attempts / max(rounds, 1) > 0.3:
             scores["entry"] += 0.4
         if opening_wr > 50:
             scores["entry"] += 0.3
