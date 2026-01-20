@@ -325,12 +325,16 @@ def export_to_excel(
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         # Demo info sheet
+        # Calculate duration_ticks from duration_seconds and tick_rate
+        duration_ticks = int(demo_data.duration_seconds * demo_data.tick_rate)
+        # Get round count from game_rounds or num_rounds
+        round_count = len(demo_data.game_rounds) if hasattr(demo_data, 'game_rounds') and demo_data.game_rounds else demo_data.num_rounds
         demo_info = pd.DataFrame([{
             "Map": demo_data.map_name,
             "Duration (seconds)": demo_data.duration_seconds,
             "Tick Rate": demo_data.tick_rate,
-            "Total Ticks": demo_data.duration_ticks,
-            "Rounds": len(demo_data.round_starts),
+            "Total Ticks": duration_ticks,
+            "Rounds": round_count,
             "Players": len(demo_data.player_names),
         }])
         demo_info.T.to_excel(writer, sheet_name="Demo Info", header=False)
@@ -473,6 +477,9 @@ def export_to_html(
     if title is None:
         title = f"OpenSight Analysis - {demo_data.map_name}"
 
+    # Get round count
+    round_count = len(demo_data.game_rounds) if hasattr(demo_data, 'game_rounds') and demo_data.game_rounds else demo_data.num_rounds
+
     # Sort players by rating
     sorted_players = sorted(
         metrics.values(),
@@ -611,7 +618,7 @@ def export_to_html(
                 <div class="label">Duration</div>
             </div>
             <div class="info-item">
-                <div class="value">{len(demo_data.round_starts)}</div>
+                <div class="value">{round_count}</div>
                 <div class="label">Rounds</div>
             </div>
             <div class="info-item">
@@ -678,13 +685,15 @@ def export_analysis(
         format = output_path.suffix.lstrip(".").lower()
 
     if format == "json":
+        # Get round count
+        json_round_count = len(demo_data.game_rounds) if hasattr(demo_data, 'game_rounds') and demo_data.game_rounds else demo_data.num_rounds
         data = {
             "demo_info": {
                 "file": str(demo_data.file_path),
                 "map": demo_data.map_name,
                 "duration_seconds": demo_data.duration_seconds,
                 "tick_rate": demo_data.tick_rate,
-                "rounds": len(demo_data.round_starts),
+                "rounds": json_round_count,
             },
             "players": {
                 str(sid): dataclass_to_dict(pm)
