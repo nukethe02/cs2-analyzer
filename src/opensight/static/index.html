@@ -874,7 +874,10 @@
                 </div>
             `;
         }
+    </script>
 
+    <!-- Additional styles for legacy components -->
+    <style>
         .matrix-table td.highlight {
             background: var(--accent-dim);
             color: var(--accent);
@@ -1772,235 +1775,25 @@
             font-family: monospace;
         }
     </style>
-</head>
-<body>
-    <header class="header">
-        <h1>OpenSight</h1>
-        <p>Professional CS2 Analytics - Leetify & Scope.gg Style Metrics</p>
-        <p>Professional CS2 Analytics - Free, Local, No Subscriptions</p>
-    </header>
 
-    <main class="container">
-        <section class="upload-section" id="upload-section">
-            <div class="upload-zone" id="upload-zone">
-                <h3>Drop your .dem file here</h3>
-                <p>or click to browse (supports .dem and .dem.gz up to 500MB)</p>
-                <input type="file" id="demo-file" accept=".dem,.dem.gz">
-            </div>
-        </section>
-
-        <div id="results" class="results"></div>
-    </main>
-
-    <div id="loading" class="loading-overlay">
-        <div class="spinner"></div>
-        <div class="loading-text">Analyzing demo...</div>
-        <div id="loading-details" style="color: #606070; margin-top: 8px;"></div>
-    </div>
-
-    <footer>
-        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer" target="_blank">OpenSight</a> - Local CS2 Analytics</p>
-        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer">OpenSight</a> - 100% Free CS2 Analytics</p>
-    </footer>
-
-    <div id="shortcuts-panel" class="shortcuts-panel">
-        <h4>Keyboard Shortcuts</h4>
-        <div class="shortcut-item"><span>Overview</span><span class="shortcut-key">1</span></div>
-        <div class="shortcut-item"><span>Timeline</span><span class="shortcut-key">2</span></div>
-        <div class="shortcut-item"><span>Kill Matrix</span><span class="shortcut-key">3</span></div>
-        <div class="shortcut-item"><span>Heatmap</span><span class="shortcut-key">4</span></div>
-        <div class="shortcut-item"><span>Coaching</span><span class="shortcut-key">5</span></div>
-        <div class="shortcut-item"><span>2D Replay</span><span class="shortcut-key">6</span></div>
-        <div class="shortcut-item"><span>Play/Pause</span><span class="shortcut-key">Space</span></div>
-        <div class="shortcut-item"><span>Prev Frame</span><span class="shortcut-key">&larr;</span></div>
-        <div class="shortcut-item"><span>Next Frame</span><span class="shortcut-key">&rarr;</span></div>
-        <div class="shortcut-item"><span>Toggle Shortcuts</span><span class="shortcut-key">?</span></div>
-    </div>
-
+    <!-- Extended Functions Script -->
     <script>
-        // DOM Elements
-        const uploadZone = document.getElementById('upload-zone');
-        const fileInput = document.getElementById('demo-file');
-        const loading = document.getElementById('loading');
-        const loadingDetails = document.getElementById('loading-details');
-        const resultsDiv = document.getElementById('results');
-        const uploadSection = document.getElementById('upload-section');
+        // Additional utility functions and legacy render functions
+        // Note: Core DOM elements, event listeners, and main functions are defined in the first script block
 
-        // Global state
-        let analysisData = null;
-        let charts = {};
-
-        // Click to upload
-        uploadZone.addEventListener('click', () => fileInput.click());
-
-        uploadZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZone.classList.add('dragover');
-        });
-
-        uploadZone.addEventListener('dragleave', () => {
-            uploadZone.classList.remove('dragover');
-        });
-
-        uploadZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZone.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
-                analyzeFile(file);
-            } else {
-                alert('Please upload a .dem or .dem.gz file');
-            }
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) analyzeFile(file);
-        });
-
-        // Utility Functions
-        function esc(text) {
+        // Extended utility function for legacy compatibility
+        function escLegacy(text) {
             if (text === null || text === undefined) return '';
             const div = document.createElement('div');
             div.textContent = String(text);
             return div.innerHTML;
         }
 
-        function formatNumber(num, decimals = 1) {
-            if (num === null || num === undefined) return '-';
-            return Number(num).toFixed(decimals);
-        }
+        // Note: formatNumber, getRatingClass, getStatClass, getBenchmarkPercentile,
+        // analyzeFile, and renderResults are defined in the main script block above.
+        // The following are legacy render helper functions kept for reference.
 
-        function getRatingClass(rating) {
-            if (rating >= 1.3) return 'elite';
-            if (rating >= 1.1) return 'good';
-            if (rating >= 0.9) return 'average';
-            return 'poor';
-        }
-
-        function getStatClass(value, thresholds) {
-            if (value >= thresholds.elite) return 'elite';
-            if (value >= thresholds.good) return 'good';
-            if (value >= thresholds.warning) return 'warning';
-            return 'bad';
-        }
-
-        function getBenchmarkPercentile(value, metric) {
-            const benchmarks = {
-                hltv_rating: { min: 0.5, max: 1.8, avg: 1.0 },
-                adr: { min: 40, max: 120, avg: 75 },
-                kast: { min: 40, max: 90, avg: 70 },
-                aim_rating: { min: 20, max: 80, avg: 50 },
-                utility_rating: { min: 20, max: 80, avg: 50 },
-                ttd: { min: 150, max: 600, avg: 350, inverted: true },
-                cp: { min: 3, max: 25, avg: 12, inverted: true }
-            };
-
-            const b = benchmarks[metric];
-            if (!b) return 50;
-
-            let percentile;
-            if (b.inverted) {
-                percentile = 100 - ((value - b.min) / (b.max - b.min) * 100);
-            } else {
-                percentile = ((value - b.min) / (b.max - b.min) * 100);
-            }
-            return Math.max(0, Math.min(100, percentile));
-        }
-
-        // Main Analysis Function
-        async function analyzeFile(file) {
-            const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-            loading.classList.add('show');
-            loadingDetails.textContent = `Processing ${file.name} (${sizeMB} MB)`;
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch('/analyze', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.detail || 'Analysis failed');
-                }
-
-                analysisData = data;
-                renderResults(data);
-            } catch (error) {
-                resultsDiv.innerHTML = `<div class="error-box"><strong>Error:</strong> ${esc(error.message)}</div>`;
-                resultsDiv.classList.add('show');
-            } finally {
-                loading.classList.remove('show');
-            }
-        }
-
-        // Main Render Function
-        // Rating class helper
-        function getRatingClass(rating) {
-            if (rating >= 1.2) return 'good';
-            if (rating <= 0.8) return 'bad';
-            return '';
-        }
-
-        // Render results
-        function renderResults(data) {
-            const info = data.demo_info || {};
-            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
-            const ctPlayers = players.filter(p => p.team === 'CT');
-            const tPlayers = players.filter(p => p.team === 'T');
-
-            // Hide upload section
-            uploadSection.style.display = 'none';
-
-            let html = `
-                ${renderMatchHeader(info, data.mvp)}
-
-                <div class="tabs">
-                    <div class="tab active" data-tab="overview">Overview</div>
-                    <div class="tab" data-tab="players">Players</div>
-                    <div class="tab" data-tab="charts">Charts</div>
-                    <div class="tab" data-tab="utility">Utility</div>
-                    <div class="tab" data-tab="leaderboard">Leaderboard</div>
-                </div>
-
-                <div id="tab-overview" class="tab-content active">
-                    ${renderOverviewTab(players, info)}
-                </div>
-
-                <div id="tab-players" class="tab-content">
-                    ${renderPlayersTab(ctPlayers, tPlayers)}
-                </div>
-
-                <div id="tab-charts" class="tab-content">
-                    ${renderChartsTab()}
-                </div>
-
-                <div id="tab-utility" class="tab-content">
-                    ${renderUtilityTab(players)}
-                </div>
-
-                <div id="tab-leaderboard" class="tab-content">
-                    ${renderLeaderboardTab(players)}
-                </div>
-            `;
-
-            resultsDiv.innerHTML = html;
-            resultsDiv.classList.add('show');
-
-            // Initialize event listeners and charts
-            initTabs();
-            initPlayerCards();
-            initCharts(players);
-            initPlayerComparison();
-            initExportButtons(data);
-        }
-
-        // Render Functions
+        // Legacy Render Functions
         function renderMatchHeader(info, mvp) {
             const scores = (info.score || '0 - 0').split(' - ');
             return `
@@ -2769,180 +2562,7 @@
             return [headers.join(','), ...rows].join('\n');
         }
 
-        // Chart Functions
-        function initCharts(players) {
-            const names = players.map(p => p.name?.substring(0, 12) || 'Unknown');
-            const teams = players.map(p => p.team);
-
-            // Color helper
-            const getColor = (team, alpha = 1) => team === 'CT'
-                ? `rgba(74, 144, 217, ${alpha})`
-                : `rgba(222, 155, 53, ${alpha})`;
-
-            // Destroy existing charts
-            Object.values(charts).forEach(c => c?.destroy?.());
-            charts = {};
-
-            // Rating Chart
-            const ratingsCtx = document.getElementById('chart-ratings');
-            if (ratingsCtx) {
-                charts.ratings = new Chart(ratingsCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: names,
-                        datasets: [{
-                            label: 'HLTV Rating',
-                            data: players.map(p => p.rating?.hltv_rating || 0),
-                            backgroundColor: teams.map(t => getColor(t, 0.7)),
-                            borderColor: teams.map(t => getColor(t)),
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            annotation: {
-                                annotations: {
-                                    line1: {
-                                        type: 'line',
-                                        yMin: 1.0,
-                                        yMax: 1.0,
-                                        borderColor: 'rgba(255, 255, 255, 0.3)',
-                                        borderWidth: 2,
-                                        borderDash: [5, 5]
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                max: 2,
-                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                                ticks: { color: '#a0a0b0' }
-                            },
-                            x: {
-                                grid: { display: false },
-                                ticks: { color: '#a0a0b0' }
-                            }
-                        }
-                    }
-                });
-            }
-
-            // K/D Chart
-            const kdCtx = document.getElementById('chart-kd');
-            if (kdCtx) {
-                charts.kd = new Chart(kdCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: names,
-                        datasets: [
-                            {
-                                label: 'Kills',
-                                data: players.map(p => p.stats?.kills || 0),
-                                backgroundColor: 'rgba(34, 197, 94, 0.7)',
-                                borderColor: 'rgba(34, 197, 94, 1)',
-                                borderWidth: 1
-                            },
-                            {
-                                label: 'Deaths',
-                                data: players.map(p => p.stats?.deaths || 0),
-                                backgroundColor: 'rgba(239, 68, 68, 0.7)',
-                                borderColor: 'rgba(239, 68, 68, 1)',
-                                borderWidth: 1
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { labels: { color: '#a0a0b0' } } },
-                        scales: {
-                            y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
-                            x: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
-                        }
-                    }
-                });
-            }
-
-            // ADR Chart
-            const adrCtx = document.getElementById('chart-adr');
-            if (adrCtx) {
-                charts.adr = new Chart(adrCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: names,
-                        datasets: [{
-                            label: 'ADR',
-                            data: players.map(p => p.stats?.adr || 0),
-                            backgroundColor: teams.map(t => getColor(t, 0.7)),
-                            borderColor: teams.map(t => getColor(t)),
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        indexAxis: 'y',
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a0a0b0' } },
-                            y: { grid: { display: false }, ticks: { color: '#a0a0b0' } }
-                        }
-                    }
-                });
-            }
-
-            // Composite Rating Chart (Aim vs Utility)
-            const compositeCtx = document.getElementById('chart-composite');
-            if (compositeCtx) {
-                charts.composite = new Chart(compositeCtx, {
-                    type: 'scatter',
-                    data: {
-                        datasets: [{
-                            label: 'Players',
-                            data: players.map(p => ({
-                                x: p.rating?.aim_rating || 0,
-                                y: p.rating?.utility_rating || 0,
-                                name: p.name
-                            })),
-                            backgroundColor: teams.map(t => getColor(t, 0.8)),
-                            pointRadius: 10,
-                            pointHoverRadius: 12
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: (ctx) => `${ctx.raw.name}: Aim ${ctx.raw.x}, Utility ${ctx.raw.y}`
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                title: { display: true, text: 'Aim Rating', color: '#a0a0b0' },
-                                min: 0, max: 100,
-                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                                ticks: { color: '#a0a0b0' }
-                            },
-                            y: {
-                                title: { display: true, text: 'Utility Rating', color: '#a0a0b0' },
-                                min: 0, max: 100,
-                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                                ticks: { color: '#a0a0b0' }
-                            }
-                        }
-                    }
-                });
-            }
-        }
+        // Note: initCharts is defined in the modern script section below
 
         function initAdvancedCharts(players) {
             const names = players.map(p => p.name?.substring(0, 12) || 'Unknown');
@@ -3580,64 +3200,6 @@
 
             html += '</tbody></table></div>';
             return html;
-        }
-
-            return `
-                <div class="stat-card bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden transition-all duration-200 ${teamClass}">
-                    <div class="p-5">
-                        <!-- Header -->
-                        <div class="flex items-center justify-between mb-4">
-                            <div class="flex items-center gap-3">
-                                <span class="font-semibold text-white">${esc(player.name) || 'Unknown'}</span>
-                                <span class="px-2 py-0.5 rounded text-xs font-bold ${teamBadgeClass}">${player.team}</span>
-                            </div>
-                            <div class="px-3 py-1 rounded-lg border ${getRatingBg(r.hltv_rating)}">
-                                <span class="font-mono data-value text-lg ${getRatingClass(r.hltv_rating)}">${formatNumber(r.hltv_rating, 2)}</span>
-                            </div>
-                        </div>
-
-                        <!-- Stats Grid -->
-                        <div class="grid grid-cols-4 gap-3">
-                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
-                                <p class="font-mono data-value text-xl text-white">${s.kills || 0}</p>
-                                <p class="text-xs text-slate-500 uppercase">Kills</p>
-                            </div>
-                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
-                                <p class="font-mono data-value text-xl text-white">${s.deaths || 0}</p>
-                                <p class="text-xs text-slate-500 uppercase">Deaths</p>
-                            </div>
-                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
-                                <p class="font-mono data-value text-xl ${(s.kd_ratio || 0) >= 1 ? 'text-green-400' : 'text-red-400'}">${s.kd_ratio || '-'}</p>
-                                <p class="text-xs text-slate-500 uppercase">K/D</p>
-                            </div>
-                            <div class="bg-slate-900/50 rounded-lg p-3 text-center">
-                                <p class="font-mono data-value text-xl ${getStatColor(s.adr || 0, {elite: 90, good: 75, avg: 60})}">${s.adr || 0}</p>
-                                <p class="text-xs text-slate-500 uppercase">ADR</p>
-                            </div>
-                        </div>
-
-                        <!-- Secondary Stats -->
-                        <div class="grid grid-cols-4 gap-3 mt-3">
-                            <div class="text-center">
-                                <p class="font-mono data-value text-sm text-slate-300">${s.headshot_pct || 0}%</p>
-                                <p class="text-xs text-slate-600">HS%</p>
-                            </div>
-                            <div class="text-center">
-                                <p class="font-mono data-value text-sm text-slate-300">${formatNumber(r.kast_percentage, 0)}%</p>
-                                <p class="text-xs text-slate-600">KAST</p>
-                            </div>
-                            <div class="text-center">
-                                <p class="font-mono data-value text-sm text-slate-300">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</p>
-                                <p class="text-xs text-slate-600">TTD</p>
-                            </div>
-                            <div class="text-center">
-                                <p class="font-mono data-value text-sm text-slate-300">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</p>
-                                <p class="text-xs text-slate-600">CP</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
         }
 
         // ============================================
