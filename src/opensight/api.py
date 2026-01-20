@@ -16,6 +16,7 @@ Provides:
 - Share code caching
 """
 
+import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 import logging
@@ -34,8 +35,10 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSock
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import Response
 from pydantic import BaseModel, Field
+import uvicorn
 
 from opensight.profiling import (
     TimingCollector,
@@ -261,6 +264,15 @@ app = FastAPI(
     title="OpenSight API",
     description="CS2 demo analyzer - professional-grade metrics including HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement",
     version=__version__,
+)
+
+# Enable CORS for frontend JavaScript communication
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for HF Spaces
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Enable GZip compression for responses > 1KB
@@ -2468,3 +2480,14 @@ async def export_collab_session(session_id: str, format: str = "json"):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+if __name__ == "__main__":
+    # Get port from environment (HF Spaces uses PORT env var)
+    port = int(os.environ.get("PORT", 7860))
+    # Bind to 0.0.0.0 to allow external access (required for containers)
+    uvicorn.run(app, host="0.0.0.0", port=port)
