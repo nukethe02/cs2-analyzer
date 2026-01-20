@@ -7,7 +7,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -e ".[all]" && pip install flask gunicorn
-    startCommand: gunicorn --bind 0.0.0.0:$PORT src.opensight.web.app:create_app()
+    startCommand: PYTHONPATH=src gunicorn --bind 0.0.0.0:$PORT opensight.web.app:create_app()
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
