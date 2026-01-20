@@ -5,34 +5,34 @@ Provides live coaching during practice servers and scrims through
 WebSocket streaming of parsed data with voice/text alerts.
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional, Any, Callable
 import json
-import asyncio
-import time
-import threading
 import queue
-from pathlib import Path
-from datetime import datetime
+import time
 from collections import deque
-
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any
 
 # ============================================================================
 # Alert Types and Priorities
 # ============================================================================
 
+
 class AlertPriority(Enum):
     """Priority levels for coaching alerts."""
+
     CRITICAL = 1  # Immediate attention needed
-    HIGH = 2      # Important feedback
-    MEDIUM = 3    # General coaching tip
-    LOW = 4       # Nice to know
-    INFO = 5      # Informational
+    HIGH = 2  # Important feedback
+    MEDIUM = 3  # General coaching tip
+    LOW = 4  # Nice to know
+    INFO = 5  # Informational
 
 
 class AlertType(Enum):
     """Types of real-time coaching alerts."""
+
     # Economy alerts
     ECO_ROUND = "eco_round"
     FORCE_BUY = "force_buy"
@@ -69,6 +69,7 @@ class AlertType(Enum):
 @dataclass
 class CoachingAlert:
     """A single coaching alert."""
+
     alert_id: str
     alert_type: AlertType
     priority: AlertPriority
@@ -77,8 +78,8 @@ class CoachingAlert:
     timestamp: float = 0.0
     round_num: int = 0
     tick: int = 0
-    target_player: Optional[str] = None  # Steam ID of relevant player
-    position: Optional[tuple[float, float, float]] = None
+    target_player: str | None = None  # Steam ID of relevant player
+    position: tuple[float, float, float] | None = None
     expires_in_ms: int = 5000  # Alert expires after this time
     voice_enabled: bool = True
 
@@ -95,7 +96,7 @@ class CoachingAlert:
             "target_player": self.target_player,
             "position": self.position,
             "expires_in_ms": self.expires_in_ms,
-            "voice_enabled": self.voice_enabled
+            "voice_enabled": self.voice_enabled,
         }
 
 
@@ -103,9 +104,11 @@ class CoachingAlert:
 # Game State Tracking
 # ============================================================================
 
+
 @dataclass
 class PlayerState:
     """Real-time state of a player."""
+
     steamid: str
     name: str
     team: str  # "ct" or "t"
@@ -146,20 +149,21 @@ class PlayerState:
             "weapons": {
                 "primary": self.primary_weapon,
                 "secondary": self.secondary_weapon,
-                "grenades": self.grenades
+                "grenades": self.grenades,
             },
             "round_stats": {
                 "kills": self.kills_this_round,
                 "damage": self.damage_this_round,
                 "flashes_thrown": self.flashes_thrown,
-                "enemies_flashed": self.enemies_flashed
-            }
+                "enemies_flashed": self.enemies_flashed,
+            },
         }
 
 
 @dataclass
 class RoundState:
     """Real-time state of the current round."""
+
     round_num: int
     phase: str = "freezetime"  # freezetime, live, planted, over
     time_remaining: float = 115.0
@@ -175,8 +179,8 @@ class RoundState:
     ct_money: int = 0
     t_money: int = 0
 
-    first_kill_team: Optional[str] = None
-    first_death_team: Optional[str] = None
+    first_kill_team: str | None = None
+    first_death_team: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -186,30 +190,19 @@ class RoundState:
             "bomb": {
                 "planted": self.bomb_planted,
                 "site": self.bomb_site,
-                "time_remaining": round(self.bomb_time_remaining, 1) if self.bomb_planted else None
+                "time_remaining": round(self.bomb_time_remaining, 1) if self.bomb_planted else None,
             },
-            "alive": {
-                "ct": self.ct_alive,
-                "t": self.t_alive
-            },
-            "score": {
-                "ct": self.ct_score,
-                "t": self.t_score
-            },
-            "economy": {
-                "ct_total": self.ct_money,
-                "t_total": self.t_money
-            },
-            "first_blood": {
-                "kill_team": self.first_kill_team,
-                "death_team": self.first_death_team
-            }
+            "alive": {"ct": self.ct_alive, "t": self.t_alive},
+            "score": {"ct": self.ct_score, "t": self.t_score},
+            "economy": {"ct_total": self.ct_money, "t_total": self.t_money},
+            "first_blood": {"kill_team": self.first_kill_team, "death_team": self.first_death_team},
         }
 
 
 @dataclass
 class GameState:
     """Complete real-time game state."""
+
     map_name: str
     tick: int = 0
     timestamp: float = 0.0
@@ -223,7 +216,7 @@ class GameState:
     recent_grenades: deque = field(default_factory=lambda: deque(maxlen=30))
 
     # Tracked player (for coaching focus)
-    focus_player: Optional[str] = None  # Steam ID
+    focus_player: str | None = None  # Steam ID
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -232,13 +225,14 @@ class GameState:
             "timestamp": self.timestamp,
             "players": {sid: p.to_dict() for sid, p in self.players.items()},
             "round": self.round_state.to_dict(),
-            "focus_player": self.focus_player
+            "focus_player": self.focus_player,
         }
 
 
 # ============================================================================
 # Alert Detection Engine
 # ============================================================================
+
 
 class AlertDetector:
     """
@@ -252,8 +246,9 @@ class AlertDetector:
 
         self._alert_counter = 0
 
-    def detect_alerts(self, game_state: GameState,
-                      prev_state: Optional[GameState] = None) -> list[CoachingAlert]:
+    def detect_alerts(
+        self, game_state: GameState, prev_state: GameState | None = None
+    ) -> list[CoachingAlert]:
         """
         Detect alerts from current game state.
 
@@ -299,25 +294,29 @@ class AlertDetector:
 
         # Low money alert
         if avg_money < 2000 and round_state.round_num > 1:
-            alerts.append(self._create_alert(
-                AlertType.LOW_MONEY,
-                AlertPriority.MEDIUM,
-                f"Low economy - ${int(avg_money)} average",
-                "Consider eco or force buy together",
-                round_state.round_num,
-                state.tick
-            ))
+            alerts.append(
+                self._create_alert(
+                    AlertType.LOW_MONEY,
+                    AlertPriority.MEDIUM,
+                    f"Low economy - ${int(avg_money)} average",
+                    "Consider eco or force buy together",
+                    round_state.round_num,
+                    state.tick,
+                )
+            )
 
         # Eco round suggestion
         if avg_money < 1500:
-            alerts.append(self._create_alert(
-                AlertType.ECO_ROUND,
-                AlertPriority.HIGH,
-                "Eco round recommended",
-                "Save for next round full buy",
-                round_state.round_num,
-                state.tick
-            ))
+            alerts.append(
+                self._create_alert(
+                    AlertType.ECO_ROUND,
+                    AlertPriority.HIGH,
+                    "Eco round recommended",
+                    "Save for next round full buy",
+                    round_state.round_num,
+                    state.tick,
+                )
+            )
 
         return alerts
 
@@ -332,31 +331,36 @@ class AlertDetector:
         # Time warning for T side
         if self.focus_team == "t":
             if round_state.time_remaining < 30 and not round_state.bomb_planted:
-                alerts.append(self._create_alert(
-                    AlertType.TIME_WARNING,
-                    AlertPriority.HIGH,
-                    f"{int(round_state.time_remaining)} seconds!",
-                    "Execute now or plant bomb",
-                    round_state.round_num,
-                    state.tick,
-                    expires_in_ms=3000
-                ))
+                alerts.append(
+                    self._create_alert(
+                        AlertType.TIME_WARNING,
+                        AlertPriority.HIGH,
+                        f"{int(round_state.time_remaining)} seconds!",
+                        "Execute now or plant bomb",
+                        round_state.round_num,
+                        state.tick,
+                        expires_in_ms=3000,
+                    )
+                )
 
             if round_state.time_remaining < 15 and not round_state.bomb_planted:
-                alerts.append(self._create_alert(
-                    AlertType.PLANT_REMINDER,
-                    AlertPriority.CRITICAL,
-                    "PLANT NOW!",
-                    "Time running out!",
-                    round_state.round_num,
-                    state.tick,
-                    expires_in_ms=2000
-                ))
+                alerts.append(
+                    self._create_alert(
+                        AlertType.PLANT_REMINDER,
+                        AlertPriority.CRITICAL,
+                        "PLANT NOW!",
+                        "Time running out!",
+                        round_state.round_num,
+                        state.tick,
+                        expires_in_ms=2000,
+                    )
+                )
 
         return alerts
 
-    def _detect_tactical_alerts(self, state: GameState,
-                                prev_state: Optional[GameState]) -> list[CoachingAlert]:
+    def _detect_tactical_alerts(
+        self, state: GameState, prev_state: GameState | None
+    ) -> list[CoachingAlert]:
         """Detect tactical situation alerts."""
         alerts = []
         round_state = state.round_state
@@ -369,32 +373,37 @@ class AlertDetector:
         enemy_alive = round_state.t_alive if self.focus_team == "ct" else round_state.ct_alive
 
         if team_alive == 1 and enemy_alive >= 1:
-            alerts.append(self._create_alert(
-                AlertType.CLUTCH_SITUATION,
-                AlertPriority.HIGH,
-                f"1v{enemy_alive} Clutch!",
-                "Take your time, isolate duels",
-                round_state.round_num,
-                state.tick,
-                expires_in_ms=10000
-            ))
+            alerts.append(
+                self._create_alert(
+                    AlertType.CLUTCH_SITUATION,
+                    AlertPriority.HIGH,
+                    f"1v{enemy_alive} Clutch!",
+                    "Take your time, isolate duels",
+                    round_state.round_num,
+                    state.tick,
+                    expires_in_ms=10000,
+                )
+            )
 
         # Rotate needed (CT specific)
         if self.focus_team == "ct" and round_state.bomb_planted:
-            alerts.append(self._create_alert(
-                AlertType.ROTATE_NEEDED,
-                AlertPriority.HIGH,
-                f"Bomb planted {round_state.bomb_site}!",
-                f"Rotate and retake {round_state.bomb_site}",
-                round_state.round_num,
-                state.tick,
-                expires_in_ms=5000
-            ))
+            alerts.append(
+                self._create_alert(
+                    AlertType.ROTATE_NEEDED,
+                    AlertPriority.HIGH,
+                    f"Bomb planted {round_state.bomb_site}!",
+                    f"Rotate and retake {round_state.bomb_site}",
+                    round_state.round_num,
+                    state.tick,
+                    expires_in_ms=5000,
+                )
+            )
 
         return alerts
 
-    def _detect_performance_alerts(self, state: GameState,
-                                   prev_state: Optional[GameState]) -> list[CoachingAlert]:
+    def _detect_performance_alerts(
+        self, state: GameState, prev_state: GameState | None
+    ) -> list[CoachingAlert]:
         """Detect performance-related alerts."""
         alerts = []
 
@@ -412,61 +421,74 @@ class AlertDetector:
             # Multi-kill
             kills_gained = player.kills_this_round - prev_player.kills_this_round
             if kills_gained >= 2:
-                alerts.append(self._create_alert(
-                    AlertType.MULTI_KILL,
-                    AlertPriority.LOW,
-                    f"Nice! {player.name} double kill!",
-                    "",
-                    state.round_state.round_num,
-                    state.tick,
-                    target_player=player.steamid,
-                    expires_in_ms=3000
-                ))
+                alerts.append(
+                    self._create_alert(
+                        AlertType.MULTI_KILL,
+                        AlertPriority.LOW,
+                        f"Nice! {player.name} double kill!",
+                        "",
+                        state.round_state.round_num,
+                        state.tick,
+                        target_player=player.steamid,
+                        expires_in_ms=3000,
+                    )
+                )
 
             # Good flash
             if player.enemies_flashed > prev_player.enemies_flashed:
                 flashed = player.enemies_flashed - prev_player.enemies_flashed
-                alerts.append(self._create_alert(
-                    AlertType.NICE_FLASH,
-                    AlertPriority.LOW,
-                    f"Good flash! {flashed} enemies blinded",
-                    "",
-                    state.round_state.round_num,
-                    state.tick,
-                    target_player=player.steamid,
-                    expires_in_ms=2000
-                ))
+                alerts.append(
+                    self._create_alert(
+                        AlertType.NICE_FLASH,
+                        AlertPriority.LOW,
+                        f"Good flash! {flashed} enemies blinded",
+                        "",
+                        state.round_state.round_num,
+                        state.tick,
+                        target_player=player.steamid,
+                        expires_in_ms=2000,
+                    )
+                )
 
         # Check for teammate deaths (trade opportunity)
         for recent_kill in list(state.recent_kills)[-3:]:
             victim_team = state.players.get(recent_kill.get("victim_steamid"), {})
-            if hasattr(victim_team, 'team') and victim_team.team == self.focus_team:
+            if hasattr(victim_team, "team") and victim_team.team == self.focus_team:
                 # Teammate died - check for trade opportunity
                 killer_steamid = recent_kill.get("attacker_steamid")
                 killer = state.players.get(killer_steamid)
 
                 if killer and killer.alive:
-                    alerts.append(self._create_alert(
-                        AlertType.TRADE_OPPORTUNITY,
-                        AlertPriority.HIGH,
-                        f"Trade {recent_kill.get('victim_name', 'teammate')}!",
-                        f"Enemy at known position",
-                        state.round_state.round_num,
-                        state.tick,
-                        expires_in_ms=4000
-                    ))
+                    alerts.append(
+                        self._create_alert(
+                            AlertType.TRADE_OPPORTUNITY,
+                            AlertPriority.HIGH,
+                            f"Trade {recent_kill.get('victim_name', 'teammate')}!",
+                            "Enemy at known position",
+                            state.round_state.round_num,
+                            state.tick,
+                            expires_in_ms=4000,
+                        )
+                    )
 
         return alerts
 
-    def _create_alert(self, alert_type: AlertType, priority: AlertPriority,
-                      message: str, details: str, round_num: int, tick: int,
-                      target_player: Optional[str] = None,
-                      position: Optional[tuple[float, float, float]] = None,
-                      expires_in_ms: int = 5000) -> CoachingAlert:
+    def _create_alert(
+        self,
+        alert_type: AlertType,
+        priority: AlertPriority,
+        message: str,
+        details: str,
+        round_num: int,
+        tick: int,
+        target_player: str | None = None,
+        position: tuple[float, float, float] | None = None,
+        expires_in_ms: int = 5000,
+    ) -> CoachingAlert:
         """Create a coaching alert."""
         self._alert_counter += 1
         return CoachingAlert(
-            alert_id=f"alert_{self._alert_counter}_{int(time.time()*1000)}",
+            alert_id=f"alert_{self._alert_counter}_{int(time.time() * 1000)}",
             alert_type=alert_type,
             priority=priority,
             message=message,
@@ -476,7 +498,7 @@ class AlertDetector:
             tick=tick,
             target_player=target_player,
             position=position,
-            expires_in_ms=expires_in_ms
+            expires_in_ms=expires_in_ms,
         )
 
     def _filter_by_cooldown(self, alerts: list[CoachingAlert]) -> list[CoachingAlert]:
@@ -499,19 +521,19 @@ class AlertDetector:
 # Real-Time Coaching Session
 # ============================================================================
 
+
 class RealtimeCoachingSession:
     """
     Manages a real-time coaching session.
     """
 
-    def __init__(self, session_id: str, focus_player: Optional[str] = None,
-                 focus_team: str = "ct"):
+    def __init__(self, session_id: str, focus_player: str | None = None, focus_team: str = "ct"):
         self.session_id = session_id
         self.focus_player = focus_player
         self.focus_team = focus_team
 
         self.game_state = GameState(map_name="unknown")
-        self.prev_state: Optional[GameState] = None
+        self.prev_state: GameState | None = None
 
         self.alert_detector = AlertDetector(focus_team=focus_team)
         self.alert_history: deque = deque(maxlen=100)
@@ -554,10 +576,17 @@ class RealtimeCoachingSession:
         self.prev_state = GameState(
             map_name=self.game_state.map_name,
             tick=self.game_state.tick,
-            players={sid: PlayerState(**{k: v for k, v in p.to_dict().items()
-                                        if k not in ['position', 'angles', 'weapons', 'round_stats']})
-                    for sid, p in self.game_state.players.items()},
-            round_state=RoundState(**self.game_state.round_state.to_dict())
+            players={
+                sid: PlayerState(
+                    **{
+                        k: v
+                        for k, v in p.to_dict().items()
+                        if k not in ["position", "angles", "weapons", "round_stats"]
+                    }
+                )
+                for sid, p in self.game_state.players.items()
+            },
+            round_state=RoundState(**self.game_state.round_state.to_dict()),
         )
 
         # Apply update
@@ -627,7 +656,7 @@ class RealtimeCoachingSession:
                     self.game_state.players[steamid] = PlayerState(
                         steamid=steamid,
                         name=player_data.get("name", "Player"),
-                        team=player_data.get("team", "ct")
+                        team=player_data.get("team", "ct"),
                     )
 
                 player = self.game_state.players[steamid]
@@ -667,7 +696,7 @@ class RealtimeCoachingSession:
         if "grenade" in update:
             self.game_state.recent_grenades.append(update["grenade"])
 
-    def get_next_alert(self, timeout: float = 0.1) -> Optional[CoachingAlert]:
+    def get_next_alert(self, timeout: float = 0.1) -> CoachingAlert | None:
         """Get the next alert from the queue."""
         try:
             return self._alert_queue.get(timeout=timeout)
@@ -694,8 +723,8 @@ class RealtimeCoachingSession:
             "current_round": self.game_state.round_state.round_num,
             "score": {
                 "ct": self.game_state.round_state.ct_score,
-                "t": self.game_state.round_state.t_score
-            }
+                "t": self.game_state.round_state.t_score,
+            },
         }
 
     def get_state(self) -> dict[str, Any]:
@@ -707,6 +736,7 @@ class RealtimeCoachingSession:
 # WebSocket Manager
 # ============================================================================
 
+
 class RealtimeCoachingManager:
     """
     Manages real-time coaching sessions and WebSocket connections.
@@ -716,16 +746,15 @@ class RealtimeCoachingManager:
         self.sessions: dict[str, RealtimeCoachingSession] = {}
         self._session_counter = 0
 
-    def create_session(self, focus_player: Optional[str] = None,
-                       focus_team: str = "ct") -> RealtimeCoachingSession:
+    def create_session(
+        self, focus_player: str | None = None, focus_team: str = "ct"
+    ) -> RealtimeCoachingSession:
         """Create a new coaching session."""
         self._session_counter += 1
         session_id = f"session_{self._session_counter}_{int(time.time())}"
 
         session = RealtimeCoachingSession(
-            session_id=session_id,
-            focus_player=focus_player,
-            focus_team=focus_team
+            session_id=session_id, focus_player=focus_player, focus_team=focus_team
         )
 
         self.sessions[session_id] = session
@@ -733,11 +762,11 @@ class RealtimeCoachingManager:
 
         return session
 
-    def get_session(self, session_id: str) -> Optional[RealtimeCoachingSession]:
+    def get_session(self, session_id: str) -> RealtimeCoachingSession | None:
         """Get an existing session."""
         return self.sessions.get(session_id)
 
-    def end_session(self, session_id: str) -> Optional[dict[str, Any]]:
+    def end_session(self, session_id: str) -> dict[str, Any] | None:
         """End a session and return stats."""
         session = self.sessions.pop(session_id, None)
         if session:
@@ -752,7 +781,7 @@ class RealtimeCoachingManager:
                 "session_id": s.session_id,
                 "active": s.active,
                 "focus_team": s.focus_team,
-                "rounds_coached": s.rounds_coached
+                "rounds_coached": s.rounds_coached,
             }
             for s in self.sessions.values()
         ]
@@ -761,6 +790,7 @@ class RealtimeCoachingManager:
 # ============================================================================
 # Text-to-Speech Alert Formatter
 # ============================================================================
+
 
 class VoiceAlertFormatter:
     """
@@ -773,7 +803,7 @@ class VoiceAlertFormatter:
         AlertPriority.HIGH: "",
         AlertPriority.MEDIUM: "",
         AlertPriority.LOW: "",
-        AlertPriority.INFO: ""
+        AlertPriority.INFO: "",
     }
 
     # Alert type specific formatting
@@ -804,8 +834,7 @@ class VoiceAlertFormatter:
         # Use custom format if available
         if alert.alert_type in cls.ALERT_FORMATS:
             message = cls.ALERT_FORMATS[alert.alert_type].format(
-                message=alert.message,
-                details=alert.details
+                message=alert.message, details=alert.details
             )
         else:
             message = alert.message
@@ -831,7 +860,7 @@ class VoiceAlertFormatter:
             "subtitle": alert.details,
             "expires_at": alert.timestamp + alert.expires_in_ms / 1000,
             "color": cls._get_priority_color(alert.priority),
-            "icon": cls._get_alert_icon(alert.alert_type)
+            "icon": cls._get_alert_icon(alert.alert_type),
         }
 
     @classmethod
@@ -842,7 +871,7 @@ class VoiceAlertFormatter:
             AlertPriority.HIGH: "#ff8800",
             AlertPriority.MEDIUM: "#ffff00",
             AlertPriority.LOW: "#00ff00",
-            AlertPriority.INFO: "#0088ff"
+            AlertPriority.INFO: "#0088ff",
         }
         return colors.get(priority, "#ffffff")
 
@@ -859,7 +888,7 @@ class VoiceAlertFormatter:
             AlertType.TEAM_FLASH: "⚠️",
             AlertType.MULTI_KILL: "🔥",
             AlertType.NICE_FLASH: "✨",
-            AlertType.ROUND_WON: "🏆"
+            AlertType.ROUND_WON: "🏆",
         }
         return icons.get(alert_type, "📢")
 
@@ -868,8 +897,10 @@ class VoiceAlertFormatter:
 # WebSocket Protocol Messages
 # ============================================================================
 
+
 class WSMessageType(Enum):
     """WebSocket message types."""
+
     # Client -> Server
     SUBSCRIBE = "subscribe"
     UNSUBSCRIBE = "unsubscribe"
@@ -886,16 +917,15 @@ class WSMessageType(Enum):
 @dataclass
 class WSMessage:
     """WebSocket message structure."""
+
     msg_type: WSMessageType
     data: dict[str, Any]
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
     def to_json(self) -> str:
-        return json.dumps({
-            "type": self.msg_type.value,
-            "session_id": self.session_id,
-            "data": self.data
-        })
+        return json.dumps(
+            {"type": self.msg_type.value, "session_id": self.session_id, "data": self.data}
+        )
 
     @classmethod
     def from_json(cls, json_str: str) -> "WSMessage":
@@ -903,7 +933,7 @@ class WSMessage:
         return cls(
             msg_type=WSMessageType(data["type"]),
             data=data.get("data", {}),
-            session_id=data.get("session_id")
+            session_id=data.get("session_id"),
         )
 
 
@@ -911,7 +941,7 @@ class WSMessage:
 # Convenience Functions
 # ============================================================================
 
-_default_manager: Optional[RealtimeCoachingManager] = None
+_default_manager: RealtimeCoachingManager | None = None
 
 
 def get_manager() -> RealtimeCoachingManager:
@@ -922,8 +952,9 @@ def get_manager() -> RealtimeCoachingManager:
     return _default_manager
 
 
-def create_coaching_session(focus_player: Optional[str] = None,
-                           focus_team: str = "ct") -> dict[str, Any]:
+def create_coaching_session(
+    focus_player: str | None = None, focus_team: str = "ct"
+) -> dict[str, Any]:
     """
     Create a new real-time coaching session.
 
@@ -960,14 +991,14 @@ def update_game_state(session_id: str, state_update: dict[str, Any]) -> list[dic
     return [a.to_dict() for a in alerts]
 
 
-def get_session_info(session_id: str) -> Optional[dict[str, Any]]:
+def get_session_info(session_id: str) -> dict[str, Any] | None:
     """Get session information."""
     manager = get_manager()
     session = manager.get_session(session_id)
     return session.get_session_stats() if session else None
 
 
-def end_coaching_session(session_id: str) -> Optional[dict[str, Any]]:
+def end_coaching_session(session_id: str) -> dict[str, Any] | None:
     """End a coaching session."""
     return get_manager().end_session(session_id)
 
@@ -979,6 +1010,6 @@ def format_alert_for_voice(alert_data: dict[str, Any]) -> str:
         alert_type=AlertType(alert_data.get("alert_type", "info")),
         priority=AlertPriority(alert_data.get("priority", 5)),
         message=alert_data.get("message", ""),
-        details=alert_data.get("details", "")
+        details=alert_data.get("details", ""),
     )
     return VoiceAlertFormatter.format_for_voice(alert)

@@ -16,11 +16,9 @@ canvas/WebGL renderer for interactive 2D replay playback.
 from __future__ import annotations
 
 import logging
-import math
-from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from typing import Optional, Iterator
 from collections import defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +31,7 @@ FULL_QUALITY_SAMPLE_RATE = 1  # 64 fps (full data, large file)
 @dataclass
 class PlayerFrame:
     """Player state at a single tick."""
+
     steam_id: int
     name: str
     team: str  # "CT" or "T"
@@ -70,6 +69,7 @@ class PlayerFrame:
 @dataclass
 class GrenadeFrame:
     """Grenade state at a single tick."""
+
     grenade_id: int
     grenade_type: str  # "flashbang", "smoke", "he", "molotov", "decoy"
     x: float
@@ -96,11 +96,12 @@ class GrenadeFrame:
 @dataclass
 class BombFrame:
     """Bomb state at a single tick."""
+
     x: float
     y: float
     z: float
     state: str  # "carried", "dropped", "planting", "planted", "defusing", "exploded", "defused"
-    carrier_steam_id: Optional[int] = None
+    carrier_steam_id: int | None = None
     plant_progress: float = 0.0  # 0-100%
     defuse_progress: float = 0.0  # 0-100%
     time_remaining: float = 0.0  # Seconds until explosion
@@ -120,6 +121,7 @@ class BombFrame:
 @dataclass
 class KillEvent:
     """A kill event for replay markers."""
+
     tick: int
     round_num: int
     attacker_steam_id: int
@@ -146,12 +148,13 @@ class KillEvent:
 @dataclass
 class ReplayFrame:
     """A single frame of replay data."""
+
     tick: int
     round_num: int
     game_time: float  # Seconds since round start
     players: list[PlayerFrame]
     grenades: list[GrenadeFrame] = field(default_factory=list)
-    bomb: Optional[BombFrame] = None
+    bomb: BombFrame | None = None
     events: list[dict] = field(default_factory=list)  # Kill events, etc.
 
     def to_dict(self) -> dict:
@@ -177,6 +180,7 @@ class ReplayFrame:
 @dataclass
 class RoundReplay:
     """Replay data for a single round."""
+
     round_num: int
     start_tick: int
     end_tick: int
@@ -213,6 +217,7 @@ class RoundReplay:
 @dataclass
 class MatchReplay:
     """Complete replay data for a match."""
+
     map_name: str
     tick_rate: int
     sample_rate: int
@@ -236,7 +241,7 @@ class MatchReplay:
             "rounds": [r.to_dict() for r in self.rounds],
         }
 
-    def get_round(self, round_num: int) -> Optional[RoundReplay]:
+    def get_round(self, round_num: int) -> RoundReplay | None:
         """Get replay data for a specific round."""
         for r in self.rounds:
             if r.round_num == round_num:
@@ -277,7 +282,7 @@ class ReplayGenerator:
 
     def _index_player_ticks(self):
         """Index player tick data by round number."""
-        if not hasattr(self.data, 'player_ticks') or not self.data.player_ticks:
+        if not hasattr(self.data, "player_ticks") or not self.data.player_ticks:
             logger.warning("No tick-level player data available for replay")
             return
 
@@ -289,7 +294,9 @@ class ReplayGenerator:
         for round_num in self._player_ticks_by_round:
             self._player_ticks_by_round[round_num].sort(key=lambda t: t.tick)
 
-        logger.info(f"Indexed {len(self.data.player_ticks)} player ticks across {len(self._player_ticks_by_round)} rounds")
+        logger.info(
+            f"Indexed {len(self.data.player_ticks)} player ticks across {len(self._player_ticks_by_round)} rounds"
+        )
 
     def _index_kills(self):
         """Index kills by round number."""
@@ -314,8 +321,7 @@ class ReplayGenerator:
             team2_score=0,
             player_names=self.data.player_names.copy(),
             player_teams={
-                sid: "CT" if team == 3 else "T"
-                for sid, team in self.data.player_teams.items()
+                sid: "CT" if team == 3 else "T" for sid, team in self.data.player_teams.items()
             },
         )
 
@@ -334,7 +340,7 @@ class ReplayGenerator:
         logger.info(f"Generated replay with {len(replay.rounds)} rounds")
         return replay
 
-    def generate_round_replay(self, round_num: int) -> Optional[RoundReplay]:
+    def generate_round_replay(self, round_num: int) -> RoundReplay | None:
         """
         Generate replay data for a specific round.
 
@@ -349,7 +355,7 @@ class ReplayGenerator:
                 return self._generate_round_replay(round_info)
         return None
 
-    def _generate_round_replay(self, round_info) -> Optional[RoundReplay]:
+    def _generate_round_replay(self, round_info) -> RoundReplay | None:
         """Generate replay for a single round."""
         round_num = round_info.round_num
 
@@ -375,18 +381,20 @@ class ReplayGenerator:
 
         # Add kill events
         for kill in round_kills:
-            replay.kills.append(KillEvent(
-                tick=kill.tick,
-                round_num=round_num,
-                attacker_steam_id=kill.attacker_steamid,
-                attacker_name=self.data.player_names.get(kill.attacker_steamid, "Unknown"),
-                victim_steam_id=kill.victim_steamid,
-                victim_name=self.data.player_names.get(kill.victim_steamid, "Unknown"),
-                weapon=kill.weapon,
-                headshot=kill.headshot,
-                x=kill.victim_x or 0,
-                y=kill.victim_y or 0,
-            ))
+            replay.kills.append(
+                KillEvent(
+                    tick=kill.tick,
+                    round_num=round_num,
+                    attacker_steam_id=kill.attacker_steamid,
+                    attacker_name=self.data.player_names.get(kill.attacker_steamid, "Unknown"),
+                    victim_steam_id=kill.victim_steamid,
+                    victim_name=self.data.player_names.get(kill.victim_steamid, "Unknown"),
+                    weapon=kill.weapon,
+                    headshot=kill.headshot,
+                    x=kill.victim_x or 0,
+                    y=kill.victim_y or 0,
+                )
+            )
 
         # Group tick data by tick number
         ticks_by_number: dict[int, list] = defaultdict(list)
@@ -432,13 +440,17 @@ class ReplayGenerator:
             events = []
             for kill in round_kills:
                 if abs(kill.tick - tick) < self.sample_rate:
-                    events.append({
-                        "type": "kill",
-                        "attacker": self.data.player_names.get(kill.attacker_steamid, "Unknown"),
-                        "victim": self.data.player_names.get(kill.victim_steamid, "Unknown"),
-                        "weapon": kill.weapon,
-                        "headshot": kill.headshot,
-                    })
+                    events.append(
+                        {
+                            "type": "kill",
+                            "attacker": self.data.player_names.get(
+                                kill.attacker_steamid, "Unknown"
+                            ),
+                            "victim": self.data.player_names.get(kill.victim_steamid, "Unknown"),
+                            "weapon": kill.weapon,
+                            "headshot": kill.headshot,
+                        }
+                    )
 
             frame = ReplayFrame(
                 tick=tick,
@@ -462,6 +474,7 @@ class ReplayExporter:
     def to_json(replay: MatchReplay, pretty: bool = False) -> str:
         """Export replay to JSON string."""
         import json
+
         return json.dumps(
             replay.to_dict(),
             indent=2 if pretty else None,
@@ -472,16 +485,18 @@ class ReplayExporter:
     def to_file(replay: MatchReplay, path: Path, pretty: bool = False):
         """Export replay to JSON file."""
         import json
-        with open(path, 'w') as f:
+
+        with open(path, "w") as f:
             json.dump(replay.to_dict(), f, indent=2 if pretty else None)
         logger.info(f"Exported replay to {path}")
 
     @staticmethod
     def to_compressed(replay: MatchReplay, path: Path):
         """Export replay to compressed JSON file."""
-        import json
         import gzip
-        with gzip.open(path, 'wt') as f:
+        import json
+
+        with gzip.open(path, "wt") as f:
             json.dump(replay.to_dict(), f)
         logger.info(f"Exported compressed replay to {path}")
 
@@ -504,7 +519,7 @@ class POVTracker:
             replay: Match replay data
         """
         self.replay = replay
-        self.current_pov: Optional[int] = None  # Steam ID
+        self.current_pov: int | None = None  # Steam ID
 
     def set_pov(self, steam_id: int):
         """Set POV to follow a specific player."""
@@ -525,10 +540,8 @@ class POVTracker:
         pov_frames = []
         for frame in round_data.frames:
             # Find POV player
-            pov_player = None
             for p in frame.players:
                 if p.steam_id == self.current_pov:
-                    pov_player = p
                     break
 
             # Create frame with POV info
@@ -559,13 +572,15 @@ class POVTracker:
         moments = []
 
         for kill in round_data.kills:
-            moments.append({
-                "tick": kill.tick,
-                "time": (kill.tick - round_data.start_tick) / self.replay.tick_rate,
-                "type": "kill",
-                "description": f"{kill.attacker_name} killed {kill.victim_name}",
-                "headshot": kill.headshot,
-            })
+            moments.append(
+                {
+                    "tick": kill.tick,
+                    "time": (kill.tick - round_data.start_tick) / self.replay.tick_rate,
+                    "type": "kill",
+                    "description": f"{kill.attacker_name} killed {kill.victim_name}",
+                    "headshot": kill.headshot,
+                }
+            )
 
         # Sort by tick
         moments.sort(key=lambda m: m["tick"])
@@ -573,6 +588,7 @@ class POVTracker:
 
 
 # Convenience functions
+
 
 def generate_replay(demo_data, sample_rate: int = DEFAULT_TICK_SAMPLE_RATE) -> MatchReplay:
     """
@@ -589,7 +605,7 @@ def generate_replay(demo_data, sample_rate: int = DEFAULT_TICK_SAMPLE_RATE) -> M
     return generator.generate_full_replay()
 
 
-def generate_round_replay(demo_data, round_num: int) -> Optional[RoundReplay]:
+def generate_round_replay(demo_data, round_num: int) -> RoundReplay | None:
     """Generate replay for a single round."""
     generator = ReplayGenerator(demo_data)
     return generator.generate_round_replay(round_num)

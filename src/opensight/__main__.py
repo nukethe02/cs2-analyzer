@@ -11,6 +11,7 @@ def main():
     """Main entry point for the CLI."""
     try:
         from opensight.cli import app
+
         app()
     except ImportError as e:
         # Fallback if typer/rich not installed

@@ -5,23 +5,24 @@ Identifies recurring mistakes and behavioral patterns across multiple demos.
 Aggregates these patterns to highlight chronic issues that need attention.
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional, Any
+import hashlib
 import json
 import math
-import hashlib
-from pathlib import Path
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime
-
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
 # ============================================================================
 # Pattern Types and Definitions
 # ============================================================================
 
+
 class PatternCategory(Enum):
     """Categories of behavioral patterns."""
+
     POSITIONING = "positioning"
     TIMING = "timing"
     AIM = "aim"
@@ -34,6 +35,7 @@ class PatternCategory(Enum):
 
 class PatternSeverity(Enum):
     """Severity levels for identified patterns."""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -43,6 +45,7 @@ class PatternSeverity(Enum):
 
 class MistakeType(Enum):
     """Types of common mistakes to track."""
+
     # Positioning mistakes
     WIDE_PEEK = "wide_peek"
     EXPOSED_POSITION = "exposed_position"
@@ -89,13 +92,14 @@ class MistakeType(Enum):
 @dataclass
 class MistakeInstance:
     """Single instance of a detected mistake."""
+
     mistake_type: MistakeType
     demo_id: str
     round_num: int
     tick: int
     timestamp_ms: float
     map_name: str
-    position: Optional[tuple[float, float, float]] = None
+    position: tuple[float, float, float] | None = None
     context: dict[str, Any] = field(default_factory=dict)
     severity: PatternSeverity = PatternSeverity.MEDIUM
 
@@ -109,7 +113,7 @@ class MistakeInstance:
             "map_name": self.map_name,
             "position": self.position,
             "context": self.context,
-            "severity": self.severity.value
+            "severity": self.severity.value,
         }
 
     @classmethod
@@ -123,13 +127,14 @@ class MistakeInstance:
             map_name=data["map_name"],
             position=tuple(data["position"]) if data.get("position") else None,
             context=data.get("context", {}),
-            severity=PatternSeverity(data.get("severity", "medium"))
+            severity=PatternSeverity(data.get("severity", "medium")),
         )
 
 
 @dataclass
 class RecurringPattern:
     """A pattern identified across multiple demos."""
+
     pattern_id: str
     mistake_type: MistakeType
     category: PatternCategory
@@ -171,13 +176,14 @@ class RecurringPattern:
             "root_cause": self.root_cause,
             "improvement_suggestions": self.improvement_suggestions,
             "instances_count": len(self.instances),
-            "recent_instances": [i.to_dict() for i in self.instances[-5:]]
+            "recent_instances": [i.to_dict() for i in self.instances[-5:]],
         }
 
 
 # ============================================================================
 # Pattern Detection Engine
 # ============================================================================
+
 
 class PatternDetector:
     """
@@ -201,10 +207,9 @@ class PatternDetector:
             MistakeType.FORCE_BUY_BROKE_TEAM: self._detect_bad_force,
         }
 
-    def detect_mistakes(self, demo_data: dict[str, Any],
-                        player_stats: dict[str, Any],
-                        steamid: str,
-                        demo_id: str) -> list[MistakeInstance]:
+    def detect_mistakes(
+        self, demo_data: dict[str, Any], player_stats: dict[str, Any], steamid: str, demo_id: str
+    ) -> list[MistakeInstance]:
         """
         Detect all mistake instances from a single demo.
 
@@ -220,7 +225,7 @@ class PatternDetector:
         mistakes = []
         map_name = demo_data.get("map_name", "unknown")
 
-        for mistake_type, detector_func in self.detection_functions.items():
+        for _mistake_type, detector_func in self.detection_functions.items():
             try:
                 detected = detector_func(demo_data, player_stats, steamid, demo_id, map_name)
                 mistakes.extend(detected)
@@ -230,8 +235,14 @@ class PatternDetector:
 
         return mistakes
 
-    def _detect_wide_peek(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                          steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_wide_peek(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect wide peeks that resulted in death."""
         mistakes = []
 
@@ -249,29 +260,37 @@ class PatternDetector:
                 position = (
                     death.get("victim_x", 0),
                     death.get("victim_y", 0),
-                    death.get("victim_z", 0)
+                    death.get("victim_z", 0),
                 )
 
-                mistakes.append(MistakeInstance(
-                    mistake_type=MistakeType.WIDE_PEEK,
-                    demo_id=demo_id,
-                    round_num=round_num,
-                    tick=tick,
-                    timestamp_ms=tick * 15.625,
-                    map_name=map_name,
-                    position=position,
-                    context={
-                        "velocity": velocity,
-                        "weapon": death.get("weapon", "unknown"),
-                        "attacker": death.get("attacker_name", "unknown")
-                    },
-                    severity=PatternSeverity.MEDIUM
-                ))
+                mistakes.append(
+                    MistakeInstance(
+                        mistake_type=MistakeType.WIDE_PEEK,
+                        demo_id=demo_id,
+                        round_num=round_num,
+                        tick=tick,
+                        timestamp_ms=tick * 15.625,
+                        map_name=map_name,
+                        position=position,
+                        context={
+                            "velocity": velocity,
+                            "weapon": death.get("weapon", "unknown"),
+                            "attacker": death.get("attacker_name", "unknown"),
+                        },
+                        severity=PatternSeverity.MEDIUM,
+                    )
+                )
 
         return mistakes
 
-    def _detect_same_angle(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                           steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_same_angle(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect holding the same angle repeatedly and dying."""
         mistakes = []
 
@@ -285,43 +304,53 @@ class PatternDetector:
             position = (
                 death.get("victim_x", 0),
                 death.get("victim_y", 0),
-                death.get("victim_z", 0)
+                death.get("victim_z", 0),
             )
-            death_positions.append({
-                "position": position,
-                "tick": death.get("tick", 0),
-                "round_num": death.get("round_num", 0)
-            })
+            death_positions.append(
+                {
+                    "position": position,
+                    "tick": death.get("tick", 0),
+                    "round_num": death.get("round_num", 0),
+                }
+            )
 
         # Check for deaths at similar positions
         for i, death1 in enumerate(death_positions):
             similar_count = 0
-            for death2 in death_positions[i+1:]:
+            for death2 in death_positions[i + 1 :]:
                 dist = self._position_distance(death1["position"], death2["position"])
                 if dist < 200:  # Within 200 units
                     similar_count += 1
 
             if similar_count >= 2:  # Died at same spot 3+ times
-                mistakes.append(MistakeInstance(
-                    mistake_type=MistakeType.SAME_ANGLE_HOLD,
-                    demo_id=demo_id,
-                    round_num=death1["round_num"],
-                    tick=death1["tick"],
-                    timestamp_ms=death1["tick"] * 15.625,
-                    map_name=map_name,
-                    position=death1["position"],
-                    context={
-                        "deaths_at_position": similar_count + 1,
-                        "note": "Repeating same defensive position"
-                    },
-                    severity=PatternSeverity.HIGH
-                ))
+                mistakes.append(
+                    MistakeInstance(
+                        mistake_type=MistakeType.SAME_ANGLE_HOLD,
+                        demo_id=demo_id,
+                        round_num=death1["round_num"],
+                        tick=death1["tick"],
+                        timestamp_ms=death1["tick"] * 15.625,
+                        map_name=map_name,
+                        position=death1["position"],
+                        context={
+                            "deaths_at_position": similar_count + 1,
+                            "note": "Repeating same defensive position",
+                        },
+                        severity=PatternSeverity.HIGH,
+                    )
+                )
                 break  # Only report once per position cluster
 
         return mistakes
 
-    def _detect_dry_peek(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                         steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_dry_peek(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect peeking without utility support."""
         mistakes = []
 
@@ -354,27 +383,35 @@ class PatternDetector:
                 position = (
                     death.get("victim_x", 0),
                     death.get("victim_y", 0),
-                    death.get("victim_z", 0)
+                    death.get("victim_z", 0),
                 )
-                mistakes.append(MistakeInstance(
-                    mistake_type=MistakeType.DRY_PEEK,
-                    demo_id=demo_id,
-                    round_num=round_num,
-                    tick=death_tick,
-                    timestamp_ms=death_tick * 15.625,
-                    map_name=map_name,
-                    position=position,
-                    context={
-                        "note": "Died without using utility before peek",
-                        "weapon": death.get("weapon", "unknown")
-                    },
-                    severity=PatternSeverity.MEDIUM
-                ))
+                mistakes.append(
+                    MistakeInstance(
+                        mistake_type=MistakeType.DRY_PEEK,
+                        demo_id=demo_id,
+                        round_num=round_num,
+                        tick=death_tick,
+                        timestamp_ms=death_tick * 15.625,
+                        map_name=map_name,
+                        position=position,
+                        context={
+                            "note": "Died without using utility before peek",
+                            "weapon": death.get("weapon", "unknown"),
+                        },
+                        severity=PatternSeverity.MEDIUM,
+                    )
+                )
 
         return mistakes
 
-    def _detect_solo_peek(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                          steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_solo_peek(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect peeking alone without teammate support."""
         mistakes = []
 
@@ -390,7 +427,7 @@ class PatternDetector:
             victim_pos = (
                 death.get("victim_x", 0),
                 death.get("victim_y", 0),
-                death.get("victim_z", 0)
+                death.get("victim_z", 0),
             )
 
             # Check teammate positions at time of death
@@ -407,25 +444,30 @@ class PatternDetector:
                         teammates_nearby += 1
 
             if teammates_nearby == 0:
-                mistakes.append(MistakeInstance(
-                    mistake_type=MistakeType.PEEKING_ALONE,
-                    demo_id=demo_id,
-                    round_num=round_num,
-                    tick=death_tick,
-                    timestamp_ms=death_tick * 15.625,
-                    map_name=map_name,
-                    position=victim_pos,
-                    context={
-                        "note": "Died while isolated from team",
-                        "teammates_nearby": 0
-                    },
-                    severity=PatternSeverity.MEDIUM
-                ))
+                mistakes.append(
+                    MistakeInstance(
+                        mistake_type=MistakeType.PEEKING_ALONE,
+                        demo_id=demo_id,
+                        round_num=round_num,
+                        tick=death_tick,
+                        timestamp_ms=death_tick * 15.625,
+                        map_name=map_name,
+                        position=victim_pos,
+                        context={"note": "Died while isolated from team", "teammates_nearby": 0},
+                        severity=PatternSeverity.MEDIUM,
+                    )
+                )
 
         return mistakes
 
-    def _detect_late_trade(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                           steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_late_trade(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect late or missed trade opportunities."""
         mistakes = []
 
@@ -452,35 +494,42 @@ class PatternDetector:
 
                 # Check if player killed that enemy within 5 seconds
                 traded = False
-                trade_time = None
                 for k in kills_by_round.get(round_num, []):
                     if k.get("victim_steamid") == killer_steamid:
                         kill_tick = k.get("tick", 0)
                         if death_tick < kill_tick < death_tick + 320:
                             traded = True
-                            trade_time = (kill_tick - death_tick) * 15.625
+                            (kill_tick - death_tick) * 15.625
                             break
 
                 if not traded:
-                    mistakes.append(MistakeInstance(
-                        mistake_type=MistakeType.LATE_TRADE,
-                        demo_id=demo_id,
-                        round_num=round_num,
-                        tick=death_tick,
-                        timestamp_ms=death_tick * 15.625,
-                        map_name=map_name,
-                        context={
-                            "teammate_killed": td.get("victim_name", "teammate"),
-                            "enemy": td.get("attacker_name", "enemy"),
-                            "note": "Failed to trade teammate death"
-                        },
-                        severity=PatternSeverity.HIGH
-                    ))
+                    mistakes.append(
+                        MistakeInstance(
+                            mistake_type=MistakeType.LATE_TRADE,
+                            demo_id=demo_id,
+                            round_num=round_num,
+                            tick=death_tick,
+                            timestamp_ms=death_tick * 15.625,
+                            map_name=map_name,
+                            context={
+                                "teammate_killed": td.get("victim_name", "teammate"),
+                                "enemy": td.get("attacker_name", "enemy"),
+                                "note": "Failed to trade teammate death",
+                            },
+                            severity=PatternSeverity.HIGH,
+                        )
+                    )
 
         return mistakes
 
-    def _detect_team_flash(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                           steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_team_flash(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect flashing teammates."""
         mistakes = []
 
@@ -492,24 +541,32 @@ class PatternDetector:
 
             if blind.get("is_teammate", False):
                 tick = blind.get("tick", 0)
-                mistakes.append(MistakeInstance(
-                    mistake_type=MistakeType.TEAM_FLASH,
-                    demo_id=demo_id,
-                    round_num=blind.get("round_num", 0),
-                    tick=tick,
-                    timestamp_ms=tick * 15.625,
-                    map_name=map_name,
-                    context={
-                        "victim": blind.get("victim_name", "teammate"),
-                        "blind_duration": blind.get("blind_duration", 0)
-                    },
-                    severity=PatternSeverity.MEDIUM
-                ))
+                mistakes.append(
+                    MistakeInstance(
+                        mistake_type=MistakeType.TEAM_FLASH,
+                        demo_id=demo_id,
+                        round_num=blind.get("round_num", 0),
+                        tick=tick,
+                        timestamp_ms=tick * 15.625,
+                        map_name=map_name,
+                        context={
+                            "victim": blind.get("victim_name", "teammate"),
+                            "blind_duration": blind.get("blind_duration", 0),
+                        },
+                        severity=PatternSeverity.MEDIUM,
+                    )
+                )
 
         return mistakes
 
-    def _detect_wasted_flash(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                             steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_wasted_flash(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect flashes that didn't blind any enemies."""
         mistakes = []
 
@@ -517,8 +574,11 @@ class PatternDetector:
         blinds = demo_data.get("blinds", [])
 
         # Get all flash throws
-        flashes = [g for g in grenades if g.get("grenade_type") == "flashbang"
-                   and g.get("player_steamid") == steamid]
+        flashes = [
+            g
+            for g in grenades
+            if g.get("grenade_type") == "flashbang" and g.get("player_steamid") == steamid
+        ]
 
         # Get blind events caused by player
         flash_blinds = defaultdict(list)
@@ -537,29 +597,31 @@ class PatternDetector:
                     enemies_blinded += 1
 
             if enemies_blinded == 0:
-                position = (
-                    flash.get("x", 0),
-                    flash.get("y", 0),
-                    flash.get("z", 0)
+                position = (flash.get("x", 0), flash.get("y", 0), flash.get("z", 0))
+                mistakes.append(
+                    MistakeInstance(
+                        mistake_type=MistakeType.WASTED_FLASH,
+                        demo_id=demo_id,
+                        round_num=round_num,
+                        tick=tick,
+                        timestamp_ms=tick * 15.625,
+                        map_name=map_name,
+                        position=position,
+                        context={"note": "Flashbang blinded no enemies"},
+                        severity=PatternSeverity.LOW,
+                    )
                 )
-                mistakes.append(MistakeInstance(
-                    mistake_type=MistakeType.WASTED_FLASH,
-                    demo_id=demo_id,
-                    round_num=round_num,
-                    tick=tick,
-                    timestamp_ms=tick * 15.625,
-                    map_name=map_name,
-                    position=position,
-                    context={
-                        "note": "Flashbang blinded no enemies"
-                    },
-                    severity=PatternSeverity.LOW
-                ))
 
         return mistakes
 
-    def _detect_poor_spray(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                           steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_poor_spray(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect poor spray control from damage patterns."""
         mistakes = []
 
@@ -569,8 +631,10 @@ class PatternDetector:
         engagements = []
         current_engagement = []
 
-        sorted_damages = sorted([d for d in damages if d.get("attacker_steamid") == steamid],
-                                key=lambda x: x.get("tick", 0))
+        sorted_damages = sorted(
+            [d for d in damages if d.get("attacker_steamid") == steamid],
+            key=lambda x: x.get("tick", 0),
+        )
 
         for dmg in sorted_damages:
             if not current_engagement:
@@ -594,49 +658,65 @@ class PatternDetector:
             # Poor spray if many shots but low average damage
             if shots >= 5 and avg_damage < 15:
                 tick = engagement[0].get("tick", 0)
-                mistakes.append(MistakeInstance(
-                    mistake_type=MistakeType.POOR_SPRAY_CONTROL,
-                    demo_id=demo_id,
-                    round_num=engagement[0].get("round_num", 0),
-                    tick=tick,
-                    timestamp_ms=tick * 15.625,
-                    map_name=map_name,
-                    context={
-                        "shots_fired": shots,
-                        "total_damage": total_damage,
-                        "avg_damage_per_shot": round(avg_damage, 1),
-                        "target": engagement[0].get("victim_name", "enemy")
-                    },
-                    severity=PatternSeverity.MEDIUM
-                ))
+                mistakes.append(
+                    MistakeInstance(
+                        mistake_type=MistakeType.POOR_SPRAY_CONTROL,
+                        demo_id=demo_id,
+                        round_num=engagement[0].get("round_num", 0),
+                        tick=tick,
+                        timestamp_ms=tick * 15.625,
+                        map_name=map_name,
+                        context={
+                            "shots_fired": shots,
+                            "total_damage": total_damage,
+                            "avg_damage_per_shot": round(avg_damage, 1),
+                            "target": engagement[0].get("victim_name", "enemy"),
+                        },
+                        severity=PatternSeverity.MEDIUM,
+                    )
+                )
 
         return mistakes
 
-    def _detect_crosshair_error(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                                steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_crosshair_error(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect consistently poor crosshair placement."""
         mistakes = []
 
         cp_error = player_stats.get("cp_median_error", 0)
         if cp_error > 20:  # More than 20 degrees average error
-            mistakes.append(MistakeInstance(
-                mistake_type=MistakeType.WRONG_CROSSHAIR_HEIGHT,
-                demo_id=demo_id,
-                round_num=0,
-                tick=0,
-                timestamp_ms=0,
-                map_name=map_name,
-                context={
-                    "average_error_deg": cp_error,
-                    "note": "Crosshair placement needs significant improvement"
-                },
-                severity=PatternSeverity.HIGH
-            ))
+            mistakes.append(
+                MistakeInstance(
+                    mistake_type=MistakeType.WRONG_CROSSHAIR_HEIGHT,
+                    demo_id=demo_id,
+                    round_num=0,
+                    tick=0,
+                    timestamp_ms=0,
+                    map_name=map_name,
+                    context={
+                        "average_error_deg": cp_error,
+                        "note": "Crosshair placement needs significant improvement",
+                    },
+                    severity=PatternSeverity.HIGH,
+                )
+            )
 
         return mistakes
 
-    def _detect_overaggression(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                               steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_overaggression(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect unnecessarily aggressive plays."""
         mistakes = []
 
@@ -646,26 +726,34 @@ class PatternDetector:
         survival_rate = player_stats.get("survival_rate", 100)
 
         if deaths / rounds_played > 0.8 and kast < 60 and survival_rate < 30:
-            mistakes.append(MistakeInstance(
-                mistake_type=MistakeType.UNNECESSARY_AGGRESSION,
-                demo_id=demo_id,
-                round_num=0,
-                tick=0,
-                timestamp_ms=0,
-                map_name=map_name,
-                context={
-                    "deaths_per_round": round(deaths / rounds_played, 2),
-                    "kast": kast,
-                    "survival_rate": survival_rate,
-                    "note": "Dying too often without impact"
-                },
-                severity=PatternSeverity.HIGH
-            ))
+            mistakes.append(
+                MistakeInstance(
+                    mistake_type=MistakeType.UNNECESSARY_AGGRESSION,
+                    demo_id=demo_id,
+                    round_num=0,
+                    tick=0,
+                    timestamp_ms=0,
+                    map_name=map_name,
+                    context={
+                        "deaths_per_round": round(deaths / rounds_played, 2),
+                        "kast": kast,
+                        "survival_rate": survival_rate,
+                        "note": "Dying too often without impact",
+                    },
+                    severity=PatternSeverity.HIGH,
+                )
+            )
 
         return mistakes
 
-    def _detect_passive_play(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                             steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_passive_play(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect overly passive play style."""
         mistakes = []
 
@@ -677,26 +765,34 @@ class PatternDetector:
         kpr = kills / rounds_played if rounds_played > 0 else 0
 
         if kpr < 0.4 and adr < 50 and opening_attempts < 2:
-            mistakes.append(MistakeInstance(
-                mistake_type=MistakeType.TOO_PASSIVE,
-                demo_id=demo_id,
-                round_num=0,
-                tick=0,
-                timestamp_ms=0,
-                map_name=map_name,
-                context={
-                    "kpr": round(kpr, 2),
-                    "adr": adr,
-                    "opening_attempts": opening_attempts,
-                    "note": "Not taking enough fights or impact plays"
-                },
-                severity=PatternSeverity.MEDIUM
-            ))
+            mistakes.append(
+                MistakeInstance(
+                    mistake_type=MistakeType.TOO_PASSIVE,
+                    demo_id=demo_id,
+                    round_num=0,
+                    tick=0,
+                    timestamp_ms=0,
+                    map_name=map_name,
+                    context={
+                        "kpr": round(kpr, 2),
+                        "adr": adr,
+                        "opening_attempts": opening_attempts,
+                        "note": "Not taking enough fights or impact plays",
+                    },
+                    severity=PatternSeverity.MEDIUM,
+                )
+            )
 
         return mistakes
 
-    def _detect_no_utility(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                           steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_no_utility(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect rounds where no utility was purchased/used."""
         mistakes = []
 
@@ -704,45 +800,52 @@ class PatternDetector:
         rounds_played = player_stats.get("rounds_played", 1)
 
         total_utility = (
-            utility_stats.get("flashbangs_thrown", 0) +
-            utility_stats.get("smokes_thrown", 0) +
-            utility_stats.get("he_thrown", 0) +
-            utility_stats.get("molotovs_thrown", 0)
+            utility_stats.get("flashbangs_thrown", 0)
+            + utility_stats.get("smokes_thrown", 0)
+            + utility_stats.get("he_thrown", 0)
+            + utility_stats.get("molotovs_thrown", 0)
         )
 
         utility_per_round = total_utility / rounds_played if rounds_played > 0 else 0
 
         if utility_per_round < 0.5:
-            mistakes.append(MistakeInstance(
-                mistake_type=MistakeType.NO_UTILITY_BUY,
-                demo_id=demo_id,
-                round_num=0,
-                tick=0,
-                timestamp_ms=0,
-                map_name=map_name,
-                context={
-                    "utility_per_round": round(utility_per_round, 2),
-                    "total_utility": total_utility,
-                    "note": "Severely underusing utility"
-                },
-                severity=PatternSeverity.HIGH
-            ))
+            mistakes.append(
+                MistakeInstance(
+                    mistake_type=MistakeType.NO_UTILITY_BUY,
+                    demo_id=demo_id,
+                    round_num=0,
+                    tick=0,
+                    timestamp_ms=0,
+                    map_name=map_name,
+                    context={
+                        "utility_per_round": round(utility_per_round, 2),
+                        "total_utility": total_utility,
+                        "note": "Severely underusing utility",
+                    },
+                    severity=PatternSeverity.HIGH,
+                )
+            )
 
         return mistakes
 
-    def _detect_bad_force(self, demo_data: dict[str, Any], player_stats: dict[str, Any],
-                          steamid: str, demo_id: str, map_name: str) -> list[MistakeInstance]:
+    def _detect_bad_force(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        demo_id: str,
+        map_name: str,
+    ) -> list[MistakeInstance]:
         """Detect force buys that hurt team economy."""
         # This would require economy tracking data
         return []
 
-    def _position_distance(self, pos1: tuple[float, float, float],
-                           pos2: tuple[float, float, float]) -> float:
+    def _position_distance(
+        self, pos1: tuple[float, float, float], pos2: tuple[float, float, float]
+    ) -> float:
         """Calculate 3D distance between positions."""
         return math.sqrt(
-            (pos1[0] - pos2[0]) ** 2 +
-            (pos1[1] - pos2[1]) ** 2 +
-            (pos1[2] - pos2[2]) ** 2
+            (pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2 + (pos1[2] - pos2[2]) ** 2
         )
 
 
@@ -750,20 +853,21 @@ class PatternDetector:
 # Pattern Aggregation and Analysis
 # ============================================================================
 
+
 class PatternAggregator:
     """
     Aggregates mistake instances across multiple demos to identify patterns.
     """
 
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Path | None = None):
         self.data_dir = data_dir or Path.home() / ".opensight" / "patterns"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         self.detector = PatternDetector()
 
-    def add_demo_analysis(self, steamid: str, demo_id: str,
-                          demo_data: dict[str, Any],
-                          player_stats: dict[str, Any]) -> list[MistakeInstance]:
+    def add_demo_analysis(
+        self, steamid: str, demo_id: str, demo_data: dict[str, Any], player_stats: dict[str, Any]
+    ) -> list[MistakeInstance]:
         """
         Analyze a demo and add detected mistakes to the pattern database.
 
@@ -800,8 +904,9 @@ class PatternAggregator:
 
         return mistakes
 
-    def get_recurring_patterns(self, steamid: str,
-                               min_occurrences: int = 3) -> list[RecurringPattern]:
+    def get_recurring_patterns(
+        self, steamid: str, min_occurrences: int = 3
+    ) -> list[RecurringPattern]:
         """
         Get identified recurring patterns for a player.
 
@@ -825,8 +930,8 @@ class PatternAggregator:
             mistake_type = MistakeType(mistake_type_str)
 
             # Calculate statistics
-            maps = list(set(i.map_name for i in instances))
-            demos = list(set(i.demo_id for i in instances))
+            maps = list({i.map_name for i in instances})
+            demos = list({i.demo_id for i in instances})
             positions = [i.position for i in instances if i.position]
 
             # Find common positions
@@ -855,18 +960,21 @@ class PatternAggregator:
                 instances=instances,
                 description=description,
                 root_cause=root_cause,
-                improvement_suggestions=suggestions
+                improvement_suggestions=suggestions,
             )
 
             recurring.append(pattern)
 
         # Sort by frequency and severity
-        recurring.sort(key=lambda p: (
-            {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}.get(
-                self._get_pattern_severity(p).value, 0
+        recurring.sort(
+            key=lambda p: (
+                {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}.get(
+                    self._get_pattern_severity(p).value, 0
+                ),
+                p.frequency,
             ),
-            p.frequency
-        ), reverse=True)
+            reverse=True,
+        )
 
         return recurring
 
@@ -914,13 +1022,13 @@ class PatternAggregator:
                     "type": p.mistake_type.value,
                     "frequency": p.frequency,
                     "trend": p.trend,
-                    "description": p.description
+                    "description": p.description,
                 }
                 for p in top_issues
             ],
             "improving_areas": [p.mistake_type.value for p in improving],
             "worsening_areas": [p.mistake_type.value for p in worsening],
-            "recommendations": self._generate_recommendations(patterns)
+            "recommendations": self._generate_recommendations(patterns),
         }
 
     def clear_history(self, steamid: str) -> bool:
@@ -930,34 +1038,31 @@ class PatternAggregator:
             if pattern_file.exists():
                 pattern_file.unlink()
             return True
-        except IOError:
+        except OSError:
             return False
 
     def _load_pattern_data(self, filepath: Path) -> dict[str, Any]:
         """Load pattern data from file."""
         if filepath.exists():
             try:
-                with open(filepath, "r") as f:
+                with open(filepath) as f:
                     return json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
 
-        return {
-            "mistakes": {},
-            "demos_analyzed": [],
-            "analysis_dates": []
-        }
+        return {"mistakes": {}, "demos_analyzed": [], "analysis_dates": []}
 
     def _save_pattern_data(self, filepath: Path, data: dict[str, Any]) -> None:
         """Save pattern data to file."""
         try:
             with open(filepath, "w") as f:
                 json.dump(data, f, indent=2)
-        except IOError:
+        except OSError:
             pass
 
-    def _find_common_positions(self, positions: list[tuple[float, float, float]],
-                               threshold: float = 200) -> list[tuple[float, float, float]]:
+    def _find_common_positions(
+        self, positions: list[tuple[float, float, float]], threshold: float = 200
+    ) -> list[tuple[float, float, float]]:
         """Find clusters of common positions."""
         if not positions:
             return []
@@ -977,9 +1082,7 @@ class PatternAggregator:
                     continue
 
                 dist = math.sqrt(
-                    (pos1[0] - pos2[0]) ** 2 +
-                    (pos1[1] - pos2[1]) ** 2 +
-                    (pos1[2] - pos2[2]) ** 2
+                    (pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2 + (pos1[2] - pos2[2]) ** 2
                 )
                 if dist < threshold:
                     cluster.append(pos2)
@@ -990,23 +1093,21 @@ class PatternAggregator:
                 avg_pos = (
                     sum(p[0] for p in cluster) / len(cluster),
                     sum(p[1] for p in cluster) / len(cluster),
-                    sum(p[2] for p in cluster) / len(cluster)
+                    sum(p[2] for p in cluster) / len(cluster),
                 )
                 clusters.append(avg_pos)
 
-        return sorted(clusters, key=lambda x: len([p for p in positions
-                                                   if self._dist(p, x) < threshold]), reverse=True)
+        return sorted(
+            clusters,
+            key=lambda x: len([p for p in positions if self._dist(p, x) < threshold]),
+            reverse=True,
+        )
 
     def _dist(self, p1: tuple[float, float, float], p2: tuple[float, float, float]) -> float:
         """Calculate distance between positions."""
-        return math.sqrt(
-            (p1[0] - p2[0]) ** 2 +
-            (p1[1] - p2[1]) ** 2 +
-            (p1[2] - p2[2]) ** 2
-        )
+        return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2 + (p1[2] - p2[2]) ** 2)
 
-    def _calculate_trend(self, instances: list[MistakeInstance],
-                         dates: list[str]) -> str:
+    def _calculate_trend(self, instances: list[MistakeInstance], dates: list[str]) -> str:
         """Calculate if the pattern is improving, worsening, or stable."""
         if len(dates) < 3:
             return "stable"
@@ -1042,27 +1143,22 @@ class PatternAggregator:
             MistakeType.SAME_ANGLE_HOLD: PatternCategory.POSITIONING,
             MistakeType.OVER_ROTATION: PatternCategory.POSITIONING,
             MistakeType.UNDER_ROTATION: PatternCategory.POSITIONING,
-
             MistakeType.DRY_PEEK: PatternCategory.TIMING,
             MistakeType.PEEKING_ALONE: PatternCategory.TIMING,
             MistakeType.LATE_TRADE: PatternCategory.TIMING,
             MistakeType.LATE_ROTATION: PatternCategory.TIMING,
-
             MistakeType.POOR_SPRAY_CONTROL: PatternCategory.AIM,
             MistakeType.OVERAIMING: PatternCategory.AIM,
             MistakeType.UNDERAIMING: PatternCategory.AIM,
             MistakeType.WRONG_CROSSHAIR_HEIGHT: PatternCategory.AIM,
-
             MistakeType.WASTED_FLASH: PatternCategory.UTILITY,
             MistakeType.TEAM_FLASH: PatternCategory.UTILITY,
             MistakeType.EARLY_SMOKE: PatternCategory.UTILITY,
             MistakeType.LATE_SMOKE: PatternCategory.UTILITY,
             MistakeType.NO_UTILITY_BUY: PatternCategory.UTILITY,
-
             MistakeType.FORCE_BUY_BROKE_TEAM: PatternCategory.ECONOMY,
             MistakeType.NO_SAVE: PatternCategory.ECONOMY,
             MistakeType.OVERBUYING: PatternCategory.ECONOMY,
-
             MistakeType.UNNECESSARY_AGGRESSION: PatternCategory.DECISION_MAKING,
             MistakeType.TOO_PASSIVE: PatternCategory.DECISION_MAKING,
             MistakeType.WRONG_BOMBSITE: PatternCategory.DECISION_MAKING,
@@ -1075,69 +1171,77 @@ class PatternAggregator:
             MistakeType.WIDE_PEEK: (
                 "You consistently swing wide when peeking corners",
                 "Likely over-extending or not using cover effectively",
-                ["Practice shoulder peeking", "Use counter-strafe", "Pre-aim common angles"]
+                ["Practice shoulder peeking", "Use counter-strafe", "Pre-aim common angles"],
             ),
             MistakeType.SAME_ANGLE_HOLD: (
                 "You're holding the same position repeatedly and dying",
                 "Predictable positioning makes you easy to prefire",
-                ["Change positions after getting kills", "Use off-angles", "Rotate defensively"]
+                ["Change positions after getting kills", "Use off-angles", "Rotate defensively"],
             ),
             MistakeType.DRY_PEEK: (
                 "You often peek without using utility first",
                 "Not creating advantages before taking fights",
-                ["Flash or smoke before peeking", "Have teammate flash for you", "Buy utility every round"]
+                [
+                    "Flash or smoke before peeking",
+                    "Have teammate flash for you",
+                    "Buy utility every round",
+                ],
             ),
             MistakeType.PEEKING_ALONE: (
                 "You take fights without teammate support nearby",
                 "Isolating yourself makes trades impossible",
-                ["Stay closer to teammates", "Wait for support before peeking", "Use buddy system"]
+                ["Stay closer to teammates", "Wait for support before peeking", "Use buddy system"],
             ),
             MistakeType.LATE_TRADE: (
                 "You're not trading teammates quickly enough",
                 "Hesitation or poor positioning for trades",
-                ["Stay closer to entry player", "Be ready to swing on death", "Communicate trades"]
+                ["Stay closer to entry player", "Be ready to swing on death", "Communicate trades"],
             ),
             MistakeType.TEAM_FLASH: (
                 "You're flashing teammates too often",
                 "Poor flash timing or trajectory",
-                ["Communicate flash timing", "Use popflashes", "Practice flash lineups"]
+                ["Communicate flash timing", "Use popflashes", "Practice flash lineups"],
             ),
             MistakeType.WASTED_FLASH: (
                 "Many of your flashes don't blind enemies",
                 "Incorrect timing or positioning of flashbangs",
-                ["Learn popflash techniques", "Flash for teammates", "Time flashes with pushes"]
+                ["Learn popflash techniques", "Flash for teammates", "Time flashes with pushes"],
             ),
             MistakeType.POOR_SPRAY_CONTROL: (
                 "Your spray control needs improvement",
                 "Not compensating for recoil patterns",
-                ["Practice spray patterns", "Burst fire at range", "Use workshop maps"]
+                ["Practice spray patterns", "Burst fire at range", "Use workshop maps"],
             ),
             MistakeType.WRONG_CROSSHAIR_HEIGHT: (
                 "Your crosshair placement is consistently off",
                 "Not keeping crosshair at head level",
-                ["Practice head-level pre-aims", "Use prefire maps", "Watch pro demos"]
+                ["Practice head-level pre-aims", "Use prefire maps", "Watch pro demos"],
             ),
             MistakeType.UNNECESSARY_AGGRESSION: (
                 "You're dying too often without impact",
                 "Taking unnecessary fights or bad positioning",
-                ["Play for trades", "Value your life more", "Focus on survival in KAST"]
+                ["Play for trades", "Value your life more", "Focus on survival in KAST"],
             ),
             MistakeType.TOO_PASSIVE: (
                 "You're not taking enough impactful fights",
                 "Playing too safely or baiting teammates",
-                ["Look for opening opportunities", "Support entry players", "Be first to trade"]
+                ["Look for opening opportunities", "Support entry players", "Be first to trade"],
             ),
             MistakeType.NO_UTILITY_BUY: (
                 "You're severely underusing grenades",
                 "Not buying or saving utility",
-                ["Buy smokes/flashes every full buy", "Learn basic lineups", "Use utility before fights"]
+                [
+                    "Buy smokes/flashes every full buy",
+                    "Learn basic lineups",
+                    "Use utility before fights",
+                ],
             ),
         }
 
         default = (
             f"Recurring issue: {mistake_type.value}",
             "This mistake is occurring frequently",
-            ["Review demo footage", "Practice specific scenarios", "Focus on fundamentals"]
+            ["Review demo footage", "Practice specific scenarios", "Focus on fundamentals"],
         )
 
         return info.get(mistake_type, default)
@@ -1218,7 +1322,9 @@ class PatternAggregator:
         # Trend-based recommendations
         worsening = [p for p in patterns if p.trend == "worsening"]
         if worsening:
-            recommendations.append(f"Urgent: {worsening[0].mistake_type.value.replace('_', ' ')} is getting worse")
+            recommendations.append(
+                f"Urgent: {worsening[0].mistake_type.value.replace('_', ' ')} is getting worse"
+            )
 
         return recommendations[:5]
 
@@ -1227,7 +1333,7 @@ class PatternAggregator:
 # Convenience Functions
 # ============================================================================
 
-_default_aggregator: Optional[PatternAggregator] = None
+_default_aggregator: PatternAggregator | None = None
 
 
 def get_aggregator() -> PatternAggregator:
@@ -1238,9 +1344,9 @@ def get_aggregator() -> PatternAggregator:
     return _default_aggregator
 
 
-def analyze_demo_patterns(steamid: str, demo_id: str,
-                          demo_data: dict[str, Any],
-                          player_stats: dict[str, Any]) -> list[dict[str, Any]]:
+def analyze_demo_patterns(
+    steamid: str, demo_id: str, demo_data: dict[str, Any], player_stats: dict[str, Any]
+) -> list[dict[str, Any]]:
     """
     Analyze a demo for patterns and return detected mistakes.
 

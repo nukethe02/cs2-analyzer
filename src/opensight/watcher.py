@@ -21,11 +21,11 @@ import platform
 import queue
 import threading
 import time
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
 
-from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
+from watchdog.events import FileCreatedEvent, FileModifiedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 logger = logging.getLogger(__name__)
@@ -50,13 +50,19 @@ def get_default_replays_folder() -> Path:
     if system == "Windows":
         # Default Steam installation path on Windows
         steam_path = Path(os.environ.get("PROGRAMFILES(X86)", "C:/Program Files (x86)"))
-        replays_path = steam_path / "Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"
+        replays_path = (
+            steam_path / "Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"
+        )
 
         # Also check common alternative locations
         alternatives = [
-            Path("C:/Program Files/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"),
+            Path(
+                "C:/Program Files/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"
+            ),
             Path("D:/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"),
-            Path("D:/SteamLibrary/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"),
+            Path(
+                "D:/SteamLibrary/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"
+            ),
         ]
 
         for alt in [replays_path] + alternatives:
@@ -67,14 +73,19 @@ def get_default_replays_folder() -> Path:
 
     elif system == "Darwin":  # macOS
         home = Path.home()
-        return home / "Library/Application Support/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"
+        return (
+            home
+            / "Library/Application Support/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"
+        )
 
     elif system == "Linux":
         home = Path.home()
         # Check common Steam locations on Linux
         candidates = [
-            home / ".steam/steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays",
-            home / ".local/share/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays",
+            home
+            / ".steam/steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays",
+            home
+            / ".local/share/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays",
         ]
 
         for candidate in candidates:
@@ -104,6 +115,7 @@ class DemoFileEvent:
 @dataclass
 class DemoCacheEntry:
     """Cache entry for an analyzed demo."""
+
     file_path: str
     file_size: int
     mtime: float
@@ -118,7 +130,7 @@ class DemoCache:
     Stores file path, size, and modification time to detect changes.
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         """
         Initialize the demo cache.
 
@@ -139,7 +151,7 @@ class DemoCache:
             return
 
         try:
-            with open(self.cache_file, "r") as f:
+            with open(self.cache_file) as f:
                 data = json.load(f)
 
             # Check cache version
@@ -180,7 +192,7 @@ class DemoCache:
                     "file_hash": entry.file_hash,
                 }
                 for path, entry in self._cache.items()
-            }
+            },
         }
 
         try:
@@ -288,7 +300,7 @@ class DemoFileHandler(FileSystemEventHandler):
         event_queue: queue.Queue,
         min_file_size: int = 1024 * 1024,  # 1MB minimum
         debounce_seconds: float = 2.0,
-        demo_cache: Optional[DemoCache] = None,
+        demo_cache: DemoCache | None = None,
     ):
         """
         Initialize the handler.
@@ -304,7 +316,9 @@ class DemoFileHandler(FileSystemEventHandler):
         self.min_file_size = min_file_size
         self.debounce_seconds = debounce_seconds
         self.demo_cache = demo_cache
-        self._pending_files: dict[str, tuple[float, int]] = {}  # path -> (last_event_time, event_count)
+        self._pending_files: dict[
+            str, tuple[float, int]
+        ] = {}  # path -> (last_event_time, event_count)
         self._lock = threading.Lock()
 
     def _is_demo_file(self, path: str) -> bool:
@@ -412,11 +426,7 @@ class DemoFileHandler(FileSystemEventHandler):
                 return
 
             if self._is_file_ready(path):
-                event = DemoFileEvent(
-                    file_path=path,
-                    event_type=event_type,
-                    timestamp=time.time()
-                )
+                event = DemoFileEvent(file_path=path, event_type=event_type, timestamp=time.time())
                 self.event_queue.put(event)
                 logger.info(f"Demo ready (coalesced {event_count} events): {path.name}")
 
@@ -443,7 +453,7 @@ class ReplayWatcher:
 
     def __init__(
         self,
-        watch_folder: Optional[Path] = None,
+        watch_folder: Path | None = None,
         recursive: bool = False,
         use_cache: bool = True,
         debounce_seconds: float = 2.0,
@@ -465,16 +475,16 @@ class ReplayWatcher:
         self.debounce_seconds = debounce_seconds
 
         # Initialize cache if enabled
-        self._cache: Optional[DemoCache] = DemoCache() if use_cache else None
+        self._cache: DemoCache | None = DemoCache() if use_cache else None
 
         self._event_queue: queue.Queue[DemoFileEvent] = queue.Queue()
-        self._observer: Optional[Observer] = None
+        self._observer: Observer | None = None
         self._callbacks: list[Callable[[DemoFileEvent], None]] = []
         self._running = False
-        self._processor_thread: Optional[threading.Thread] = None
+        self._processor_thread: threading.Thread | None = None
 
     @property
-    def cache(self) -> Optional[DemoCache]:
+    def cache(self) -> DemoCache | None:
         """Get the demo cache instance."""
         return self._cache
 
@@ -625,9 +635,9 @@ class ReplayWatcher:
 
 
 def watch_replays(
-    folder: Optional[Path] = None,
-    callback: Optional[Callable[[DemoFileEvent], None]] = None,
-    blocking: bool = True
+    folder: Path | None = None,
+    callback: Callable[[DemoFileEvent], None] | None = None,
+    blocking: bool = True,
 ) -> ReplayWatcher:
     """
     Convenience function to start watching for replays.

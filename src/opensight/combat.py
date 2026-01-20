@@ -8,13 +8,11 @@ Implements advanced combat metrics:
 - Multi-kill tracking (2k, 3k, 4k, ace)
 """
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
-import logging
 
 import pandas as pd
-import numpy as np
 
 from opensight.parser import DemoData, safe_int
 
@@ -29,6 +27,7 @@ CLUTCH_SCENARIOS = ["1v1", "1v2", "1v3", "1v4", "1v5"]
 
 class ClutchResult(Enum):
     """Result of a clutch situation."""
+
     WON = "won"
     LOST = "lost"
     IN_PROGRESS = "in_progress"
@@ -37,6 +36,7 @@ class ClutchResult(Enum):
 @dataclass
 class TradeKill:
     """A trade kill event."""
+
     original_kill_tick: int
     trade_kill_tick: int
     time_delta_ms: float
@@ -61,6 +61,7 @@ class TradeKill:
 @dataclass
 class OpeningDuel:
     """First engagement of a round."""
+
     round_num: int
     tick: int
 
@@ -77,12 +78,13 @@ class OpeningDuel:
     loser_team: int
 
     # Did the opening kill team win the round?
-    round_won: Optional[bool] = None
+    round_won: bool | None = None
 
 
 @dataclass
 class ClutchSituation:
     """A clutch scenario."""
+
     round_num: int
     start_tick: int
     end_tick: int
@@ -105,6 +107,7 @@ class ClutchSituation:
 @dataclass
 class MultiKill:
     """Multiple kills in quick succession or same round."""
+
     round_num: int
     player_id: int
     player_name: str
@@ -116,6 +119,7 @@ class MultiKill:
 @dataclass
 class PlayerCombatStats:
     """Combat statistics for a single player."""
+
     steam_id: int
     name: str
 
@@ -148,6 +152,7 @@ class PlayerCombatStats:
 @dataclass
 class CombatAnalysisResult:
     """Complete combat analysis for a match."""
+
     # All events
     trade_kills: list[TradeKill]
     opening_duels: list[OpeningDuel]
@@ -217,9 +222,11 @@ class CombatAnalyzer:
         team_trade_rate = self._calculate_team_trade_rates()
         team_opening_rate = self._calculate_team_opening_rates()
 
-        logger.info(f"Combat analysis complete. {len(self._trade_kills)} trades, "
-                   f"{len(self._opening_duels)} opening duels, "
-                   f"{len(self._clutch_situations)} clutches")
+        logger.info(
+            f"Combat analysis complete. {len(self._trade_kills)} trades, "
+            f"{len(self._opening_duels)} opening duels, "
+            f"{len(self._clutch_situations)} clutches"
+        )
 
         return CombatAnalysisResult(
             trade_kills=self._trade_kills,
@@ -231,7 +238,7 @@ class CombatAnalyzer:
             team_opening_win_rate=team_opening_rate,
         )
 
-    def _find_col(self, df: pd.DataFrame, options: list[str]) -> Optional[str]:
+    def _find_col(self, df: pd.DataFrame, options: list[str]) -> str | None:
         """Find first matching column name."""
         for col in options:
             if col in df.columns:
@@ -259,8 +266,8 @@ class CombatAnalyzer:
         kills_df: pd.DataFrame,
         att_col: str,
         vic_col: str,
-        tick_col: Optional[str],
-        round_col: Optional[str]
+        tick_col: str | None,
+        round_col: str | None,
     ) -> None:
         """Detect trade kills within the trade window."""
         if tick_col is None:
@@ -272,11 +279,11 @@ class CombatAnalyzer:
         trade_window_ticks = int((TRADE_WINDOW_MS / 1000) * self.tick_rate)
 
         # Find attacker/victim name columns
-        att_name_col = self._find_col(kills_df, ["attacker_name"])
-        vic_name_col = self._find_col(kills_df, ["user_name", "victim_name"])
+        self._find_col(kills_df, ["attacker_name"])
+        self._find_col(kills_df, ["user_name", "victim_name"])
         weapon_col = self._find_col(kills_df, ["weapon"])
 
-        for i, kill in sorted_kills.iterrows():
+        for _i, kill in sorted_kills.iterrows():
             kill_tick = safe_int(kill[tick_col])
             victim_id = safe_int(kill[vic_col])
             attacker_id = safe_int(kill[att_col])
@@ -295,8 +302,7 @@ class CombatAnalyzer:
 
             # Get kills in window
             window_kills = sorted_kills[
-                (sorted_kills[tick_col] > window_start) &
-                (sorted_kills[tick_col] <= window_end)
+                (sorted_kills[tick_col] > window_start) & (sorted_kills[tick_col] <= window_end)
             ]
 
             for _, trade_candidate in window_kills.iterrows():
@@ -337,8 +343,8 @@ class CombatAnalyzer:
         kills_df: pd.DataFrame,
         att_col: str,
         vic_col: str,
-        tick_col: Optional[str],
-        round_col: Optional[str]
+        tick_col: str | None,
+        round_col: str | None,
     ) -> None:
         """Detect first kills of each round."""
         if round_col is None:
@@ -381,11 +387,7 @@ class CombatAnalyzer:
             self._opening_duels.append(opening)
 
     def _analyze_multi_kills(
-        self,
-        kills_df: pd.DataFrame,
-        att_col: str,
-        vic_col: str,
-        round_col: Optional[str]
+        self, kills_df: pd.DataFrame, att_col: str, vic_col: str, round_col: str | None
     ) -> None:
         """Detect multi-kills (2k, 3k, 4k, ace) per round."""
         if round_col is None:
@@ -439,8 +441,8 @@ class CombatAnalyzer:
         kills_df: pd.DataFrame,
         att_col: str,
         vic_col: str,
-        tick_col: Optional[str],
-        round_col: Optional[str]
+        tick_col: str | None,
+        round_col: str | None,
     ) -> None:
         """Detect clutch situations (1vX scenarios)."""
         if round_col is None or tick_col is None:
@@ -453,12 +455,12 @@ class CombatAnalyzer:
                 continue
 
             # Track alive players as we go through kills
-            t_alive = set(sid for sid, team in self.data.player_teams.items() if team == 2)
-            ct_alive = set(sid for sid, team in self.data.player_teams.items() if team == 3)
+            t_alive = {sid for sid, team in self.data.player_teams.items() if team == 2}
+            ct_alive = {sid for sid, team in self.data.player_teams.items() if team == 3}
 
             for _, kill in round_kills.iterrows():
                 victim_id = safe_int(kill[vic_col])
-                attacker_id = safe_int(kill[att_col])
+                safe_int(kill[att_col])
 
                 # Remove victim from alive set
                 if victim_id in t_alive:
@@ -469,16 +471,18 @@ class CombatAnalyzer:
                 # Check for clutch situation (1 vs X)
                 for team_alive, enemy_alive, team_num in [
                     (t_alive, ct_alive, 2),
-                    (ct_alive, t_alive, 3)
+                    (ct_alive, t_alive, 3),
                 ]:
                     if len(team_alive) == 1 and len(enemy_alive) >= 1:
                         clutcher_id = list(team_alive)[0]
                         enemies = len(enemy_alive)
 
                         # Check if this clutch already tracked
-                        existing = [c for c in self._clutch_situations
-                                   if c.round_num == safe_int(round_num)
-                                   and c.clutcher_id == clutcher_id]
+                        existing = [
+                            c
+                            for c in self._clutch_situations
+                            if c.round_num == safe_int(round_num) and c.clutcher_id == clutcher_id
+                        ]
                         if existing:
                             continue
 
@@ -494,7 +498,8 @@ class CombatAnalyzer:
                         )
 
                         kills_by_clutcher = sum(
-                            1 for _, k in remaining_kills.iterrows()
+                            1
+                            for _, k in remaining_kills.iterrows()
                             if safe_int(k[att_col]) == clutcher_id
                         )
 
@@ -504,7 +509,9 @@ class CombatAnalyzer:
                             result = ClutchResult.WON
                         else:
                             # Could be bomb explode/defuse win
-                            result = ClutchResult.WON if kills_by_clutcher > 0 else ClutchResult.LOST
+                            result = (
+                                ClutchResult.WON if kills_by_clutcher > 0 else ClutchResult.LOST
+                            )
 
                         clutch = ClutchSituation(
                             round_num=safe_int(round_num),
@@ -533,7 +540,11 @@ class CombatAnalyzer:
             # Count deaths
             kills_df = self.data.kills_df
             vic_col = self._find_col(kills_df, ["user_steamid", "victim_steamid"])
-            total_deaths = len(kills_df[kills_df[vic_col] == steam_id]) if vic_col and not kills_df.empty else 0
+            total_deaths = (
+                len(kills_df[kills_df[vic_col] == steam_id])
+                if vic_col and not kills_df.empty
+                else 0
+            )
             traded_deaths = trades_given
             untraded_deaths = max(0, total_deaths - traded_deaths)
 
@@ -541,7 +552,8 @@ class CombatAnalyzer:
             player_trades = [t for t in self._trade_kills if t.trader_id == steam_id]
             trade_time_avg = (
                 sum(t.time_delta_ms for t in player_trades) / len(player_trades)
-                if player_trades else 0.0
+                if player_trades
+                else 0.0
             )
 
             # Opening duel stats
@@ -559,7 +571,11 @@ class CombatAnalyzer:
             clutches_by_scenario: dict[str, tuple[int, int]] = {}
             for scenario in CLUTCH_SCENARIOS:
                 attempts = sum(1 for c in player_clutches if c.scenario == scenario)
-                wins = sum(1 for c in player_clutches if c.scenario == scenario and c.result == ClutchResult.WON)
+                wins = sum(
+                    1
+                    for c in player_clutches
+                    if c.scenario == scenario and c.result == ClutchResult.WON
+                )
                 if attempts > 0:
                     clutches_by_scenario[scenario] = (attempts, wins)
 
