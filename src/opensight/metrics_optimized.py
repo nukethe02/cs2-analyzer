@@ -24,13 +24,13 @@ import logging
 from dataclasses import dataclass, field
 from enum import Flag, auto
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
-    from opensight.parser import DemoData, KillEvent
+    pass
 
 from opensight.constants import CS2_TICK_RATE
 
@@ -41,24 +41,25 @@ MS_PER_TICK = 1000 / CS2_TICK_RATE  # ~15.625ms at 64 tick
 TTD_MIN_MS = 0
 TTD_MAX_MS = 1500
 CP_MAX_DISTANCE = 2000  # Max distance for CP calculation (units)
-CP_MIN_DISTANCE = 50    # Min distance to avoid division issues
+CP_MIN_DISTANCE = 50  # Min distance to avoid division issues
 
 
 class MetricType(Flag):
     """Flags for which metrics to compute."""
+
     NONE = 0
-    TTD = auto()           # Time to Damage
-    CP = auto()            # Crosshair Placement
-    KAST = auto()          # Kill/Assist/Survived/Traded
-    TRADES = auto()        # Trade kills
-    OPENING_DUELS = auto() # Opening duels
-    MULTI_KILLS = auto()   # Multi-kill rounds
-    CLUTCHES = auto()      # Clutch situations
-    UTILITY = auto()       # Utility usage
-    ACCURACY = auto()      # Shot accuracy
-    ECONOMY = auto()       # Economy stats
-    SIDES = auto()         # CT/T side breakdown
-    MISTAKES = auto()      # Team damage/kills
+    TTD = auto()  # Time to Damage
+    CP = auto()  # Crosshair Placement
+    KAST = auto()  # Kill/Assist/Survived/Traded
+    TRADES = auto()  # Trade kills
+    OPENING_DUELS = auto()  # Opening duels
+    MULTI_KILLS = auto()  # Multi-kill rounds
+    CLUTCHES = auto()  # Clutch situations
+    UTILITY = auto()  # Utility usage
+    ACCURACY = auto()  # Shot accuracy
+    ECONOMY = auto()  # Economy stats
+    SIDES = auto()  # CT/T side breakdown
+    MISTAKES = auto()  # Team damage/kills
 
     # Preset combinations
     BASIC = KAST | TRADES | OPENING_DUELS | MULTI_KILLS
@@ -69,6 +70,7 @@ class MetricType(Flag):
 @dataclass
 class TTDMetrics:
     """Vectorized TTD computation results."""
+
     # Per-kill TTD values (attacker_steamid -> list of TTD_ms)
     player_ttd_values: dict[int, list[float]] = field(default_factory=dict)
     # Per-kill prefire counts
@@ -76,12 +78,12 @@ class TTDMetrics:
     # Total engagements analyzed
     total_engagements: int = 0
 
-    def get_median(self, steamid: int) -> Optional[float]:
+    def get_median(self, steamid: int) -> float | None:
         """Get median TTD for a player."""
         values = self.player_ttd_values.get(steamid, [])
         return float(np.median(values)) if values else None
 
-    def get_mean(self, steamid: int) -> Optional[float]:
+    def get_mean(self, steamid: int) -> float | None:
         """Get mean TTD for a player."""
         values = self.player_ttd_values.get(steamid, [])
         return float(np.mean(values)) if values else None
@@ -90,26 +92,25 @@ class TTDMetrics:
 @dataclass
 class CPMetrics:
     """Vectorized CP computation results."""
+
     # Per-kill CP values (attacker_steamid -> list of angular_error_deg)
     player_cp_values: dict[int, list[float]] = field(default_factory=dict)
     # Total kills analyzed
     total_kills_analyzed: int = 0
 
-    def get_median(self, steamid: int) -> Optional[float]:
+    def get_median(self, steamid: int) -> float | None:
         """Get median CP error for a player."""
         values = self.player_cp_values.get(steamid, [])
         return float(np.median(values)) if values else None
 
-    def get_mean(self, steamid: int) -> Optional[float]:
+    def get_mean(self, steamid: int) -> float | None:
         """Get mean CP error for a player."""
         values = self.player_cp_values.get(steamid, [])
         return float(np.mean(values)) if values else None
 
 
 def compute_ttd_vectorized(
-    kills_df: pd.DataFrame,
-    damages_df: pd.DataFrame,
-    tick_rate: int = CS2_TICK_RATE
+    kills_df: pd.DataFrame, damages_df: pd.DataFrame, tick_rate: int = CS2_TICK_RATE
 ) -> TTDMetrics:
     """
     Compute Time to Damage using vectorized pandas operations.
@@ -136,7 +137,7 @@ def compute_ttd_vectorized(
     ms_per_tick = 1000 / tick_rate
 
     # Find column names
-    def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+    def find_col(df: pd.DataFrame, options: list[str]) -> str | None:
         for col in options:
             if col in df.columns:
                 return col
@@ -170,11 +171,7 @@ def compute_ttd_vectorized(
     kills["engagement_idx"] = range(len(kills))
 
     # Step 2: Merge kills with all damage events for the same attacker-victim pair
-    merged = kills.merge(
-        damages,
-        on=["attacker_id", "victim_id"],
-        how="left"
-    )
+    merged = kills.merge(damages, on=["attacker_id", "victim_id"], how="left")
 
     # Step 3: Filter to damages before kill
     merged = merged[merged["dmg_tick"] <= merged["kill_tick"]]
@@ -184,11 +181,15 @@ def compute_ttd_vectorized(
         return result
 
     # Step 4: For each engagement, get the FIRST damage tick
-    first_damage = merged.groupby("engagement_idx").agg(
-        attacker_id=("attacker_id", "first"),
-        kill_tick=("kill_tick", "first"),
-        first_dmg_tick=("dmg_tick", "min")
-    ).reset_index()
+    first_damage = (
+        merged.groupby("engagement_idx")
+        .agg(
+            attacker_id=("attacker_id", "first"),
+            kill_tick=("kill_tick", "first"),
+            first_dmg_tick=("dmg_tick", "min"),
+        )
+        .reset_index()
+    )
 
     # Step 5: Compute TTD in bulk (vectorized)
     first_damage["ttd_ticks"] = first_damage["kill_tick"] - first_damage["first_dmg_tick"]
@@ -196,8 +197,7 @@ def compute_ttd_vectorized(
 
     # Step 6: Filter valid TTD values and identify prefires
     valid_ttd = first_damage[
-        (first_damage["ttd_ms"] > TTD_MIN_MS) &
-        (first_damage["ttd_ms"] <= TTD_MAX_MS)
+        (first_damage["ttd_ms"] > TTD_MIN_MS) & (first_damage["ttd_ms"] <= TTD_MAX_MS)
     ]
     prefires = first_damage[first_damage["ttd_ms"] <= TTD_MIN_MS]
 
@@ -217,16 +217,15 @@ def compute_ttd_vectorized(
     result.player_prefire_counts = player_prefire_counts
     result.total_engagements = len(first_damage)
 
-    logger.info(f"TTD computed (vectorized): {result.total_engagements} engagements, "
-                f"{sum(len(v) for v in player_ttd_values.values())} valid TTD values")
+    logger.info(
+        f"TTD computed (vectorized): {result.total_engagements} engagements, "
+        f"{sum(len(v) for v in player_ttd_values.values())} valid TTD values"
+    )
 
     return result
 
 
-def compute_view_vectors_batch(
-    pitch_deg: np.ndarray,
-    yaw_deg: np.ndarray
-) -> np.ndarray:
+def compute_view_vectors_batch(pitch_deg: np.ndarray, yaw_deg: np.ndarray) -> np.ndarray:
     """
     Convert pitch/yaw angles to view direction vectors in batch.
 
@@ -254,7 +253,7 @@ def compute_angular_errors_batch(
     attacker_pos: np.ndarray,
     attacker_pitch: np.ndarray,
     attacker_yaw: np.ndarray,
-    victim_pos: np.ndarray
+    victim_pos: np.ndarray,
 ) -> np.ndarray:
     """
     Compute angular errors between view direction and target in batch.
@@ -293,10 +292,7 @@ def compute_angular_errors_batch(
     return angular_errors
 
 
-def compute_cp_vectorized(
-    kills: list,
-    player_ids: set[int]
-) -> CPMetrics:
+def compute_cp_vectorized(kills: list, player_ids: set[int]) -> CPMetrics:
     """
     Compute Crosshair Placement using vectorized numpy operations.
 
@@ -316,7 +312,8 @@ def compute_cp_vectorized(
 
     # Filter kills with position data
     kills_with_pos = [
-        k for k in kills
+        k
+        for k in kills
         if k.attacker_x is not None and k.attacker_pitch is not None and k.victim_x is not None
     ]
 
@@ -325,31 +322,33 @@ def compute_cp_vectorized(
         return result
 
     # Extract data into arrays
-    n_kills = len(kills_with_pos)
+    len(kills_with_pos)
 
     attacker_ids = np.array([k.attacker_steamid for k in kills_with_pos])
 
     # Position arrays (+64 for eye height)
-    attacker_pos = np.column_stack([
-        [k.attacker_x for k in kills_with_pos],
-        [k.attacker_y for k in kills_with_pos],
-        [k.attacker_z + 64 if k.attacker_z else 64 for k in kills_with_pos]
-    ])
+    attacker_pos = np.column_stack(
+        [
+            [k.attacker_x for k in kills_with_pos],
+            [k.attacker_y for k in kills_with_pos],
+            [k.attacker_z + 64 if k.attacker_z else 64 for k in kills_with_pos],
+        ]
+    )
 
-    victim_pos = np.column_stack([
-        [k.victim_x for k in kills_with_pos],
-        [k.victim_y for k in kills_with_pos],
-        [k.victim_z + 64 if k.victim_z else 64 for k in kills_with_pos]
-    ])
+    victim_pos = np.column_stack(
+        [
+            [k.victim_x for k in kills_with_pos],
+            [k.victim_y for k in kills_with_pos],
+            [k.victim_z + 64 if k.victim_z else 64 for k in kills_with_pos],
+        ]
+    )
 
     # Angle arrays
     attacker_pitch = np.array([k.attacker_pitch or 0.0 for k in kills_with_pos])
     attacker_yaw = np.array([k.attacker_yaw or 0.0 for k in kills_with_pos])
 
     # Filter out invalid positions (zeros)
-    valid_mask = (
-        (np.abs(attacker_pos[:, 0]) > 0.1) | (np.abs(attacker_pos[:, 1]) > 0.1)
-    ) & (
+    valid_mask = ((np.abs(attacker_pos[:, 0]) > 0.1) | (np.abs(attacker_pos[:, 1]) > 0.1)) & (
         (np.abs(victim_pos[:, 0]) > 0.1) | (np.abs(victim_pos[:, 1]) > 0.1)
     )
 
@@ -366,10 +365,7 @@ def compute_cp_vectorized(
 
     # Compute angular errors in batch
     angular_errors = compute_angular_errors_batch(
-        attacker_pos_valid,
-        attacker_pitch_valid,
-        attacker_yaw_valid,
-        victim_pos_valid
+        attacker_pos_valid, attacker_pitch_valid, attacker_yaw_valid, victim_pos_valid
     )
 
     # Group by player
@@ -388,16 +384,15 @@ def compute_cp_vectorized(
     result.player_cp_values = player_cp_values
     result.total_kills_analyzed = len(attacker_ids_valid)
 
-    logger.info(f"CP computed (vectorized): {result.total_kills_analyzed} kills, "
-                f"{sum(len(v) for v in player_cp_values.values())} valid CP values")
+    logger.info(
+        f"CP computed (vectorized): {result.total_kills_analyzed} kills, "
+        f"{sum(len(v) for v in player_cp_values.values())} valid CP values"
+    )
 
     return result
 
 
-def compute_cp_from_dataframe_vectorized(
-    kills_df: pd.DataFrame,
-    player_ids: set[int]
-) -> CPMetrics:
+def compute_cp_from_dataframe_vectorized(kills_df: pd.DataFrame, player_ids: set[int]) -> CPMetrics:
     """
     Compute Crosshair Placement from DataFrame using vectorized operations.
 
@@ -416,7 +411,7 @@ def compute_cp_from_dataframe_vectorized(
         return result
 
     # Find column names
-    def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+    def find_col(df: pd.DataFrame, options: list[str]) -> str | None:
         for col in options:
             if col in df.columns:
                 return col
@@ -438,21 +433,25 @@ def compute_cp_from_dataframe_vectorized(
         return result
 
     # Create working copy with standardized columns
-    df = kills_df[[
-        att_id_col, att_x, att_y, att_z, att_pitch, att_yaw, vic_x, vic_y, vic_z
-    ]].copy()
+    df = kills_df[[att_id_col, att_x, att_y, att_z, att_pitch, att_yaw, vic_x, vic_y, vic_z]].copy()
     df.columns = [
-        "attacker_id", "att_x", "att_y", "att_z", "att_pitch", "att_yaw",
-        "vic_x", "vic_y", "vic_z"
+        "attacker_id",
+        "att_x",
+        "att_y",
+        "att_z",
+        "att_pitch",
+        "att_yaw",
+        "vic_x",
+        "vic_y",
+        "vic_z",
     ]
 
     # Filter valid rows (non-null positions)
     df = df.dropna()
 
     # Filter out zero positions
-    valid_mask = (
-        ((df["att_x"].abs() > 0.1) | (df["att_y"].abs() > 0.1)) &
-        ((df["vic_x"].abs() > 0.1) | (df["vic_y"].abs() > 0.1))
+    valid_mask = ((df["att_x"].abs() > 0.1) | (df["att_y"].abs() > 0.1)) & (
+        (df["vic_x"].abs() > 0.1) | (df["vic_y"].abs() > 0.1)
     )
     df = df[valid_mask]
 
@@ -462,25 +461,20 @@ def compute_cp_from_dataframe_vectorized(
 
     # Extract arrays
     attacker_ids = df["attacker_id"].values
-    attacker_pos = np.column_stack([
-        df["att_x"].values,
-        df["att_y"].values,
-        df["att_z"].values + 64  # Eye height
-    ])
-    victim_pos = np.column_stack([
-        df["vic_x"].values,
-        df["vic_y"].values,
-        df["vic_z"].values + 64
-    ])
+    attacker_pos = np.column_stack(
+        [
+            df["att_x"].values,
+            df["att_y"].values,
+            df["att_z"].values + 64,  # Eye height
+        ]
+    )
+    victim_pos = np.column_stack([df["vic_x"].values, df["vic_y"].values, df["vic_z"].values + 64])
     attacker_pitch = df["att_pitch"].values
     attacker_yaw = df["att_yaw"].values
 
     # Compute angular errors in batch
     angular_errors = compute_angular_errors_batch(
-        attacker_pos,
-        attacker_pitch,
-        attacker_yaw,
-        victim_pos
+        attacker_pos, attacker_pitch, attacker_yaw, victim_pos
     )
 
     # Group by player
@@ -507,13 +501,15 @@ def compute_cp_from_dataframe_vectorized(
 # Metrics Caching
 # ============================================================================
 
+
 @dataclass
 class MetricsCache:
     """Cache for computed metrics."""
+
     demo_hash: str
     demo_path: str
-    ttd_metrics: Optional[TTDMetrics] = None
-    cp_metrics: Optional[CPMetrics] = None
+    ttd_metrics: TTDMetrics | None = None
+    cp_metrics: CPMetrics | None = None
     computed_metrics: MetricType = MetricType.NONE
 
 
@@ -524,7 +520,7 @@ class MetricsCacheManager:
     Caches are keyed by demo file hash (size + first/last bytes).
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         """
         Initialize cache manager.
 
@@ -555,11 +551,11 @@ class MetricsCacheManager:
                     hasher.update(f.read(1024))
 
             return hasher.hexdigest()[:16]
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.debug(f"Could not compute demo hash: {e}")
             return hashlib.md5(str(demo_path).encode()).hexdigest()[:16]
 
-    def get_cache(self, demo_path: Path) -> Optional[MetricsCache]:
+    def get_cache(self, demo_path: Path) -> MetricsCache | None:
         """Get cached metrics for a demo file."""
         demo_hash = self._compute_demo_hash(demo_path)
 
@@ -644,9 +640,7 @@ class MetricsCacheManager:
         if "ttd_metrics" in data:
             ttd_data = data["ttd_metrics"]
             cache.ttd_metrics = TTDMetrics(
-                player_ttd_values={
-                    int(k): v for k, v in ttd_data["player_ttd_values"].items()
-                },
+                player_ttd_values={int(k): v for k, v in ttd_data["player_ttd_values"].items()},
                 player_prefire_counts={
                     int(k): v for k, v in ttd_data["player_prefire_counts"].items()
                 },
@@ -656,9 +650,7 @@ class MetricsCacheManager:
         if "cp_metrics" in data:
             cp_data = data["cp_metrics"]
             cache.cp_metrics = CPMetrics(
-                player_cp_values={
-                    int(k): v for k, v in cp_data["player_cp_values"].items()
-                },
+                player_cp_values={int(k): v for k, v in cp_data["player_cp_values"].items()},
                 total_kills_analyzed=cp_data["total_kills_analyzed"],
             )
 
@@ -666,7 +658,7 @@ class MetricsCacheManager:
 
 
 # Global cache manager instance
-_cache_manager: Optional[MetricsCacheManager] = None
+_cache_manager: MetricsCacheManager | None = None
 
 
 def get_cache_manager() -> MetricsCacheManager:
@@ -686,6 +678,7 @@ def set_cache_directory(cache_dir: Path) -> None:
 # ============================================================================
 # Configurable Metrics Computation
 # ============================================================================
+
 
 class OptimizedMetricsComputer:
     """
@@ -710,8 +703,8 @@ class OptimizedMetricsComputer:
         """
         self.data = demo_data
         self.use_cache = use_cache
-        self._ttd_metrics: Optional[TTDMetrics] = None
-        self._cp_metrics: Optional[CPMetrics] = None
+        self._ttd_metrics: TTDMetrics | None = None
+        self._cp_metrics: CPMetrics | None = None
         self._computed_metrics = MetricType.NONE
 
     def compute(self, metrics: MetricType = MetricType.FULL) -> None:
@@ -753,9 +746,7 @@ class OptimizedMetricsComputer:
     def _compute_ttd(self) -> None:
         """Compute TTD metrics using vectorized implementation."""
         self._ttd_metrics = compute_ttd_vectorized(
-            self.data.kills_df,
-            self.data.damages_df,
-            self.data.tick_rate
+            self.data.kills_df, self.data.damages_df, self.data.tick_rate
         )
         self._computed_metrics |= MetricType.TTD
 
@@ -765,16 +756,10 @@ class OptimizedMetricsComputer:
 
         # Try KillEvent objects first (preferred)
         if self.data.kills:
-            self._cp_metrics = compute_cp_vectorized(
-                self.data.kills,
-                player_ids
-            )
+            self._cp_metrics = compute_cp_vectorized(self.data.kills, player_ids)
         # Fallback to DataFrame
         elif not self.data.kills_df.empty:
-            self._cp_metrics = compute_cp_from_dataframe_vectorized(
-                self.data.kills_df,
-                player_ids
-            )
+            self._cp_metrics = compute_cp_from_dataframe_vectorized(self.data.kills_df, player_ids)
         else:
             self._cp_metrics = CPMetrics()
 
@@ -786,7 +771,7 @@ class OptimizedMetricsComputer:
             return []
         return self._ttd_metrics.player_ttd_values.get(steamid, [])
 
-    def get_ttd_median(self, steamid: int) -> Optional[float]:
+    def get_ttd_median(self, steamid: int) -> float | None:
         """Get median TTD for a player."""
         if not self._ttd_metrics:
             return None
@@ -804,18 +789,18 @@ class OptimizedMetricsComputer:
             return []
         return self._cp_metrics.player_cp_values.get(steamid, [])
 
-    def get_cp_median(self, steamid: int) -> Optional[float]:
+    def get_cp_median(self, steamid: int) -> float | None:
         """Get median CP error for a player."""
         if not self._cp_metrics:
             return None
         return self._cp_metrics.get_median(steamid)
 
     @property
-    def ttd_metrics(self) -> Optional[TTDMetrics]:
+    def ttd_metrics(self) -> TTDMetrics | None:
         """Get TTD metrics."""
         return self._ttd_metrics
 
     @property
-    def cp_metrics(self) -> Optional[CPMetrics]:
+    def cp_metrics(self) -> CPMetrics | None:
         """Get CP metrics."""
         return self._cp_metrics

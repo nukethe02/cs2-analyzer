@@ -21,23 +21,22 @@ Implements Leetify-grade metrics:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
 import logging
 import math
+from dataclasses import dataclass, field
 
 import numpy as np
 
 # Use Polars for fast vector math (10x faster than Pandas on coordinate calculations)
 try:
     import polars as pl
+
     POLARS_AVAILABLE = True
 except ImportError:
     POLARS_AVAILABLE = False
-    import pandas as pd
 
-from opensight.parser import DemoData, KillEvent, DamageEvent, BlindEvent
 from opensight.constants import CS2_TICK_RATE
+from opensight.parser import BlindEvent, DemoData, KillEvent
 
 logger = logging.getLogger(__name__)
 
@@ -64,37 +63,41 @@ EYE_HEIGHT_UNITS = 64.0  # CS2 eye height offset
 # DATA STRUCTURES - State Tracking
 # ============================================================================
 
+
 @dataclass
 class KillContext:
     """Extended kill information with combat context."""
+
     # Original kill data
     kill: KillEvent
 
     # Combat Context (The "Why")
-    is_entry_kill: bool = False      # First kill of the round
-    is_trade_kill: bool = False      # Killed the enemy who killed a teammate
-    is_lurk_kill: bool = False       # Killer far from team
-    traded_teammate_id: Optional[int] = None  # Who was traded (if trade kill)
+    is_entry_kill: bool = False  # First kill of the round
+    is_trade_kill: bool = False  # Killed the enemy who killed a teammate
+    is_lurk_kill: bool = False  # Killer far from team
+    traded_teammate_id: int | None = None  # Who was traded (if trade kill)
 
     # Position Context (The "Where")
-    distance_to_team: Optional[float] = None  # Distance from team center
-    team_center: Optional[tuple[float, float, float]] = None
+    distance_to_team: float | None = None  # Distance from team center
+    team_center: tuple[float, float, float] | None = None
 
     # Engagement Context
-    engagement_distance: Optional[float] = None  # Distance to victim
+    engagement_distance: float | None = None  # Distance to victim
 
 
 @dataclass
 class FlashContext:
     """Extended flash information with effectiveness analysis."""
+
     blind: BlindEvent
-    is_effective: bool = False       # Duration > 2.0 seconds
-    is_assist_worthy: bool = False   # Led to a kill within window
+    is_effective: bool = False  # Duration > 2.0 seconds
+    is_assist_worthy: bool = False  # Led to a kill within window
 
 
 @dataclass
 class RoundState:
     """State tracking for a single round - used for lookback buffers."""
+
     round_num: int
     start_tick: int
     end_tick: int
@@ -110,12 +113,13 @@ class RoundState:
 
     # Round outcomes
     kills_contextualized: list[KillContext] = field(default_factory=list)
-    entry_kill_id: Optional[int] = None  # SteamID of entry killer
+    entry_kill_id: int | None = None  # SteamID of entry killer
 
 
 @dataclass
 class UtilityRoundStats:
     """Utility statistics for a single round."""
+
     round_num: int
 
     # Flash stats (per player: steamid -> count)
@@ -131,6 +135,7 @@ class UtilityRoundStats:
 @dataclass
 class PlayerContextStats:
     """Aggregated contextual statistics for a player."""
+
     steam_id: int
     name: str
 
@@ -140,10 +145,10 @@ class PlayerContextStats:
     entry_attempts: int = 0  # Rounds where involved in first duel
 
     # Trade stats (enhanced)
-    trade_kills: int = 0         # Kills that avenged a teammate
-    deaths_traded: int = 0       # Deaths that were avenged
+    trade_kills: int = 0  # Kills that avenged a teammate
+    deaths_traded: int = 0  # Deaths that were avenged
     trade_opportunities: int = 0  # Times a trade was possible
-    failed_trades: int = 0       # Opportunities not taken
+    failed_trades: int = 0  # Opportunities not taken
 
     # Lurk stats
     lurk_kills: int = 0
@@ -173,7 +178,11 @@ class PlayerContextStats:
     @property
     def deaths_traded_rate(self) -> float:
         """Percentage of deaths that were traded."""
-        return (self.deaths_traded / (self.entry_deaths + self.deaths_traded + self.lurk_deaths) * 100) if (self.entry_deaths + self.deaths_traded + self.lurk_deaths) > 0 else 0.0
+        return (
+            (self.deaths_traded / (self.entry_deaths + self.deaths_traded + self.lurk_deaths) * 100)
+            if (self.entry_deaths + self.deaths_traded + self.lurk_deaths) > 0
+            else 0.0
+        )
 
     @property
     def flash_effectiveness(self) -> float:
@@ -190,6 +199,7 @@ class PlayerContextStats:
 @dataclass
 class StateAnalysisResult:
     """Complete state analysis results."""
+
     players: dict[int, PlayerContextStats]
     kills_contextualized: list[KillContext]
     rounds_analyzed: int
@@ -203,6 +213,7 @@ class StateAnalysisResult:
 # ============================================================================
 # STATE MACHINE - The Core Engine
 # ============================================================================
+
 
 class StateMachine:
     """
@@ -233,71 +244,77 @@ class StateMachine:
             self._damages_pl = None
             self._blinds_pl = None
 
-    def _build_polars_kills(self) -> Optional[pl.DataFrame]:
+    def _build_polars_kills(self) -> pl.DataFrame | None:
         """Convert kills to Polars DataFrame for fast operations."""
         if not POLARS_AVAILABLE or not self.data.kills:
             return None
 
         records = []
         for k in self.data.kills:
-            records.append({
-                "tick": k.tick,
-                "round_num": k.round_num,
-                "attacker_steamid": k.attacker_steamid,
-                "attacker_side": k.attacker_side,
-                "victim_steamid": k.victim_steamid,
-                "victim_side": k.victim_side,
-                "attacker_x": k.attacker_x or 0.0,
-                "attacker_y": k.attacker_y or 0.0,
-                "attacker_z": k.attacker_z or 0.0,
-                "attacker_pitch": k.attacker_pitch or 0.0,
-                "attacker_yaw": k.attacker_yaw or 0.0,
-                "victim_x": k.victim_x or 0.0,
-                "victim_y": k.victim_y or 0.0,
-                "victim_z": k.victim_z or 0.0,
-                "headshot": k.headshot,
-                "weapon": k.weapon,
-            })
+            records.append(
+                {
+                    "tick": k.tick,
+                    "round_num": k.round_num,
+                    "attacker_steamid": k.attacker_steamid,
+                    "attacker_side": k.attacker_side,
+                    "victim_steamid": k.victim_steamid,
+                    "victim_side": k.victim_side,
+                    "attacker_x": k.attacker_x or 0.0,
+                    "attacker_y": k.attacker_y or 0.0,
+                    "attacker_z": k.attacker_z or 0.0,
+                    "attacker_pitch": k.attacker_pitch or 0.0,
+                    "attacker_yaw": k.attacker_yaw or 0.0,
+                    "victim_x": k.victim_x or 0.0,
+                    "victim_y": k.victim_y or 0.0,
+                    "victim_z": k.victim_z or 0.0,
+                    "headshot": k.headshot,
+                    "weapon": k.weapon,
+                }
+            )
 
         return pl.DataFrame(records) if records else None
 
-    def _build_polars_damages(self) -> Optional[pl.DataFrame]:
+    def _build_polars_damages(self) -> pl.DataFrame | None:
         """Convert damages to Polars DataFrame."""
         if not POLARS_AVAILABLE or not self.data.damages:
             return None
 
         records = []
         for d in self.data.damages:
-            records.append({
-                "tick": d.tick,
-                "round_num": d.round_num,
-                "attacker_steamid": d.attacker_steamid,
-                "attacker_side": d.attacker_side,
-                "victim_steamid": d.victim_steamid,
-                "victim_side": d.victim_side,
-                "damage": d.damage,
-                "weapon": d.weapon,
-            })
+            records.append(
+                {
+                    "tick": d.tick,
+                    "round_num": d.round_num,
+                    "attacker_steamid": d.attacker_steamid,
+                    "attacker_side": d.attacker_side,
+                    "victim_steamid": d.victim_steamid,
+                    "victim_side": d.victim_side,
+                    "damage": d.damage,
+                    "weapon": d.weapon,
+                }
+            )
 
         return pl.DataFrame(records) if records else None
 
-    def _build_polars_blinds(self) -> Optional[pl.DataFrame]:
+    def _build_polars_blinds(self) -> pl.DataFrame | None:
         """Convert blinds to Polars DataFrame."""
         if not POLARS_AVAILABLE or not self.data.blinds:
             return None
 
         records = []
         for b in self.data.blinds:
-            records.append({
-                "tick": b.tick,
-                "round_num": b.round_num,
-                "attacker_steamid": b.attacker_steamid,
-                "attacker_side": b.attacker_side,
-                "victim_steamid": b.victim_steamid,
-                "victim_side": b.victim_side,
-                "blind_duration": b.blind_duration,
-                "is_teammate": b.is_teammate,
-            })
+            records.append(
+                {
+                    "tick": b.tick,
+                    "round_num": b.round_num,
+                    "attacker_steamid": b.attacker_steamid,
+                    "attacker_side": b.attacker_side,
+                    "victim_steamid": b.victim_steamid,
+                    "victim_side": b.victim_side,
+                    "blind_duration": b.blind_duration,
+                    "is_teammate": b.is_teammate,
+                }
+            )
 
         return pl.DataFrame(records) if records else None
 
@@ -340,10 +357,12 @@ class StateMachine:
             total_lurk_kills=sum(p.lurk_kills for p in self._players.values()),
         )
 
-        logger.info(f"State Machine analysis complete: "
-                   f"{result.total_entry_kills} entries, "
-                   f"{result.total_trade_kills} trades, "
-                   f"{result.total_lurk_kills} lurks")
+        logger.info(
+            f"State Machine analysis complete: "
+            f"{result.total_entry_kills} entries, "
+            f"{result.total_trade_kills} trades, "
+            f"{result.total_lurk_kills} lurks"
+        )
 
         return result
 
@@ -371,17 +390,17 @@ class StateMachine:
                     round_kills = self._kills_pl.filter(pl.col("round_num") == round_num)
                     boundaries[round_num] = (
                         int(round_kills.select("tick").min().item()),
-                        int(round_kills.select("tick").max().item())
+                        int(round_kills.select("tick").max().item()),
                     )
             else:
                 # NumPy fallback
-                round_nums = set(k.round_num for k in self.data.kills)
+                round_nums = {k.round_num for k in self.data.kills}
                 for round_num in sorted(round_nums):
                     round_kills = [k for k in self.data.kills if k.round_num == round_num]
                     if round_kills:
                         boundaries[round_num] = (
                             min(k.tick for k in round_kills),
-                            max(k.tick for k in round_kills)
+                            max(k.tick for k in round_kills),
                         )
 
         return boundaries
@@ -402,14 +421,11 @@ class StateMachine:
 
         # Get round kills sorted by tick
         if POLARS_AVAILABLE and self._kills_pl is not None:
-            round_kills_pl = self._kills_pl.filter(
-                pl.col("round_num") == round_num
-            ).sort("tick")
+            round_kills_pl = self._kills_pl.filter(pl.col("round_num") == round_num).sort("tick")
             round_kills = self._polars_to_kill_events(round_kills_pl)
         else:
             round_kills = sorted(
-                [k for k in self.data.kills if k.round_num == round_num],
-                key=lambda k: k.tick
+                [k for k in self.data.kills if k.round_num == round_num], key=lambda k: k.tick
             )
 
         if not round_kills:
@@ -425,11 +441,9 @@ class StateMachine:
             self._kills_contextualized.append(context)
 
             # Update recent deaths buffer
-            round_state.recent_deaths.append((
-                kill.tick,
-                kill.victim_steamid,
-                kill.attacker_steamid
-            ))
+            round_state.recent_deaths.append(
+                (kill.tick, kill.victim_steamid, kill.attacker_steamid)
+            )
 
             # Update player stats
             self._update_player_stats(context)
@@ -483,7 +497,12 @@ class StateMachine:
             player_pos = None
             for kill in round_kills[:5]:  # Check first few kills
                 if kill.attacker_steamid == steam_id and kill.attacker_x is not None:
-                    player_pos = (steam_id, kill.attacker_x, kill.attacker_y, kill.attacker_z or 0.0)
+                    player_pos = (
+                        steam_id,
+                        kill.attacker_x,
+                        kill.attacker_y,
+                        kill.attacker_z or 0.0,
+                    )
                     break
                 if kill.victim_steamid == steam_id and kill.victim_x is not None:
                     player_pos = (steam_id, kill.victim_x, kill.victim_y, kill.victim_z or 0.0)
@@ -495,7 +514,9 @@ class StateMachine:
                 elif team == "T":
                     round_state.t_positions.append(player_pos)
 
-    def _classify_kill(self, kill: KillEvent, round_state: RoundState, is_first: bool) -> KillContext:
+    def _classify_kill(
+        self, kill: KillEvent, round_state: RoundState, is_first: bool
+    ) -> KillContext:
         """
         Classify a kill with full context.
 
@@ -528,12 +549,12 @@ class StateMachine:
         if kill.attacker_x is not None and kill.victim_x is not None:
             context.engagement_distance = self._calculate_distance(
                 (kill.attacker_x, kill.attacker_y, kill.attacker_z or 0.0),
-                (kill.victim_x, kill.victim_y, kill.victim_z or 0.0)
+                (kill.victim_x, kill.victim_y, kill.victim_z or 0.0),
             )
 
         return context
 
-    def _check_trade(self, kill: KillEvent, round_state: RoundState) -> Optional[int]:
+    def _check_trade(self, kill: KillEvent, round_state: RoundState) -> int | None:
         """
         Check if this kill is a trade.
 
@@ -544,7 +565,6 @@ class StateMachine:
         Returns the traded teammate's steamid, or None if not a trade.
         """
         kill_tick = kill.tick
-        killer_id = kill.attacker_steamid
         victim_id = kill.victim_steamid  # The enemy we just killed
         killer_team = kill.attacker_side
 
@@ -566,7 +586,9 @@ class StateMachine:
 
         return None
 
-    def _check_lurk(self, kill: KillEvent, round_state: RoundState) -> Optional[tuple[float, tuple[float, float, float]]]:
+    def _check_lurk(
+        self, kill: KillEvent, round_state: RoundState
+    ) -> tuple[float, tuple[float, float, float]] | None:
         """
         Check if this kill was a lurk (far from team).
 
@@ -605,26 +627,29 @@ class StateMachine:
 
         return None
 
-    def _calculate_distance(self, pos1: tuple[float, float, float],
-                           pos2: tuple[float, float, float]) -> float:
+    def _calculate_distance(
+        self, pos1: tuple[float, float, float], pos2: tuple[float, float, float]
+    ) -> float:
         """Calculate 3D Euclidean distance between two positions."""
         return math.sqrt(
-            (pos1[0] - pos2[0]) ** 2 +
-            (pos1[1] - pos2[1]) ** 2 +
-            (pos1[2] - pos2[2]) ** 2
+            (pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2 + (pos1[2] - pos2[2]) ** 2
         )
 
-    def _calculate_center_of_mass(self, positions: list[tuple[float, float, float]]) -> tuple[float, float, float]:
+    def _calculate_center_of_mass(
+        self, positions: list[tuple[float, float, float]]
+    ) -> tuple[float, float, float]:
         """Calculate center of mass for a list of positions."""
         if not positions:
             return (0.0, 0.0, 0.0)
 
         if POLARS_AVAILABLE:
-            df = pl.DataFrame({
-                "x": [p[0] for p in positions],
-                "y": [p[1] for p in positions],
-                "z": [p[2] for p in positions],
-            })
+            df = pl.DataFrame(
+                {
+                    "x": [p[0] for p in positions],
+                    "y": [p[1] for p in positions],
+                    "z": [p[2] for p in positions],
+                }
+            )
             return (
                 df.select("x").mean().item(),
                 df.select("y").mean().item(),
@@ -668,19 +693,25 @@ class StateMachine:
         # Process flash effectiveness
         if POLARS_AVAILABLE and self._blinds_pl is not None:
             # Use Polars for fast aggregation
-            effective = self._blinds_pl.filter(
-                (pl.col("blind_duration") >= EFFECTIVE_FLASH_DURATION) &
-                (pl.col("is_teammate") == False)
-            ).group_by("attacker_steamid").agg(
-                pl.count().alias("effective_count"),
-                pl.sum("blind_duration").alias("total_blind_time")
+            effective = (
+                self._blinds_pl.filter(
+                    (pl.col("blind_duration") >= EFFECTIVE_FLASH_DURATION)
+                    & (not pl.col("is_teammate"))
+                )
+                .group_by("attacker_steamid")
+                .agg(
+                    pl.count().alias("effective_count"),
+                    pl.sum("blind_duration").alias("total_blind_time"),
+                )
             )
 
-            ineffective = self._blinds_pl.filter(
-                (pl.col("blind_duration") < EFFECTIVE_FLASH_DURATION) &
-                (pl.col("is_teammate") == False)
-            ).group_by("attacker_steamid").agg(
-                pl.count().alias("ineffective_count")
+            ineffective = (
+                self._blinds_pl.filter(
+                    (pl.col("blind_duration") < EFFECTIVE_FLASH_DURATION)
+                    & (not pl.col("is_teammate"))
+                )
+                .group_by("attacker_steamid")
+                .agg(pl.count().alias("ineffective_count"))
             )
 
             for row in effective.iter_rows(named=True):
@@ -714,11 +745,13 @@ class StateMachine:
 
         if POLARS_AVAILABLE and self._damages_pl is not None:
             # HE damage
-            he_dmg = self._damages_pl.filter(
-                pl.col("weapon").str.to_lowercase().is_in(he_weapons) &
-                (pl.col("attacker_side") != pl.col("victim_side"))  # Exclude team damage
-            ).group_by("attacker_steamid").agg(
-                pl.sum("damage").alias("he_damage")
+            he_dmg = (
+                self._damages_pl.filter(
+                    pl.col("weapon").str.to_lowercase().is_in(he_weapons)
+                    & (pl.col("attacker_side") != pl.col("victim_side"))  # Exclude team damage
+                )
+                .group_by("attacker_steamid")
+                .agg(pl.sum("damage").alias("he_damage"))
             )
 
             for row in he_dmg.iter_rows(named=True):
@@ -727,11 +760,13 @@ class StateMachine:
                     self._players[steam_id].he_damage = row["he_damage"]
 
             # Molotov damage
-            molly_dmg = self._damages_pl.filter(
-                pl.col("weapon").str.to_lowercase().is_in(molly_weapons) &
-                (pl.col("attacker_side") != pl.col("victim_side"))
-            ).group_by("attacker_steamid").agg(
-                pl.sum("damage").alias("molotov_damage")
+            molly_dmg = (
+                self._damages_pl.filter(
+                    pl.col("weapon").str.to_lowercase().is_in(molly_weapons)
+                    & (pl.col("attacker_side") != pl.col("victim_side"))
+                )
+                .group_by("attacker_steamid")
+                .agg(pl.sum("damage").alias("molotov_damage"))
             )
 
             for row in molly_dmg.iter_rows(named=True):
@@ -758,6 +793,7 @@ class StateMachine:
 # CROSSHAIR PLACEMENT ANALYSIS - Advanced Position Analysis
 # ============================================================================
 
+
 class CrosshairAnalyzer:
     """
     Advanced crosshair placement analysis.
@@ -772,7 +808,7 @@ class CrosshairAnalyzer:
     def __init__(self, demo_data: DemoData):
         self.data = demo_data
 
-    def analyze_vertical_adjustment(self, kill: KillEvent) -> Optional[float]:
+    def analyze_vertical_adjustment(self, kill: KillEvent) -> float | None:
         """
         Calculate vertical adjustment error for a kill.
 
@@ -789,22 +825,18 @@ class CrosshairAnalyzer:
             return None
 
         # Attacker eye position
-        att_pos = np.array([
-            kill.attacker_x,
-            kill.attacker_y,
-            (kill.attacker_z or 0.0) + EYE_HEIGHT_UNITS
-        ])
+        att_pos = np.array(
+            [kill.attacker_x, kill.attacker_y, (kill.attacker_z or 0.0) + EYE_HEIGHT_UNITS]
+        )
 
         # Victim head position (approximate)
-        vic_head_pos = np.array([
-            kill.victim_x,
-            kill.victim_y,
-            (kill.victim_z or 0.0) + EYE_HEIGHT_UNITS
-        ])
+        vic_head_pos = np.array(
+            [kill.victim_x, kill.victim_y, (kill.victim_z or 0.0) + EYE_HEIGHT_UNITS]
+        )
 
         # Vector to victim
         to_victim = vic_head_pos - att_pos
-        distance_2d = math.sqrt(to_victim[0]**2 + to_victim[1]**2)
+        distance_2d = math.sqrt(to_victim[0] ** 2 + to_victim[1] ** 2)
 
         if distance_2d < 1.0:
             return 0.0  # Too close to calculate
@@ -843,6 +875,7 @@ class CrosshairAnalyzer:
 # ============================================================================
 # CONVENIENCE FUNCTIONS
 # ============================================================================
+
 
 def analyze_state(demo_data: DemoData) -> StateAnalysisResult:
     """

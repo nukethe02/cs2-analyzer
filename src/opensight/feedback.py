@@ -17,15 +17,14 @@ by collecting structured feedback that can be used for:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import sqlite3
-import json
-import hashlib
-from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional
-from datetime import datetime
 from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,8 @@ DEFAULT_DB_PATH = Path.home() / ".opensight" / "feedback.db"
 @dataclass
 class FeedbackEntry:
     """A feedback entry from a user."""
-    id: Optional[int]
+
+    id: int | None
     demo_hash: str  # Hash of demo file for reference
     user_id: str  # Anonymous user identifier
     rating: int  # 1-5 stars
@@ -63,13 +63,14 @@ class FeedbackEntry:
 @dataclass
 class CoachingFeedback:
     """Feedback on a specific coaching insight."""
-    id: Optional[int]
+
+    id: int | None
     demo_hash: str
     player_steam_id: str
     insight_category: str  # "aim", "positioning", "utility", etc.
     insight_message: str
     was_helpful: bool
-    user_correction: Optional[str]  # User's suggested correction
+    user_correction: str | None  # User's suggested correction
     created_at: datetime
 
     def to_dict(self) -> dict:
@@ -88,15 +89,16 @@ class CoachingFeedback:
 @dataclass
 class AnalysisAnnotation:
     """User annotation on an analysis."""
-    id: Optional[int]
+
+    id: int | None
     demo_hash: str
     user_id: str
-    round_num: Optional[int]
-    tick: Optional[int]
+    round_num: int | None
+    tick: int | None
     annotation_type: str  # "highlight", "mistake", "question", "note"
     content: str
-    x: Optional[float]  # Position on radar
-    y: Optional[float]
+    x: float | None  # Position on radar
+    y: float | None
     created_at: datetime
 
     def to_dict(self) -> dict:
@@ -117,6 +119,7 @@ class AnalysisAnnotation:
 @dataclass
 class FeedbackStats:
     """Aggregated feedback statistics."""
+
     total_feedback: int
     average_rating: float
     rating_distribution: dict[int, int]  # rating -> count
@@ -140,7 +143,7 @@ class FeedbackDatabase:
     SQLite-based feedback storage.
     """
 
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Path | None = None):
         """
         Initialize the feedback database.
 
@@ -297,7 +300,9 @@ class FeedbackDatabase:
                 category=row["category"],
                 comment=row["comment"] or "",
                 analysis_version=row["analysis_version"] or "",
-                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+                created_at=datetime.fromisoformat(row["created_at"])
+                if row["created_at"]
+                else datetime.now(),
                 metadata=json.loads(row["metadata"]) if row["metadata"] else {},
             )
             for row in rows
@@ -322,7 +327,9 @@ class FeedbackDatabase:
                 content=row["content"],
                 x=row["x"],
                 y=row["y"],
-                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+                created_at=datetime.fromisoformat(row["created_at"])
+                if row["created_at"]
+                else datetime.now(),
             )
             for row in rows
         ]
@@ -368,9 +375,9 @@ class FeedbackDatabase:
             coaching_rate = (coaching_helpful / coaching_total * 100) if coaching_total > 0 else 0.0
 
             # Total annotations
-            annotations_count = conn.execute(
-                "SELECT COUNT(*) as cnt FROM annotations"
-            ).fetchone()["cnt"]
+            annotations_count = conn.execute("SELECT COUNT(*) as cnt FROM annotations").fetchone()[
+                "cnt"
+            ]
 
         return FeedbackStats(
             total_feedback=total_feedback,
@@ -381,7 +388,7 @@ class FeedbackDatabase:
             total_annotations=annotations_count,
         )
 
-    def get_coaching_insights_feedback(self, category: Optional[str] = None) -> list[dict]:
+    def get_coaching_insights_feedback(self, category: str | None = None) -> list[dict]:
         """
         Get coaching feedback for analysis/improvement.
 
@@ -425,14 +432,18 @@ class FeedbackDatabase:
             if row["corrections"]:
                 corrections = [c for c in row["corrections"].split("|||") if c]
 
-            results.append({
-                "category": row.get("insight_category", category),
-                "message": row["insight_message"],
-                "total_feedback": row["total"],
-                "helpful_count": row["helpful"],
-                "helpful_rate": (row["helpful"] / row["total"] * 100) if row["total"] > 0 else 0,
-                "user_corrections": corrections[:5],  # Limit to 5
-            })
+            results.append(
+                {
+                    "category": row.get("insight_category", category),
+                    "message": row["insight_message"],
+                    "total_feedback": row["total"],
+                    "helpful_count": row["helpful"],
+                    "helpful_rate": (row["helpful"] / row["total"] * 100)
+                    if row["total"] > 0
+                    else 0,
+                    "user_corrections": corrections[:5],  # Limit to 5
+                }
+            )
 
         return results
 
@@ -450,9 +461,7 @@ class FeedbackDatabase:
             ).fetchall()
 
             # Get all annotations
-            annotations = conn.execute(
-                "SELECT * FROM annotations ORDER BY created_at"
-            ).fetchall()
+            annotations = conn.execute("SELECT * FROM annotations ORDER BY created_at").fetchall()
 
             # Get highly rated analyses
             good_analyses = conn.execute(
@@ -502,7 +511,7 @@ class FeedbackCollector:
     # Analysis version for tracking
     ANALYSIS_VERSION = "2.0.0"
 
-    def __init__(self, db: Optional[FeedbackDatabase] = None):
+    def __init__(self, db: FeedbackDatabase | None = None):
         """
         Initialize the feedback collector.
 
@@ -514,6 +523,7 @@ class FeedbackCollector:
     def generate_user_id(self) -> str:
         """Generate anonymous user ID based on session."""
         import uuid
+
         return hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()[:12]
 
     def submit_rating(
@@ -523,7 +533,7 @@ class FeedbackCollector:
         rating: int,
         category: str = "overall",
         comment: str = "",
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> int:
         """
         Submit a rating for an analysis.
@@ -559,7 +569,7 @@ class FeedbackCollector:
         insight_category: str,
         insight_message: str,
         was_helpful: bool,
-        user_correction: Optional[str] = None,
+        user_correction: str | None = None,
     ) -> int:
         """
         Submit feedback on a coaching insight.
@@ -593,10 +603,10 @@ class FeedbackCollector:
         user_id: str,
         content: str,
         annotation_type: str = "note",
-        round_num: Optional[int] = None,
-        tick: Optional[int] = None,
-        x: Optional[float] = None,
-        y: Optional[float] = None,
+        round_num: int | None = None,
+        tick: int | None = None,
+        x: float | None = None,
+        y: float | None = None,
     ) -> int:
         """
         Add an annotation to an analysis.
@@ -634,6 +644,7 @@ class FeedbackCollector:
 
 
 # Convenience functions
+
 
 def submit_feedback(
     demo_hash: str,

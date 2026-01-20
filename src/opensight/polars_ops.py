@@ -26,13 +26,14 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
 
 # Check for Polars availability
 try:
     import polars as pl
+
     POLARS_AVAILABLE = True
 except ImportError:
     POLARS_AVAILABLE = False
@@ -40,7 +41,6 @@ except ImportError:
 
 # pandas is always available
 import pandas as pd
-import numpy as np
 
 if TYPE_CHECKING:
     from opensight.parser import DemoData
@@ -58,7 +58,7 @@ def is_pandas_dataframe(df: Any) -> bool:
     return isinstance(df, pd.DataFrame)
 
 
-def ensure_polars(df: Union[pd.DataFrame, "pl.DataFrame", None]) -> Optional["pl.DataFrame"]:
+def ensure_polars(df: pd.DataFrame | pl.DataFrame | None) -> pl.DataFrame | None:
     """Convert DataFrame to Polars if needed."""
     if df is None:
         return None
@@ -73,7 +73,7 @@ def ensure_polars(df: Union[pd.DataFrame, "pl.DataFrame", None]) -> Optional["pl
     raise TypeError(f"Cannot convert {type(df)} to Polars DataFrame")
 
 
-def ensure_pandas(df: Union[pd.DataFrame, "pl.DataFrame", None]) -> Optional[pd.DataFrame]:
+def ensure_pandas(df: pd.DataFrame | pl.DataFrame | None) -> pd.DataFrame | None:
     """Convert DataFrame to pandas if needed."""
     if df is None:
         return None
@@ -91,6 +91,7 @@ def ensure_pandas(df: Union[pd.DataFrame, "pl.DataFrame", None]) -> Optional[pd.
 # Optimized DataFrame Operations
 # ============================================================================
 
+
 class PolarsOps:
     """
     Polars-optimized DataFrame operations for CS2 analytics.
@@ -101,26 +102,25 @@ class PolarsOps:
 
     @staticmethod
     def filter_by_steamid(
-        df: "pl.DataFrame",
+        df: pl.DataFrame,
         column: str,
         steamid: int,
-    ) -> "pl.DataFrame":
+    ) -> pl.DataFrame:
         """Filter DataFrame by steamid, handling type coercion."""
         if not POLARS_AVAILABLE:
             raise ImportError("Polars required")
 
         # Handle potential float/int mismatch
         return df.filter(
-            (pl.col(column).cast(pl.Float64) == float(steamid)) |
-            (pl.col(column) == steamid)
+            (pl.col(column).cast(pl.Float64) == float(steamid)) | (pl.col(column) == steamid)
         )
 
     @staticmethod
     def filter_by_round(
-        df: "pl.DataFrame",
+        df: pl.DataFrame,
         round_col: str,
         round_num: int,
-    ) -> "pl.DataFrame":
+    ) -> pl.DataFrame:
         """Filter DataFrame by round number."""
         if not POLARS_AVAILABLE:
             raise ImportError("Polars required")
@@ -128,10 +128,10 @@ class PolarsOps:
 
     @staticmethod
     def group_kills_by_round(
-        df: "pl.DataFrame",
+        df: pl.DataFrame,
         attacker_col: str,
         round_col: str,
-    ) -> "pl.DataFrame":
+    ) -> pl.DataFrame:
         """
         Count kills per player per round (for multi-kill detection).
 
@@ -148,10 +148,10 @@ class PolarsOps:
 
     @staticmethod
     def compute_damage_stats(
-        df: "pl.DataFrame",
+        df: pl.DataFrame,
         attacker_col: str,
         damage_col: str,
-    ) -> "pl.DataFrame":
+    ) -> pl.DataFrame:
         """
         Compute total damage per player.
 
@@ -160,20 +160,19 @@ class PolarsOps:
         if not POLARS_AVAILABLE:
             raise ImportError("Polars required")
 
-        return (
-            df.group_by(attacker_col)
-            .agg([
+        return df.group_by(attacker_col).agg(
+            [
                 pl.col(damage_col).sum().alias("total_damage"),
                 pl.len().alias("damage_count"),
-            ])
+            ]
         )
 
     @staticmethod
     def find_first_kill_per_round(
-        df: "pl.DataFrame",
+        df: pl.DataFrame,
         round_col: str,
         tick_col: str = "tick",
-    ) -> "pl.DataFrame":
+    ) -> pl.DataFrame:
         """
         Find the first kill of each round (for opening duel detection).
 
@@ -182,20 +181,16 @@ class PolarsOps:
         if not POLARS_AVAILABLE:
             raise ImportError("Polars required")
 
-        return (
-            df.sort(tick_col)
-            .group_by(round_col)
-            .first()
-        )
+        return df.sort(tick_col).group_by(round_col).first()
 
     @staticmethod
     def window_join_damages_to_kills(
-        kills_df: "pl.DataFrame",
-        damages_df: "pl.DataFrame",
+        kills_df: pl.DataFrame,
+        damages_df: pl.DataFrame,
         attacker_col: str,
         victim_col: str,
         window_ticks: int = 2000,
-    ) -> "pl.DataFrame":
+    ) -> pl.DataFrame:
         """
         Join damages to kills within a tick window (for TTD computation).
 
@@ -214,12 +209,20 @@ class PolarsOps:
         damages_sorted = damages_df.sort("tick")
 
         # Create join keys
-        kills_with_key = kills_sorted.with_columns([
-            (pl.col(attacker_col).cast(pl.Utf8) + "_" + pl.col(victim_col).cast(pl.Utf8)).alias("join_key")
-        ])
-        damages_with_key = damages_sorted.with_columns([
-            (pl.col(attacker_col).cast(pl.Utf8) + "_" + pl.col(victim_col).cast(pl.Utf8)).alias("join_key")
-        ]).rename({"tick": "damage_tick"})
+        kills_with_key = kills_sorted.with_columns(
+            [
+                (pl.col(attacker_col).cast(pl.Utf8) + "_" + pl.col(victim_col).cast(pl.Utf8)).alias(
+                    "join_key"
+                )
+            ]
+        )
+        damages_with_key = damages_sorted.with_columns(
+            [
+                (pl.col(attacker_col).cast(pl.Utf8) + "_" + pl.col(victim_col).cast(pl.Utf8)).alias(
+                    "join_key"
+                )
+            ]
+        ).rename({"tick": "damage_tick"})
 
         # For each kill, find the earliest damage in the window
         # Using a grouped approach for better performance
@@ -232,8 +235,8 @@ class PolarsOps:
                 kill_tick = kill_row["tick"]
                 # Find first damage within window
                 valid_dmg = dmg_rows.filter(
-                    (pl.col("damage_tick") <= kill_tick) &
-                    (pl.col("damage_tick") >= kill_tick - window_ticks)
+                    (pl.col("damage_tick") <= kill_tick)
+                    & (pl.col("damage_tick") >= kill_tick - window_ticks)
                 ).sort("damage_tick")
 
                 first_dmg_tick = valid_dmg["damage_tick"][0] if len(valid_dmg) > 0 else None
@@ -247,8 +250,8 @@ class PolarsOps:
 
     @staticmethod
     def compute_side_stats_vectorized(
-        kills_df: "pl.DataFrame",
-        damages_df: "pl.DataFrame",
+        kills_df: pl.DataFrame,
+        damages_df: pl.DataFrame,
         attacker_col: str,
         attacker_side_col: str,
         damage_col: str,
@@ -294,6 +297,7 @@ class PolarsOps:
 # Lazy Operations for Large Tick Data
 # ============================================================================
 
+
 class PolarsLazyOps:
     """
     LazyFrame operations for memory-efficient processing of large tick data.
@@ -303,7 +307,7 @@ class PolarsLazyOps:
     """
 
     @staticmethod
-    def scan_tick_data(path: Path) -> "pl.LazyFrame":
+    def scan_tick_data(path: Path) -> pl.LazyFrame:
         """Lazy-scan tick data from Parquet file."""
         if not POLARS_AVAILABLE:
             raise ImportError("Polars required")
@@ -311,11 +315,11 @@ class PolarsLazyOps:
 
     @staticmethod
     def filter_player_ticks_lazy(
-        lf: "pl.LazyFrame",
+        lf: pl.LazyFrame,
         steamid_col: str,
         steamid: int,
-        tick_range: Optional[tuple[int, int]] = None,
-    ) -> "pl.LazyFrame":
+        tick_range: tuple[int, int] | None = None,
+    ) -> pl.LazyFrame:
         """
         Lazily filter tick data for a specific player.
 
@@ -333,11 +337,11 @@ class PolarsLazyOps:
 
     @staticmethod
     def compute_positions_lazy(
-        lf: "pl.LazyFrame",
+        lf: pl.LazyFrame,
         x_col: str = "X",
         y_col: str = "Y",
         z_col: str = "Z",
-    ) -> "pl.LazyFrame":
+    ) -> pl.LazyFrame:
         """
         Compute position-derived metrics lazily.
 
@@ -346,22 +350,26 @@ class PolarsLazyOps:
         if not POLARS_AVAILABLE:
             raise ImportError("Polars required")
 
-        return lf.with_columns([
-            # Velocity magnitude
-            (
-                pl.col("velocity_X").pow(2) +
-                pl.col("velocity_Y").pow(2) +
-                pl.col("velocity_Z").pow(2)
-            ).sqrt().alias("velocity_magnitude"),
-        ])
+        return lf.with_columns(
+            [
+                # Velocity magnitude
+                (
+                    pl.col("velocity_X").pow(2)
+                    + pl.col("velocity_Y").pow(2)
+                    + pl.col("velocity_Z").pow(2)
+                )
+                .sqrt()
+                .alias("velocity_magnitude"),
+            ]
+        )
 
     @staticmethod
     def aggregate_player_positions_lazy(
-        lf: "pl.LazyFrame",
+        lf: pl.LazyFrame,
         steamid_col: str,
         x_col: str = "X",
         y_col: str = "Y",
-    ) -> "pl.LazyFrame":
+    ) -> pl.LazyFrame:
         """
         Aggregate position data per player for heatmap generation.
 
@@ -370,13 +378,12 @@ class PolarsLazyOps:
         if not POLARS_AVAILABLE:
             raise ImportError("Polars required")
 
-        return (
-            lf.group_by(steamid_col)
-            .agg([
+        return lf.group_by(steamid_col).agg(
+            [
                 pl.col(x_col).mean().alias("avg_x"),
                 pl.col(y_col).mean().alias("avg_y"),
                 pl.col(x_col).count().alias("positions_count"),
-            ])
+            ]
         )
 
 
@@ -384,7 +391,8 @@ class PolarsLazyOps:
 # DemoData Conversion
 # ============================================================================
 
-def convert_demo_data_to_polars(demo_data: "DemoData") -> "DemoData":
+
+def convert_demo_data_to_polars(demo_data: DemoData) -> DemoData:
     """
     Convert DemoData DataFrames from pandas to Polars.
 
@@ -402,9 +410,14 @@ def convert_demo_data_to_polars(demo_data: "DemoData") -> "DemoData":
 
     # Convert each DataFrame attribute
     df_attrs = [
-        "kills_df", "damages_df", "rounds_df",
-        "weapon_fires_df", "blinds_df", "grenades_df",
-        "bomb_events_df", "ticks_df"
+        "kills_df",
+        "damages_df",
+        "rounds_df",
+        "weapon_fires_df",
+        "blinds_df",
+        "grenades_df",
+        "bomb_events_df",
+        "ticks_df",
     ]
 
     for attr in df_attrs:
@@ -416,7 +429,7 @@ def convert_demo_data_to_polars(demo_data: "DemoData") -> "DemoData":
     return demo_data
 
 
-def convert_demo_data_to_pandas(demo_data: "DemoData") -> "DemoData":
+def convert_demo_data_to_pandas(demo_data: DemoData) -> DemoData:
     """
     Convert DemoData DataFrames from Polars back to pandas.
 
@@ -430,9 +443,14 @@ def convert_demo_data_to_pandas(demo_data: "DemoData") -> "DemoData":
         return demo_data
 
     df_attrs = [
-        "kills_df", "damages_df", "rounds_df",
-        "weapon_fires_df", "blinds_df", "grenades_df",
-        "bomb_events_df", "ticks_df"
+        "kills_df",
+        "damages_df",
+        "rounds_df",
+        "weapon_fires_df",
+        "blinds_df",
+        "grenades_df",
+        "bomb_events_df",
+        "ticks_df",
     ]
 
     for attr in df_attrs:
@@ -452,9 +470,11 @@ def convert_demo_data_to_pandas(demo_data: "DemoData") -> "DemoData":
 # Polars-Optimized Analyzer
 # ============================================================================
 
+
 @dataclass
 class PolarsPlayerStats:
     """Player statistics computed using Polars."""
+
     steamid: int
     name: str = ""
     kills: int = 0
@@ -475,7 +495,7 @@ class PolarsAnalyzer:
     Polars for significantly faster computation on large datasets.
     """
 
-    def __init__(self, demo_data: "DemoData", convert_dataframes: bool = True):
+    def __init__(self, demo_data: DemoData, convert_dataframes: bool = True):
         """
         Initialize the Polars analyzer.
 
@@ -492,15 +512,19 @@ class PolarsAnalyzer:
 
         self._kills_df = ensure_polars(self.data.kills_df)
         self._damages_df = ensure_polars(self.data.damages_df)
-        self._ticks_df = ensure_polars(self.data.ticks_df) if self.data.ticks_df is not None else None
+        self._ticks_df = (
+            ensure_polars(self.data.ticks_df) if self.data.ticks_df is not None else None
+        )
 
         # Detect column names
         self._att_col = self._find_col(self._kills_df, ["attacker_steamid", "attacker_steam_id"])
         self._vic_col = self._find_col(self._kills_df, ["victim_steamid", "user_steamid"])
-        self._round_col = self._find_col(self._kills_df, ["round_num", "total_rounds_played", "round"])
+        self._round_col = self._find_col(
+            self._kills_df, ["round_num", "total_rounds_played", "round"]
+        )
         self._att_side_col = self._find_col(self._kills_df, ["attacker_side", "attacker_team_name"])
 
-    def _find_col(self, df: Optional["pl.DataFrame"], options: list[str]) -> Optional[str]:
+    def _find_col(self, df: pl.DataFrame | None, options: list[str]) -> str | None:
         """Find first matching column."""
         if df is None:
             return None
@@ -526,11 +550,7 @@ class PolarsAnalyzer:
 
         # Vectorized kill counting
         if self._att_col:
-            kill_counts = (
-                self._kills_df
-                .group_by(self._att_col)
-                .agg(pl.len().alias("kills"))
-            )
+            kill_counts = self._kills_df.group_by(self._att_col).agg(pl.len().alias("kills"))
             for row in kill_counts.iter_rows(named=True):
                 sid = int(row[self._att_col])
                 if sid in stats:
@@ -538,11 +558,7 @@ class PolarsAnalyzer:
 
         # Vectorized death counting
         if self._vic_col:
-            death_counts = (
-                self._kills_df
-                .group_by(self._vic_col)
-                .agg(pl.len().alias("deaths"))
-            )
+            death_counts = self._kills_df.group_by(self._vic_col).agg(pl.len().alias("deaths"))
             for row in death_counts.iter_rows(named=True):
                 sid = int(row[self._vic_col])
                 if sid in stats:
@@ -551,8 +567,7 @@ class PolarsAnalyzer:
         # Headshot counting
         if self._att_col and "headshot" in self._kills_df.columns:
             hs_counts = (
-                self._kills_df
-                .filter(pl.col("headshot") == True)
+                self._kills_df.filter(pl.col("headshot"))
                 .group_by(self._att_col)
                 .agg(pl.len().alias("headshots"))
             )
@@ -575,7 +590,9 @@ class PolarsAnalyzer:
 
         # Damage stats
         if self._damages_df is not None and len(self._damages_df) > 0:
-            dmg_att_col = self._find_col(self._damages_df, ["attacker_steamid", "attacker_steam_id"])
+            dmg_att_col = self._find_col(
+                self._damages_df, ["attacker_steamid", "attacker_steam_id"]
+            )
             dmg_col = self._find_col(self._damages_df, ["dmg_health", "damage", "dmg"])
 
             if dmg_att_col and dmg_col:
@@ -606,9 +623,7 @@ class PolarsAnalyzer:
             result[steamid] = {"wins": 0, "losses": 0}
 
         # Get first kill per round
-        first_kills = PolarsOps.find_first_kill_per_round(
-            self._kills_df, self._round_col
-        )
+        first_kills = PolarsOps.find_first_kill_per_round(self._kills_df, self._round_col)
 
         for row in first_kills.iter_rows(named=True):
             if self._att_col and self._att_col in row:
@@ -658,14 +673,16 @@ class PolarsAnalyzer:
                     ttd_ticks = kill_tick - first_dmg_tick
                     ttd_ms = ttd_ticks * MS_PER_TICK
 
-                    results.append({
-                        "attacker": row.get(self._att_col),
-                        "victim": row.get(self._vic_col),
-                        "ttd_ms": ttd_ms,
-                        "ttd_ticks": ttd_ticks,
-                        "kill_tick": kill_tick,
-                        "first_damage_tick": first_dmg_tick,
-                    })
+                    results.append(
+                        {
+                            "attacker": row.get(self._att_col),
+                            "victim": row.get(self._vic_col),
+                            "ttd_ms": ttd_ms,
+                            "ttd_ticks": ttd_ticks,
+                            "kill_tick": kill_tick,
+                            "first_damage_tick": first_dmg_tick,
+                        }
+                    )
 
             logger.info(f"Computed {len(results)} TTD values using Polars")
 
@@ -679,7 +696,8 @@ class PolarsAnalyzer:
 # Performance Comparison
 # ============================================================================
 
-def compare_performance(demo_data: "DemoData", iterations: int = 5) -> dict[str, float]:
+
+def compare_performance(demo_data: DemoData, iterations: int = 5) -> dict[str, float]:
     """
     Compare pandas vs Polars performance for demo analysis.
 

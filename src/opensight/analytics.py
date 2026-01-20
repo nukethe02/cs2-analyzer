@@ -13,22 +13,21 @@ Implements industry-standard metrics:
 - Crosshair Placement
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Optional
 import logging
 import math
+from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from opensight.parser import DemoData, KillEvent, DamageEvent, safe_int, safe_str, safe_float
 from opensight.constants import (
     CS2_TICK_RATE,
-    TRADE_WINDOW_SECONDS,
-    OPENING_DUEL_WINDOW,
     HLTV_RATING_COEFFICIENTS,
     IMPACT_COEFFICIENTS,
+    TRADE_WINDOW_SECONDS,
 )
+from opensight.parser import DemoData, safe_float, safe_int, safe_str
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +36,12 @@ try:
     from opensight.metrics_optimized import (
         MetricType,
         OptimizedMetricsComputer,
-        compute_ttd_vectorized,
-        compute_cp_vectorized,
         compute_cp_from_dataframe_vectorized,
+        compute_cp_vectorized,
+        compute_ttd_vectorized,
         set_cache_directory,
     )
+
     HAS_OPTIMIZED_METRICS = True
 except ImportError:
     HAS_OPTIMIZED_METRICS = False
@@ -51,14 +51,16 @@ except ImportError:
 
 # Import economy and combat modules for integration
 try:
-    from opensight.economy import EconomyAnalyzer, EconomyStats, PlayerEconomyProfile, BuyType
+    from opensight.economy import BuyType, EconomyAnalyzer, EconomyStats, PlayerEconomyProfile
+
     HAS_ECONOMY = True
 except ImportError:
     HAS_ECONOMY = False
     logger.debug("Economy module not available")
 
 try:
-    from opensight.combat import CombatAnalyzer, CombatAnalysisResult, PlayerCombatStats
+    from opensight.combat import CombatAnalysisResult, CombatAnalyzer, PlayerCombatStats
+
     HAS_COMBAT = True
 except ImportError:
     HAS_COMBAT = False
@@ -111,8 +113,8 @@ def compute_kill_positions(match_data) -> list[dict]:
     kill_positions = []
 
     # Handle both DemoData (with kills list) and MatchData
-    kills = getattr(match_data, 'kills', [])
-    player_names = getattr(match_data, 'player_names', {})
+    kills = getattr(match_data, "kills", [])
+    player_names = getattr(match_data, "player_names", {})
 
     for kill in kills:
         try:
@@ -130,7 +132,7 @@ def compute_kill_positions(match_data) -> list[dict]:
 
             # Determine attacker team from side info
             attacker_team = "Unknown"
-            if hasattr(kill, 'attacker_side') and kill.attacker_side:
+            if hasattr(kill, "attacker_side") and kill.attacker_side:
                 side = str(kill.attacker_side).upper()
                 if "CT" in side:
                     attacker_team = "CT"
@@ -138,25 +140,27 @@ def compute_kill_positions(match_data) -> list[dict]:
                     attacker_team = "T"
 
             victim_team = "Unknown"
-            if hasattr(kill, 'victim_side') and kill.victim_side:
+            if hasattr(kill, "victim_side") and kill.victim_side:
                 side = str(kill.victim_side).upper()
                 if "CT" in side:
                     victim_team = "CT"
                 elif "T" in side and "CT" not in side:
                     victim_team = "T"
 
-            kill_positions.append({
-                "attacker_name": attacker_name,
-                "victim_name": victim_name,
-                "attacker_team": attacker_team,
-                "victim_team": victim_team,
-                "weapon": kill.weapon or "Unknown",
-                "is_headshot": bool(kill.headshot),
-                "x": float(x),
-                "y": float(y),
-                "z": float(z) if z else 0.0,
-                "round_num": kill.round_num or 0,
-            })
+            kill_positions.append(
+                {
+                    "attacker_name": attacker_name,
+                    "victim_name": victim_name,
+                    "attacker_team": attacker_team,
+                    "victim_team": victim_team,
+                    "weapon": kill.weapon or "Unknown",
+                    "is_headshot": bool(kill.headshot),
+                    "x": float(x),
+                    "y": float(y),
+                    "z": float(z) if z else 0.0,
+                    "round_num": kill.round_num or 0,
+                }
+            )
         except Exception as e:
             logger.debug(f"Error extracting kill position: {e}")
             continue
@@ -168,6 +172,7 @@ def compute_kill_positions(match_data) -> list[dict]:
 @dataclass
 class TTDResult:
     """Time to Damage result for a single engagement."""
+
     tick_spotted: int
     tick_damage: int
     ttd_ticks: int
@@ -183,6 +188,7 @@ class TTDResult:
 @dataclass
 class CrosshairPlacementResult:
     """Crosshair placement analysis for a kill."""
+
     tick: int
     attacker_steamid: int
     victim_steamid: int
@@ -205,6 +211,7 @@ class OpeningDuelStats:
     - entry_kills_total: Raw count of entry kills
     - entry_ttd_values: TTD specifically for entry kills (reaction time on first contact)
     """
+
     wins: int = 0
     losses: int = 0
     attempts: int = 0
@@ -223,14 +230,14 @@ class OpeningDuelStats:
         return round(self.wins / self.attempts * 100, 1) if self.attempts > 0 else 0.0
 
     @property
-    def entry_ttd_median_ms(self) -> Optional[float]:
+    def entry_ttd_median_ms(self) -> float | None:
         """Median TTD for entry kills - measures reaction time on first contact."""
         if self.entry_ttd_values:
             return float(np.median(self.entry_ttd_values))
         return None
 
     @property
-    def entry_ttd_mean_ms(self) -> Optional[float]:
+    def entry_ttd_mean_ms(self) -> float | None:
         """Mean TTD for entry kills."""
         if self.entry_ttd_values:
             return float(np.mean(self.entry_ttd_values))
@@ -248,7 +255,10 @@ class TradeStats:
     - trade_rate: Trade Kill % - How often you avenge teammates when opportunity arises
     - deaths_traded_rate: How often your deaths were avenged by teammates
     """
-    kills_traded: int = 0  # Kills that avenged a teammate (you killed the enemy who killed teammate)
+
+    kills_traded: int = (
+        0  # Kills that avenged a teammate (you killed the enemy who killed teammate)
+    )
     deaths_traded: int = 0  # Your deaths that were avenged by teammates
     trade_attempts: int = 0  # Opportunities to trade (teammate deaths where you could trade)
     failed_trades: int = 0  # Trade opportunities where you didn't get the trade
@@ -256,7 +266,11 @@ class TradeStats:
     @property
     def trade_rate(self) -> float:
         """Trade Kill % - How often you avenge your teammates when given the opportunity."""
-        return round(self.kills_traded / self.trade_attempts * 100, 1) if self.trade_attempts > 0 else 0.0
+        return (
+            round(self.kills_traded / self.trade_attempts * 100, 1)
+            if self.trade_attempts > 0
+            else 0.0
+        )
 
     @property
     def deaths_traded_rate(self) -> float:
@@ -277,6 +291,7 @@ class ClutchStats:
     - v1_win_rate: Clutch 1v1 % - Success rate in 1v1 clutches
     - v2_win_rate: Clutch 1v2 % - Success rate in 1v2 clutches
     """
+
     total_situations: int = 0
     total_wins: int = 0
     v1_attempts: int = 0
@@ -293,7 +308,11 @@ class ClutchStats:
     @property
     def win_rate(self) -> float:
         """Clutch Won % - Overall clutch success rate across all 1vX situations."""
-        return round(self.total_wins / self.total_situations * 100, 1) if self.total_situations > 0 else 0.0
+        return (
+            round(self.total_wins / self.total_situations * 100, 1)
+            if self.total_situations > 0
+            else 0.0
+        )
 
     @property
     def v1_win_rate(self) -> float:
@@ -405,6 +424,7 @@ class ClutchStats:
 @dataclass
 class MultiKillStats:
     """Multi-kill round statistics."""
+
     rounds_with_1k: int = 0
     rounds_with_2k: int = 0
     rounds_with_3k: int = 0
@@ -419,6 +439,7 @@ class MultiKillStats:
 @dataclass
 class WeaponStats:
     """Per-weapon statistics for a player."""
+
     weapon: str
     kills: int = 0
     headshots: int = 0
@@ -451,6 +472,7 @@ class WeaponStats:
 @dataclass
 class UtilityStats:
     """Utility usage statistics."""
+
     flashbangs_thrown: int = 0
     smokes_thrown: int = 0
     he_thrown: int = 0
@@ -514,6 +536,7 @@ class UtilityMetrics:
     This dataclass provides a comprehensive view of each player's utility usage,
     including grenade counts, utility damage, and flash effectiveness.
     """
+
     player_name: str
     player_steamid: int
     team: str = ""
@@ -526,10 +549,10 @@ class UtilityMetrics:
 
     # Utility effectiveness
     total_utility_damage: float = 0.0  # HE + Molotov damage to enemies
-    flashes_enemies_total: int = 0     # Number of enemy players flashed (>1.1s blind)
-    flashes_teammates_total: int = 0   # Number of teammates flashed (mistake tracking)
-    flash_assists: int = 0             # Kills on enemies player flashed
-    total_blind_time: float = 0.0      # Total seconds enemies were blinded
+    flashes_enemies_total: int = 0  # Number of enemy players flashed (>1.1s blind)
+    flashes_teammates_total: int = 0  # Number of teammates flashed (mistake tracking)
+    flash_assists: int = 0  # Kills on enemies player flashed
+    total_blind_time: float = 0.0  # Total seconds enemies were blinded
 
     # Per-grenade efficiency metrics
     he_damage: int = 0
@@ -588,6 +611,7 @@ class UtilityMetrics:
 @dataclass
 class SideStats:
     """Per-side (CT/T) statistics."""
+
     kills: int = 0
     deaths: int = 0
     assists: int = 0
@@ -606,6 +630,7 @@ class SideStats:
 @dataclass
 class MistakesStats:
     """Mistake tracking (Scope.gg style)."""
+
     team_kills: int = 0
     team_damage: int = 0
     teammates_flashed: int = 0
@@ -615,7 +640,12 @@ class MistakesStats:
     def total_mistakes(self) -> int:
         """Total mistake score (weighted)."""
         # Team kills are worst, team damage next, flashes last
-        return (self.team_kills * 10) + (self.team_damage // 10) + self.teammates_flashed + (self.suicides * 5)
+        return (
+            (self.team_kills * 10)
+            + (self.team_damage // 10)
+            + self.teammates_flashed
+            + (self.suicides * 5)
+        )
 
 
 @dataclass
@@ -633,6 +663,7 @@ class AdvancedMetrics:
     - Clutch players (high clutch_win_rate)
     - Team players (high trade_success_rate)
     """
+
     player_name: str
     steam_id: int = 0
 
@@ -671,6 +702,7 @@ class AdvancedMetrics:
 @dataclass
 class LurkStats:
     """Lurk statistics from State Machine."""
+
     kills: int = 0
     deaths: int = 0
     rounds_lurking: int = 0
@@ -679,6 +711,7 @@ class LurkStats:
 @dataclass
 class PlayerMatchStats:
     """Complete match statistics for a player."""
+
     # Identity
     steam_id: int
     name: str
@@ -714,9 +747,9 @@ class PlayerMatchStats:
     rounds_survived: int = 0
 
     # State Machine enhanced stats
-    effective_flashes: int = 0      # Flashes > 2.0 seconds blind duration
-    ineffective_flashes: int = 0    # Flashes < 2.0 seconds
-    utility_adr: float = 0.0        # HE + Molotov damage per round
+    effective_flashes: int = 0  # Flashes > 2.0 seconds blind duration
+    ineffective_flashes: int = 0  # Flashes < 2.0 seconds
+    utility_adr: float = 0.0  # HE + Molotov damage per round
 
     # Weapon breakdown
     weapon_kills: dict = field(default_factory=dict)
@@ -764,11 +797,17 @@ class PlayerMatchStats:
 
     @property
     def kast_percentage(self) -> float:
-        return round(self.kast_rounds / self.rounds_played * 100, 1) if self.rounds_played > 0 else 0.0
+        return (
+            round(self.kast_rounds / self.rounds_played * 100, 1) if self.rounds_played > 0 else 0.0
+        )
 
     @property
     def survival_rate(self) -> float:
-        return round(self.rounds_survived / self.rounds_played * 100, 1) if self.rounds_played > 0 else 0.0
+        return (
+            round(self.rounds_survived / self.rounds_played * 100, 1)
+            if self.rounds_played > 0
+            else 0.0
+        )
 
     @property
     def kills_per_round(self) -> float:
@@ -796,17 +835,17 @@ class PlayerMatchStats:
         Impact = 2.13*KPR + 0.42*APR - 0.41 + clutch/multikill bonuses
         """
         base = (
-            IMPACT_COEFFICIENTS["kpr"] * self.kills_per_round +
-            IMPACT_COEFFICIENTS["apr"] * self.assists_per_round +
-            IMPACT_COEFFICIENTS["base"]
+            IMPACT_COEFFICIENTS["kpr"] * self.kills_per_round
+            + IMPACT_COEFFICIENTS["apr"] * self.assists_per_round
+            + IMPACT_COEFFICIENTS["base"]
         )
         # Add clutch bonus
         clutch_bonus = self.clutches.total_wins * 0.1
         # Add multi-kill bonus
         mk_bonus = (
-            self.multi_kills.rounds_with_3k * 0.1 +
-            self.multi_kills.rounds_with_4k * 0.2 +
-            self.multi_kills.rounds_with_5k * 0.3
+            self.multi_kills.rounds_with_3k * 0.1
+            + self.multi_kills.rounds_with_4k * 0.2
+            + self.multi_kills.rounds_with_5k * 0.3
         )
         return round(base + clutch_bonus + mk_bonus, 3)
 
@@ -826,32 +865,32 @@ class PlayerMatchStats:
         rmk = self.multi_kill_round_rate
 
         rating = (
-            HLTV_RATING_COEFFICIENTS["kast"] * kast +
-            HLTV_RATING_COEFFICIENTS["kpr"] * kpr +
-            HLTV_RATING_COEFFICIENTS["dpr"] * dpr +
-            HLTV_RATING_COEFFICIENTS["impact"] * impact +
-            HLTV_RATING_COEFFICIENTS["adr"] * adr +
-            HLTV_RATING_COEFFICIENTS["rmk"] * rmk
+            HLTV_RATING_COEFFICIENTS["kast"] * kast
+            + HLTV_RATING_COEFFICIENTS["kpr"] * kpr
+            + HLTV_RATING_COEFFICIENTS["dpr"] * dpr
+            + HLTV_RATING_COEFFICIENTS["impact"] * impact
+            + HLTV_RATING_COEFFICIENTS["adr"] * adr
+            + HLTV_RATING_COEFFICIENTS["rmk"] * rmk
         )
 
         return round(max(0.0, rating), 2)
 
     # TTD properties
     @property
-    def ttd_median_ms(self) -> Optional[float]:
+    def ttd_median_ms(self) -> float | None:
         return float(np.median(self.ttd_values)) if self.ttd_values else None
 
     @property
-    def ttd_mean_ms(self) -> Optional[float]:
+    def ttd_mean_ms(self) -> float | None:
         return float(np.mean(self.ttd_values)) if self.ttd_values else None
 
     # CP properties
     @property
-    def cp_median_error_deg(self) -> Optional[float]:
+    def cp_median_error_deg(self) -> float | None:
         return float(np.median(self.cp_values)) if self.cp_values else None
 
     @property
-    def cp_mean_error_deg(self) -> Optional[float]:
+    def cp_mean_error_deg(self) -> float | None:
         return float(np.mean(self.cp_values)) if self.cp_values else None
 
     # Accuracy properties (Leetify style)
@@ -874,17 +913,17 @@ class PlayerMatchStats:
         Uses x^(2/3) scaling, max 100.
         """
         total_utility = (
-            self.utility.flashbangs_thrown +
-            self.utility.he_thrown +
-            self.utility.molotovs_thrown +
-            self.utility.smokes_thrown
+            self.utility.flashbangs_thrown
+            + self.utility.he_thrown
+            + self.utility.molotovs_thrown
+            + self.utility.smokes_thrown
         )
         expected = 3.0 * self.rounds_played
         if expected <= 0:
             return 0.0
         ratio = min(total_utility / expected, 1.0)  # Cap at 1.0
         # Apply x^(2/3) scaling
-        scaled = ratio ** (2/3)
+        scaled = ratio ** (2 / 3)
         return round(scaled * 100, 1)
 
     @property
@@ -968,10 +1007,14 @@ class PlayerMatchStats:
     @property
     def entry_kills_per_round(self) -> float:
         """Entry Kills per Round - average number of opening kills per round."""
-        return round(self.opening_duels.wins / self.rounds_played, 2) if self.rounds_played > 0 else 0.0
+        return (
+            round(self.opening_duels.wins / self.rounds_played, 2)
+            if self.rounds_played > 0
+            else 0.0
+        )
 
     @property
-    def entry_ttd(self) -> Optional[float]:
+    def entry_ttd(self) -> float | None:
         """Entry TTD - median time to damage on opening kills (ms)."""
         return self.opening_duels.entry_ttd_median_ms
 
@@ -999,6 +1042,7 @@ class PlayerMatchStats:
 @dataclass
 class RoundTimeline:
     """Timeline entry for a single round."""
+
     round_num: int
     winner: str  # "CT" or "T"
     win_reason: str  # "elimination", "bomb_exploded", "bomb_defused", "time"
@@ -1016,6 +1060,7 @@ class RoundTimeline:
 @dataclass
 class KillMatrixEntry:
     """Entry in kill matrix showing who killed whom."""
+
     attacker_name: str
     victim_name: str
     count: int
@@ -1025,6 +1070,7 @@ class KillMatrixEntry:
 @dataclass
 class MatchAnalysis:
     """Complete analysis of a match."""
+
     players: dict[int, PlayerMatchStats]
     team1_score: int
     team2_score: int
@@ -1065,7 +1111,7 @@ class MatchAnalysis:
             return sorted(players_list, key=lambda p: p.kast_percentage, reverse=True)
         return players_list
 
-    def get_mvp(self) -> Optional[PlayerMatchStats]:
+    def get_mvp(self) -> PlayerMatchStats | None:
         """Get match MVP (highest rated player)."""
         leaderboard = self.get_leaderboard()
         return leaderboard[0] if leaderboard else None
@@ -1134,9 +1180,9 @@ class DemoAnalyzer:
     def __init__(
         self,
         demo_data: DemoData,
-        metrics: Optional[str | list[str]] = None,
+        metrics: str | list[str] | None = None,
         use_cache: bool = True,
-        use_optimized: bool = True
+        use_optimized: bool = True,
     ):
         """
         Initialize analyzer.
@@ -1156,19 +1202,19 @@ class DemoAnalyzer:
         self._cp_results: list[CrosshairPlacementResult] = []
         self._players: dict[int, PlayerMatchStats] = {}
         # Cache column lookups
-        self._round_col: Optional[str] = None
-        self._att_id_col: Optional[str] = None
-        self._vic_id_col: Optional[str] = None
-        self._att_side_col: Optional[str] = None
-        self._vic_side_col: Optional[str] = None
+        self._round_col: str | None = None
+        self._att_id_col: str | None = None
+        self._vic_id_col: str | None = None
+        self._att_side_col: str | None = None
+        self._vic_side_col: str | None = None
 
         # Metrics configuration
         self._use_cache = use_cache
         self._use_optimized = use_optimized and HAS_OPTIMIZED_METRICS
-        self._metrics_computer: Optional[OptimizedMetricsComputer] = None
+        self._metrics_computer: OptimizedMetricsComputer | None = None
         self._requested_metrics = self._parse_metrics_config(metrics)
 
-    def _parse_metrics_config(self, metrics: Optional[str | list[str]]) -> set[str]:
+    def _parse_metrics_config(self, metrics: str | list[str] | None) -> set[str]:
         """Parse metrics configuration into a set of metric categories."""
         if metrics is None or metrics == "full":
             return set(self.METRIC_CATEGORIES.keys())
@@ -1184,7 +1230,7 @@ class DemoAnalyzer:
 
         return set(metrics)
 
-    def _find_col(self, df: pd.DataFrame, options: list[str]) -> Optional[str]:
+    def _find_col(self, df: pd.DataFrame, options: list[str]) -> str | None:
         """Find first matching column from options."""
         for col in options:
             if col in df.columns:
@@ -1210,7 +1256,9 @@ class DemoAnalyzer:
         self._vic_id_col = self._find_col(kills_df, self.VIC_ID_COLS)
         self._att_side_col = self._find_col(kills_df, self.ATT_SIDE_COLS)
         self._vic_side_col = self._find_col(kills_df, self.VIC_SIDE_COLS)
-        logger.info(f"Column cache: round={self._round_col}, att_id={self._att_id_col}, vic_id={self._vic_id_col}")
+        logger.info(
+            f"Column cache: round={self._round_col}, att_id={self._att_id_col}, vic_id={self._vic_id_col}"
+        )
 
     def analyze(self) -> MatchAnalysis:
         """Run full analysis and return match analysis.
@@ -1231,10 +1279,7 @@ class DemoAnalyzer:
 
         # Initialize optimized metrics computer if using optimized implementations
         if self._use_optimized:
-            self._metrics_computer = OptimizedMetricsComputer(
-                self.data,
-                use_cache=self._use_cache
-            )
+            self._metrics_computer = OptimizedMetricsComputer(self.data, use_cache=self._use_cache)
 
         # Calculate multi-kill rounds
         if "multi_kills" in self._requested_metrics or "basic" in self._requested_metrics:
@@ -1285,9 +1330,8 @@ class DemoAnalyzer:
             self._run_state_machine()
 
         # Integrate Economy Module
-        economy_stats = {}
         if "economy" in self._requested_metrics:
-            economy_stats = self._integrate_economy()
+            self._integrate_economy()
 
         # Integrate Combat Module
         combat_stats = {}
@@ -1367,12 +1411,18 @@ class DemoAnalyzer:
 
         # Find damage columns
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
-        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"]) if not damages_df.empty else None
+        dmg_col = (
+            self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+            if not damages_df.empty
+            else None
+        )
 
         # Log DataFrame info for debugging
         if not kills_df.empty and att_id_col in kills_df.columns:
             unique_attackers = kills_df[att_id_col].dropna().unique()
-            logger.info(f"DataFrame has {len(unique_attackers)} unique attackers in column '{att_id_col}'")
+            logger.info(
+                f"DataFrame has {len(unique_attackers)} unique attackers in column '{att_id_col}'"
+            )
             logger.info(f"Player steamids: {list(self._players.keys())[:5]}...")
             logger.info(f"DataFrame attacker steamids (sample): {list(unique_attackers[:5])}")
             logger.info(f"Attacker column dtype: {kills_df[att_id_col].dtype}")
@@ -1396,7 +1446,9 @@ class DemoAnalyzer:
 
             # Assists
             if not kills_df.empty and "assister_steamid" in kills_df.columns:
-                player.assists = len(kills_df[kills_df["assister_steamid"].astype(float) == float(steam_id)])
+                player.assists = len(
+                    kills_df[kills_df["assister_steamid"].astype(float) == float(steam_id)]
+                )
 
             # Damage - use dynamic column finding
             if dmg_att_col and dmg_col:
@@ -1404,17 +1456,23 @@ class DemoAnalyzer:
                 player.total_damage = int(player_dmg[dmg_col].sum())
 
             # Flash assists
-            if not kills_df.empty and "flash_assist" in kills_df.columns and "assister_steamid" in kills_df.columns:
+            if (
+                not kills_df.empty
+                and "flash_assist" in kills_df.columns
+                and "assister_steamid" in kills_df.columns
+            ):
                 flash_assists = kills_df[
-                    (kills_df["assister_steamid"].astype(float) == float(steam_id)) &
-                    (kills_df["flash_assist"] == True)
+                    (kills_df["assister_steamid"].astype(float) == float(steam_id))
+                    & (kills_df["flash_assist"])
                 ]
                 player.utility.flash_assists = len(flash_assists)
 
         # Log results
         total_kills = sum(p.kills for p in self._players.values())
         total_deaths = sum(p.deaths for p in self._players.values())
-        logger.info(f"Basic stats calculated: {total_kills} total kills, {total_deaths} total deaths across {len(self._players)} players")
+        logger.info(
+            f"Basic stats calculated: {total_kills} total kills, {total_deaths} total deaths across {len(self._players)} players"
+        )
 
     def _calculate_multi_kills(self) -> None:
         """Calculate multi-kill rounds for each player."""
@@ -1471,7 +1529,9 @@ class DemoAnalyzer:
             if self._att_side_col and self._att_side_col in kills_df.columns:
                 side_val = first_kill.get(self._att_side_col)
                 if isinstance(side_val, str):
-                    attacker_side = "CT" if "CT" in side_val.upper() else "T" if "T" in side_val.upper() else ""
+                    attacker_side = (
+                        "CT" if "CT" in side_val.upper() else "T" if "T" in side_val.upper() else ""
+                    )
 
             if attacker_id in self._players:
                 self._players[attacker_id].opening_duels.attempts += 1
@@ -1487,9 +1547,9 @@ class DemoAnalyzer:
                 # Calculate Entry TTD (time from first damage to kill)
                 if dmg_att_col and dmg_vic_col and not damages_df.empty:
                     entry_damages = damages_df[
-                        (damages_df[dmg_att_col].astype(float) == float(attacker_id)) &
-                        (damages_df[dmg_vic_col].astype(float) == float(victim_id)) &
-                        (damages_df["tick"] <= kill_tick)
+                        (damages_df[dmg_att_col].astype(float) == float(attacker_id))
+                        & (damages_df[dmg_vic_col].astype(float) == float(victim_id))
+                        & (damages_df["tick"] <= kill_tick)
                     ].sort_values("tick")
 
                     if not entry_damages.empty:
@@ -1499,13 +1559,17 @@ class DemoAnalyzer:
 
                         # Only record reasonable TTD values (0-1500ms)
                         if 0 < entry_ttd_ms <= self.TTD_MAX_MS:
-                            self._players[attacker_id].opening_duels.entry_ttd_values.append(entry_ttd_ms)
+                            self._players[attacker_id].opening_duels.entry_ttd_values.append(
+                                entry_ttd_ms
+                            )
 
             if victim_id in self._players:
                 self._players[victim_id].opening_duels.attempts += 1
                 self._players[victim_id].opening_duels.losses += 1
 
-        logger.info(f"Detected {entry_kills_count} entry kills across {len(kills_df[self._round_col].unique())} rounds")
+        logger.info(
+            f"Detected {entry_kills_count} entry kills across {len(kills_df[self._round_col].unique())} rounds"
+        )
 
     def _detect_trades(self) -> None:
         """Detect trade kills and track trade opportunities.
@@ -1535,7 +1599,7 @@ class DemoAnalyzer:
         for round_num in kills_df[self._round_col].unique():
             round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
 
-            for idx, kill in round_kills.iterrows():
+            for _idx, kill in round_kills.iterrows():
                 victim_id = safe_int(kill.get(self._vic_id_col))
                 victim_team = safe_str(kill.get(self._vic_side_col)) if self._vic_side_col else ""
                 killer_id = safe_int(kill.get(self._att_id_col))
@@ -1552,7 +1616,8 @@ class DemoAnalyzer:
                 # an opportunity to trade (kill the enemy who killed them)
                 # Find alive teammates who could potentially trade
                 teammates = [
-                    sid for sid, player in self._players.items()
+                    sid
+                    for sid, player in self._players.items()
                     if player.team == victim_team and sid != victim_id
                 ]
 
@@ -1564,10 +1629,10 @@ class DemoAnalyzer:
 
                 # Look for trade (teammate kills the killer within window)
                 potential_trades = round_kills[
-                    (round_kills["tick"] > kill_tick) &
-                    (round_kills["tick"] <= kill_tick + trade_window_ticks) &
-                    (round_kills[self._vic_id_col].astype(float) == float(killer_id)) &
-                    (round_kills[self._att_side_col] == victim_team)
+                    (round_kills["tick"] > kill_tick)
+                    & (round_kills["tick"] <= kill_tick + trade_window_ticks)
+                    & (round_kills[self._vic_id_col].astype(float) == float(killer_id))
+                    & (round_kills[self._att_side_col] == victim_team)
                 ]
 
                 if not potential_trades.empty:
@@ -1633,22 +1698,22 @@ class DemoAnalyzer:
                     t_deaths.append(victim_id)
 
             # Detect clutch situations for each side
-            for side, deaths, enemy_deaths in [("CT", ct_deaths, t_deaths), ("T", t_deaths, ct_deaths)]:
+            for side, deaths, enemy_deaths in [
+                ("CT", ct_deaths, t_deaths),
+                ("T", t_deaths, ct_deaths),
+            ]:
                 if len(deaths) < 4:  # Need 4+ teammates dead for 1vX (5-player team)
                     continue
 
                 # Find players on this team
-                team_players = [
-                    sid for sid, p in self._players.items()
-                    if side in p.team.upper()
-                ]
+                team_players = [sid for sid, p in self._players.items() if side in p.team.upper()]
 
                 if len(team_players) != 5:
                     continue  # Skip if team size is unexpected
 
                 # When 4th teammate dies, the 5th is in a clutch
                 # Count how many enemies were alive at that moment
-                enemies_alive_at_clutch = 5 - len([d for d in enemy_deaths if d in enemy_deaths[:len(deaths)]])
+                5 - len([d for d in enemy_deaths if d in enemy_deaths[: len(deaths)]])
 
                 # More accurate: count enemy deaths that happened BEFORE 4th teammate death
                 # We look at kill order in the DataFrame
@@ -1693,7 +1758,7 @@ class DemoAnalyzer:
                     continue
 
                 player = self._players[survivor_id]
-                clutch_won = (round_winner == side)
+                clutch_won = round_winner == side
 
                 # Update totals
                 player.clutches.total_situations += 1
@@ -1724,7 +1789,9 @@ class DemoAnalyzer:
                     if clutch_won:
                         player.clutches.v5_wins += 1
 
-        logger.info(f"Detected {total_clutch_situations} clutch situations, {total_clutch_wins} won")
+        logger.info(
+            f"Detected {total_clutch_situations} clutch situations, {total_clutch_wins} won"
+        )
 
     def _calculate_kast(self) -> None:
         """Calculate KAST (Kill/Assist/Survived/Traded) for each player."""
@@ -1769,10 +1836,10 @@ class DemoAnalyzer:
                     # Check if teammate killed the killer within trade window
                     if self._att_side_col and self._att_side_col in round_kills.columns:
                         trades = round_kills[
-                            (round_kills["tick"] > death_tick) &
-                            (round_kills["tick"] <= death_tick + trade_window_ticks) &
-                            (round_kills[self._vic_id_col] == killer_id) &
-                            (round_kills[self._att_side_col] == player_team)
+                            (round_kills["tick"] > death_tick)
+                            & (round_kills["tick"] <= death_tick + trade_window_ticks)
+                            & (round_kills[self._vic_id_col] == killer_id)
+                            & (round_kills[self._att_side_col] == player_team)
                         ]
                         if not trades.empty:
                             kast_this_round = True
@@ -1802,7 +1869,9 @@ class DemoAnalyzer:
 
             ttd_metrics = self._metrics_computer.ttd_metrics
             if ttd_metrics:
-                logger.info(f"Computed TTD (vectorized) for {ttd_metrics.total_engagements} engagements")
+                logger.info(
+                    f"Computed TTD (vectorized) for {ttd_metrics.total_engagements} engagements"
+                )
             return
 
         # Fallback: Original per-kill loop implementation
@@ -1836,9 +1905,9 @@ class DemoAnalyzer:
 
                 # Find first damage from attacker to victim before kill
                 mask = (
-                    (damages_df[dmg_att_col] == att_id) &
-                    (damages_df[dmg_vic_col] == vic_id) &
-                    (damages_df["tick"] <= kill_tick)
+                    (damages_df[dmg_att_col] == att_id)
+                    & (damages_df[dmg_vic_col] == vic_id)
+                    & (damages_df["tick"] <= kill_tick)
                 )
                 engagement_damages = damages_df[mask].sort_values("tick")
 
@@ -1857,18 +1926,20 @@ class DemoAnalyzer:
                 elif att_id in self._players and is_prefire:
                     self._players[att_id].prefire_count += 1
 
-                self._ttd_results.append(TTDResult(
-                    tick_spotted=first_dmg_tick,
-                    tick_damage=kill_tick,
-                    ttd_ticks=ttd_ticks,
-                    ttd_ms=ttd_ms,
-                    attacker_steamid=att_id,
-                    victim_steamid=vic_id,
-                    weapon=kill.weapon,
-                    headshot=kill.headshot,
-                    is_prefire=is_prefire,
-                    round_num=round_num,
-                ))
+                self._ttd_results.append(
+                    TTDResult(
+                        tick_spotted=first_dmg_tick,
+                        tick_damage=kill_tick,
+                        ttd_ticks=ttd_ticks,
+                        ttd_ms=ttd_ms,
+                        attacker_steamid=att_id,
+                        victim_steamid=vic_id,
+                        weapon=kill.weapon,
+                        headshot=kill.headshot,
+                        is_prefire=is_prefire,
+                        round_num=round_num,
+                    )
+                )
 
             except Exception as e:
                 logger.debug(f"Error processing kill for TTD: {e}")
@@ -1900,10 +1971,16 @@ class DemoAnalyzer:
         logger.info("Using per-kill CP computation (fallback)")
 
         # First try using KillEvent objects directly (preferred - they have embedded position data)
-        kills_with_pos = [k for k in self.data.kills if k.attacker_x is not None and k.attacker_pitch is not None and k.victim_x is not None]
+        kills_with_pos = [
+            k
+            for k in self.data.kills
+            if k.attacker_x is not None and k.attacker_pitch is not None and k.victim_x is not None
+        ]
 
         if kills_with_pos:
-            logger.info(f"Computing CP from {len(kills_with_pos)} KillEvent objects with position data")
+            logger.info(
+                f"Computing CP from {len(kills_with_pos)} KillEvent objects with position data"
+            )
             self._compute_cp_from_kill_events(kills_with_pos)
             return
 
@@ -1921,8 +1998,12 @@ class DemoAnalyzer:
                 ["attacker_pitch", "attacker_yaw"],
             ]
 
-            has_positions = any(all(col in kills_df.columns for col in pattern) for pattern in pos_patterns)
-            has_angles = any(all(col in kills_df.columns for col in pattern) for pattern in angle_patterns)
+            has_positions = any(
+                all(col in kills_df.columns for col in pattern) for pattern in pos_patterns
+            )
+            has_angles = any(
+                all(col in kills_df.columns for col in pattern) for pattern in angle_patterns
+            )
 
             if has_positions and has_angles:
                 logger.info(f"Computing CP from DataFrame. Columns: {list(kills_df.columns)}")
@@ -1933,7 +2014,9 @@ class DemoAnalyzer:
         if self.data.ticks_df is not None and not self.data.ticks_df.empty:
             self._compute_cp_from_ticks()
         else:
-            logger.warning("No position/angle data available for CP computation. Position data requires parsing with player props.")
+            logger.warning(
+                "No position/angle data available for CP computation. Position data requires parsing with player props."
+            )
 
     def _compute_cp_from_kill_events(self, kills: list) -> None:
         """Compute CP from KillEvent objects with embedded position data."""
@@ -1946,16 +2029,16 @@ class DemoAnalyzer:
                     continue
 
                 # Build position arrays (add 64 units for eye height)
-                att_pos = np.array([
-                    kill.attacker_x,
-                    kill.attacker_y,
-                    kill.attacker_z + 64 if kill.attacker_z else 0
-                ])
-                vic_pos = np.array([
-                    kill.victim_x,
-                    kill.victim_y,
-                    kill.victim_z + 64 if kill.victim_z else 0
-                ])
+                att_pos = np.array(
+                    [
+                        kill.attacker_x,
+                        kill.attacker_y,
+                        kill.attacker_z + 64 if kill.attacker_z else 0,
+                    ]
+                )
+                vic_pos = np.array(
+                    [kill.victim_x, kill.victim_y, kill.victim_z + 64 if kill.victim_z else 0]
+                )
 
                 att_pitch = kill.attacker_pitch or 0.0
                 att_yaw = kill.attacker_yaw or 0.0
@@ -1971,15 +2054,17 @@ class DemoAnalyzer:
                 if att_id in self._players:
                     self._players[att_id].cp_values.append(angular_error)
 
-                self._cp_results.append(CrosshairPlacementResult(
-                    tick=kill.tick,
-                    attacker_steamid=att_id,
-                    victim_steamid=vic_id,
-                    angular_error_deg=angular_error,
-                    pitch_error_deg=pitch_error,
-                    yaw_error_deg=yaw_error,
-                    round_num=kill.round_num,
-                ))
+                self._cp_results.append(
+                    CrosshairPlacementResult(
+                        tick=kill.tick,
+                        attacker_steamid=att_id,
+                        victim_steamid=vic_id,
+                        angular_error_deg=angular_error,
+                        pitch_error_deg=pitch_error,
+                        yaw_error_deg=yaw_error,
+                        round_num=kill.round_num,
+                    )
+                )
 
             except Exception as e:
                 logger.debug(f"Error processing kill for CP: {e}")
@@ -2002,19 +2087,23 @@ class DemoAnalyzer:
                 if not att_id or not vic_id:
                     continue
 
-                att_pos = np.array([
-                    safe_float(row.get("attacker_X")),
-                    safe_float(row.get("attacker_Y")),
-                    safe_float(row.get("attacker_Z")) + 64
-                ])
+                att_pos = np.array(
+                    [
+                        safe_float(row.get("attacker_X")),
+                        safe_float(row.get("attacker_Y")),
+                        safe_float(row.get("attacker_Z")) + 64,
+                    ]
+                )
                 att_pitch = safe_float(row.get("attacker_pitch"))
                 att_yaw = safe_float(row.get("attacker_yaw"))
 
-                vic_pos = np.array([
-                    safe_float(row.get("victim_X")),
-                    safe_float(row.get("victim_Y")),
-                    safe_float(row.get("victim_Z")) + 64
-                ])
+                vic_pos = np.array(
+                    [
+                        safe_float(row.get("victim_X")),
+                        safe_float(row.get("victim_Y")),
+                        safe_float(row.get("victim_Z")) + 64,
+                    ]
+                )
 
                 if np.allclose(att_pos[:2], 0) or np.allclose(vic_pos[:2], 0):
                     continue
@@ -2026,15 +2115,17 @@ class DemoAnalyzer:
                 if att_id in self._players:
                     self._players[att_id].cp_values.append(angular_error)
 
-                self._cp_results.append(CrosshairPlacementResult(
-                    tick=tick,
-                    attacker_steamid=att_id,
-                    victim_steamid=vic_id,
-                    angular_error_deg=angular_error,
-                    pitch_error_deg=pitch_error,
-                    yaw_error_deg=yaw_error,
-                    round_num=round_num,
-                ))
+                self._cp_results.append(
+                    CrosshairPlacementResult(
+                        tick=tick,
+                        attacker_steamid=att_id,
+                        victim_steamid=vic_id,
+                        angular_error_deg=angular_error,
+                        pitch_error_deg=pitch_error,
+                        yaw_error_deg=yaw_error,
+                        round_num=round_num,
+                    )
+                )
 
             except Exception as e:
                 logger.debug(f"Error processing kill for CP: {e}")
@@ -2063,8 +2154,12 @@ class DemoAnalyzer:
                 if not att_id or not vic_id:
                     continue
 
-                att_ticks = ticks_df[(ticks_df["steamid"] == att_id) & (ticks_df["tick"] <= kill_tick)]
-                vic_ticks = ticks_df[(ticks_df["steamid"] == vic_id) & (ticks_df["tick"] <= kill_tick)]
+                att_ticks = ticks_df[
+                    (ticks_df["steamid"] == att_id) & (ticks_df["tick"] <= kill_tick)
+                ]
+                vic_ticks = ticks_df[
+                    (ticks_df["steamid"] == vic_id) & (ticks_df["tick"] <= kill_tick)
+                ]
 
                 if att_ticks.empty or vic_ticks.empty:
                     continue
@@ -2072,19 +2167,23 @@ class DemoAnalyzer:
                 att_state = att_ticks.iloc[-1]
                 vic_state = vic_ticks.iloc[-1]
 
-                att_pos = np.array([
-                    safe_float(att_state["X"]),
-                    safe_float(att_state["Y"]),
-                    safe_float(att_state["Z"]) + 64
-                ])
+                att_pos = np.array(
+                    [
+                        safe_float(att_state["X"]),
+                        safe_float(att_state["Y"]),
+                        safe_float(att_state["Z"]) + 64,
+                    ]
+                )
                 att_pitch = safe_float(att_state["pitch"])
                 att_yaw = safe_float(att_state["yaw"])
 
-                vic_pos = np.array([
-                    safe_float(vic_state["X"]),
-                    safe_float(vic_state["Y"]),
-                    safe_float(vic_state["Z"]) + 64
-                ])
+                vic_pos = np.array(
+                    [
+                        safe_float(vic_state["X"]),
+                        safe_float(vic_state["Y"]),
+                        safe_float(vic_state["Z"]) + 64,
+                    ]
+                )
 
                 angular_error, pitch_error, yaw_error = self._calculate_angular_error(
                     att_pos, att_pitch, att_yaw, vic_pos
@@ -2093,15 +2192,17 @@ class DemoAnalyzer:
                 if att_id in self._players:
                     self._players[att_id].cp_values.append(angular_error)
 
-                self._cp_results.append(CrosshairPlacementResult(
-                    tick=kill_tick,
-                    attacker_steamid=att_id,
-                    victim_steamid=vic_id,
-                    angular_error_deg=angular_error,
-                    pitch_error_deg=pitch_error,
-                    yaw_error_deg=yaw_error,
-                    round_num=round_num,
-                ))
+                self._cp_results.append(
+                    CrosshairPlacementResult(
+                        tick=kill_tick,
+                        attacker_steamid=att_id,
+                        victim_steamid=vic_id,
+                        angular_error_deg=angular_error,
+                        pitch_error_deg=pitch_error,
+                        yaw_error_deg=yaw_error,
+                        round_num=round_num,
+                    )
+                )
 
             except Exception as e:
                 logger.debug(f"Error in tick-based CP: {e}")
@@ -2110,11 +2211,7 @@ class DemoAnalyzer:
         logger.info(f"Computed CP for {len(self._cp_results)} kills (tick-based)")
 
     def _calculate_angular_error(
-        self,
-        attacker_pos: np.ndarray,
-        pitch_deg: float,
-        yaw_deg: float,
-        victim_pos: np.ndarray
+        self, attacker_pos: np.ndarray, pitch_deg: float, yaw_deg: float, victim_pos: np.ndarray
     ) -> tuple[float, float, float]:
         """Calculate angular error between view direction and target."""
         pitch_rad = math.radians(pitch_deg)
@@ -2169,30 +2266,60 @@ class DemoAnalyzer:
             # Count CT-side kills
             if self._att_side_col:
                 ct_kills_df = kills_df[
-                    (kills_df[self._att_id_col] == steam_id) &
-                    (kills_df[self._att_side_col].astype(str).str.upper().str.contains("CT", na=False))
+                    (kills_df[self._att_id_col] == steam_id)
+                    & (
+                        kills_df[self._att_side_col]
+                        .astype(str)
+                        .str.upper()
+                        .str.contains("CT", na=False)
+                    )
                 ]
                 player.ct_stats.kills = len(ct_kills_df)
 
                 t_kills_df = kills_df[
-                    (kills_df[self._att_id_col] == steam_id) &
-                    (~kills_df[self._att_side_col].astype(str).str.upper().str.contains("CT", na=False)) &
-                    (kills_df[self._att_side_col].astype(str).str.upper().str.contains("T", na=False))
+                    (kills_df[self._att_id_col] == steam_id)
+                    & (
+                        ~kills_df[self._att_side_col]
+                        .astype(str)
+                        .str.upper()
+                        .str.contains("CT", na=False)
+                    )
+                    & (
+                        kills_df[self._att_side_col]
+                        .astype(str)
+                        .str.upper()
+                        .str.contains("T", na=False)
+                    )
                 ]
                 player.t_stats.kills = len(t_kills_df)
 
             # Count CT-side deaths
             if self._vic_id_col and self._vic_side_col:
                 ct_deaths_df = kills_df[
-                    (kills_df[self._vic_id_col] == steam_id) &
-                    (kills_df[self._vic_side_col].astype(str).str.upper().str.contains("CT", na=False))
+                    (kills_df[self._vic_id_col] == steam_id)
+                    & (
+                        kills_df[self._vic_side_col]
+                        .astype(str)
+                        .str.upper()
+                        .str.contains("CT", na=False)
+                    )
                 ]
                 player.ct_stats.deaths = len(ct_deaths_df)
 
                 t_deaths_df = kills_df[
-                    (kills_df[self._vic_id_col] == steam_id) &
-                    (~kills_df[self._vic_side_col].astype(str).str.upper().str.contains("CT", na=False)) &
-                    (kills_df[self._vic_side_col].astype(str).str.upper().str.contains("T", na=False))
+                    (kills_df[self._vic_id_col] == steam_id)
+                    & (
+                        ~kills_df[self._vic_side_col]
+                        .astype(str)
+                        .str.upper()
+                        .str.contains("CT", na=False)
+                    )
+                    & (
+                        kills_df[self._vic_side_col]
+                        .astype(str)
+                        .str.upper()
+                        .str.contains("T", na=False)
+                    )
                 ]
                 player.t_stats.deaths = len(t_deaths_df)
 
@@ -2210,15 +2337,30 @@ class DemoAnalyzer:
 
                 if dmg_att_col and dmg_att_side and dmg_col:
                     ct_dmg = damages_df[
-                        (damages_df[dmg_att_col] == steam_id) &
-                        (damages_df[dmg_att_side].astype(str).str.upper().str.contains("CT", na=False))
+                        (damages_df[dmg_att_col] == steam_id)
+                        & (
+                            damages_df[dmg_att_side]
+                            .astype(str)
+                            .str.upper()
+                            .str.contains("CT", na=False)
+                        )
                     ]
                     player.ct_stats.total_damage = int(ct_dmg[dmg_col].sum())
 
                     t_dmg = damages_df[
-                        (damages_df[dmg_att_col] == steam_id) &
-                        (~damages_df[dmg_att_side].astype(str).str.upper().str.contains("CT", na=False)) &
-                        (damages_df[dmg_att_side].astype(str).str.upper().str.contains("T", na=False))
+                        (damages_df[dmg_att_col] == steam_id)
+                        & (
+                            ~damages_df[dmg_att_side]
+                            .astype(str)
+                            .str.upper()
+                            .str.contains("CT", na=False)
+                        )
+                        & (
+                            damages_df[dmg_att_side]
+                            .astype(str)
+                            .str.upper()
+                            .str.contains("T", na=False)
+                        )
                     ]
                     player.t_stats.total_damage = int(t_dmg[dmg_col].sum())
 
@@ -2230,7 +2372,7 @@ class DemoAnalyzer:
         # ===========================================
         # Use BLINDS data for accurate flash stats
         # ===========================================
-        if hasattr(self.data, 'blinds') and self.data.blinds:
+        if hasattr(self.data, "blinds") and self.data.blinds:
             logger.info(f"Using {len(self.data.blinds)} blind events for flash stats")
             for steam_id, player in self._players.items():
                 player_blinds = [b for b in self.data.blinds if b.attacker_steamid == steam_id]
@@ -2248,31 +2390,45 @@ class DemoAnalyzer:
 
                 # Count unique flashbangs (group blinds by tick proximity)
                 if player_blinds:
-                    blind_ticks = sorted(set(b.tick for b in player_blinds))
+                    blind_ticks = sorted({b.tick for b in player_blinds})
                     # Group ticks within 10 ticks as same flash
                     flash_count = 1
                     for i in range(1, len(blind_ticks)):
-                        if blind_ticks[i] - blind_ticks[i-1] > 10:
+                        if blind_ticks[i] - blind_ticks[i - 1] > 10:
                             flash_count += 1
                     player.utility.flashbangs_thrown = flash_count
 
         # ===========================================
         # Use GRENADES data for accurate grenade counts
         # ===========================================
-        if hasattr(self.data, 'grenades') and self.data.grenades:
+        if hasattr(self.data, "grenades") and self.data.grenades:
             logger.info(f"Using {len(self.data.grenades)} grenade events")
             for steam_id, player in self._players.items():
                 player_grenades = [g for g in self.data.grenades if g.player_steamid == steam_id]
 
                 # Count by type (grenade_type is sufficient - no event_type on GrenadeEvent)
-                player.utility.smokes_thrown = len([g for g in player_grenades
-                    if 'smoke' in g.grenade_type.lower()])
-                he_thrown = len([g for g in player_grenades
-                    if 'hegrenade' in g.grenade_type.lower() or 'he_grenade' in g.grenade_type.lower()])
-                molly_thrown = len([g for g in player_grenades
-                    if 'molotov' in g.grenade_type.lower() or 'incendiary' in g.grenade_type.lower()])
-                flash_thrown = len([g for g in player_grenades
-                    if 'flash' in g.grenade_type.lower()])
+                player.utility.smokes_thrown = len(
+                    [g for g in player_grenades if "smoke" in g.grenade_type.lower()]
+                )
+                he_thrown = len(
+                    [
+                        g
+                        for g in player_grenades
+                        if "hegrenade" in g.grenade_type.lower()
+                        or "he_grenade" in g.grenade_type.lower()
+                    ]
+                )
+                molly_thrown = len(
+                    [
+                        g
+                        for g in player_grenades
+                        if "molotov" in g.grenade_type.lower()
+                        or "incendiary" in g.grenade_type.lower()
+                    ]
+                )
+                flash_thrown = len(
+                    [g for g in player_grenades if "flash" in g.grenade_type.lower()]
+                )
 
                 # Only update if we got data (don't overwrite with 0 if no grenades events)
                 if he_thrown > 0:
@@ -2295,7 +2451,13 @@ class DemoAnalyzer:
 
             if att_col and weapon_col and dmg_col:
                 he_weapons = ["hegrenade", "he_grenade", "grenade_he", "hegrenade_projectile"]
-                molly_weapons = ["molotov", "incgrenade", "inferno", "molotov_projectile", "incendiary"]
+                molly_weapons = [
+                    "molotov",
+                    "incgrenade",
+                    "inferno",
+                    "molotov_projectile",
+                    "incendiary",
+                ]
 
                 for steam_id, player in self._players.items():
                     player_dmg = damages_df[damages_df[att_col] == steam_id]
@@ -2324,17 +2486,22 @@ class DemoAnalyzer:
                         else:
                             player.utility.molotov_damage = int(molly_dmg[dmg_col].sum())
                         if player.utility.molotovs_thrown == 0:
-                            player.utility.molotovs_thrown = max(1, len(set(molly_dmg['tick'])) if 'tick' in molly_dmg.columns else 1)
+                            player.utility.molotovs_thrown = max(
+                                1, len(set(molly_dmg["tick"])) if "tick" in molly_dmg.columns else 1
+                            )
 
         # ===========================================
         # Flash assists from kills (supplement)
         # ===========================================
         kills_df = self.data.kills_df
-        if not kills_df.empty and "assister_steamid" in kills_df.columns and "flash_assist" in kills_df.columns:
+        if (
+            not kills_df.empty
+            and "assister_steamid" in kills_df.columns
+            and "flash_assist" in kills_df.columns
+        ):
             for steam_id, player in self._players.items():
                 flash_assists = kills_df[
-                    (kills_df["assister_steamid"] == steam_id) &
-                    (kills_df["flash_assist"] == True)
+                    (kills_df["assister_steamid"] == steam_id) & (kills_df["flash_assist"])
                 ]
                 player.utility.flash_assists = len(flash_assists)
 
@@ -2342,7 +2509,7 @@ class DemoAnalyzer:
 
     def _calculate_accuracy_stats(self) -> None:
         """Calculate accuracy statistics from weapon_fire events."""
-        if not hasattr(self.data, 'weapon_fires') or not self.data.weapon_fires:
+        if not hasattr(self.data, "weapon_fires") or not self.data.weapon_fires:
             logger.info("No weapon_fire data available for accuracy stats")
             return
 
@@ -2363,7 +2530,9 @@ class DemoAnalyzer:
                     # Count headshot hits
                     hitgroup_col = self._find_col(damages_df, ["hitgroup"])
                     if hitgroup_col:
-                        head_hits = player_hits[player_hits[hitgroup_col].str.lower().str.contains("head", na=False)]
+                        head_hits = player_hits[
+                            player_hits[hitgroup_col].str.lower().str.contains("head", na=False)
+                        ]
                         player.headshot_hits = len(head_hits)
 
         logger.info("Calculated accuracy stats")
@@ -2374,12 +2543,18 @@ class DemoAnalyzer:
         damages_df = self.data.damages_df
 
         # Team kills (friendly fire deaths)
-        if not kills_df.empty and self._att_id_col and self._vic_id_col and self._att_side_col and self._vic_side_col:
+        if (
+            not kills_df.empty
+            and self._att_id_col
+            and self._vic_id_col
+            and self._att_side_col
+            and self._vic_side_col
+        ):
             for steam_id, player in self._players.items():
                 # Check for team kills (attacker and victim same team)
                 team_kills = kills_df[
-                    (kills_df[self._att_id_col] == steam_id) &
-                    (kills_df[self._att_side_col] == kills_df[self._vic_side_col])
+                    (kills_df[self._att_id_col] == steam_id)
+                    & (kills_df[self._att_side_col] == kills_df[self._vic_side_col])
                 ]
                 player.mistakes.team_kills = len(team_kills)
 
@@ -2393,8 +2568,8 @@ class DemoAnalyzer:
             if att_col and att_side and vic_side and dmg_col:
                 for steam_id, player in self._players.items():
                     team_dmg = damages_df[
-                        (damages_df[att_col] == steam_id) &
-                        (damages_df[att_side] == damages_df[vic_side])
+                        (damages_df[att_col] == steam_id)
+                        & (damages_df[att_side] == damages_df[vic_side])
                     ]
                     player.mistakes.team_damage = int(team_dmg[dmg_col].sum())
 
@@ -2451,10 +2626,16 @@ class DemoAnalyzer:
 
                 # Utility ADR
                 util_damage = context_stats.he_damage + context_stats.molotov_damage
-                player.utility_adr = round(util_damage / player.rounds_played, 1) if player.rounds_played > 0 else 0.0
+                player.utility_adr = (
+                    round(util_damage / player.rounds_played, 1)
+                    if player.rounds_played > 0
+                    else 0.0
+                )
 
-            logger.info(f"State Machine complete: {result.total_entry_kills} entries, "
-                       f"{result.total_trade_kills} trades, {result.total_lurk_kills} lurks")
+            logger.info(
+                f"State Machine complete: {result.total_entry_kills} entries, "
+                f"{result.total_trade_kills} trades, {result.total_lurk_kills} lurks"
+            )
 
         except Exception as e:
             logger.warning(f"State Machine analysis failed: {e}")
@@ -2516,8 +2697,10 @@ class DemoAnalyzer:
                 "T": combat_stats.team_opening_win_rate.get(2, 0.0),
             }
 
-            logger.info(f"Combat integration complete: {len(combat_stats.trade_kills)} trades, "
-                       f"{len(combat_stats.opening_duels)} opening duels")
+            logger.info(
+                f"Combat integration complete: {len(combat_stats.trade_kills)} trades, "
+                f"{len(combat_stats.opening_duels)} opening duels"
+            )
             return {
                 "trade_rates": trade_rates,
                 "opening_rates": opening_rates,
@@ -2553,12 +2736,14 @@ class DemoAnalyzer:
                 if weapon_col:
                     weapons = group[weapon_col].value_counts().head(3).index.tolist()
 
-                matrix_entries.append(KillMatrixEntry(
-                    attacker_name=att_name,
-                    victim_name=vic_name,
-                    count=len(group),
-                    weapons=weapons,
-                ))
+                matrix_entries.append(
+                    KillMatrixEntry(
+                        attacker_name=att_name,
+                        victim_name=vic_name,
+                        count=len(group),
+                        weapons=weapons,
+                    )
+                )
 
             logger.info(f"Built kill matrix with {len(matrix_entries)} entries")
         except Exception as e:
@@ -2594,15 +2779,17 @@ class DemoAnalyzer:
                         first_kill_player = self.data.player_names.get(att_id, "")
                         first_death_player = self.data.player_names.get(vic_id, "")
 
-                timeline.append(RoundTimeline(
-                    round_num=round_num,
-                    winner=winner,
-                    win_reason=win_reason,
-                    ct_score=round_info.ct_score,
-                    t_score=round_info.t_score,
-                    first_kill_player=first_kill_player,
-                    first_death_player=first_death_player,
-                ))
+                timeline.append(
+                    RoundTimeline(
+                        round_num=round_num,
+                        winner=winner,
+                        win_reason=win_reason,
+                        ct_score=round_info.ct_score,
+                        t_score=round_info.t_score,
+                        first_kill_player=first_kill_player,
+                        first_death_player=first_death_player,
+                    )
+                )
             except Exception as e:
                 logger.debug(f"Error building timeline for round: {e}")
                 continue
@@ -2623,37 +2810,43 @@ class DemoAnalyzer:
 
                 # Attacker position (kill location)
                 if kill.attacker_x is not None and kill.attacker_y is not None:
-                    kill_positions.append({
-                        "x": kill.attacker_x,
-                        "y": kill.attacker_y,
-                        "z": kill.attacker_z or 0,
-                        "player": att_name,
-                        "attacker": att_name,
-                        "victim": vic_name,
-                        "attacker_team": kill.attacker_side,
-                        "victim_team": kill.victim_side,
-                        "weapon": kill.weapon,
-                        "round": kill.round_num,
-                        "headshot": kill.headshot,
-                    })
+                    kill_positions.append(
+                        {
+                            "x": kill.attacker_x,
+                            "y": kill.attacker_y,
+                            "z": kill.attacker_z or 0,
+                            "player": att_name,
+                            "attacker": att_name,
+                            "victim": vic_name,
+                            "attacker_team": kill.attacker_side,
+                            "victim_team": kill.victim_side,
+                            "weapon": kill.weapon,
+                            "round": kill.round_num,
+                            "headshot": kill.headshot,
+                        }
+                    )
 
                 # Victim position (death location)
                 if kill.victim_x is not None and kill.victim_y is not None:
-                    death_positions.append({
-                        "x": kill.victim_x,
-                        "y": kill.victim_y,
-                        "z": kill.victim_z or 0,
-                        "player": vic_name,
-                        "attacker": att_name,
-                        "victim_team": kill.victim_side,
-                        "attacker_team": kill.attacker_side,
-                        "round": kill.round_num,
-                    })
+                    death_positions.append(
+                        {
+                            "x": kill.victim_x,
+                            "y": kill.victim_y,
+                            "z": kill.victim_z or 0,
+                            "player": vic_name,
+                            "attacker": att_name,
+                            "victim_team": kill.victim_side,
+                            "attacker_team": kill.attacker_side,
+                            "round": kill.round_num,
+                        }
+                    )
             except Exception as e:
                 logger.debug(f"Error extracting position: {e}")
                 continue
 
-        logger.info(f"Extracted {len(kill_positions)} kill positions, {len(death_positions)} death positions")
+        logger.info(
+            f"Extracted {len(kill_positions)} kill positions, {len(death_positions)} death positions"
+        )
         return kill_positions, death_positions
 
     def _extract_grenade_trajectories(self) -> tuple[list, dict]:
@@ -2688,7 +2881,7 @@ class DemoAnalyzer:
         }
 
         # Process grenade events to get positions (detonation points)
-        if hasattr(self.data, 'grenades') and self.data.grenades:
+        if hasattr(self.data, "grenades") and self.data.grenades:
             for grenade in self.data.grenades:
                 # Only include grenades with valid positions
                 if grenade.x is not None and grenade.y is not None:
@@ -2701,7 +2894,9 @@ class DemoAnalyzer:
                         "z": grenade.z or 0,
                         "grenade_type": grenade_type,
                         "thrower_steamid": str(grenade.player_steamid),
-                        "thrower_name": self.data.player_names.get(grenade.player_steamid, "Unknown"),
+                        "thrower_name": self.data.player_names.get(
+                            grenade.player_steamid, "Unknown"
+                        ),
                         "thrower_team": thrower_team,
                         "round_num": grenade.round_num,
                         "tick": grenade.tick,
@@ -2726,7 +2921,7 @@ class DemoAnalyzer:
                         team_stats[thrower_team]["he_grenades"] += 1
 
         # Count enemies flashed from blinds data
-        if hasattr(self.data, 'blinds') and self.data.blinds:
+        if hasattr(self.data, "blinds") and self.data.blinds:
             for blind in self.data.blinds:
                 if not blind.is_teammate and blind.blind_duration >= 1.1:
                     attacker_team = self.data.player_teams.get(blind.attacker_steamid, "Unknown")
@@ -2745,121 +2940,152 @@ class DemoAnalyzer:
 
             # HLTV Rating insights
             if player.hltv_rating < 0.8:
-                player_insights.append({
-                    "type": "warning",
-                    "category": "overall",
-                    "message": f"Low overall rating ({player.hltv_rating:.2f}). Focus on fundamentals.",
-                    "priority": "high",
-                })
+                player_insights.append(
+                    {
+                        "type": "warning",
+                        "category": "overall",
+                        "message": f"Low overall rating ({player.hltv_rating:.2f}). Focus on fundamentals.",
+                        "priority": "high",
+                    }
+                )
             elif player.hltv_rating > 1.3:
-                player_insights.append({
-                    "type": "positive",
-                    "category": "overall",
-                    "message": f"Excellent performance ({player.hltv_rating:.2f}). Keep it up!",
-                    "priority": "low",
-                })
+                player_insights.append(
+                    {
+                        "type": "positive",
+                        "category": "overall",
+                        "message": f"Excellent performance ({player.hltv_rating:.2f}). Keep it up!",
+                        "priority": "low",
+                    }
+                )
 
             # TTD insights (reaction time)
             if player.ttd_median_ms:
                 if player.ttd_median_ms > 500:
-                    player_insights.append({
-                        "type": "warning",
-                        "category": "aim",
-                        "message": f"Slow time-to-damage ({player.ttd_median_ms:.0f}ms). Consider aim training.",
-                        "priority": "medium",
-                    })
+                    player_insights.append(
+                        {
+                            "type": "warning",
+                            "category": "aim",
+                            "message": f"Slow time-to-damage ({player.ttd_median_ms:.0f}ms). Consider aim training.",
+                            "priority": "medium",
+                        }
+                    )
                 elif player.ttd_median_ms < 200:
-                    player_insights.append({
-                        "type": "positive",
-                        "category": "aim",
-                        "message": f"Fast reactions ({player.ttd_median_ms:.0f}ms TTD)!",
-                        "priority": "low",
-                    })
+                    player_insights.append(
+                        {
+                            "type": "positive",
+                            "category": "aim",
+                            "message": f"Fast reactions ({player.ttd_median_ms:.0f}ms TTD)!",
+                            "priority": "low",
+                        }
+                    )
 
             # Crosshair placement insights
             if player.cp_median_error_deg:
                 if player.cp_median_error_deg > 15:
-                    player_insights.append({
-                        "type": "warning",
-                        "category": "aim",
-                        "message": f"Poor crosshair placement ({player.cp_median_error_deg:.1f}° error). Keep crosshair at head level.",
-                        "priority": "high",
-                    })
+                    player_insights.append(
+                        {
+                            "type": "warning",
+                            "category": "aim",
+                            "message": f"Poor crosshair placement ({player.cp_median_error_deg:.1f}° error). Keep crosshair at head level.",
+                            "priority": "high",
+                        }
+                    )
                 elif player.cp_median_error_deg < 5:
-                    player_insights.append({
-                        "type": "positive",
-                        "category": "aim",
-                        "message": f"Excellent crosshair placement ({player.cp_median_error_deg:.1f}°)!",
-                        "priority": "low",
-                    })
+                    player_insights.append(
+                        {
+                            "type": "positive",
+                            "category": "aim",
+                            "message": f"Excellent crosshair placement ({player.cp_median_error_deg:.1f}°)!",
+                            "priority": "low",
+                        }
+                    )
 
             # Trade insights
             if player.untraded_deaths > player.deaths * 0.6 and player.deaths > 3:
-                player_insights.append({
-                    "type": "warning",
-                    "category": "positioning",
-                    "message": f"Too many untraded deaths ({player.untraded_deaths}/{player.deaths}). Stay closer to teammates.",
-                    "priority": "medium",
-                })
+                player_insights.append(
+                    {
+                        "type": "warning",
+                        "category": "positioning",
+                        "message": f"Too many untraded deaths ({player.untraded_deaths}/{player.deaths}). Stay closer to teammates.",
+                        "priority": "medium",
+                    }
+                )
 
             # Utility insights
-            if player.utility.total_utility < player.rounds_played * 1.5 and player.rounds_played >= 10:
-                player_insights.append({
-                    "type": "warning",
-                    "category": "utility",
-                    "message": f"Low utility usage ({player.utility.total_utility} thrown in {player.rounds_played} rounds). Buy and use more grenades.",
-                    "priority": "medium",
-                })
+            if (
+                player.utility.total_utility < player.rounds_played * 1.5
+                and player.rounds_played >= 10
+            ):
+                player_insights.append(
+                    {
+                        "type": "warning",
+                        "category": "utility",
+                        "message": f"Low utility usage ({player.utility.total_utility} thrown in {player.rounds_played} rounds). Buy and use more grenades.",
+                        "priority": "medium",
+                    }
+                )
 
             if player.utility.teammates_flashed > 5:
-                player_insights.append({
-                    "type": "mistake",
-                    "category": "utility",
-                    "message": f"Flashed teammates {player.utility.teammates_flashed} times. Communicate flash usage.",
-                    "priority": "high",
-                })
+                player_insights.append(
+                    {
+                        "type": "mistake",
+                        "category": "utility",
+                        "message": f"Flashed teammates {player.utility.teammates_flashed} times. Communicate flash usage.",
+                        "priority": "high",
+                    }
+                )
 
             # Opening duel insights
             if player.opening_duels.attempts >= 5:
                 if player.opening_duels.win_rate < 30:
-                    player_insights.append({
-                        "type": "warning",
-                        "category": "duels",
-                        "message": f"Low opening duel win rate ({player.opening_duels.win_rate:.0f}%). Reconsider early aggression.",
-                        "priority": "medium",
-                    })
+                    player_insights.append(
+                        {
+                            "type": "warning",
+                            "category": "duels",
+                            "message": f"Low opening duel win rate ({player.opening_duels.win_rate:.0f}%). Reconsider early aggression.",
+                            "priority": "medium",
+                        }
+                    )
                 elif player.opening_duels.win_rate > 70:
-                    player_insights.append({
-                        "type": "positive",
-                        "category": "duels",
-                        "message": f"Dominant entry fragging ({player.opening_duels.win_rate:.0f}% win rate)!",
-                        "priority": "low",
-                    })
+                    player_insights.append(
+                        {
+                            "type": "positive",
+                            "category": "duels",
+                            "message": f"Dominant entry fragging ({player.opening_duels.win_rate:.0f}% win rate)!",
+                            "priority": "low",
+                        }
+                    )
 
             # KAST insights
             if player.kast_percentage < 60 and player.rounds_played >= 10:
-                player_insights.append({
-                    "type": "warning",
-                    "category": "impact",
-                    "message": f"Low KAST ({player.kast_percentage:.0f}%). Try to have more round impact.",
-                    "priority": "medium",
-                })
+                player_insights.append(
+                    {
+                        "type": "warning",
+                        "category": "impact",
+                        "message": f"Low KAST ({player.kast_percentage:.0f}%). Try to have more round impact.",
+                        "priority": "medium",
+                    }
+                )
 
             # Team damage insights
             if player.mistakes.team_damage > 100:
-                player_insights.append({
-                    "type": "mistake",
-                    "category": "mistakes",
-                    "message": f"High team damage ({player.mistakes.team_damage}). Be more careful with grenades and fire.",
-                    "priority": "high",
-                })
+                player_insights.append(
+                    {
+                        "type": "mistake",
+                        "category": "mistakes",
+                        "message": f"High team damage ({player.mistakes.team_damage}). Be more careful with grenades and fire.",
+                        "priority": "high",
+                    }
+                )
 
             if player_insights:
-                insights.append({
-                    "steam_id": str(steam_id),
-                    "player_name": player.name,
-                    "insights": player_insights,
-                })
+                insights.append(
+                    {
+                        "steam_id": str(steam_id),
+                        "player_name": player.name,
+                        "insights": player_insights,
+                    }
+                )
 
         logger.info(f"Generated coaching insights for {len(insights)} players")
         return insights
@@ -2910,7 +3136,7 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
     # ===========================================
     # Count grenades from grenades list
     # ===========================================
-    if hasattr(match_data, 'grenades') and match_data.grenades:
+    if hasattr(match_data, "grenades") and match_data.grenades:
         for grenade in match_data.grenades:
             steam_id = str(grenade.player_steamid)
             if steam_id not in result:
@@ -2924,19 +3150,23 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
             grenade_type = grenade.grenade_type.lower()
 
             # Count by grenade type (awpy uses grenade_type field)
-            if 'smoke' in grenade_type:
+            if "smoke" in grenade_type:
                 result[steam_id].smokes_thrown += 1
-            elif 'flash' in grenade_type:
+            elif "flash" in grenade_type:
                 result[steam_id].flashes_thrown += 1
-            elif 'hegrenade' in grenade_type or 'he_grenade' in grenade_type:
+            elif "hegrenade" in grenade_type or "he_grenade" in grenade_type:
                 result[steam_id].he_thrown += 1
-            elif 'molotov' in grenade_type or 'incgrenade' in grenade_type or 'incendiary' in grenade_type:
+            elif (
+                "molotov" in grenade_type
+                or "incgrenade" in grenade_type
+                or "incendiary" in grenade_type
+            ):
                 result[steam_id].molotovs_thrown += 1
 
     # ===========================================
     # Count smokes from smokes list (more accurate count)
     # ===========================================
-    if hasattr(match_data, 'smokes') and match_data.smokes:
+    if hasattr(match_data, "smokes") and match_data.smokes:
         # Reset smoke counts and use smoke events for more accurate tracking
         for steam_id in result:
             result[steam_id].smokes_thrown = 0
@@ -2949,7 +3179,7 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
     # ===========================================
     # Count molotovs from infernos list (more accurate count)
     # ===========================================
-    if hasattr(match_data, 'infernos') and match_data.infernos:
+    if hasattr(match_data, "infernos") and match_data.infernos:
         # Reset molotov counts and use inferno events for more accurate tracking
         for steam_id in result:
             result[steam_id].molotovs_thrown = 0
@@ -2962,7 +3192,7 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
     # ===========================================
     # Process blind events for flash effectiveness
     # ===========================================
-    if hasattr(match_data, 'blinds') and match_data.blinds:
+    if hasattr(match_data, "blinds") and match_data.blinds:
         for blind in match_data.blinds:
             steam_id = str(blind.attacker_steamid)
             if steam_id not in result:
@@ -3045,12 +3275,15 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
     # Count flash assists from kills DataFrame
     # ===========================================
     kills_df = match_data.kills_df
-    if not kills_df.empty and "assister_steamid" in kills_df.columns and "flash_assist" in kills_df.columns:
+    if (
+        not kills_df.empty
+        and "assister_steamid" in kills_df.columns
+        and "flash_assist" in kills_df.columns
+    ):
         for steam_id, metrics in result.items():
             steam_id_int = int(steam_id)
             flash_assists = kills_df[
-                (kills_df["assister_steamid"] == steam_id_int) &
-                (kills_df["flash_assist"] == True)
+                (kills_df["assister_steamid"] == steam_id_int) & (kills_df["flash_assist"])
             ]
             metrics.flash_assists = len(flash_assists)
 
@@ -3060,9 +3293,9 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
 
 def analyze_demo(
     demo_data: DemoData,
-    metrics: Optional[str | list[str]] = None,
+    metrics: str | list[str] | None = None,
     use_cache: bool = True,
-    use_optimized: bool = True
+    use_optimized: bool = True,
 ) -> MatchAnalysis:
     """Convenience function to analyze a parsed demo.
 
@@ -3080,18 +3313,13 @@ def analyze_demo(
         MatchAnalysis with computed metrics
     """
     analyzer = DemoAnalyzer(
-        demo_data,
-        metrics=metrics,
-        use_cache=use_cache,
-        use_optimized=use_optimized
+        demo_data, metrics=metrics, use_cache=use_cache, use_optimized=use_optimized
     )
     return analyzer.analyze()
 
 
 def get_player_comparison_stats(
-    player_a: PlayerMatchStats,
-    player_b: PlayerMatchStats,
-    normalize: bool = True
+    player_a: PlayerMatchStats, player_b: PlayerMatchStats, normalize: bool = True
 ) -> dict:
     """
     Generate comparison statistics for two players for radar chart visualization.
@@ -3112,6 +3340,7 @@ def get_player_comparison_stats(
     Returns:
         Dict with comparison data for both players
     """
+
     def get_ttd_score(player: PlayerMatchStats) -> float:
         """Calculate TTD score. Lower TTD is better, so we invert it."""
         ttd = player.ttd_median_ms
@@ -3180,7 +3409,7 @@ def get_player_comparison_stats(
             "ttd_median_ms": round(player_a.ttd_median_ms, 1) if player_a.ttd_median_ms else None,
             "headshot_pct": round(player_a.headshot_percentage, 1),
             "utility_damage": player_a.utility.he_damage + player_a.utility.molotov_damage,
-        }
+        },
     }
 
     player_b_stats = {
@@ -3200,7 +3429,7 @@ def get_player_comparison_stats(
             "ttd_median_ms": round(player_b.ttd_median_ms, 1) if player_b.ttd_median_ms else None,
             "headshot_pct": round(player_b.headshot_percentage, 1),
             "utility_damage": player_b.utility.he_damage + player_b.utility.molotov_damage,
-        }
+        },
     }
 
     return {
@@ -3211,11 +3440,7 @@ def get_player_comparison_stats(
     }
 
 
-def compare_players(
-    match_analysis: MatchAnalysis,
-    player_a_name: str,
-    player_b_name: str
-) -> dict:
+def compare_players(match_analysis: MatchAnalysis, player_a_name: str, player_b_name: str) -> dict:
     """
     Compare two players using Scope.gg-style radar chart axes.
 
@@ -3281,10 +3506,10 @@ def compare_players(
         if player.rounds_played == 0:
             return 0.0
         total_utility = (
-            player.utility.flashbangs_thrown +
-            player.utility.he_thrown +
-            player.utility.molotovs_thrown +
-            player.utility.smokes_thrown
+            player.utility.flashbangs_thrown
+            + player.utility.he_thrown
+            + player.utility.molotovs_thrown
+            + player.utility.smokes_thrown
         )
         utility_per_round = total_utility / player.rounds_played
         # Scale: 4 grenades per round = 100
@@ -3295,21 +3520,15 @@ def compare_players(
         if player.rounds_played == 0:
             return 0.0
         total_utility = (
-            player.utility.flashbangs_thrown +
-            player.utility.he_thrown +
-            player.utility.molotovs_thrown +
-            player.utility.smokes_thrown
+            player.utility.flashbangs_thrown
+            + player.utility.he_thrown
+            + player.utility.molotovs_thrown
+            + player.utility.smokes_thrown
         )
         return round(total_utility / player.rounds_played, 2)
 
     # Define axes
-    axes = [
-        "ADR",
-        "Opening Success %",
-        "Clutch Win %",
-        "Trade Success %",
-        "Utility Usage"
-    ]
+    axes = ["ADR", "Opening Success %", "Clutch Win %", "Trade Success %", "Utility Usage"]
 
     # Calculate normalized scores for player A
     scores_a = [
@@ -3317,7 +3536,7 @@ def compare_players(
         normalize_percentage(player_a.opening_duels.win_rate),
         normalize_percentage(player_a.clutches.win_rate),
         normalize_percentage(player_a.trades.trade_rate),
-        normalize_utility_usage(player_a)
+        normalize_utility_usage(player_a),
     ]
 
     # Calculate normalized scores for player B
@@ -3326,7 +3545,7 @@ def compare_players(
         normalize_percentage(player_b.opening_duels.win_rate),
         normalize_percentage(player_b.clutches.win_rate),
         normalize_percentage(player_b.trades.trade_rate),
-        normalize_utility_usage(player_b)
+        normalize_utility_usage(player_b),
     ]
 
     # Raw values for display
@@ -3343,10 +3562,10 @@ def compare_players(
         "trade_attempts": player_a.trades.trade_attempts,
         "utility_per_round": get_utility_per_round(player_a),
         "total_utility": (
-            player_a.utility.flashbangs_thrown +
-            player_a.utility.he_thrown +
-            player_a.utility.molotovs_thrown +
-            player_a.utility.smokes_thrown
+            player_a.utility.flashbangs_thrown
+            + player_a.utility.he_thrown
+            + player_a.utility.molotovs_thrown
+            + player_a.utility.smokes_thrown
         ),
         # Additional stats for the comparison table
         "kills": player_a.kills,
@@ -3371,10 +3590,10 @@ def compare_players(
         "trade_attempts": player_b.trades.trade_attempts,
         "utility_per_round": get_utility_per_round(player_b),
         "total_utility": (
-            player_b.utility.flashbangs_thrown +
-            player_b.utility.he_thrown +
-            player_b.utility.molotovs_thrown +
-            player_b.utility.smokes_thrown
+            player_b.utility.flashbangs_thrown
+            + player_b.utility.he_thrown
+            + player_b.utility.molotovs_thrown
+            + player_b.utility.smokes_thrown
         ),
         # Additional stats for the comparison table
         "kills": player_b.kills,
@@ -3409,6 +3628,7 @@ PlayerAnalytics = PlayerMatchStats
 # Tier 1 Player Metrics - Clean MatchData Interface
 # =============================================================================
 
+
 @dataclass
 class PlayerMetrics:
     """
@@ -3428,6 +3648,7 @@ class PlayerMetrics:
         mean_ttd_ms: Mean Time to Damage in milliseconds (None if no data)
         median_crosshair_error_deg: Median crosshair placement error in degrees (None if no data)
     """
+
     player_name: str
     kills: int
     deaths: int
@@ -3435,13 +3656,13 @@ class PlayerMetrics:
     headshot_kills: int
     damage_total: int
     adr: float
-    mean_ttd_ms: Optional[float] = None
-    median_crosshair_error_deg: Optional[float] = None
+    mean_ttd_ms: float | None = None
+    median_crosshair_error_deg: float | None = None
 
     # Optional extended metrics
     headshot_percentage: float = 0.0
-    median_ttd_ms: Optional[float] = None
-    mean_crosshair_error_deg: Optional[float] = None
+    median_ttd_ms: float | None = None
+    mean_crosshair_error_deg: float | None = None
 
     def __post_init__(self):
         """Calculate derived metrics after initialization."""
@@ -3518,11 +3739,8 @@ def _compute_view_direction(pitch_deg: float, yaw_deg: float) -> np.ndarray:
 
 
 def _compute_angular_error(
-    attacker_pos: np.ndarray,
-    attacker_pitch: float,
-    attacker_yaw: float,
-    victim_pos: np.ndarray
-) -> Optional[float]:
+    attacker_pos: np.ndarray, attacker_pitch: float, attacker_yaw: float, victim_pos: np.ndarray
+) -> float | None:
     """
     Compute the angular error between where the attacker was looking
     and where they needed to look to hit the victim.
@@ -3619,7 +3837,7 @@ def calculate_player_metrics(match_data: DemoData) -> dict[str, PlayerMetrics]:
     # ===========================================
 
     # Find column names (handle various naming conventions)
-    def find_column(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+    def find_column(df: pd.DataFrame, options: list[str]) -> str | None:
         for col in options:
             if col in df.columns:
                 return col
@@ -3641,25 +3859,35 @@ def calculate_player_metrics(match_data: DemoData) -> dict[str, PlayerMetrics]:
 
         # Kills and headshots
         if not kills_df.empty and att_steamid_col:
-            player_kills = kills_df[kills_df[att_steamid_col].fillna(0).astype(float) == float(steam_id)]
+            player_kills = kills_df[
+                kills_df[att_steamid_col].fillna(0).astype(float) == float(steam_id)
+            ]
             player_data[name]["kills"] = len(player_kills)
 
             if "headshot" in kills_df.columns:
-                player_data[name]["headshot_kills"] = int(player_kills["headshot"].fillna(False).sum())
+                player_data[name]["headshot_kills"] = int(
+                    player_kills["headshot"].fillna(False).sum()
+                )
 
         # Deaths
         if not kills_df.empty and vic_steamid_col:
-            player_deaths = kills_df[kills_df[vic_steamid_col].fillna(0).astype(float) == float(steam_id)]
+            player_deaths = kills_df[
+                kills_df[vic_steamid_col].fillna(0).astype(float) == float(steam_id)
+            ]
             player_data[name]["deaths"] = len(player_deaths)
 
         # Assists
         if not kills_df.empty and "assister_steamid" in kills_df.columns:
-            player_assists = kills_df[kills_df["assister_steamid"].fillna(0).astype(float) == float(steam_id)]
+            player_assists = kills_df[
+                kills_df["assister_steamid"].fillna(0).astype(float) == float(steam_id)
+            ]
             player_data[name]["assists"] = len(player_assists)
 
         # Total damage
         if not damages_df.empty and dmg_att_col and dmg_amount_col:
-            player_dmg = damages_df[damages_df[dmg_att_col].fillna(0).astype(float) == float(steam_id)]
+            player_dmg = damages_df[
+                damages_df[dmg_att_col].fillna(0).astype(float) == float(steam_id)
+            ]
             player_data[name]["damage_total"] = int(player_dmg[dmg_amount_col].fillna(0).sum())
 
     # ===========================================
@@ -3677,8 +3905,12 @@ def calculate_player_metrics(match_data: DemoData) -> dict[str, PlayerMetrics]:
     ttd_max_ms = 1500.0  # Filter out unreasonable values
 
     if not kills_df.empty and not damages_df.empty and att_steamid_col and vic_steamid_col:
-        if dmg_att_col and dmg_vic_col and "tick" in kills_df.columns and "tick" in damages_df.columns:
-
+        if (
+            dmg_att_col
+            and dmg_vic_col
+            and "tick" in kills_df.columns
+            and "tick" in damages_df.columns
+        ):
             for _, kill_row in kills_df.iterrows():
                 try:
                     att_id = kill_row.get(att_steamid_col)
@@ -3695,9 +3927,9 @@ def calculate_player_metrics(match_data: DemoData) -> dict[str, PlayerMetrics]:
                     # Find first damage from this attacker to this victim before the kill
                     # Optionally filter by round if available
                     dmg_mask = (
-                        (damages_df[dmg_att_col].fillna(0).astype(float) == att_id) &
-                        (damages_df[dmg_vic_col].fillna(0).astype(float) == vic_id) &
-                        (damages_df["tick"].fillna(0) <= kill_tick)
+                        (damages_df[dmg_att_col].fillna(0).astype(float) == att_id)
+                        & (damages_df[dmg_vic_col].fillna(0).astype(float) == vic_id)
+                        & (damages_df["tick"].fillna(0) <= kill_tick)
                     )
 
                     if kill_round is not None and dmg_round_col and not pd.isna(kill_round):
@@ -3741,7 +3973,8 @@ def calculate_player_metrics(match_data: DemoData) -> dict[str, PlayerMetrics]:
 
     # Try to compute CP from KillEvent objects first (have embedded position data)
     kills_with_pos = [
-        k for k in match_data.kills
+        k
+        for k in match_data.kills
         if k.attacker_x is not None and k.attacker_pitch is not None and k.victim_x is not None
     ]
 
@@ -3944,13 +4177,15 @@ def calculate_economy_history(match_data: DemoData) -> list[dict]:
                 t_val, ct_val = 20000, 22000
                 t_buy, ct_buy = "full", "full"
 
-            history.append({
-                "round": round_num,
-                "team_t_val": t_val,
-                "team_ct_val": ct_val,
-                "t_buy": t_buy,
-                "ct_buy": ct_buy,
-            })
+            history.append(
+                {
+                    "round": round_num,
+                    "team_t_val": t_val,
+                    "team_ct_val": ct_val,
+                    "t_buy": t_buy,
+                    "ct_buy": ct_buy,
+                }
+            )
         return history
 
     history = []
@@ -3965,12 +4200,14 @@ def calculate_economy_history(match_data: DemoData) -> list[dict]:
         t_buy = t_round.buy_type.value if t_round else "unknown"
         ct_buy = ct_round.buy_type.value if ct_round else "unknown"
 
-        history.append({
-            "round": round_num,
-            "team_t_val": t_val,
-            "team_ct_val": ct_val,
-            "t_buy": t_buy,
-            "ct_buy": ct_buy,
-        })
+        history.append(
+            {
+                "round": round_num,
+                "team_t_val": t_val,
+                "team_ct_val": ct_val,
+                "t_buy": t_buy,
+                "ct_buy": ct_buy,
+            }
+        )
 
     return history
