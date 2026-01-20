@@ -204,6 +204,27 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+@app.on_event("startup")
+async def validate_imports():
+    """Validate critical imports at startup to catch errors early."""
+    errors = []
+    try:
+        from opensight.analytics import DemoAnalyzer
+    except ImportError as e:
+        errors.append(f"analytics.DemoAnalyzer: {e}")
+
+    try:
+        from opensight.parser import DemoParser
+    except ImportError as e:
+        errors.append(f"parser.DemoParser: {e}")
+
+    if errors:
+        logger.error(f"Critical import errors at startup: {errors}")
+        # Don't raise - allow app to start but log the errors
+    else:
+        logger.info("✅ All critical imports validated successfully")
+
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
@@ -1520,3 +1541,19 @@ async def about():
             "cp_median_error_deg": "Crosshair Placement - aim accuracy",
         },
     }
+
+
+# =============================================================================
+# Development Server
+# =============================================================================
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "opensight.api:app",
+        host="0.0.0.0",
+        port=7860,
+        reload=True,
+        log_level="info",
+    )
