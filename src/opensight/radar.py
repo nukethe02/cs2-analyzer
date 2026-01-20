@@ -16,12 +16,9 @@ Map coordinate systems:
 from __future__ import annotations
 
 import logging
-import math
-from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional
 import urllib.request
-import os
+from dataclasses import dataclass, field
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +123,7 @@ FALLBACK_RADAR_URLS = {
 @dataclass
 class RadarPosition:
     """A position on the radar in pixel coordinates."""
+
     x: float  # Pixel X (0 = left)
     y: float  # Pixel Y (0 = top)
     z: float = 0.0  # Original Z coordinate (for level detection)
@@ -138,13 +136,14 @@ class RadarPosition:
 @dataclass
 class MapMetadata:
     """Metadata for a CS2 map."""
+
     name: str
     internal_name: str
     pos_x: float
     pos_y: float
     scale: float
     radar_url: str
-    z_cutoff: Optional[float] = None
+    z_cutoff: float | None = None
 
     # Radar image dimensions (set after loading)
     radar_width: int = 1024
@@ -250,6 +249,7 @@ class CoordinateTransformer:
 @dataclass
 class PlayerRadarPosition:
     """Player position for radar display."""
+
     steam_id: int
     name: str
     team: str  # "CT" or "T"
@@ -263,6 +263,7 @@ class PlayerRadarPosition:
 @dataclass
 class GrenadeRadarPosition:
     """Grenade position for radar display."""
+
     grenade_type: str  # "flashbang", "smoke", "he", "molotov", "decoy"
     x: float
     y: float
@@ -273,12 +274,13 @@ class GrenadeRadarPosition:
 @dataclass
 class RadarFrame:
     """A single frame of radar data."""
+
     tick: int
     round_num: int
     players: list[PlayerRadarPosition]
     grenades: list[GrenadeRadarPosition] = field(default_factory=list)
-    bomb_x: Optional[float] = None
-    bomb_y: Optional[float] = None
+    bomb_x: float | None = None
+    bomb_y: float | None = None
     bomb_planted: bool = False
 
 
@@ -328,13 +330,15 @@ class RadarDataGenerator:
                         kill.attacker_z or 0,
                     )
                     if pos.is_valid:
-                        kill_positions.append({
-                            "x": round(pos.x, 1),
-                            "y": round(pos.y, 1),
-                            "player": player_names.get(kill.attacker_steamid, "Unknown"),
-                            "weapon": kill.weapon,
-                            "headshot": kill.headshot,
-                        })
+                        kill_positions.append(
+                            {
+                                "x": round(pos.x, 1),
+                                "y": round(pos.y, 1),
+                                "player": player_names.get(kill.attacker_steamid, "Unknown"),
+                                "weapon": kill.weapon,
+                                "headshot": kill.headshot,
+                            }
+                        )
 
                 # Victim position (death)
                 if kill.victim_x is not None and kill.victim_y is not None:
@@ -344,11 +348,13 @@ class RadarDataGenerator:
                         kill.victim_z or 0,
                     )
                     if pos.is_valid:
-                        death_positions.append({
-                            "x": round(pos.x, 1),
-                            "y": round(pos.y, 1),
-                            "player": player_names.get(kill.victim_steamid, "Unknown"),
-                        })
+                        death_positions.append(
+                            {
+                                "x": round(pos.x, 1),
+                                "y": round(pos.y, 1),
+                                "player": player_names.get(kill.victim_steamid, "Unknown"),
+                            }
+                        )
 
             except Exception as e:
                 logger.debug(f"Error processing kill for heatmap: {e}")
@@ -391,14 +397,16 @@ class RadarDataGenerator:
                 )
 
                 if pos.is_valid:
-                    grenade_data.append({
-                        "type": grenade.grenade_type,
-                        "x": round(pos.x, 1),
-                        "y": round(pos.y, 1),
-                        "thrower": player_names.get(grenade.thrower_steamid, "Unknown"),
-                        "round": grenade.round_num,
-                        "tick": grenade.tick,
-                    })
+                    grenade_data.append(
+                        {
+                            "type": grenade.grenade_type,
+                            "x": round(pos.x, 1),
+                            "y": round(pos.y, 1),
+                            "thrower": player_names.get(grenade.thrower_steamid, "Unknown"),
+                            "round": grenade.round_num,
+                            "tick": grenade.tick,
+                        }
+                    )
 
             except Exception as e:
                 logger.debug(f"Error processing grenade: {e}")
@@ -412,7 +420,7 @@ class RadarImageManager:
     Manages radar image downloading and caching.
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         """
         Initialize the radar image manager.
 
@@ -422,7 +430,7 @@ class RadarImageManager:
         self.cache_dir = cache_dir or Path.home() / ".opensight" / "radar_images"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_radar_path(self, map_name: str) -> Optional[Path]:
+    def get_radar_path(self, map_name: str) -> Path | None:
         """
         Get path to radar image, downloading if needed.
 
@@ -467,7 +475,7 @@ class RadarImageManager:
 
             return None
 
-    def get_radar_url(self, map_name: str) -> Optional[str]:
+    def get_radar_url(self, map_name: str) -> str | None:
         """Get the URL for a map's radar image."""
         map_name = map_name.lower()
         if map_name in MAP_DATA:
@@ -478,7 +486,7 @@ class RadarImageManager:
         """List all maps with available radar images."""
         return list(MAP_DATA.keys())
 
-    def get_map_info(self, map_name: str) -> Optional[dict]:
+    def get_map_info(self, map_name: str) -> dict | None:
         """Get metadata for a map."""
         map_name = map_name.lower()
         if map_name in MAP_DATA:
@@ -487,6 +495,7 @@ class RadarImageManager:
 
 
 # Convenience functions
+
 
 def get_radar_positions(
     kills: list,
@@ -508,7 +517,7 @@ def get_radar_positions(
     return generator.generate_kill_heatmap_data(kills, player_names)
 
 
-def get_map_metadata(map_name: str) -> Optional[MapMetadata]:
+def get_map_metadata(map_name: str) -> MapMetadata | None:
     """Get metadata for a map."""
     map_name = map_name.lower()
     if map_name not in MAP_DATA:

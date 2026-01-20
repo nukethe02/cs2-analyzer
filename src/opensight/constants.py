@@ -15,22 +15,23 @@ class DemoSource(str, Enum):
     Based on CS Demo Manager's supported sources:
     https://github.com/akiver/cs-demo-analyzer
     """
+
     UNKNOWN = "unknown"
-    VALVE = "valve"           # Valve Matchmaking (Premier, Competitive, Wingman, etc.)
-    FACEIT = "faceit"         # FACEIT platform
-    ESEA = "esea"             # ESEA league/pugs
-    ESL = "esl"               # ESL tournaments
-    ESPORTAL = "esportal"     # Esportal
+    VALVE = "valve"  # Valve Matchmaking (Premier, Competitive, Wingman, etc.)
+    FACEIT = "faceit"  # FACEIT platform
+    ESEA = "esea"  # ESEA league/pugs
+    ESL = "esl"  # ESL tournaments
+    ESPORTAL = "esportal"  # Esportal
     CHALLENGERMODE = "challengermode"
-    POPFLASH = "popflash"     # PopFlash
-    FASTCUP = "fastcup"       # FastCup
-    FIVEPLAY = "5eplay"       # 5EPlay (China)
+    POPFLASH = "popflash"  # PopFlash
+    FASTCUP = "fastcup"  # FastCup
+    FIVEPLAY = "5eplay"  # 5EPlay (China)
     PERFECTWORLD = "perfectworld"  # Perfect World (China)
-    EBOT = "ebot"             # eBot match servers
-    CEVO = "cevo"             # CEVO
-    HLTV = "hltv"             # HLTV professional demos
-    CUSTOM = "custom"         # Custom/private servers
-    POV = "pov"               # POV recording (not GOTV)
+    EBOT = "ebot"  # eBot match servers
+    CEVO = "cevo"  # CEVO
+    HLTV = "hltv"  # HLTV professional demos
+    CUSTOM = "custom"  # Custom/private servers
+    POV = "pov"  # POV recording (not GOTV)
 
 
 class GameMode(str, Enum):
@@ -39,17 +40,18 @@ class GameMode(str, Enum):
 
     Different modes have different round structures and player counts.
     """
+
     UNKNOWN = "unknown"
-    COMPETITIVE = "competitive"     # 5v5, MR12 (24 rounds max + OT)
-    PREMIER = "premier"             # 5v5, MR12 with pick/ban
-    WINGMAN = "wingman"             # 2v2, MR8 (16 rounds max)
-    CASUAL = "casual"               # Up to 10v10, relaxed rules
-    DEATHMATCH = "deathmatch"       # FFA/Team DM, no rounds
-    ARMS_RACE = "arms_race"         # Gun game
-    DANGER_ZONE = "danger_zone"     # Battle royale
-    RETAKES = "retakes"             # Retake practice
-    SCRIMMAGE = "scrimmage"         # Unranked competitive
-    CUSTOM = "custom"               # Custom server modes
+    COMPETITIVE = "competitive"  # 5v5, MR12 (24 rounds max + OT)
+    PREMIER = "premier"  # 5v5, MR12 with pick/ban
+    WINGMAN = "wingman"  # 2v2, MR8 (16 rounds max)
+    CASUAL = "casual"  # Up to 10v10, relaxed rules
+    DEATHMATCH = "deathmatch"  # FFA/Team DM, no rounds
+    ARMS_RACE = "arms_race"  # Gun game
+    DANGER_ZONE = "danger_zone"  # Battle royale
+    RETAKES = "retakes"  # Retake practice
+    SCRIMMAGE = "scrimmage"  # Unranked competitive
+    CUSTOM = "custom"  # Custom server modes
 
 
 class DemoType(str, Enum):
@@ -59,12 +61,14 @@ class DemoType(str, Enum):
     GOTV demos contain full match data from all perspectives.
     POV demos contain only one player's perspective.
     """
-    GOTV = "gotv"       # Full match recording (SourceTV)
-    POV = "pov"         # Single player perspective
+
+    GOTV = "gotv"  # Full match recording (SourceTV)
+    POV = "pov"  # Single player perspective
 
 
 class Team(int, Enum):
     """CS2 team numbers."""
+
     UNASSIGNED = 0
     SPECTATOR = 1
     TERRORIST = 2
@@ -77,43 +81,53 @@ class RoundEndReason(int, Enum):
 
     These are the official game event values.
     """
-    TARGET_BOMBED = 1           # Terrorists bombed the target
-    VIP_ESCAPED = 2             # (Legacy)
-    VIP_KILLED = 3              # (Legacy)
-    TERRORISTS_ESCAPED = 4      # (Legacy)
-    CT_STOPPED_ESCAPE = 5       # (Legacy)
-    TERRORIST_STOPPED = 6       # (Legacy)
-    BOMB_DEFUSED = 7            # CTs defused the bomb
-    CT_WIN = 8                  # CTs eliminated terrorists
-    TERRORIST_WIN = 9           # Terrorists eliminated CTs
-    ROUND_DRAW = 10             # Draw
-    ALL_HOSTAGES_RESCUED = 11   # CTs rescued hostages
-    TARGET_SAVED = 12           # Time ran out, bomb not planted
-    HOSTAGES_NOT_RESCUED = 13   # Terrorists won hostage round
-    TERRORISTS_SURRENDER = 14   # Terrorists surrendered
-    CT_SURRENDER = 15           # CTs surrendered
-    TERRORISTS_PLANTED = 16     # (Technical)
-    CTS_REACHED_HOSTAGE = 17    # (Technical)
+
+    TARGET_BOMBED = 1  # Terrorists bombed the target
+    VIP_ESCAPED = 2  # (Legacy)
+    VIP_KILLED = 3  # (Legacy)
+    TERRORISTS_ESCAPED = 4  # (Legacy)
+    CT_STOPPED_ESCAPE = 5  # (Legacy)
+    TERRORIST_STOPPED = 6  # (Legacy)
+    BOMB_DEFUSED = 7  # CTs defused the bomb
+    CT_WIN = 8  # CTs eliminated terrorists
+    TERRORIST_WIN = 9  # Terrorists eliminated CTs
+    ROUND_DRAW = 10  # Draw
+    ALL_HOSTAGES_RESCUED = 11  # CTs rescued hostages
+    TARGET_SAVED = 12  # Time ran out, bomb not planted
+    HOSTAGES_NOT_RESCUED = 13  # Terrorists won hostage round
+    TERRORISTS_SURRENDER = 14  # Terrorists surrendered
+    CT_SURRENDER = 15  # CTs surrendered
+    TERRORISTS_PLANTED = 16  # (Technical)
+    CTS_REACHED_HOSTAGE = 17  # (Technical)
 
 
 # Map pool groupings (Updated January 2026)
 # Active Duty pool changes frequently - check Valve release notes
 ACTIVE_DUTY_MAPS = {
-    "de_mirage", "de_inferno", "de_nuke", "de_dust2",
-    "de_ancient", "de_train", "de_overpass"
+    "de_mirage",
+    "de_inferno",
+    "de_nuke",
+    "de_dust2",
+    "de_ancient",
+    "de_train",
+    "de_overpass",
 }
 
 # Reserve pool maps (can be played in Competitive but not Premier)
-RESERVE_MAPS = {
-    "de_anubis", "de_vertigo"
-}
+RESERVE_MAPS = {"de_anubis", "de_vertigo"}
 
 # All competitive maps (Active Duty + Reserve)
 COMPETITIVE_MAPS = ACTIVE_DUTY_MAPS | RESERVE_MAPS
 
 WINGMAN_MAPS = {
-    "de_inferno", "de_overpass", "de_vertigo", "de_nuke",
-    "de_memento", "de_assembly", "de_rooftop", "de_transit"
+    "de_inferno",
+    "de_overpass",
+    "de_vertigo",
+    "de_nuke",
+    "de_memento",
+    "de_assembly",
+    "de_rooftop",
+    "de_transit",
 }
 
 # Server identifiers for source detection
@@ -147,13 +161,13 @@ FILENAME_PATTERNS = {
 CS2_TICK_RATE = 64  # All CS2 servers use 64 tick
 
 TICK_RATES = {
-    DemoSource.VALVE: 64,       # Valve MM - 64 tick + subtick
-    DemoSource.FACEIT: 64,      # FACEIT - 64 tick + subtick (NOT 128 like CS:GO)
-    DemoSource.ESEA: 64,        # ESEA - 64 tick + subtick (NOT 128 like CS:GO)
-    DemoSource.ESL: 64,         # ESL - 64 tick + subtick
-    DemoSource.ESPORTAL: 64,    # Esportal - 64 tick + subtick
-    DemoSource.HLTV: 64,        # Pro matches - 64 tick + subtick
-    DemoSource.UNKNOWN: 64,     # Default to 64 tick
+    DemoSource.VALVE: 64,  # Valve MM - 64 tick + subtick
+    DemoSource.FACEIT: 64,  # FACEIT - 64 tick + subtick (NOT 128 like CS:GO)
+    DemoSource.ESEA: 64,  # ESEA - 64 tick + subtick (NOT 128 like CS:GO)
+    DemoSource.ESL: 64,  # ESL - 64 tick + subtick
+    DemoSource.ESPORTAL: 64,  # Esportal - 64 tick + subtick
+    DemoSource.HLTV: 64,  # Pro matches - 64 tick + subtick
+    DemoSource.UNKNOWN: 64,  # Default to 64 tick
 }
 
 # Trade window in seconds (industry standard from Leetify/Stratbook)

@@ -8,10 +8,9 @@ Implements utility (grenade) tracking and effectiveness:
 - Utility spending efficiency
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
 import logging
+from dataclasses import dataclass
+from enum import Enum
 
 import pandas as pd
 
@@ -22,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class GrenadeType(Enum):
     """Types of grenades in CS2."""
+
     FLASHBANG = "flashbang"
     HE_GRENADE = "hegrenade"
     SMOKE = "smokegrenade"
@@ -55,6 +55,7 @@ GRENADE_WEAPONS = {
 @dataclass
 class GrenadeDamageEvent:
     """Damage dealt by a grenade."""
+
     tick: int
     round_num: int
     thrower_id: int
@@ -69,6 +70,7 @@ class GrenadeDamageEvent:
 @dataclass
 class PlayerUtilityStats:
     """Utility statistics for a single player."""
+
     steam_id: int
     name: str
 
@@ -101,6 +103,7 @@ class PlayerUtilityStats:
 @dataclass
 class UtilityAnalysisResult:
     """Complete utility analysis for a match."""
+
     grenade_damage_events: list[GrenadeDamageEvent]
     player_stats: dict[int, PlayerUtilityStats]
 
@@ -148,9 +151,7 @@ class UtilityAnalyzer:
             return self._empty_result()
 
         # Extract grenade damage events
-        self._extract_grenade_damage(
-            damages_df, att_col, vic_col, dmg_col, weapon_col, tick_col
-        )
+        self._extract_grenade_damage(damages_df, att_col, vic_col, dmg_col, weapon_col, tick_col)
 
         # Build player stats
         player_stats = self._build_player_stats()
@@ -168,7 +169,7 @@ class UtilityAnalyzer:
             team_utility_efficiency=team_efficiency,
         )
 
-    def _find_col(self, df: pd.DataFrame, options: list[str]) -> Optional[str]:
+    def _find_col(self, df: pd.DataFrame, options: list[str]) -> str | None:
         """Find first matching column name."""
         for col in options:
             if col in df.columns:
@@ -189,9 +190,9 @@ class UtilityAnalyzer:
         damages_df: pd.DataFrame,
         att_col: str,
         vic_col: str,
-        dmg_col: Optional[str],
+        dmg_col: str | None,
         weapon_col: str,
-        tick_col: Optional[str]
+        tick_col: str | None,
     ) -> None:
         """Extract all grenade damage events."""
         round_col = self._find_col(damages_df, ["total_rounds_played"])
@@ -239,24 +240,31 @@ class UtilityAnalyzer:
             he_events = [e for e in player_events if e.grenade_type == GrenadeType.HE_GRENADE]
             he_damage = sum(e.damage for e in he_events if not e.is_team_damage)
             # Estimate grenades thrown by unique (round, victim) combinations
-            he_instances = len(set((e.round_num, e.tick) for e in he_events))
+            he_instances = len({(e.round_num, e.tick) for e in he_events})
             he_thrown = max(he_instances, 1) if he_events else 0
 
             # Count HE kills from kills_df
             kills_df = self.data.kills_df
             weapon_col = self._find_col(kills_df, ["weapon"]) if not kills_df.empty else None
-            att_col = self._find_col(kills_df, ["attacker_steamid", "attacker_steam_id"]) if not kills_df.empty else None
+            att_col = (
+                self._find_col(kills_df, ["attacker_steamid", "attacker_steam_id"])
+                if not kills_df.empty
+                else None
+            )
             he_kills = 0
             if weapon_col and att_col and not kills_df.empty:
                 player_kills = kills_df[kills_df[att_col] == steam_id]
                 he_kills = len(player_kills[player_kills[weapon_col].str.lower() == "hegrenade"])
 
             # Molotov stats
-            molotov_events = [e for e in player_events
-                            if e.grenade_type in [GrenadeType.MOLOTOV, GrenadeType.INCENDIARY]]
+            molotov_events = [
+                e
+                for e in player_events
+                if e.grenade_type in [GrenadeType.MOLOTOV, GrenadeType.INCENDIARY]
+            ]
             molotov_damage = sum(e.damage for e in molotov_events if not e.is_team_damage)
             molotov_ticks = len(molotov_events)
-            molotov_thrown = len(set(e.round_num for e in molotov_events)) if molotov_events else 0
+            molotov_thrown = len({e.round_num for e in molotov_events}) if molotov_events else 0
 
             # Total utility damage
             total_damage = sum(e.damage for e in player_events if not e.is_team_damage)
@@ -267,8 +275,8 @@ class UtilityAnalyzer:
 
             # Estimate utility cost
             utility_cost = (
-                he_thrown * GRENADE_COSTS[GrenadeType.HE_GRENADE] +
-                molotov_thrown * GRENADE_COSTS[GrenadeType.MOLOTOV]
+                he_thrown * GRENADE_COSTS[GrenadeType.HE_GRENADE]
+                + molotov_thrown * GRENADE_COSTS[GrenadeType.MOLOTOV]
             )
 
             stats[steam_id] = PlayerUtilityStats(
@@ -318,14 +326,24 @@ class UtilityAnalyzer:
                 continue
 
             player_events = [e for e in self._grenade_events if e.thrower_id == steam_id]
-            he_count = len(set((e.round_num, e.tick) for e in player_events
-                              if e.grenade_type == GrenadeType.HE_GRENADE))
-            molotov_count = len(set(e.round_num for e in player_events
-                                   if e.grenade_type in [GrenadeType.MOLOTOV, GrenadeType.INCENDIARY]))
+            he_count = len(
+                {
+                    (e.round_num, e.tick)
+                    for e in player_events
+                    if e.grenade_type == GrenadeType.HE_GRENADE
+                }
+            )
+            molotov_count = len(
+                {
+                    e.round_num
+                    for e in player_events
+                    if e.grenade_type in [GrenadeType.MOLOTOV, GrenadeType.INCENDIARY]
+                }
+            )
 
             team_cost[team] += (
-                he_count * GRENADE_COSTS[GrenadeType.HE_GRENADE] +
-                molotov_count * GRENADE_COSTS[GrenadeType.MOLOTOV]
+                he_count * GRENADE_COSTS[GrenadeType.HE_GRENADE]
+                + molotov_count * GRENADE_COSTS[GrenadeType.MOLOTOV]
             )
 
         return {
