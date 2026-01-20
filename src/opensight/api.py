@@ -29,6 +29,7 @@ from typing import Any
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 __version__ = "0.4.0"
@@ -195,6 +196,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files directory
+# Path is relative to where uvicorn runs (from /app in Docker, or project root locally)
+STATIC_DIR = Path(__file__).parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # =============================================================================
@@ -743,6 +750,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the main web interface with drop-zone."""
+    # Prefer the feature-rich static index.html if available
+    static_index = STATIC_DIR / "index.html"
+    if static_index.exists():
+        return HTMLResponse(content=static_index.read_text(), status_code=200)
+    # Fallback to embedded template
     return HTMLResponse(content=HTML_TEMPLATE, status_code=200)
 
 
