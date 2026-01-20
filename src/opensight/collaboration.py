@@ -5,25 +5,27 @@ Enables multi-user sessions where coaches and players can
 annotate demos collaboratively with real-time synchronization.
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional, Any
-import json
 import hashlib
-import time
-from pathlib import Path
-from collections import defaultdict
-from datetime import datetime
-import threading
+import json
 import queue
-
+import re
+import threading
+import time
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
 # ============================================================================
 # Collaboration Data Types
 # ============================================================================
 
+
 class UserRole(Enum):
     """Roles in a collaborative session."""
+
     OWNER = "owner"
     COACH = "coach"
     ANALYST = "analyst"
@@ -33,6 +35,7 @@ class UserRole(Enum):
 
 class AnnotationType(Enum):
     """Types of demo annotations."""
+
     COMMENT = "comment"
     DRAWING = "drawing"
     HIGHLIGHT = "highlight"
@@ -44,6 +47,7 @@ class AnnotationType(Enum):
 
 class AnnotationCategory(Enum):
     """Categories for annotations."""
+
     POSITIONING = "positioning"
     TIMING = "timing"
     UTILITY = "utility"
@@ -59,6 +63,7 @@ class AnnotationCategory(Enum):
 
 class CollaborationEvent(Enum):
     """Types of collaboration events."""
+
     USER_JOINED = "user_joined"
     USER_LEFT = "user_left"
     ANNOTATION_ADDED = "annotation_added"
@@ -74,9 +79,11 @@ class CollaborationEvent(Enum):
 # User and Session Data Structures
 # ============================================================================
 
+
 @dataclass
 class CollaborationUser:
     """A user in a collaborative session."""
+
     user_id: str
     username: str
     role: UserRole
@@ -102,22 +109,19 @@ class CollaborationUser:
             "avatar_color": self.avatar_color,
             "joined_at": self.joined_at,
             "is_online": self.is_online,
-            "cursor": {
-                "tick": self.cursor_tick,
-                "x": self.cursor_x,
-                "y": self.cursor_y
-            },
+            "cursor": {"tick": self.cursor_tick, "x": self.cursor_x, "y": self.cursor_y},
             "permissions": {
                 "can_annotate": self.can_annotate,
                 "can_control_playback": self.can_control_playback,
-                "can_invite": self.can_invite
-            }
+                "can_invite": self.can_invite,
+            },
         }
 
 
 @dataclass
 class Annotation:
     """A single annotation on the demo."""
+
     annotation_id: str
     annotation_type: AnnotationType
     category: AnnotationCategory
@@ -136,8 +140,8 @@ class Annotation:
     data: dict[str, Any] = field(default_factory=dict)
 
     # Target
-    target_player: Optional[str] = None  # Steam ID
-    position: Optional[tuple[float, float, float]] = None
+    target_player: str | None = None  # Steam ID
+    position: tuple[float, float, float] | None = None
 
     # Drawing data (for drawing annotations)
     drawing_points: list[tuple[float, float]] = field(default_factory=list)
@@ -155,36 +159,29 @@ class Annotation:
             "annotation_id": self.annotation_id,
             "type": self.annotation_type.value,
             "category": self.category.value,
-            "author": {
-                "id": self.author_id,
-                "name": self.author_name
-            },
+            "author": {"id": self.author_id, "name": self.author_name},
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "timing": {
                 "tick": self.tick,
                 "round": self.round_num,
-                "timestamp_ms": self.timestamp_ms
+                "timestamp_ms": self.timestamp_ms,
             },
-            "content": {
-                "text": self.text,
-                "data": self.data
-            },
-            "target": {
-                "player": self.target_player,
-                "position": self.position
-            },
+            "content": {"text": self.text, "data": self.data},
+            "target": {"player": self.target_player, "position": self.position},
             "drawing": {
                 "points": self.drawing_points,
                 "color": self.drawing_color,
-                "thickness": self.drawing_thickness
-            } if self.annotation_type == AnnotationType.DRAWING else None,
+                "thickness": self.drawing_thickness,
+            }
+            if self.annotation_type == AnnotationType.DRAWING
+            else None,
             "metadata": {
                 "is_private": self.is_private,
                 "tags": self.tags,
                 "replies": self.replies,
-                "reactions": self.reactions
-            }
+                "reactions": self.reactions,
+            },
         }
 
     @classmethod
@@ -217,36 +214,38 @@ class Annotation:
             is_private=metadata.get("is_private", False),
             tags=metadata.get("tags", []),
             replies=metadata.get("replies", []),
-            reactions=metadata.get("reactions", {})
+            reactions=metadata.get("reactions", {}),
         )
 
 
 @dataclass
 class PlaybackState:
     """Synchronized playback state."""
+
     current_tick: int = 0
     is_playing: bool = False
     playback_speed: float = 1.0
-    controlled_by: Optional[str] = None  # user_id
+    controlled_by: str | None = None  # user_id
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "current_tick": self.current_tick,
             "is_playing": self.is_playing,
             "playback_speed": self.playback_speed,
-            "controlled_by": self.controlled_by
+            "controlled_by": self.controlled_by,
         }
 
 
 @dataclass
 class ChatMessage:
     """A chat message in the session."""
+
     message_id: str
     user_id: str
     username: str
     text: str
     timestamp: str
-    reply_to: Optional[str] = None
+    reply_to: str | None = None
     mentions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -257,13 +256,14 @@ class ChatMessage:
             "text": self.text,
             "timestamp": self.timestamp,
             "reply_to": self.reply_to,
-            "mentions": self.mentions
+            "mentions": self.mentions,
         }
 
 
 @dataclass
 class CollaborationSession:
     """A collaborative demo review session."""
+
     session_id: str
     demo_id: str
     demo_name: str
@@ -275,7 +275,7 @@ class CollaborationSession:
     title: str = ""
     description: str = ""
     is_public: bool = False
-    password_hash: Optional[str] = None
+    password_hash: str | None = None
     max_users: int = 10
 
     # Participants
@@ -308,13 +308,13 @@ class CollaborationSession:
             "settings": {
                 "is_public": self.is_public,
                 "has_password": self.password_hash is not None,
-                "max_users": self.max_users
+                "max_users": self.max_users,
             },
             "users": {uid: u.to_dict() for uid, u in self.users.items()},
             "online_count": sum(1 for u in self.users.values() if u.is_online),
             "total_annotations": len(self.annotations),
             "playback": self.playback.to_dict(),
-            "last_activity": self.last_activity
+            "last_activity": self.last_activity,
         }
 
 
@@ -322,9 +322,11 @@ class CollaborationSession:
 # Event System
 # ============================================================================
 
+
 @dataclass
 class SessionEvent:
     """An event in a collaboration session."""
+
     event_id: str
     event_type: CollaborationEvent
     session_id: str
@@ -339,7 +341,7 @@ class SessionEvent:
             "session_id": self.session_id,
             "user_id": self.user_id,
             "timestamp": self.timestamp,
-            "data": self.data
+            "data": self.data,
         }
 
 
@@ -368,7 +370,7 @@ class EventBus:
         """Publish an event to all subscribers."""
         with self._lock:
             self._event_counter += 1
-            event.event_id = f"evt_{self._event_counter}_{int(time.time()*1000)}"
+            event.event_id = f"evt_{self._event_counter}_{int(time.time() * 1000)}"
 
             for q in self.subscribers.get(event.session_id, []):
                 try:
@@ -376,7 +378,7 @@ class EventBus:
                 except queue.Full:
                     pass
 
-    def get_event(self, event_queue: queue.Queue, timeout: float = 1.0) -> Optional[SessionEvent]:
+    def get_event(self, event_queue: queue.Queue, timeout: float = 1.0) -> SessionEvent | None:
         """Get the next event from a subscription."""
         try:
             return event_queue.get(timeout=timeout)
@@ -388,12 +390,13 @@ class EventBus:
 # Collaboration Manager
 # ============================================================================
 
+
 class CollaborationManager:
     """
     Manages collaborative analysis sessions.
     """
 
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Path | None = None):
         self.data_dir = data_dir or Path.home() / ".opensight" / "collaboration"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -407,11 +410,11 @@ class CollaborationManager:
         """Load saved sessions from disk."""
         for session_file in self.data_dir.glob("session_*.json"):
             try:
-                with open(session_file, "r") as f:
+                with open(session_file) as f:
                     data = json.load(f)
                 session = self._session_from_dict(data)
                 self.sessions[session.session_id] = session
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 continue
 
     def _save_session(self, session: CollaborationSession) -> None:
@@ -420,7 +423,7 @@ class CollaborationManager:
         try:
             with open(session_file, "w") as f:
                 json.dump(self._session_to_dict(session), f, indent=2)
-        except IOError:
+        except OSError:
             pass
 
     def _session_to_dict(self, session: CollaborationSession) -> dict[str, Any]:
@@ -430,7 +433,7 @@ class CollaborationManager:
             "annotations": {aid: a.to_dict() for aid, a in session.annotations.items()},
             "chat_history": [m.to_dict() for m in session.chat_history],
             "invited_users": session.invited_users,
-            "password_hash": session.password_hash
+            "password_hash": session.password_hash,
         }
 
     def _session_from_dict(self, data: dict[str, Any]) -> CollaborationSession:
@@ -450,7 +453,7 @@ class CollaborationManager:
             password_hash=data.get("password_hash"),
             max_users=settings.get("max_users", 10),
             invited_users=data.get("invited_users", []),
-            last_activity=data.get("last_activity", "")
+            last_activity=data.get("last_activity", ""),
         )
 
         # Reconstruct users (but mark as offline)
@@ -465,7 +468,7 @@ class CollaborationManager:
                 is_online=False,  # Reset online status
                 can_annotate=perms.get("can_annotate", True),
                 can_control_playback=perms.get("can_control_playback", False),
-                can_invite=perms.get("can_invite", False)
+                can_invite=perms.get("can_invite", False),
             )
 
         # Reconstruct annotations
@@ -474,22 +477,32 @@ class CollaborationManager:
 
         # Reconstruct chat
         for m_data in data.get("chat_history", []):
-            session.chat_history.append(ChatMessage(
-                message_id=m_data.get("message_id", ""),
-                user_id=m_data.get("user_id", ""),
-                username=m_data.get("username", ""),
-                text=m_data.get("text", ""),
-                timestamp=m_data.get("timestamp", ""),
-                reply_to=m_data.get("reply_to"),
-                mentions=m_data.get("mentions", [])
-            ))
+            session.chat_history.append(
+                ChatMessage(
+                    message_id=m_data.get("message_id", ""),
+                    user_id=m_data.get("user_id", ""),
+                    username=m_data.get("username", ""),
+                    text=m_data.get("text", ""),
+                    timestamp=m_data.get("timestamp", ""),
+                    reply_to=m_data.get("reply_to"),
+                    mentions=m_data.get("mentions", []),
+                )
+            )
 
         return session
 
-    def create_session(self, demo_id: str, demo_name: str, map_name: str,
-                       creator_id: str, creator_name: str,
-                       title: str = "", description: str = "",
-                       is_public: bool = False, password: Optional[str] = None) -> CollaborationSession:
+    def create_session(
+        self,
+        demo_id: str,
+        demo_name: str,
+        map_name: str,
+        creator_id: str,
+        creator_name: str,
+        title: str = "",
+        description: str = "",
+        is_public: bool = False,
+        password: str | None = None,
+    ) -> CollaborationSession:
         """
         Create a new collaboration session.
 
@@ -526,7 +539,7 @@ class CollaborationManager:
             title=title or f"Review: {demo_name}",
             description=description,
             is_public=is_public,
-            password_hash=password_hash
+            password_hash=password_hash,
         )
 
         # Add creator as owner
@@ -539,7 +552,7 @@ class CollaborationManager:
             is_online=True,
             can_annotate=True,
             can_control_playback=True,
-            can_invite=True
+            can_invite=True,
         )
         session.users[creator_id] = owner
         session.last_activity = datetime.now().isoformat()
@@ -549,9 +562,14 @@ class CollaborationManager:
 
         return session
 
-    def join_session(self, session_id: str, user_id: str, username: str,
-                     password: Optional[str] = None,
-                     role: UserRole = UserRole.VIEWER) -> tuple[Optional[CollaborationSession], Optional[str]]:
+    def join_session(
+        self,
+        session_id: str,
+        user_id: str,
+        username: str,
+        password: str | None = None,
+        role: UserRole = UserRole.VIEWER,
+    ) -> tuple[CollaborationSession | None, str | None]:
         """
         Join an existing session.
 
@@ -594,9 +612,10 @@ class CollaborationManager:
                 avatar_color=self._generate_avatar_color(user_id),
                 joined_at=datetime.now().isoformat(),
                 is_online=True,
-                can_annotate=role in [UserRole.OWNER, UserRole.COACH, UserRole.ANALYST, UserRole.PLAYER],
+                can_annotate=role
+                in [UserRole.OWNER, UserRole.COACH, UserRole.ANALYST, UserRole.PLAYER],
                 can_control_playback=role in [UserRole.OWNER, UserRole.COACH],
-                can_invite=role in [UserRole.OWNER, UserRole.COACH]
+                can_invite=role in [UserRole.OWNER, UserRole.COACH],
             )
             session.users[user_id] = user
 
@@ -604,14 +623,16 @@ class CollaborationManager:
         self._save_session(session)
 
         # Publish event
-        self.event_bus.publish(SessionEvent(
-            event_id="",
-            event_type=CollaborationEvent.USER_JOINED,
-            session_id=session_id,
-            user_id=user_id,
-            timestamp=datetime.now().isoformat(),
-            data={"username": username, "role": role.value}
-        ))
+        self.event_bus.publish(
+            SessionEvent(
+                event_id="",
+                event_type=CollaborationEvent.USER_JOINED,
+                session_id=session_id,
+                user_id=user_id,
+                timestamp=datetime.now().isoformat(),
+                data={"username": username, "role": role.value},
+            )
+        )
 
         return session, None
 
@@ -626,27 +647,34 @@ class CollaborationManager:
         self._save_session(session)
 
         # Publish event
-        self.event_bus.publish(SessionEvent(
-            event_id="",
-            event_type=CollaborationEvent.USER_LEFT,
-            session_id=session_id,
-            user_id=user_id,
-            timestamp=datetime.now().isoformat(),
-            data={"username": session.users[user_id].username}
-        ))
+        self.event_bus.publish(
+            SessionEvent(
+                event_id="",
+                event_type=CollaborationEvent.USER_LEFT,
+                session_id=session_id,
+                user_id=user_id,
+                timestamp=datetime.now().isoformat(),
+                data={"username": session.users[user_id].username},
+            )
+        )
 
         return True
 
-    def add_annotation(self, session_id: str, user_id: str,
-                       annotation_type: AnnotationType,
-                       category: AnnotationCategory,
-                       tick: int, round_num: int,
-                       text: str = "",
-                       target_player: Optional[str] = None,
-                       position: Optional[tuple[float, float, float]] = None,
-                       drawing_data: Optional[dict[str, Any]] = None,
-                       tags: list[str] = None,
-                       is_private: bool = False) -> Optional[Annotation]:
+    def add_annotation(
+        self,
+        session_id: str,
+        user_id: str,
+        annotation_type: AnnotationType,
+        category: AnnotationCategory,
+        tick: int,
+        round_num: int,
+        text: str = "",
+        target_player: str | None = None,
+        position: tuple[float, float, float] | None = None,
+        drawing_data: dict[str, Any] | None = None,
+        tags: list[str] = None,
+        is_private: bool = False,
+    ) -> Annotation | None:
         """
         Add an annotation to the session.
 
@@ -694,7 +722,7 @@ class CollaborationManager:
             target_player=target_player,
             position=position,
             is_private=is_private,
-            tags=tags or []
+            tags=tags or [],
         )
 
         if drawing_data and annotation_type == AnnotationType.DRAWING:
@@ -708,19 +736,22 @@ class CollaborationManager:
         self._save_session(session)
 
         # Publish event
-        self.event_bus.publish(SessionEvent(
-            event_id="",
-            event_type=CollaborationEvent.ANNOTATION_ADDED,
-            session_id=session_id,
-            user_id=user_id,
-            timestamp=datetime.now().isoformat(),
-            data=annotation.to_dict()
-        ))
+        self.event_bus.publish(
+            SessionEvent(
+                event_id="",
+                event_type=CollaborationEvent.ANNOTATION_ADDED,
+                session_id=session_id,
+                user_id=user_id,
+                timestamp=datetime.now().isoformat(),
+                data=annotation.to_dict(),
+            )
+        )
 
         return annotation
 
-    def update_annotation(self, session_id: str, user_id: str,
-                          annotation_id: str, updates: dict[str, Any]) -> Optional[Annotation]:
+    def update_annotation(
+        self, session_id: str, user_id: str, annotation_id: str, updates: dict[str, Any]
+    ) -> Annotation | None:
         """Update an existing annotation."""
         session = self.sessions.get(session_id)
         if not session:
@@ -747,19 +778,20 @@ class CollaborationManager:
         self._save_session(session)
 
         # Publish event
-        self.event_bus.publish(SessionEvent(
-            event_id="",
-            event_type=CollaborationEvent.ANNOTATION_UPDATED,
-            session_id=session_id,
-            user_id=user_id,
-            timestamp=datetime.now().isoformat(),
-            data={"annotation_id": annotation_id, "updates": updates}
-        ))
+        self.event_bus.publish(
+            SessionEvent(
+                event_id="",
+                event_type=CollaborationEvent.ANNOTATION_UPDATED,
+                session_id=session_id,
+                user_id=user_id,
+                timestamp=datetime.now().isoformat(),
+                data={"annotation_id": annotation_id, "updates": updates},
+            )
+        )
 
         return annotation
 
-    def delete_annotation(self, session_id: str, user_id: str,
-                          annotation_id: str) -> bool:
+    def delete_annotation(self, session_id: str, user_id: str, annotation_id: str) -> bool:
         """Delete an annotation."""
         session = self.sessions.get(session_id)
         if not session:
@@ -781,19 +813,22 @@ class CollaborationManager:
         self._save_session(session)
 
         # Publish event
-        self.event_bus.publish(SessionEvent(
-            event_id="",
-            event_type=CollaborationEvent.ANNOTATION_DELETED,
-            session_id=session_id,
-            user_id=user_id,
-            timestamp=datetime.now().isoformat(),
-            data={"annotation_id": annotation_id}
-        ))
+        self.event_bus.publish(
+            SessionEvent(
+                event_id="",
+                event_type=CollaborationEvent.ANNOTATION_DELETED,
+                session_id=session_id,
+                user_id=user_id,
+                timestamp=datetime.now().isoformat(),
+                data={"annotation_id": annotation_id},
+            )
+        )
 
         return True
 
-    def add_reply(self, session_id: str, user_id: str,
-                  annotation_id: str, text: str) -> Optional[dict[str, Any]]:
+    def add_reply(
+        self, session_id: str, user_id: str, annotation_id: str, text: str
+    ) -> dict[str, Any] | None:
         """Add a reply to an annotation."""
         session = self.sessions.get(session_id)
         if not session:
@@ -808,11 +843,13 @@ class CollaborationManager:
             return None
 
         reply = {
-            "reply_id": hashlib.md5(f"{annotation_id}_{user_id}_{time.time()}".encode()).hexdigest()[:8],
+            "reply_id": hashlib.md5(
+                f"{annotation_id}_{user_id}_{time.time()}".encode()
+            ).hexdigest()[:8],
             "user_id": user_id,
             "username": user.username,
             "text": text,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         annotation.replies.append(reply)
@@ -821,8 +858,7 @@ class CollaborationManager:
 
         return reply
 
-    def add_reaction(self, session_id: str, user_id: str,
-                     annotation_id: str, emoji: str) -> bool:
+    def add_reaction(self, session_id: str, user_id: str, annotation_id: str, emoji: str) -> bool:
         """Add a reaction to an annotation."""
         session = self.sessions.get(session_id)
         if not session:
@@ -841,8 +877,9 @@ class CollaborationManager:
 
         return True
 
-    def send_chat_message(self, session_id: str, user_id: str,
-                          text: str, reply_to: Optional[str] = None) -> Optional[ChatMessage]:
+    def send_chat_message(
+        self, session_id: str, user_id: str, text: str, reply_to: str | None = None
+    ) -> ChatMessage | None:
         """Send a chat message in the session."""
         session = self.sessions.get(session_id)
         if not session or user_id not in session.users:
@@ -853,16 +890,18 @@ class CollaborationManager:
             return None
 
         # Find mentions
-        mentions = re.findall(r'@(\w+)', text)
+        mentions = re.findall(r"@(\w+)", text)
 
         message = ChatMessage(
-            message_id=hashlib.md5(f"{session_id}_{user_id}_{time.time()}".encode()).hexdigest()[:10],
+            message_id=hashlib.md5(f"{session_id}_{user_id}_{time.time()}".encode()).hexdigest()[
+                :10
+            ],
             user_id=user_id,
             username=user.username,
             text=text,
             timestamp=datetime.now().isoformat(),
             reply_to=reply_to,
-            mentions=mentions
+            mentions=mentions,
         )
 
         session.chat_history.append(message)
@@ -875,21 +914,27 @@ class CollaborationManager:
         self._save_session(session)
 
         # Publish event
-        self.event_bus.publish(SessionEvent(
-            event_id="",
-            event_type=CollaborationEvent.CHAT_MESSAGE,
-            session_id=session_id,
-            user_id=user_id,
-            timestamp=datetime.now().isoformat(),
-            data=message.to_dict()
-        ))
+        self.event_bus.publish(
+            SessionEvent(
+                event_id="",
+                event_type=CollaborationEvent.CHAT_MESSAGE,
+                session_id=session_id,
+                user_id=user_id,
+                timestamp=datetime.now().isoformat(),
+                data=message.to_dict(),
+            )
+        )
 
         return message
 
-    def update_playback(self, session_id: str, user_id: str,
-                        tick: Optional[int] = None,
-                        is_playing: Optional[bool] = None,
-                        speed: Optional[float] = None) -> bool:
+    def update_playback(
+        self,
+        session_id: str,
+        user_id: str,
+        tick: int | None = None,
+        is_playing: bool | None = None,
+        speed: float | None = None,
+    ) -> bool:
         """Update synchronized playback state."""
         session = self.sessions.get(session_id)
         if not session:
@@ -910,19 +955,20 @@ class CollaborationManager:
         session.last_activity = datetime.now().isoformat()
 
         # Publish event
-        self.event_bus.publish(SessionEvent(
-            event_id="",
-            event_type=CollaborationEvent.PLAYBACK_SYNC,
-            session_id=session_id,
-            user_id=user_id,
-            timestamp=datetime.now().isoformat(),
-            data=session.playback.to_dict()
-        ))
+        self.event_bus.publish(
+            SessionEvent(
+                event_id="",
+                event_type=CollaborationEvent.PLAYBACK_SYNC,
+                session_id=session_id,
+                user_id=user_id,
+                timestamp=datetime.now().isoformat(),
+                data=session.playback.to_dict(),
+            )
+        )
 
         return True
 
-    def update_cursor(self, session_id: str, user_id: str,
-                      tick: int, x: float, y: float) -> bool:
+    def update_cursor(self, session_id: str, user_id: str, tick: int, x: float, y: float) -> bool:
         """Update user's cursor position for collaboration."""
         session = self.sessions.get(session_id)
         if not session or user_id not in session.users:
@@ -934,25 +980,31 @@ class CollaborationManager:
         user.cursor_y = y
 
         # Publish event (but don't save to disk - too frequent)
-        self.event_bus.publish(SessionEvent(
-            event_id="",
-            event_type=CollaborationEvent.CURSOR_UPDATE,
-            session_id=session_id,
-            user_id=user_id,
-            timestamp=datetime.now().isoformat(),
-            data={"tick": tick, "x": x, "y": y}
-        ))
+        self.event_bus.publish(
+            SessionEvent(
+                event_id="",
+                event_type=CollaborationEvent.CURSOR_UPDATE,
+                session_id=session_id,
+                user_id=user_id,
+                timestamp=datetime.now().isoformat(),
+                data={"tick": tick, "x": x, "y": y},
+            )
+        )
 
         return True
 
-    def get_session(self, session_id: str) -> Optional[CollaborationSession]:
+    def get_session(self, session_id: str) -> CollaborationSession | None:
         """Get a session by ID."""
         return self.sessions.get(session_id)
 
-    def get_annotations(self, session_id: str, user_id: str,
-                        round_num: Optional[int] = None,
-                        category: Optional[AnnotationCategory] = None,
-                        include_private: bool = False) -> list[Annotation]:
+    def get_annotations(
+        self,
+        session_id: str,
+        user_id: str,
+        round_num: int | None = None,
+        category: AnnotationCategory | None = None,
+        include_private: bool = False,
+    ) -> list[Annotation]:
         """Get annotations from a session with optional filters."""
         session = self.sessions.get(session_id)
         if not session:
@@ -962,8 +1014,7 @@ class CollaborationManager:
 
         # Filter private (unless author or include_private)
         if not include_private:
-            annotations = [a for a in annotations
-                          if not a.is_private or a.author_id == user_id]
+            annotations = [a for a in annotations if not a.is_private or a.author_id == user_id]
 
         # Filter by round
         if round_num is not None:
@@ -975,8 +1026,9 @@ class CollaborationManager:
 
         return sorted(annotations, key=lambda a: a.tick)
 
-    def list_sessions(self, user_id: Optional[str] = None,
-                      include_public: bool = True) -> list[dict[str, Any]]:
+    def list_sessions(
+        self, user_id: str | None = None, include_public: bool = True
+    ) -> list[dict[str, Any]]:
         """List available sessions."""
         result = []
 
@@ -993,14 +1045,19 @@ class CollaborationManager:
     def _generate_avatar_color(self, user_id: str) -> str:
         """Generate a consistent avatar color for a user."""
         colors = [
-            "#e74c3c", "#3498db", "#2ecc71", "#9b59b6",
-            "#f39c12", "#1abc9c", "#e67e22", "#34495e"
+            "#e74c3c",
+            "#3498db",
+            "#2ecc71",
+            "#9b59b6",
+            "#f39c12",
+            "#1abc9c",
+            "#e67e22",
+            "#34495e",
         ]
         hash_val = int(hashlib.md5(user_id.encode()).hexdigest()[:8], 16)
         return colors[hash_val % len(colors)]
 
-    def export_annotations(self, session_id: str,
-                           format: str = "json") -> Optional[str]:
+    def export_annotations(self, session_id: str, format: str = "json") -> str | None:
         """Export session annotations."""
         session = self.sessions.get(session_id)
         if not session:
@@ -1009,14 +1066,17 @@ class CollaborationManager:
         annotations = [a.to_dict() for a in session.annotations.values()]
 
         if format == "json":
-            return json.dumps({
-                "session_id": session_id,
-                "demo_id": session.demo_id,
-                "demo_name": session.demo_name,
-                "map_name": session.map_name,
-                "exported_at": datetime.now().isoformat(),
-                "annotations": annotations
-            }, indent=2)
+            return json.dumps(
+                {
+                    "session_id": session_id,
+                    "demo_id": session.demo_id,
+                    "demo_name": session.demo_name,
+                    "map_name": session.map_name,
+                    "exported_at": datetime.now().isoformat(),
+                    "annotations": annotations,
+                },
+                indent=2,
+            )
 
         elif format == "markdown":
             md = [f"# Demo Review: {session.demo_name}"]
@@ -1044,7 +1104,7 @@ class CollaborationManager:
 # Convenience Functions
 # ============================================================================
 
-_default_manager: Optional[CollaborationManager] = None
+_default_manager: CollaborationManager | None = None
 
 
 def get_manager() -> CollaborationManager:
@@ -1055,18 +1115,20 @@ def get_manager() -> CollaborationManager:
     return _default_manager
 
 
-def create_collaboration_session(demo_id: str, demo_name: str, map_name: str,
-                                  creator_id: str, creator_name: str,
-                                  **kwargs) -> dict[str, Any]:
+def create_collaboration_session(
+    demo_id: str, demo_name: str, map_name: str, creator_id: str, creator_name: str, **kwargs
+) -> dict[str, Any]:
     """Create a new collaboration session."""
     manager = get_manager()
-    session = manager.create_session(demo_id, demo_name, map_name,
-                                     creator_id, creator_name, **kwargs)
+    session = manager.create_session(
+        demo_id, demo_name, map_name, creator_id, creator_name, **kwargs
+    )
     return session.to_dict()
 
 
-def join_collaboration_session(session_id: str, user_id: str, username: str,
-                               password: Optional[str] = None) -> dict[str, Any]:
+def join_collaboration_session(
+    session_id: str, user_id: str, username: str, password: str | None = None
+) -> dict[str, Any]:
     """Join an existing collaboration session."""
     manager = get_manager()
     session, error = manager.join_session(session_id, user_id, username, password)
@@ -1091,19 +1153,20 @@ def add_annotation(session_id: str, user_id: str, **kwargs) -> dict[str, Any]:
     return {"error": "Failed to add annotation"}
 
 
-def get_session_annotations(session_id: str, user_id: str,
-                            round_num: Optional[int] = None) -> list[dict[str, Any]]:
+def get_session_annotations(
+    session_id: str, user_id: str, round_num: int | None = None
+) -> list[dict[str, Any]]:
     """Get annotations from a session."""
     manager = get_manager()
     annotations = manager.get_annotations(session_id, user_id, round_num)
     return [a.to_dict() for a in annotations]
 
 
-def list_sessions(user_id: Optional[str] = None) -> list[dict[str, Any]]:
+def list_sessions(user_id: str | None = None) -> list[dict[str, Any]]:
     """List available collaboration sessions."""
     return get_manager().list_sessions(user_id)
 
 
-def export_session(session_id: str, format: str = "json") -> Optional[str]:
+def export_session(session_id: str, format: str = "json") -> str | None:
     """Export session annotations."""
     return get_manager().export_annotations(session_id, format)

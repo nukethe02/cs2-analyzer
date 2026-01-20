@@ -21,20 +21,20 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
-from opensight.parser import DemoData
 from opensight.metrics import (
-    EngagementMetrics,
-    TTDResult,
+    ComprehensivePlayerMetrics,
     CrosshairPlacementResult,
     EconomyMetrics,
-    UtilityMetrics,
+    EngagementMetrics,
+    OpeningDuelMetrics,
     PositioningMetrics,
     TradeMetrics,
-    OpeningDuelMetrics,
-    ComprehensivePlayerMetrics,
+    TTDResult,
+    UtilityMetrics,
 )
+from opensight.parser import DemoData
 
 logger = logging.getLogger(__name__)
 
@@ -43,22 +43,24 @@ logger = logging.getLogger(__name__)
 # Type Definitions
 # ============================================================================
 
-MetricsDict = dict[int, Union[
-    EngagementMetrics,
-    TTDResult,
-    CrosshairPlacementResult,
-    EconomyMetrics,
-    UtilityMetrics,
-    PositioningMetrics,
-    TradeMetrics,
-    OpeningDuelMetrics,
-    ComprehensivePlayerMetrics,
-]]
+MetricsDict = dict[
+    int,
+    EngagementMetrics
+    | TTDResult
+    | CrosshairPlacementResult
+    | EconomyMetrics
+    | UtilityMetrics
+    | PositioningMetrics
+    | TradeMetrics
+    | OpeningDuelMetrics
+    | ComprehensivePlayerMetrics,
+]
 
 
 # ============================================================================
 # Data Conversion Utilities
 # ============================================================================
+
 
 def dataclass_to_dict(obj: Any) -> Any:
     """Convert a dataclass (or nested dataclasses) to a dictionary."""
@@ -93,9 +95,10 @@ def flatten_dict(d: dict, parent_key: str = "", sep: str = "_") -> dict:
 # JSON Export
 # ============================================================================
 
+
 def export_to_json(
     data: dict[str, Any],
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
     indent: int = 2,
     include_metadata: bool = True,
 ) -> str:
@@ -136,9 +139,10 @@ def export_to_json(
 # CSV Export
 # ============================================================================
 
+
 def export_metrics_to_csv(
     metrics: MetricsDict,
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
     delimiter: str = ",",
     include_header: bool = True,
 ) -> str:
@@ -202,7 +206,7 @@ def export_metrics_to_csv(
 def export_demo_summary_csv(
     demo_data: DemoData,
     metrics: dict[int, ComprehensivePlayerMetrics],
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
 ) -> str:
     """
     Export a summary of demo analysis to CSV.
@@ -293,6 +297,7 @@ def export_demo_summary_csv(
 # Excel Export
 # ============================================================================
 
+
 def export_to_excel(
     demo_data: DemoData,
     metrics: dict[int, ComprehensivePlayerMetrics],
@@ -325,19 +330,23 @@ def export_to_excel(
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         # Demo info sheet
-        demo_info = pd.DataFrame([{
-            "Map": demo_data.map_name,
-            "Duration (seconds)": demo_data.duration_seconds,
-            "Tick Rate": demo_data.tick_rate,
-            "Total Ticks": demo_data.duration_ticks,
-            "Rounds": len(demo_data.round_starts),
-            "Players": len(demo_data.player_names),
-        }])
+        demo_info = pd.DataFrame(
+            [
+                {
+                    "Map": demo_data.map_name,
+                    "Duration (seconds)": demo_data.duration_seconds,
+                    "Tick Rate": demo_data.tick_rate,
+                    "Total Ticks": demo_data.duration_ticks,
+                    "Rounds": len(demo_data.round_starts),
+                    "Players": len(demo_data.player_names),
+                }
+            ]
+        )
         demo_info.T.to_excel(writer, sheet_name="Demo Info", header=False)
 
         # Summary sheet
         summary_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             row = {
                 "Player": pm.player_name,
                 "Team": pm.team,
@@ -347,7 +356,9 @@ def export_to_excel(
             if pm.engagement:
                 row["K"] = pm.engagement.total_kills
                 row["D"] = pm.engagement.total_deaths
-                row["K/D"] = round(pm.engagement.total_kills / max(pm.engagement.total_deaths, 1), 2)
+                row["K/D"] = round(
+                    pm.engagement.total_kills / max(pm.engagement.total_deaths, 1), 2
+                )
                 row["HS%"] = round(pm.engagement.headshot_percentage, 1)
                 row["DPR"] = round(pm.engagement.damage_per_round, 1)
 
@@ -362,85 +373,95 @@ def export_to_excel(
 
         # TTD sheet
         ttd_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.ttd:
-                ttd_rows.append({
-                    "Player": pm.player_name,
-                    "Engagements": pm.ttd.engagement_count,
-                    "Mean (ms)": round(pm.ttd.mean_ttd_ms, 0),
-                    "Median (ms)": round(pm.ttd.median_ttd_ms, 0),
-                    "Min (ms)": round(pm.ttd.min_ttd_ms, 0),
-                    "Max (ms)": round(pm.ttd.max_ttd_ms, 0),
-                    "Std Dev": round(pm.ttd.std_ttd_ms, 1),
-                })
+                ttd_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Engagements": pm.ttd.engagement_count,
+                        "Mean (ms)": round(pm.ttd.mean_ttd_ms, 0),
+                        "Median (ms)": round(pm.ttd.median_ttd_ms, 0),
+                        "Min (ms)": round(pm.ttd.min_ttd_ms, 0),
+                        "Max (ms)": round(pm.ttd.max_ttd_ms, 0),
+                        "Std Dev": round(pm.ttd.std_ttd_ms, 1),
+                    }
+                )
 
         if ttd_rows:
             pd.DataFrame(ttd_rows).to_excel(writer, sheet_name="Time to Damage", index=False)
 
         # Economy sheet
         econ_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.economy:
-                econ_rows.append({
-                    "Player": pm.player_name,
-                    "Money Spent": pm.economy.total_money_spent,
-                    "Value Killed": pm.economy.total_value_killed,
-                    "Efficiency": round(pm.economy.weapon_efficiency, 2),
-                    "Favorite Weapon": pm.economy.favorite_weapon,
-                    "Eco Kills": pm.economy.eco_round_kills,
-                    "Force Kills": pm.economy.force_buy_kills,
-                    "Full Buy Kills": pm.economy.full_buy_kills,
-                })
+                econ_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Money Spent": pm.economy.total_money_spent,
+                        "Value Killed": pm.economy.total_value_killed,
+                        "Efficiency": round(pm.economy.weapon_efficiency, 2),
+                        "Favorite Weapon": pm.economy.favorite_weapon,
+                        "Eco Kills": pm.economy.eco_round_kills,
+                        "Force Kills": pm.economy.force_buy_kills,
+                        "Full Buy Kills": pm.economy.full_buy_kills,
+                    }
+                )
 
         if econ_rows:
             pd.DataFrame(econ_rows).to_excel(writer, sheet_name="Economy", index=False)
 
         # Utility sheet
         util_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.utility:
-                util_rows.append({
-                    "Player": pm.player_name,
-                    "Total Grenades": pm.utility.total_grenades_used,
-                    "Smokes": pm.utility.smokes_thrown,
-                    "Flashes": pm.utility.flashes_thrown,
-                    "HE Grenades": pm.utility.he_grenades_thrown,
-                    "Molotovs": pm.utility.molotovs_thrown,
-                    "Utility Damage": round(pm.utility.utility_damage, 1),
-                    "Efficiency": round(pm.utility.utility_efficiency, 2),
-                })
+                util_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Total Grenades": pm.utility.total_grenades_used,
+                        "Smokes": pm.utility.smokes_thrown,
+                        "Flashes": pm.utility.flashes_thrown,
+                        "HE Grenades": pm.utility.he_grenades_thrown,
+                        "Molotovs": pm.utility.molotovs_thrown,
+                        "Utility Damage": round(pm.utility.utility_damage, 1),
+                        "Efficiency": round(pm.utility.utility_efficiency, 2),
+                    }
+                )
 
         if util_rows:
             pd.DataFrame(util_rows).to_excel(writer, sheet_name="Utility", index=False)
 
         # Trades sheet
         trade_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.trades:
-                trade_rows.append({
-                    "Player": pm.player_name,
-                    "Trades Completed": pm.trades.trades_completed,
-                    "Deaths Traded": pm.trades.deaths_traded,
-                    "Trade Success %": round(pm.trades.trade_success_rate, 1),
-                    "Avg Trade Time (ms)": round(pm.trades.avg_trade_time_ms, 0),
-                })
+                trade_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Trades Completed": pm.trades.trades_completed,
+                        "Deaths Traded": pm.trades.deaths_traded,
+                        "Trade Success %": round(pm.trades.trade_success_rate, 1),
+                        "Avg Trade Time (ms)": round(pm.trades.avg_trade_time_ms, 0),
+                    }
+                )
 
         if trade_rows:
             pd.DataFrame(trade_rows).to_excel(writer, sheet_name="Trades", index=False)
 
         # Opening Duels sheet
         opening_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.opening_duels:
-                opening_rows.append({
-                    "Player": pm.player_name,
-                    "Opening Kills": pm.opening_duels.opening_kills,
-                    "Opening Deaths": pm.opening_duels.opening_deaths,
-                    "Attempts": pm.opening_duels.opening_attempts,
-                    "Success %": round(pm.opening_duels.opening_success_rate, 1),
-                    "Avg Time (ms)": round(pm.opening_duels.avg_opening_time_ms, 0),
-                    "Weapon": pm.opening_duels.opening_weapon,
-                })
+                opening_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Opening Kills": pm.opening_duels.opening_kills,
+                        "Opening Deaths": pm.opening_duels.opening_deaths,
+                        "Attempts": pm.opening_duels.opening_attempts,
+                        "Success %": round(pm.opening_duels.opening_success_rate, 1),
+                        "Avg Time (ms)": round(pm.opening_duels.avg_opening_time_ms, 0),
+                        "Weapon": pm.opening_duels.opening_weapon,
+                    }
+                )
 
         if opening_rows:
             pd.DataFrame(opening_rows).to_excel(writer, sheet_name="Opening Duels", index=False)
@@ -452,11 +473,12 @@ def export_to_excel(
 # HTML Report Export
 # ============================================================================
 
+
 def export_to_html(
     demo_data: DemoData,
     metrics: dict[int, ComprehensivePlayerMetrics],
-    output_path: Optional[Path] = None,
-    title: Optional[str] = None,
+    output_path: Path | None = None,
+    title: str | None = None,
 ) -> str:
     """
     Export analysis results to an HTML report.
@@ -474,11 +496,7 @@ def export_to_html(
         title = f"OpenSight Analysis - {demo_data.map_name}"
 
     # Sort players by rating
-    sorted_players = sorted(
-        metrics.values(),
-        key=lambda x: x.overall_rating(),
-        reverse=True
-    )
+    sorted_players = sorted(metrics.values(), key=lambda x: x.overall_rating(), reverse=True)
 
     # Build player rows
     player_rows = ""
@@ -657,11 +675,12 @@ def export_to_html(
 # Unified Export Function
 # ============================================================================
 
+
 def export_analysis(
     demo_data: DemoData,
     metrics: dict[int, ComprehensivePlayerMetrics],
     output_path: Path,
-    format: Optional[str] = None,
+    format: str | None = None,
 ) -> None:
     """
     Export analysis results to the specified format.
@@ -686,10 +705,7 @@ def export_analysis(
                 "tick_rate": demo_data.tick_rate,
                 "rounds": len(demo_data.round_starts),
             },
-            "players": {
-                str(sid): dataclass_to_dict(pm)
-                for sid, pm in metrics.items()
-            },
+            "players": {str(sid): dataclass_to_dict(pm) for sid, pm in metrics.items()},
         }
         export_to_json(data, output_path)
 

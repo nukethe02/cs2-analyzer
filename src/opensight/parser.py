@@ -40,6 +40,7 @@ def _check_awpy_available() -> bool:
     if _AWPY_AVAILABLE is None:
         try:
             from awpy import Demo as _  # noqa: F401
+
             _AWPY_AVAILABLE = True
         except ImportError:
             _AWPY_AVAILABLE = False
@@ -49,6 +50,7 @@ def _check_awpy_available() -> bool:
 # =============================================================================
 # Safe Type Conversion Helpers
 # =============================================================================
+
 
 def safe_int(value: Any, default: int = 0) -> int:
     """Safely convert a value to int."""
@@ -97,12 +99,14 @@ def safe_float(value: Any, default: float = 0.0) -> float:
 # Data Classes - Standardized Schema Following awpy's Output
 # =============================================================================
 
+
 @dataclass
 class KillEvent:
     """A kill event with timing, position, and angle data.
 
     Schema aligned with awpy's kills DataFrame.
     """
+
     tick: int
     round_num: int
     attacker_steamid: int
@@ -141,6 +145,7 @@ class DamageEvent:
 
     Schema aligned with awpy's damages DataFrame.
     """
+
     tick: int
     round_num: int
     attacker_steamid: int
@@ -163,6 +168,7 @@ class RoundInfo:
 
     Schema aligned with awpy's rounds DataFrame.
     """
+
     round_num: int
     start_tick: int
     end_tick: int
@@ -187,6 +193,7 @@ class GrenadeEvent:
 
     Schema aligned with awpy's grenades DataFrame.
     """
+
     tick: int
     round_num: int
     player_steamid: int
@@ -205,6 +212,7 @@ class BombEvent:
 
     Schema aligned with awpy's bomb DataFrame.
     """
+
     tick: int
     round_num: int
     player_steamid: int
@@ -222,6 +230,7 @@ class SmokeEvent:
 
     Schema aligned with awpy's smokes DataFrame.
     """
+
     start_tick: int
     end_tick: int
     round_num: int
@@ -240,6 +249,7 @@ class InfernoEvent:
 
     Schema aligned with awpy's infernos DataFrame.
     """
+
     start_tick: int
     end_tick: int
     round_num: int
@@ -258,6 +268,7 @@ class WeaponFireEvent:
 
     Schema aligned with awpy's shots DataFrame.
     """
+
     tick: int
     round_num: int
     player_steamid: int
@@ -275,6 +286,7 @@ class WeaponFireEvent:
 @dataclass
 class BlindEvent:
     """A player blind event from flashbang."""
+
     tick: int
     round_num: int
     attacker_steamid: int
@@ -290,6 +302,7 @@ class BlindEvent:
 # =============================================================================
 # MatchData - The Primary Data Structure
 # =============================================================================
+
 
 @dataclass
 class MatchData:
@@ -325,6 +338,7 @@ class MatchData:
         damages_df: Raw damages DataFrame from awpy
         rounds_df: Raw rounds DataFrame from awpy
     """
+
     file_path: Path
     map_name: str
     duration_seconds: float
@@ -382,6 +396,7 @@ DemoData = MatchData
 # Demo Parser using awpy
 # =============================================================================
 
+
 class DemoParser:
     """
     CS2 demo parser using awpy library.
@@ -403,15 +418,25 @@ class DemoParser:
 
     # Player properties to extract for tick data
     PLAYER_PROPS = [
-        "X", "Y", "Z",
-        "pitch", "yaw",
-        "velocity_X", "velocity_Y", "velocity_Z",
-        "health", "armor_value",
-        "is_alive", "is_scoped",
-        "balance", "current_equip_value",
+        "X",
+        "Y",
+        "Z",
+        "pitch",
+        "yaw",
+        "velocity_X",
+        "velocity_Y",
+        "velocity_Z",
+        "health",
+        "armor_value",
+        "is_alive",
+        "is_scoped",
+        "balance",
+        "current_equip_value",
         "last_place_name",
-        "in_crouch", "is_walking",
-        "has_helmet", "has_defuser",
+        "in_crouch",
+        "is_walking",
+        "has_helmet",
+        "has_defuser",
     ]
 
     def __init__(self, demo_path: str | Path):
@@ -481,13 +506,17 @@ class DemoParser:
             original_len = len(grenades_df)
 
             # Try to deduplicate by entity_id (get first occurrence = throw event)
-            if 'entity_id' in grenades_df.columns:
-                grenades_df = grenades_df.drop_duplicates(subset=['entity_id'], keep='first')
-                logger.info(f"Deduplicated grenades by entity_id: {original_len} -> {len(grenades_df)} rows")
+            if "entity_id" in grenades_df.columns:
+                grenades_df = grenades_df.drop_duplicates(subset=["entity_id"], keep="first")
+                logger.info(
+                    f"Deduplicated grenades by entity_id: {original_len} -> {len(grenades_df)} rows"
+                )
 
             # If still too large, apply hard cap to prevent memory exhaustion
             if len(grenades_df) > 10000:
-                logger.warning(f"Grenade dataset still large ({len(grenades_df)} rows). Limiting to 10,000 to prevent crash.")
+                logger.warning(
+                    f"Grenade dataset still large ({len(grenades_df)} rows). Limiting to 10,000 to prevent crash."
+                )
                 grenades_df = grenades_df.head(10000)
 
         bomb_df = demo.bomb.to_pandas() if demo.bomb is not None else pd.DataFrame()
@@ -495,9 +524,11 @@ class DemoParser:
         ticks_df = demo.ticks.to_pandas() if include_ticks and demo.ticks is not None else None
 
         # Log parsed data sizes
-        logger.info(f"Parsed: {len(kills_df)} kills, {len(damages_df)} damages, "
-                   f"{len(rounds_df)} rounds, {len(grenades_df)} grenades, "
-                   f"{len(bomb_df)} bomb events, {len(shots_df)} shots")
+        logger.info(
+            f"Parsed: {len(kills_df)} kills, {len(damages_df)} damages, "
+            f"{len(rounds_df)} rounds, {len(grenades_df)} grenades, "
+            f"{len(bomb_df)} bomb events, {len(shots_df)} shots"
+        )
 
         if not kills_df.empty:
             logger.debug(f"Kill columns: {list(kills_df.columns)}")
@@ -573,8 +604,10 @@ class DemoParser:
             final_score_t=final_t,
         )
 
-        logger.info(f"Parsing complete: {len(player_stats)} players, {num_rounds} rounds, "
-                   f"{len(kills)} kills, {final_ct}-{final_t}")
+        logger.info(
+            f"Parsing complete: {len(player_stats)} players, {num_rounds} rounds, "
+            f"{len(kills)} kills, {final_ct}-{final_t}"
+        )
         return self._data
 
     def _normalize_side(self, value: Any) -> str:
@@ -618,16 +651,10 @@ class DemoParser:
                     tick=safe_int(row.get("tick")),
                     round_num=safe_int(row.get("round_num", row.get("round", 0))),
                     attacker_steamid=safe_int(row.get("attacker_steamid")),
-                    attacker_name=safe_str(
-                        row.get("attacker_name", row.get("attacker", ""))
-                    ),
+                    attacker_name=safe_str(row.get("attacker_name", row.get("attacker", ""))),
                     attacker_side=self._normalize_side(att_side),
-                    victim_steamid=safe_int(
-                        row.get("victim_steamid", row.get("user_steamid"))
-                    ),
-                    victim_name=safe_str(
-                        row.get("victim_name", row.get("user_name", ""))
-                    ),
+                    victim_steamid=safe_int(row.get("victim_steamid", row.get("user_steamid"))),
+                    victim_name=safe_str(row.get("victim_name", row.get("user_name", ""))),
                     victim_side=self._normalize_side(vic_side),
                     weapon=safe_str(row.get("weapon", "")),
                     headshot=safe_bool(row.get("headshot")),
@@ -673,16 +700,10 @@ class DemoParser:
                     tick=safe_int(row.get("tick")),
                     round_num=safe_int(row.get("round_num", row.get("round", 0))),
                     attacker_steamid=safe_int(row.get("attacker_steamid")),
-                    attacker_name=safe_str(
-                        row.get("attacker_name", row.get("attacker", ""))
-                    ),
+                    attacker_name=safe_str(row.get("attacker_name", row.get("attacker", ""))),
                     attacker_side=self._normalize_side(att_side),
-                    victim_steamid=safe_int(
-                        row.get("victim_steamid", row.get("user_steamid"))
-                    ),
-                    victim_name=safe_str(
-                        row.get("victim_name", row.get("user_name", ""))
-                    ),
+                    victim_steamid=safe_int(row.get("victim_steamid", row.get("user_steamid"))),
+                    victim_name=safe_str(row.get("victim_name", row.get("user_name", ""))),
                     victim_side=self._normalize_side(vic_side),
                     damage=safe_int(dmg),
                     damage_armor=safe_int(row.get("armor_damage", row.get("dmg_armor", 0))),
@@ -942,7 +963,7 @@ class DemoParser:
         damages_df: pd.DataFrame,
         player_names: dict[int, str],
         player_teams: dict[int, str],
-        num_rounds: int
+        num_rounds: int,
     ) -> dict[int, dict]:
         """Calculate basic player statistics."""
         stats: dict[int, dict] = {}
@@ -1007,6 +1028,7 @@ class DemoParser:
 # Convenience Functions
 # =============================================================================
 
+
 def parse_demo(
     demo_path: str | Path,
     include_ticks: bool = False,
@@ -1039,14 +1061,17 @@ def parse_demo(
 # Backward Compatibility - Legacy Enums and Functions
 # =============================================================================
 
+
 class ParserBackend(Enum):
     """Available parser backends (legacy - awpy is now the only backend)."""
+
     AWPY = "awpy"
     AUTO = "auto"
 
 
 class ParseMode(Enum):
     """Parsing mode (legacy - awpy always parses comprehensively)."""
+
     MINIMAL = "minimal"
     STANDARD = "standard"
     COMPREHENSIVE = "comprehensive"

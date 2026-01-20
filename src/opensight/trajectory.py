@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 class GrenadeType(Enum):
     """Types of grenades in CS2 with display colors."""
+
     FLASHBANG = "flashbang"
     HE_GRENADE = "hegrenade"
     SMOKE = "smokegrenade"
@@ -36,12 +37,12 @@ class GrenadeType(Enum):
 
 # Grenade colors for visualization (hex colors)
 GRENADE_COLORS = {
-    "flashbang": "#f1c40f",      # Yellow
-    "smokegrenade": "#9b59b6",   # Purple
-    "molotov": "#e67e22",        # Orange
-    "incgrenade": "#e67e22",     # Orange (same as molotov)
-    "hegrenade": "#e74c3c",      # Red
-    "decoy": "#95a5a6",          # Gray
+    "flashbang": "#f1c40f",  # Yellow
+    "smokegrenade": "#9b59b6",  # Purple
+    "molotov": "#e67e22",  # Orange
+    "incgrenade": "#e67e22",  # Orange (same as molotov)
+    "hegrenade": "#e74c3c",  # Red
+    "decoy": "#95a5a6",  # Gray
 }
 
 # Grenade CSS classes for styling
@@ -58,6 +59,7 @@ GRENADE_CSS_CLASSES = {
 @dataclass
 class GrenadePosition:
     """A grenade landing/detonation position for visualization."""
+
     x: float  # Radar pixel X
     y: float  # Radar pixel Y
     game_x: float  # Game X coordinate
@@ -84,6 +86,7 @@ class GrenadePosition:
 @dataclass
 class PlayerUtilityUsage:
     """Utility usage statistics for a single player."""
+
     steam_id: int
     name: str
     team: str
@@ -115,11 +118,11 @@ class PlayerUtilityUsage:
     def total_utility(self) -> int:
         """Total utility thrown."""
         return (
-            self.flashbangs_thrown +
-            self.smokes_thrown +
-            self.he_grenades_thrown +
-            self.molotovs_thrown +
-            self.decoys_thrown
+            self.flashbangs_thrown
+            + self.smokes_thrown
+            + self.he_grenades_thrown
+            + self.molotovs_thrown
+            + self.decoys_thrown
         )
 
     @property
@@ -139,7 +142,7 @@ class PlayerUtilityUsage:
         Lower is better. Above 0.5 means flashing teammates more than enemies (bad).
         """
         if self.enemies_flashed <= 0:
-            return 0.0 if self.teammates_flashed == 0 else float('inf')
+            return 0.0 if self.teammates_flashed == 0 else float("inf")
         return round(self.teammates_flashed / self.enemies_flashed, 2)
 
     @property
@@ -190,6 +193,7 @@ class PlayerUtilityUsage:
 @dataclass
 class GrenadeTrajectoryAnalysis:
     """Complete grenade trajectory analysis for a match."""
+
     player_stats: dict[int, PlayerUtilityUsage]
     all_positions: list[GrenadePosition]
 
@@ -225,10 +229,7 @@ class GrenadeTrajectoryAnalysis:
                 "molotovs": self.total_molotovs,
                 "he_grenades": self.total_he,
             },
-            "player_stats": {
-                str(sid): stats.to_dict()
-                for sid, stats in self.player_stats.items()
-            },
+            "player_stats": {str(sid): stats.to_dict() for sid, stats in self.player_stats.items()},
             "team_stats": self.team_stats,
             "positions": [
                 {
@@ -355,11 +356,7 @@ class GrenadeTrajectoryAnalyzer:
 
                 if transformer:
                     try:
-                        pos = transformer.game_to_radar(
-                            grenade.x,
-                            grenade.y,
-                            grenade.z or 0
-                        )
+                        pos = transformer.game_to_radar(grenade.x, grenade.y, grenade.z or 0)
                         if pos.is_valid:
                             radar_x = pos.x
                             radar_y = pos.y
@@ -461,8 +458,7 @@ class GrenadeTrajectoryAnalyzer:
         for team in ["CT", "T"]:
             if team_stats[team]["flashbangs"] > 0:
                 team_stats[team]["avg_flash_efficiency"] = round(
-                    team_stats[team]["enemies_flashed"] / team_stats[team]["flashbangs"],
-                    2
+                    team_stats[team]["enemies_flashed"] / team_stats[team]["flashbangs"], 2
                 )
 
         return team_stats
