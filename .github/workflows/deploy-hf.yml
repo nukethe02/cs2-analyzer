@@ -20,8 +20,8 @@ jobs:
     steps:
       - name: Validate secrets
         run: |
-          if [ -z "${{ secrets.HF_TOKEN }}" ]; then
-            echo "::error::HF_TOKEN secret is not set. Please add it in repository Settings > Secrets."
+          if [ -z "${{ secrets.HF_TOKEN2 }}" ]; then
+            echo "::error::HF_TOKEN2 secret is not set. Please add it in repository Settings > Secrets."
             exit 1
           fi
           if [ -z "${{ secrets.HF_USERNAME }}" ]; then
@@ -39,7 +39,7 @@ jobs:
 
       - name: Push to Hugging Face Spaces
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN2 }}
           HF_USERNAME: ${{ secrets.HF_USERNAME || 'thenuke02' }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME || 'cs2-analyzer' }}
         run: |
