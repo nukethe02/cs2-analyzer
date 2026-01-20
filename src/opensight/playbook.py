@@ -5,23 +5,24 @@ Automatically generates shareable playbooks from team demos,
 highlighting default setups, executes, and retake protocols.
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional, Any
-import json
 import hashlib
+import json
 import math
-from pathlib import Path
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime
-
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
 # ============================================================================
 # Playbook Data Types
 # ============================================================================
 
+
 class PlayType(Enum):
     """Types of plays/strategies."""
+
     DEFAULT = "default"
     EXECUTE = "execute"
     SPLIT = "split"
@@ -36,6 +37,7 @@ class PlayType(Enum):
 
 class BombSite(Enum):
     """Bomb sites."""
+
     A = "A"
     B = "B"
     MID = "mid"
@@ -44,6 +46,7 @@ class BombSite(Enum):
 
 class Side(Enum):
     """Team sides."""
+
     T = "T"
     CT = "CT"
 
@@ -51,6 +54,7 @@ class Side(Enum):
 @dataclass
 class PlayerPosition:
     """Player position at a specific time."""
+
     steamid: str
     name: str
     x: float
@@ -69,13 +73,14 @@ class PlayerPosition:
             "z": round(self.z, 1),
             "pitch": round(self.pitch, 1),
             "yaw": round(self.yaw, 1),
-            "role_in_play": self.role_in_play
+            "role_in_play": self.role_in_play,
         }
 
 
 @dataclass
 class UtilityUsage:
     """Utility usage in a play."""
+
     player_steamid: str
     player_name: str
     grenade_type: str  # smoke, flash, molotov, he
@@ -91,20 +96,17 @@ class UtilityUsage:
             "player_steamid": self.player_steamid,
             "player_name": self.player_name,
             "grenade_type": self.grenade_type,
-            "position": {
-                "x": round(self.x, 1),
-                "y": round(self.y, 1),
-                "z": round(self.z, 1)
-            },
+            "position": {"x": round(self.x, 1), "y": round(self.y, 1), "z": round(self.z, 1)},
             "tick": self.tick,
             "description": self.description,
-            "lineup_name": self.lineup_name
+            "lineup_name": self.lineup_name,
         }
 
 
 @dataclass
 class Play:
     """A single play/strategy extracted from demos."""
+
     play_id: str
     name: str
     play_type: PlayType
@@ -156,19 +158,22 @@ class Play:
             "execute_positions": [p.to_dict() for p in self.execute_positions],
             "final_positions": [p.to_dict() for p in self.final_positions],
             "utility_sequence": [u.to_dict() for u in self.utility_sequence],
-            "movement_paths": {k: [(round(x, 1), round(y, 1), round(z, 1)) for x, y, z in v]
-                             for k, v in self.movement_paths.items()},
+            "movement_paths": {
+                k: [(round(x, 1), round(y, 1), round(z, 1)) for x, y, z in v]
+                for k, v in self.movement_paths.items()
+            },
             "times_run": self.times_run,
             "rounds_won": self.rounds_won,
             "first_kill_rate": round(self.first_kill_rate, 2),
             "source_demos": self.source_demos,
-            "example_rounds": self.example_rounds[:3]
+            "example_rounds": self.example_rounds[:3],
         }
 
 
 @dataclass
 class DefaultSetup:
     """A default defensive setup for CT side."""
+
     setup_id: str
     name: str
     map_name: str
@@ -203,20 +208,23 @@ class DefaultSetup:
             "a_players": self.a_players,
             "b_players": self.b_players,
             "mid_players": self.mid_players,
-            "smoke_positions": [(round(x, 1), round(y, 1), round(z, 1)) for x, y, z in self.smoke_positions],
+            "smoke_positions": [
+                (round(x, 1), round(y, 1), round(z, 1)) for x, y, z in self.smoke_positions
+            ],
             "molotov_triggers": self.molotov_triggers,
             "times_used": self.times_used,
             "rounds_won": self.rounds_won,
             "success_rate": round(self.rounds_won / max(1, self.times_used), 2),
             "description": self.description,
             "strengths": self.strengths,
-            "weaknesses": self.weaknesses
+            "weaknesses": self.weaknesses,
         }
 
 
 @dataclass
 class RetakeProtocol:
     """A retake strategy for specific site."""
+
     protocol_id: str
     name: str
     map_name: str
@@ -252,13 +260,14 @@ class RetakeProtocol:
             "times_succeeded": self.times_succeeded,
             "success_rate": round(self.times_succeeded / max(1, self.times_attempted), 2),
             "description": self.description,
-            "key_callouts": self.key_callouts
+            "key_callouts": self.key_callouts,
         }
 
 
 @dataclass
 class Playbook:
     """Complete team playbook."""
+
     playbook_id: str
     team_name: str
     created_at: str
@@ -288,27 +297,23 @@ class Playbook:
             "last_updated": self.last_updated,
             "players": self.players,
             "t_side_plays": {
-                m: [p.to_dict() for p in plays]
-                for m, plays in self.t_side_plays.items()
+                m: [p.to_dict() for p in plays] for m, plays in self.t_side_plays.items()
             },
-            "ct_setups": {
-                m: [s.to_dict() for s in setups]
-                for m, setups in self.ct_setups.items()
-            },
+            "ct_setups": {m: [s.to_dict() for s in setups] for m, setups in self.ct_setups.items()},
             "retakes": {
-                m: [r.to_dict() for r in protocols]
-                for m, protocols in self.retakes.items()
+                m: [r.to_dict() for r in protocols] for m, protocols in self.retakes.items()
             },
             "map_pool": self.map_pool,
             "map_win_rates": {k: round(v, 2) for k, v in self.map_win_rates.items()},
             "demos_analyzed": self.demos_analyzed,
-            "rounds_analyzed": self.rounds_analyzed
+            "rounds_analyzed": self.rounds_analyzed,
         }
 
 
 # ============================================================================
 # Play Detection and Classification
 # ============================================================================
+
 
 class PlayClassifier:
     """
@@ -320,38 +325,38 @@ class PlayClassifier:
         "de_dust2": {
             BombSite.A: (-1424, 2496, 96),
             BombSite.B: (-1536, 2592, 96),
-            BombSite.MID: (-700, 1000, 0)
+            BombSite.MID: (-700, 1000, 0),
         },
         "de_mirage": {
             BombSite.A: (-300, -1700, -160),
             BombSite.B: (-2000, 400, -160),
-            BombSite.MID: (-400, 0, -100)
+            BombSite.MID: (-400, 0, -100),
         },
         "de_inferno": {
             BombSite.A: (2080, 480, 96),
             BombSite.B: (250, 2800, 160),
-            BombSite.MID: (1280, 800, 0)
+            BombSite.MID: (1280, 800, 0),
         },
         "de_nuke": {
             BombSite.A: (640, -780, -415),
             BombSite.B: (624, -700, -750),
-            BombSite.MID: (0, 0, 0)
+            BombSite.MID: (0, 0, 0),
         },
         "de_ancient": {
             BombSite.A: (-450, -1300, 0),
             BombSite.B: (750, 0, 100),
-            BombSite.MID: (100, -600, 50)
+            BombSite.MID: (100, -600, 50),
         },
         "de_anubis": {
             BombSite.A: (-1200, 200, 0),
             BombSite.B: (1000, 400, 0),
-            BombSite.MID: (0, -200, 0)
+            BombSite.MID: (0, -200, 0),
         },
         "de_vertigo": {
             BombSite.A: (-1500, -400, 11776),
             BombSite.B: (-2200, -1300, 11776),
-            BombSite.MID: (-1800, -1000, 11776)
-        }
+            BombSite.MID: (-1800, -1000, 11776),
+        },
     }
 
     # Time thresholds (seconds into round)
@@ -359,8 +364,9 @@ class PlayClassifier:
     FAST_EXECUTE_THRESHOLD = 45
     SLOW_THRESHOLD = 75
 
-    def classify_round(self, round_data: dict[str, Any],
-                       map_name: str) -> tuple[PlayType, BombSite]:
+    def classify_round(
+        self, round_data: dict[str, Any], map_name: str
+    ) -> tuple[PlayType, BombSite]:
         """
         Classify a round into a play type.
 
@@ -420,11 +426,7 @@ class PlayClassifier:
                 return BombSite.B
 
         # Calculate from position
-        plant_pos = (
-            bomb_event.get("x", 0),
-            bomb_event.get("y", 0),
-            bomb_event.get("z", 0)
-        )
+        plant_pos = (bomb_event.get("x", 0), bomb_event.get("y", 0), bomb_event.get("z", 0))
 
         sites = self.SITE_LOCATIONS.get(map_name, {})
         if not sites:
@@ -443,8 +445,9 @@ class PlayClassifier:
 
         return closest_site
 
-    def _predict_site_from_positions(self, positions: list[dict[str, Any]],
-                                     map_name: str) -> BombSite:
+    def _predict_site_from_positions(
+        self, positions: list[dict[str, Any]], map_name: str
+    ) -> BombSite:
         """Predict target site from T positions."""
         if not positions:
             return BombSite.UNKNOWN
@@ -487,8 +490,7 @@ class PlayClassifier:
         # Consider split if spread is large
         return x_spread > 1500 or y_spread > 1500
 
-    def _is_fake(self, round_data: dict[str, Any], actual_site: BombSite,
-                 map_name: str) -> bool:
+    def _is_fake(self, round_data: dict[str, Any], actual_site: BombSite, map_name: str) -> bool:
         """Check if round involved a fake."""
         grenades = round_data.get("grenades", [])
         if not grenades:
@@ -512,26 +514,22 @@ class PlayClassifier:
         # Consider fake if 2+ utility at other site
         return utility_at_other >= 2
 
-    def _distance(self, p1: tuple[float, float, float],
-                  p2: tuple[float, float, float]) -> float:
+    def _distance(self, p1: tuple[float, float, float], p2: tuple[float, float, float]) -> float:
         """Calculate 3D distance."""
-        return math.sqrt(
-            (p1[0] - p2[0]) ** 2 +
-            (p1[1] - p2[1]) ** 2 +
-            (p1[2] - p2[2]) ** 2
-        )
+        return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2 + (p1[2] - p2[2]) ** 2)
 
 
 # ============================================================================
 # Playbook Generator
 # ============================================================================
 
+
 class PlaybookGenerator:
     """
     Generates playbooks from analyzed team demos.
     """
 
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Path | None = None):
         self.data_dir = data_dir or Path.home() / ".opensight" / "playbooks"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -541,13 +539,15 @@ class PlaybookGenerator:
     def get_playbook(self, team_name: str) -> Playbook:
         """Get or create a playbook for a team."""
         if team_name not in self.playbooks:
-            playbook_path = self.data_dir / f"playbook_{hashlib.md5(team_name.encode()).hexdigest()[:8]}.json"
+            playbook_path = (
+                self.data_dir / f"playbook_{hashlib.md5(team_name.encode()).hexdigest()[:8]}.json"
+            )
             if playbook_path.exists():
                 try:
-                    with open(playbook_path, "r") as f:
+                    with open(playbook_path) as f:
                         data = json.load(f)
                     self.playbooks[team_name] = self._from_dict(data)
-                except (json.JSONDecodeError, IOError):
+                except (OSError, json.JSONDecodeError):
                     self.playbooks[team_name] = self._create_playbook(team_name)
             else:
                 self.playbooks[team_name] = self._create_playbook(team_name)
@@ -557,20 +557,25 @@ class PlaybookGenerator:
     def save_playbook(self, playbook: Playbook) -> None:
         """Save playbook to disk."""
         self.playbooks[playbook.team_name] = playbook
-        playbook_path = self.data_dir / f"playbook_{hashlib.md5(playbook.team_name.encode()).hexdigest()[:8]}.json"
+        playbook_path = (
+            self.data_dir
+            / f"playbook_{hashlib.md5(playbook.team_name.encode()).hexdigest()[:8]}.json"
+        )
         try:
             with open(playbook_path, "w") as f:
                 json.dump(playbook.to_dict(), f, indent=2)
-        except IOError:
+        except OSError:
             pass
 
     def _create_playbook(self, team_name: str) -> Playbook:
         """Create a new empty playbook."""
         return Playbook(
-            playbook_id=hashlib.md5(f"{team_name}_{datetime.now().isoformat()}".encode()).hexdigest()[:12],
+            playbook_id=hashlib.md5(
+                f"{team_name}_{datetime.now().isoformat()}".encode()
+            ).hexdigest()[:12],
             team_name=team_name,
             created_at=datetime.now().isoformat(),
-            last_updated=datetime.now().isoformat()
+            last_updated=datetime.now().isoformat(),
         )
 
     def _from_dict(self, data: dict[str, Any]) -> Playbook:
@@ -584,7 +589,7 @@ class PlaybookGenerator:
             map_pool=data.get("map_pool", []),
             map_win_rates=data.get("map_win_rates", {}),
             demos_analyzed=data.get("demos_analyzed", 0),
-            rounds_analyzed=data.get("rounds_analyzed", 0)
+            rounds_analyzed=data.get("rounds_analyzed", 0),
         )
 
         # Reconstruct plays (simplified - would need full reconstruction in production)
@@ -605,7 +610,7 @@ class PlaybookGenerator:
                         times_run=p_data.get("times_run", 0),
                         rounds_won=p_data.get("rounds_won", 0),
                         first_kill_rate=p_data.get("first_kill_rate", 0),
-                        source_demos=p_data.get("source_demos", [])
+                        source_demos=p_data.get("source_demos", []),
                     )
                     playbook.t_side_plays[map_name].append(play)
                 except (KeyError, ValueError):
@@ -613,9 +618,9 @@ class PlaybookGenerator:
 
         return playbook
 
-    def analyze_demo(self, demo_data: dict[str, Any],
-                     team_steamids: list[str],
-                     team_name: str) -> dict[str, Any]:
+    def analyze_demo(
+        self, demo_data: dict[str, Any], team_steamids: list[str], team_name: str
+    ) -> dict[str, Any]:
         """
         Analyze a demo and add plays to the playbook.
 
@@ -648,14 +653,16 @@ class PlaybookGenerator:
         rounds = demo_data.get("rounds", [])
 
         for round_data in rounds:
-            round_num = round_data.get("round_num", 0)
+            round_data.get("round_num", 0)
 
             # Determine team side this round
             team_side = self._get_team_side(round_data, team_steamids)
 
             if team_side == Side.T:
                 # Extract T-side play
-                play = self._extract_t_play(round_data, team_steamids, map_name, demo_data.get("demo_id", ""))
+                play = self._extract_t_play(
+                    round_data, team_steamids, map_name, demo_data.get("demo_id", "")
+                )
                 if play:
                     plays_extracted.append(play)
                     self._add_play_to_playbook(playbook, play, map_name)
@@ -692,11 +699,10 @@ class PlaybookGenerator:
             "rounds_analyzed": len(rounds),
             "t_plays_extracted": len(plays_extracted),
             "ct_setups_extracted": len(setups_extracted),
-            "retakes_extracted": len(retakes_extracted)
+            "retakes_extracted": len(retakes_extracted),
         }
 
-    def _get_team_side(self, round_data: dict[str, Any],
-                       team_steamids: list[str]) -> Side:
+    def _get_team_side(self, round_data: dict[str, Any], team_steamids: list[str]) -> Side:
         """Determine which side the team is on this round."""
         # Check from round info or player positions
         t_side_players = round_data.get("t_side_players", [])
@@ -706,17 +712,15 @@ class PlaybookGenerator:
             return Side.T
         return Side.CT
 
-    def _team_won_round(self, round_data: dict[str, Any],
-                        team_steamids: list[str]) -> bool:
+    def _team_won_round(self, round_data: dict[str, Any], team_steamids: list[str]) -> bool:
         """Check if team won this round."""
         winner_side = round_data.get("winner")
         team_side = self._get_team_side(round_data, team_steamids)
         return winner_side == team_side.value
 
-    def _extract_t_play(self, round_data: dict[str, Any],
-                        team_steamids: list[str],
-                        map_name: str,
-                        demo_id: str) -> Optional[Play]:
+    def _extract_t_play(
+        self, round_data: dict[str, Any], team_steamids: list[str], map_name: str, demo_id: str
+    ) -> Play | None:
         """Extract a T-side play from round data."""
         # Classify the round
         play_type, target_site = self.classifier.classify_round(round_data, map_name)
@@ -740,30 +744,36 @@ class PlaybookGenerator:
             if steamid in positions:
                 pos = positions[steamid].get("execute", positions[steamid].get("initial", {}))
                 if pos:
-                    execute_positions.append(PlayerPosition(
-                        steamid=steamid,
-                        name=pos.get("name", "Player"),
-                        x=pos.get("x", 0),
-                        y=pos.get("y", 0),
-                        z=pos.get("z", 0)
-                    ))
+                    execute_positions.append(
+                        PlayerPosition(
+                            steamid=steamid,
+                            name=pos.get("name", "Player"),
+                            x=pos.get("x", 0),
+                            y=pos.get("y", 0),
+                            z=pos.get("z", 0),
+                        )
+                    )
 
         # Extract utility sequence
         utility_sequence = []
         team_grenades = [g for g in grenades if g.get("player_steamid") in team_steamids]
         for g in sorted(team_grenades, key=lambda x: x.get("tick", 0)):
-            utility_sequence.append(UtilityUsage(
-                player_steamid=g.get("player_steamid", ""),
-                player_name=g.get("player_name", "Player"),
-                grenade_type=g.get("grenade_type", "unknown"),
-                x=g.get("x", 0),
-                y=g.get("y", 0),
-                z=g.get("z", 0),
-                tick=g.get("tick", 0)
-            ))
+            utility_sequence.append(
+                UtilityUsage(
+                    player_steamid=g.get("player_steamid", ""),
+                    player_name=g.get("player_name", "Player"),
+                    grenade_type=g.get("grenade_type", "unknown"),
+                    x=g.get("x", 0),
+                    y=g.get("y", 0),
+                    z=g.get("z", 0),
+                    tick=g.get("tick", 0),
+                )
+            )
 
         play = Play(
-            play_id=hashlib.md5(f"{demo_id}_{round_data.get('round_num', 0)}".encode()).hexdigest()[:8],
+            play_id=hashlib.md5(f"{demo_id}_{round_data.get('round_num', 0)}".encode()).hexdigest()[
+                :8
+            ],
             name=f"{play_type.value.title()} {target_site.value}",
             play_type=play_type,
             side=Side.T,
@@ -775,18 +785,16 @@ class PlaybookGenerator:
             times_run=1,
             rounds_won=1 if round_won else 0,
             source_demos=[demo_id],
-            example_rounds=[{
-                "demo_id": demo_id,
-                "round_num": round_data.get("round_num", 0),
-                "won": round_won
-            }]
+            example_rounds=[
+                {"demo_id": demo_id, "round_num": round_data.get("round_num", 0), "won": round_won}
+            ],
         )
 
         return play
 
-    def _extract_ct_setup(self, round_data: dict[str, Any],
-                          team_steamids: list[str],
-                          map_name: str) -> Optional[DefaultSetup]:
+    def _extract_ct_setup(
+        self, round_data: dict[str, Any], team_steamids: list[str], map_name: str
+    ) -> DefaultSetup | None:
         """Extract CT default setup from round data."""
         positions = round_data.get("positions", {})
         round_won = round_data.get("winner") == "CT"
@@ -797,13 +805,15 @@ class PlaybookGenerator:
             if steamid in positions:
                 pos = positions[steamid].get("initial", {})
                 if pos:
-                    player_positions.append(PlayerPosition(
-                        steamid=steamid,
-                        name=pos.get("name", "Player"),
-                        x=pos.get("x", 0),
-                        y=pos.get("y", 0),
-                        z=pos.get("z", 0)
-                    ))
+                    player_positions.append(
+                        PlayerPosition(
+                            steamid=steamid,
+                            name=pos.get("name", "Player"),
+                            x=pos.get("x", 0),
+                            y=pos.get("y", 0),
+                            z=pos.get("z", 0),
+                        )
+                    )
 
         if len(player_positions) < 4:
             return None
@@ -818,7 +828,11 @@ class PlaybookGenerator:
 
             if BombSite.A in sites:
                 a_dist = self._distance(pos_tuple, sites[BombSite.A])
-                b_dist = self._distance(pos_tuple, sites[BombSite.B]) if BombSite.B in sites else float('inf')
+                b_dist = (
+                    self._distance(pos_tuple, sites[BombSite.B])
+                    if BombSite.B in sites
+                    else float("inf")
+                )
 
                 if a_dist < b_dist and a_dist < 2000:
                     a_players += 1
@@ -834,14 +848,14 @@ class PlaybookGenerator:
             b_players=b_players,
             mid_players=5 - a_players - b_players,
             times_used=1,
-            rounds_won=1 if round_won else 0
+            rounds_won=1 if round_won else 0,
         )
 
         return setup
 
-    def _extract_retake(self, round_data: dict[str, Any],
-                        team_steamids: list[str],
-                        map_name: str) -> Optional[RetakeProtocol]:
+    def _extract_retake(
+        self, round_data: dict[str, Any], team_steamids: list[str], map_name: str
+    ) -> RetakeProtocol | None:
         """Extract retake protocol if applicable."""
         bomb_plant = round_data.get("bomb_plant")
         if not bomb_plant:
@@ -857,20 +871,24 @@ class PlaybookGenerator:
         plant_tick = bomb_plant.get("tick", 0)
         retake_utility = []
 
-        team_grenades = [g for g in grenades
-                        if g.get("player_steamid") in team_steamids
-                        and g.get("tick", 0) > plant_tick]
+        team_grenades = [
+            g
+            for g in grenades
+            if g.get("player_steamid") in team_steamids and g.get("tick", 0) > plant_tick
+        ]
 
         for g in sorted(team_grenades, key=lambda x: x.get("tick", 0)):
-            retake_utility.append(UtilityUsage(
-                player_steamid=g.get("player_steamid", ""),
-                player_name=g.get("player_name", "Player"),
-                grenade_type=g.get("grenade_type", "unknown"),
-                x=g.get("x", 0),
-                y=g.get("y", 0),
-                z=g.get("z", 0),
-                tick=g.get("tick", 0)
-            ))
+            retake_utility.append(
+                UtilityUsage(
+                    player_steamid=g.get("player_steamid", ""),
+                    player_name=g.get("player_name", "Player"),
+                    grenade_type=g.get("grenade_type", "unknown"),
+                    x=g.get("x", 0),
+                    y=g.get("y", 0),
+                    z=g.get("z", 0),
+                    tick=g.get("tick", 0),
+                )
+            )
 
         if not retake_utility:
             return None
@@ -882,7 +900,7 @@ class PlaybookGenerator:
             site=site,
             utility_sequence=retake_utility,
             times_attempted=1,
-            times_succeeded=1 if round_won else 0
+            times_succeeded=1 if round_won else 0,
         )
 
         return protocol
@@ -892,7 +910,7 @@ class PlaybookGenerator:
         existing = playbook.t_side_plays.get(map_name, [])
 
         # Check for similar existing play
-        for i, existing_play in enumerate(existing):
+        for _i, existing_play in enumerate(existing):
             if self._plays_similar(play, existing_play):
                 # Merge into existing
                 existing_play.times_run += 1
@@ -902,20 +920,25 @@ class PlaybookGenerator:
                 existing_play.example_rounds.extend(play.example_rounds)
                 # Average execute time
                 existing_play.avg_execute_time = (
-                    existing_play.avg_execute_time * (existing_play.times_run - 1) + play.avg_execute_time
+                    existing_play.avg_execute_time * (existing_play.times_run - 1)
+                    + play.avg_execute_time
                 ) / existing_play.times_run
                 return
 
         # Add as new play
         playbook.t_side_plays[map_name].append(play)
 
-    def _add_setup_to_playbook(self, playbook: Playbook, setup: DefaultSetup, map_name: str) -> None:
+    def _add_setup_to_playbook(
+        self, playbook: Playbook, setup: DefaultSetup, map_name: str
+    ) -> None:
         """Add or merge CT setup into playbook."""
         existing = playbook.ct_setups.get(map_name, [])
 
         for existing_setup in existing:
-            if (existing_setup.a_players == setup.a_players and
-                existing_setup.b_players == setup.b_players):
+            if (
+                existing_setup.a_players == setup.a_players
+                and existing_setup.b_players == setup.b_players
+            ):
                 # Merge
                 existing_setup.times_used += 1
                 existing_setup.rounds_won += setup.rounds_won
@@ -923,7 +946,9 @@ class PlaybookGenerator:
 
         playbook.ct_setups[map_name].append(setup)
 
-    def _add_retake_to_playbook(self, playbook: Playbook, retake: RetakeProtocol, map_name: str) -> None:
+    def _add_retake_to_playbook(
+        self, playbook: Playbook, retake: RetakeProtocol, map_name: str
+    ) -> None:
         """Add or merge retake protocol into playbook."""
         existing = playbook.retakes.get(map_name, [])
 
@@ -946,14 +971,9 @@ class PlaybookGenerator:
             return False
         return True
 
-    def _distance(self, p1: tuple[float, float, float],
-                  p2: tuple[float, float, float]) -> float:
+    def _distance(self, p1: tuple[float, float, float], p2: tuple[float, float, float]) -> float:
         """Calculate 3D distance."""
-        return math.sqrt(
-            (p1[0] - p2[0]) ** 2 +
-            (p1[1] - p2[1]) ** 2 +
-            (p1[2] - p2[2]) ** 2
-        )
+        return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2 + (p1[2] - p2[2]) ** 2)
 
     def generate_playbook_report(self, team_name: str) -> dict[str, Any]:
         """
@@ -977,9 +997,9 @@ class PlaybookGenerator:
                 "map_pool": playbook.map_pool,
                 "total_t_plays": sum(len(plays) for plays in playbook.t_side_plays.values()),
                 "total_ct_setups": sum(len(setups) for setups in playbook.ct_setups.values()),
-                "total_retakes": sum(len(retakes) for retakes in playbook.retakes.values())
+                "total_retakes": sum(len(retakes) for retakes in playbook.retakes.values()),
             },
-            "map_analysis": {}
+            "map_analysis": {},
         }
 
         # Per-map analysis
@@ -990,7 +1010,9 @@ class PlaybookGenerator:
 
             # Find best plays
             best_t_plays = sorted(t_plays, key=lambda x: x.success_rate, reverse=True)[:5]
-            best_setups = sorted(ct_setups, key=lambda x: x.rounds_won / max(1, x.times_used), reverse=True)[:3]
+            best_setups = sorted(
+                ct_setups, key=lambda x: x.rounds_won / max(1, x.times_used), reverse=True
+            )[:3]
 
             # Play type distribution
             play_types = defaultdict(int)
@@ -1002,16 +1024,16 @@ class PlaybookGenerator:
                 "t_side": {
                     "total_plays": len(t_plays),
                     "play_type_distribution": dict(play_types),
-                    "best_plays": [p.to_dict() for p in best_t_plays]
+                    "best_plays": [p.to_dict() for p in best_t_plays],
                 },
                 "ct_side": {
                     "total_setups": len(ct_setups),
-                    "best_setups": [s.to_dict() for s in best_setups]
+                    "best_setups": [s.to_dict() for s in best_setups],
                 },
                 "retakes": {
                     "a_site": next((r.to_dict() for r in retakes if r.site == BombSite.A), None),
-                    "b_site": next((r.to_dict() for r in retakes if r.site == BombSite.B), None)
-                }
+                    "b_site": next((r.to_dict() for r in retakes if r.site == BombSite.B), None),
+                },
             }
 
         return report
@@ -1065,7 +1087,9 @@ class PlaybookGenerator:
                 for setup in ct_setups[:3]:
                     wr = round(setup.rounds_won / max(1, setup.times_used) * 100)
                     md.append(f"\n**{setup.name}** (Win rate: {wr}%)")
-                    md.append(f"- A: {setup.a_players} | B: {setup.b_players} | Mid: {setup.mid_players}")
+                    md.append(
+                        f"- A: {setup.a_players} | B: {setup.b_players} | Mid: {setup.mid_players}"
+                    )
 
             # Retakes
             retakes = playbook.retakes.get(map_name, [])
@@ -1082,7 +1106,7 @@ class PlaybookGenerator:
 # Convenience Functions
 # ============================================================================
 
-_default_generator: Optional[PlaybookGenerator] = None
+_default_generator: PlaybookGenerator | None = None
 
 
 def get_generator() -> PlaybookGenerator:
@@ -1093,9 +1117,9 @@ def get_generator() -> PlaybookGenerator:
     return _default_generator
 
 
-def analyze_team_demo(demo_data: dict[str, Any],
-                      team_steamids: list[str],
-                      team_name: str) -> dict[str, Any]:
+def analyze_team_demo(
+    demo_data: dict[str, Any], team_steamids: list[str], team_name: str
+) -> dict[str, Any]:
     """
     Analyze a team demo and add to playbook.
 

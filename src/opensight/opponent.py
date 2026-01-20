@@ -5,26 +5,23 @@ Cross-references opponent tendencies from public databases (HLTV, FACEIT)
 to predict strategies and suggest counter-tactics.
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional, Any
-import json
 import hashlib
-import math
-import re
-from pathlib import Path
+import json
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime
-import urllib.request
-import urllib.error
-
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
 # ============================================================================
 # Data Types and Enums
 # ============================================================================
 
+
 class PlayStyle(Enum):
     """Player playstyle classifications."""
+
     AGGRESSIVE = "aggressive"
     PASSIVE = "passive"
     BALANCED = "balanced"
@@ -35,6 +32,7 @@ class PlayStyle(Enum):
 
 class StrategyType(Enum):
     """Team strategy types."""
+
     FAST_EXECUTE = "fast_execute"
     SLOW_DEFAULT = "slow_default"
     SPLIT = "split"
@@ -47,6 +45,7 @@ class StrategyType(Enum):
 
 class TendencyCategory(Enum):
     """Categories of player tendencies."""
+
     POSITIONING = "positioning"
     TIMING = "timing"
     WEAPON_CHOICE = "weapon_choice"
@@ -59,12 +58,13 @@ class TendencyCategory(Enum):
 @dataclass
 class PlayerTendency:
     """A single behavioral tendency of a player."""
+
     category: TendencyCategory
     description: str
     frequency: float  # 0-1 how often this happens
     confidence: float  # 0-1 how confident we are
-    map_specific: Optional[str] = None
-    side_specific: Optional[str] = None  # "ct", "t", or None for both
+    map_specific: str | None = None
+    side_specific: str | None = None  # "ct", "t", or None for both
     examples: list[str] = field(default_factory=list)
     counter_tactics: list[str] = field(default_factory=list)
 
@@ -77,22 +77,23 @@ class PlayerTendency:
             "map_specific": self.map_specific,
             "side_specific": self.side_specific,
             "examples": self.examples,
-            "counter_tactics": self.counter_tactics
+            "counter_tactics": self.counter_tactics,
         }
 
 
 @dataclass
 class OpponentProfile:
     """Complete opponent profile with analyzed tendencies."""
+
     steamid: str
     name: str
     team: str = ""
     country: str = ""
 
     # External data sources
-    hltv_id: Optional[int] = None
-    faceit_id: Optional[str] = None
-    esea_id: Optional[int] = None
+    hltv_id: int | None = None
+    faceit_id: str | None = None
+    esea_id: int | None = None
 
     # Statistics from external sources
     hltv_rating: float = 0.0
@@ -140,7 +141,7 @@ class OpponentProfile:
             "map_stats": self.map_stats,
             "tendencies": [t.to_dict() for t in self.tendencies],
             "local_demos_count": self.local_demos_count,
-            "last_updated": self.last_updated
+            "last_updated": self.last_updated,
         }
 
     @classmethod
@@ -161,7 +162,7 @@ class OpponentProfile:
             weapon_preferences=data.get("weapon_preferences", {}),
             map_stats=data.get("map_stats", {}),
             local_demos_count=data.get("local_demos_count", 0),
-            last_updated=data.get("last_updated", "")
+            last_updated=data.get("last_updated", ""),
         )
 
         try:
@@ -181,7 +182,7 @@ class OpponentProfile:
                     map_specific=t_data.get("map_specific"),
                     side_specific=t_data.get("side_specific"),
                     examples=t_data.get("examples", []),
-                    counter_tactics=t_data.get("counter_tactics", [])
+                    counter_tactics=t_data.get("counter_tactics", []),
                 )
                 profile.tendencies.append(tendency)
             except (KeyError, ValueError):
@@ -193,6 +194,7 @@ class OpponentProfile:
 @dataclass
 class TeamProfile:
     """Team-level analysis and tendencies."""
+
     team_name: str
     players: list[str]  # Steam IDs
 
@@ -227,20 +229,21 @@ class TeamProfile:
             "default_setups": self.default_setups,
             "tendencies": self.tendencies,
             "predicted_map_bans": self.predicted_map_bans,
-            "predicted_map_picks": self.predicted_map_picks
+            "predicted_map_picks": self.predicted_map_picks,
         }
 
 
 @dataclass
 class CounterTactic:
     """A suggested counter-tactic against opponent."""
+
     title: str
     description: str
     targets_tendency: str
     effectiveness: float  # 0-1 estimated effectiveness
     difficulty: str  # "easy", "medium", "hard"
-    map_specific: Optional[str] = None
-    side: Optional[str] = None
+    map_specific: str | None = None
+    side: str | None = None
     required_utility: list[str] = field(default_factory=list)
     steps: list[str] = field(default_factory=list)
 
@@ -254,7 +257,7 @@ class CounterTactic:
             "map_specific": self.map_specific,
             "side": self.side,
             "required_utility": self.required_utility,
-            "steps": self.steps
+            "steps": self.steps,
         }
 
 
@@ -262,18 +265,19 @@ class CounterTactic:
 # HLTV Data Integration
 # ============================================================================
 
+
 class HLTVClient:
     """
     Client for fetching data from HLTV.
     Note: HLTV doesn't have a public API, so this uses web scraping with caching.
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         self.cache_dir = cache_dir or Path.home() / ".opensight" / "hltv_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_ttl_hours = 24  # Cache data for 24 hours
 
-    def search_player(self, name: str) -> Optional[dict[str, Any]]:
+    def search_player(self, name: str) -> dict[str, Any] | None:
         """
         Search for a player on HLTV by name.
 
@@ -298,13 +302,13 @@ class HLTVClient:
             "country": None,
             "rating_2_0": None,
             "maps_played": 0,
-            "source": "search"
+            "source": "search",
         }
 
         self._set_cached(cache_key, result)
         return result
 
-    def get_player_stats(self, hltv_id: int) -> Optional[dict[str, Any]]:
+    def get_player_stats(self, hltv_id: int) -> dict[str, Any] | None:
         """
         Get detailed stats for a player by HLTV ID.
 
@@ -336,7 +340,7 @@ class HLTVClient:
             "rounds_with_kills": 0,
             "clutches_won": 0,
             "clutches_total": 0,
-            "source": "hltv"
+            "source": "hltv",
         }
 
         self._set_cached(cache_key, result)
@@ -363,7 +367,7 @@ class HLTVClient:
         self._set_cached(cache_key, result)
         return result
 
-    def get_team_stats(self, team_name: str) -> Optional[dict[str, Any]]:
+    def get_team_stats(self, team_name: str) -> dict[str, Any] | None:
         """
         Get team statistics from HLTV.
 
@@ -386,24 +390,24 @@ class HLTVClient:
             "wins": 0,
             "losses": 0,
             "map_pool": [],
-            "source": "hltv"
+            "source": "hltv",
         }
 
         self._set_cached(cache_key, result)
         return result
 
-    def _get_cached(self, key: str) -> Optional[Any]:
+    def _get_cached(self, key: str) -> Any | None:
         """Get cached data if not expired."""
         cache_file = self.cache_dir / f"{key}.json"
         if cache_file.exists():
             try:
-                with open(cache_file, "r") as f:
+                with open(cache_file) as f:
                     data = json.load(f)
                 # Check expiry
                 cached_time = datetime.fromisoformat(data.get("_cached_at", "2000-01-01"))
                 if (datetime.now() - cached_time).total_seconds() < self.cache_ttl_hours * 3600:
                     return data.get("data")
-            except (json.JSONDecodeError, IOError, ValueError):
+            except (OSError, json.JSONDecodeError, ValueError):
                 pass
         return None
 
@@ -412,17 +416,15 @@ class HLTVClient:
         cache_file = self.cache_dir / f"{key}.json"
         try:
             with open(cache_file, "w") as f:
-                json.dump({
-                    "_cached_at": datetime.now().isoformat(),
-                    "data": data
-                }, f, indent=2)
-        except IOError:
+                json.dump({"_cached_at": datetime.now().isoformat(), "data": data}, f, indent=2)
+        except OSError:
             pass
 
 
 # ============================================================================
 # Tendency Analysis Engine
 # ============================================================================
+
 
 class TendencyAnalyzer:
     """
@@ -432,10 +434,13 @@ class TendencyAnalyzer:
     def __init__(self):
         self.counter_tactic_templates = self._build_counter_tactics()
 
-    def analyze_player(self, demo_data: dict[str, Any],
-                       player_stats: dict[str, Any],
-                       steamid: str,
-                       existing_profile: Optional[OpponentProfile] = None) -> OpponentProfile:
+    def analyze_player(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        steamid: str,
+        existing_profile: OpponentProfile | None = None,
+    ) -> OpponentProfile:
         """
         Analyze a player from demo data to build/update their profile.
 
@@ -473,9 +478,9 @@ class TendencyAnalyzer:
 
         return profile
 
-    def _analyze_playstyle(self, demo_data: dict[str, Any],
-                           player_stats: dict[str, Any],
-                           profile: OpponentProfile) -> None:
+    def _analyze_playstyle(
+        self, demo_data: dict[str, Any], player_stats: dict[str, Any], profile: OpponentProfile
+    ) -> None:
         """Determine player's playstyle from stats."""
         # Aggression metrics
         opening_attempts = player_stats.get("opening_duel_attempts", 0)
@@ -484,8 +489,8 @@ class TendencyAnalyzer:
         deaths_per_round = player_stats.get("deaths", 0) / max(rounds, 1)
         utility_used = player_stats.get("utility_per_round", 0)
 
-        # Calculate playstyle scores
-        aggression_score = min(1.0, (opening_attempts / rounds) * 2 + deaths_per_round * 0.5)
+        # Calculate playstyle scores (protect against division by zero)
+        aggression_score = min(1.0, (opening_attempts / max(rounds, 1)) * 2 + deaths_per_round * 0.5)
         utility_score = min(1.0, utility_used / 3)
         aim_score = min(1.0, adr / 100)
 
@@ -506,9 +511,9 @@ class TendencyAnalyzer:
             profile.playstyle = PlayStyle.BALANCED
             profile.playstyle_confidence = 0.5
 
-    def _analyze_weapons(self, demo_data: dict[str, Any],
-                         player_stats: dict[str, Any],
-                         profile: OpponentProfile) -> None:
+    def _analyze_weapons(
+        self, demo_data: dict[str, Any], player_stats: dict[str, Any], profile: OpponentProfile
+    ) -> None:
         """Analyze weapon preferences."""
         weapon_kills = player_stats.get("weapon_kills", {})
         total_kills = sum(weapon_kills.values()) if weapon_kills else 1
@@ -519,9 +524,9 @@ class TendencyAnalyzer:
             # Exponential moving average
             profile.weapon_preferences[weapon] = current * 0.7 + new_rate * 0.3
 
-    def _analyze_tendencies(self, demo_data: dict[str, Any],
-                            player_stats: dict[str, Any],
-                            profile: OpponentProfile) -> None:
+    def _analyze_tendencies(
+        self, demo_data: dict[str, Any], player_stats: dict[str, Any], profile: OpponentProfile
+    ) -> None:
         """Identify specific behavioral tendencies."""
         map_name = demo_data.get("map_name", "unknown")
         new_tendencies = []
@@ -531,35 +536,47 @@ class TendencyAnalyzer:
         kills = demo_data.get("kills", [])
 
         # Check for aggressive positioning
-        early_deaths = sum(1 for d in deaths
-                          if d.get("victim_steamid") == profile.steamid
-                          and d.get("round_time", 999) < 30)
+        early_deaths = sum(
+            1
+            for d in deaths
+            if d.get("victim_steamid") == profile.steamid and d.get("round_time", 999) < 30
+        )
         if early_deaths > 3:
-            new_tendencies.append(PlayerTendency(
-                category=TendencyCategory.AGGRESSION,
-                description="Tends to push early in rounds",
-                frequency=early_deaths / max(len(deaths), 1),
-                confidence=0.7,
-                map_specific=map_name,
-                counter_tactics=["Hold angles and let them push into you",
-                                "Set up utility traps for early aggression"]
-            ))
+            new_tendencies.append(
+                PlayerTendency(
+                    category=TendencyCategory.AGGRESSION,
+                    description="Tends to push early in rounds",
+                    frequency=early_deaths / max(len(deaths), 1),
+                    confidence=0.7,
+                    map_specific=map_name,
+                    counter_tactics=[
+                        "Hold angles and let them push into you",
+                        "Set up utility traps for early aggression",
+                    ],
+                )
+            )
 
         # Check for AWP usage
-        awp_kills = sum(1 for k in kills
-                       if k.get("attacker_steamid") == profile.steamid
-                       and k.get("weapon") in ["awp", "ssg08"])
+        awp_kills = sum(
+            1
+            for k in kills
+            if k.get("attacker_steamid") == profile.steamid and k.get("weapon") in ["awp", "ssg08"]
+        )
         total_kills = sum(1 for k in kills if k.get("attacker_steamid") == profile.steamid)
         if total_kills > 0 and awp_kills / total_kills > 0.4:
-            new_tendencies.append(PlayerTendency(
-                category=TendencyCategory.WEAPON_CHOICE,
-                description="Primary AWPer - relies heavily on AWP",
-                frequency=awp_kills / total_kills,
-                confidence=0.8,
-                counter_tactics=["Force close engagements",
-                                "Use smokes to deny AWP angles",
-                                "Rush and trade quickly"]
-            ))
+            new_tendencies.append(
+                PlayerTendency(
+                    category=TendencyCategory.WEAPON_CHOICE,
+                    description="Primary AWPer - relies heavily on AWP",
+                    frequency=awp_kills / total_kills,
+                    confidence=0.8,
+                    counter_tactics=[
+                        "Force close engagements",
+                        "Use smokes to deny AWP angles",
+                        "Rush and trade quickly",
+                    ],
+                )
+            )
 
         # Check for same-spot holds
         death_positions = defaultdict(int)
@@ -568,39 +585,44 @@ class TendencyAnalyzer:
                 pos = (
                     round(d.get("victim_x", 0), -1),  # Round to 10 units
                     round(d.get("victim_y", 0), -1),
-                    round(d.get("victim_z", 0), -1)
+                    round(d.get("victim_z", 0), -1),
                 )
                 death_positions[pos] += 1
 
         repeat_spots = [pos for pos, count in death_positions.items() if count >= 2]
         if repeat_spots:
-            new_tendencies.append(PlayerTendency(
-                category=TendencyCategory.POSITIONING,
-                description="Predictable positioning - holds same spots repeatedly",
-                frequency=len(repeat_spots) / max(len(death_positions), 1),
-                confidence=0.6,
-                map_specific=map_name,
-                examples=[f"Position near {pos}" for pos in repeat_spots[:3]],
-                counter_tactics=["Prefire these positions",
-                                "Use utility to flush them out"]
-            ))
+            new_tendencies.append(
+                PlayerTendency(
+                    category=TendencyCategory.POSITIONING,
+                    description="Predictable positioning - holds same spots repeatedly",
+                    frequency=len(repeat_spots) / max(len(death_positions), 1),
+                    confidence=0.6,
+                    map_specific=map_name,
+                    examples=[f"Position near {pos}" for pos in repeat_spots[:3]],
+                    counter_tactics=["Prefire these positions", "Use utility to flush them out"],
+                )
+            )
 
         # Check utility usage patterns
         grenades = demo_data.get("grenades", [])
         player_nades = [g for g in grenades if g.get("player_steamid") == profile.steamid]
 
         smoke_count = sum(1 for g in player_nades if g.get("grenade_type") == "smoke")
-        flash_count = sum(1 for g in player_nades if g.get("grenade_type") == "flashbang")
+        sum(1 for g in player_nades if g.get("grenade_type") == "flashbang")
 
         if smoke_count < 3 and profile.local_demos_count > 1:
-            new_tendencies.append(PlayerTendency(
-                category=TendencyCategory.UTILITY_USAGE,
-                description="Rarely uses smokes",
-                frequency=1 - (smoke_count / max(player_stats.get("rounds_played", 10), 1)),
-                confidence=0.6,
-                counter_tactics=["They won't smoke key angles - use them",
-                                "Expect dry takes without utility cover"]
-            ))
+            new_tendencies.append(
+                PlayerTendency(
+                    category=TendencyCategory.UTILITY_USAGE,
+                    description="Rarely uses smokes",
+                    frequency=1 - (smoke_count / max(player_stats.get("rounds_played", 10), 1)),
+                    confidence=0.6,
+                    counter_tactics=[
+                        "They won't smoke key angles - use them",
+                        "Expect dry takes without utility cover",
+                    ],
+                )
+            )
 
         # Merge with existing tendencies
         existing_cats = {t.category for t in profile.tendencies}
@@ -616,10 +638,13 @@ class TendencyAnalyzer:
                         profile.tendencies[i].confidence = min(1.0, et.confidence + 0.1)
                         break
 
-    def _update_map_stats(self, demo_data: dict[str, Any],
-                          player_stats: dict[str, Any],
-                          map_name: str,
-                          profile: OpponentProfile) -> None:
+    def _update_map_stats(
+        self,
+        demo_data: dict[str, Any],
+        player_stats: dict[str, Any],
+        map_name: str,
+        profile: OpponentProfile,
+    ) -> None:
         """Update map-specific statistics."""
         if map_name not in profile.map_stats:
             profile.map_stats[map_name] = {
@@ -629,7 +654,7 @@ class TendencyAnalyzer:
                 "rating_sum": 0.0,
                 "ct_rounds": 0,
                 "t_rounds": 0,
-                "favorite_positions": []
+                "favorite_positions": [],
             }
 
         stats = profile.map_stats[map_name]
@@ -640,8 +665,7 @@ class TendencyAnalyzer:
         stats["ct_rounds"] += player_stats.get("ct_rounds", 0)
         stats["t_rounds"] += player_stats.get("t_rounds", 0)
 
-    def _predict_role(self, player_stats: dict[str, Any],
-                      profile: OpponentProfile) -> None:
+    def _predict_role(self, player_stats: dict[str, Any], profile: OpponentProfile) -> None:
         """Predict player's role from statistics."""
         # Role indicators
         scores = {
@@ -650,7 +674,7 @@ class TendencyAnalyzer:
             "support": 0.0,
             "lurker": 0.0,
             "igl": 0.0,
-            "rifler": 0.0
+            "rifler": 0.0,
         }
 
         # Entry indicators
@@ -658,7 +682,7 @@ class TendencyAnalyzer:
         opening_attempts = player_stats.get("opening_duel_attempts", 0)
         rounds = player_stats.get("rounds_played", 1)
 
-        if opening_attempts / rounds > 0.3:
+        if opening_attempts / max(rounds, 1) > 0.3:
             scores["entry"] += 0.4
         if opening_wr > 50:
             scores["entry"] += 0.3
@@ -709,8 +733,8 @@ class TendencyAnalyzer:
                         "Hold passive angles initially",
                         "Let them commit to the push",
                         "Trade them when they overextend",
-                        "Use utility to punish aggression"
-                    ]
+                        "Use utility to punish aggression",
+                    ],
                 ),
                 CounterTactic(
                     title="Counter-Flash",
@@ -722,9 +746,9 @@ class TendencyAnalyzer:
                     steps=[
                         "Listen for movement",
                         "Throw popflash as they peek",
-                        "Hold angle and get easy kill"
-                    ]
-                )
+                        "Hold angle and get easy kill",
+                    ],
+                ),
             ],
             "awp_heavy": [
                 CounterTactic(
@@ -737,8 +761,8 @@ class TendencyAnalyzer:
                     steps=[
                         "Smoke known AWP positions",
                         "Execute through smokes",
-                        "Force close-range fights"
-                    ]
+                        "Force close-range fights",
+                    ],
                 ),
                 CounterTactic(
                     title="Rush and Trade",
@@ -749,9 +773,9 @@ class TendencyAnalyzer:
                     steps=[
                         "Rush together as a unit",
                         "Be prepared to trade first death",
-                        "Don't give AWP time to reposition"
-                    ]
-                )
+                        "Don't give AWP time to reposition",
+                    ],
+                ),
             ],
             "passive": [
                 CounterTactic(
@@ -763,8 +787,8 @@ class TendencyAnalyzer:
                     steps=[
                         "Take map control methodically",
                         "Gather information on rotations",
-                        "Execute when you have numbers advantage"
-                    ]
+                        "Execute when you have numbers advantage",
+                    ],
                 )
             ],
             "predictable_positions": [
@@ -777,14 +801,15 @@ class TendencyAnalyzer:
                     steps=[
                         "Note their common positions",
                         "Prefire these spots on entry",
-                        "Coordinate with flash support"
-                    ]
+                        "Coordinate with flash support",
+                    ],
                 )
-            ]
+            ],
         }
 
-    def get_counter_tactics(self, profile: OpponentProfile,
-                            map_name: Optional[str] = None) -> list[CounterTactic]:
+    def get_counter_tactics(
+        self, profile: OpponentProfile, map_name: str | None = None
+    ) -> list[CounterTactic]:
         """
         Get recommended counter-tactics for an opponent.
 
@@ -814,13 +839,15 @@ class TendencyAnalyzer:
 
             # Add tendency-specific counters
             for ct in tendency.counter_tactics:
-                tactics.append(CounterTactic(
-                    title=f"Counter: {tendency.description[:30]}",
-                    description=ct,
-                    targets_tendency=tendency.category.value,
-                    effectiveness=tendency.confidence,
-                    difficulty="medium"
-                ))
+                tactics.append(
+                    CounterTactic(
+                        title=f"Counter: {tendency.description[:30]}",
+                        description=ct,
+                        targets_tendency=tendency.category.value,
+                        effectiveness=tendency.confidence,
+                        difficulty="medium",
+                    )
+                )
 
         # Filter by map if specified
         if map_name:
@@ -843,12 +870,13 @@ class TendencyAnalyzer:
 # Opponent Modeling Engine
 # ============================================================================
 
+
 class OpponentModeler:
     """
     Main engine for opponent modeling and analysis.
     """
 
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Path | None = None):
         self.data_dir = data_dir or Path.home() / ".opensight" / "opponents"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -864,10 +892,10 @@ class OpponentModeler:
             profile_path = self.data_dir / f"opponent_{steamid}.json"
             if profile_path.exists():
                 try:
-                    with open(profile_path, "r") as f:
+                    with open(profile_path) as f:
                         data = json.load(f)
                     self.profiles[steamid] = OpponentProfile.from_dict(data)
-                except (json.JSONDecodeError, IOError):
+                except (OSError, json.JSONDecodeError):
                     self.profiles[steamid] = OpponentProfile(steamid=steamid)
             else:
                 self.profiles[steamid] = OpponentProfile(steamid=steamid)
@@ -880,11 +908,12 @@ class OpponentModeler:
         try:
             with open(profile_path, "w") as f:
                 json.dump(profile.to_dict(), f, indent=2)
-        except IOError:
+        except OSError:
             pass
 
-    def analyze_opponent(self, steamid: str, demo_data: dict[str, Any],
-                         player_stats: dict[str, Any]) -> OpponentProfile:
+    def analyze_opponent(
+        self, steamid: str, demo_data: dict[str, Any], player_stats: dict[str, Any]
+    ) -> OpponentProfile:
         """
         Analyze an opponent from demo data.
 
@@ -901,8 +930,9 @@ class OpponentModeler:
         self.save_profile(updated)
         return updated
 
-    def analyze_demo_opponents(self, demo_data: dict[str, Any],
-                               my_steamid: str) -> list[OpponentProfile]:
+    def analyze_demo_opponents(
+        self, demo_data: dict[str, Any], my_steamid: str
+    ) -> list[OpponentProfile]:
         """
         Analyze all opponents from a demo.
 
@@ -966,8 +996,9 @@ class OpponentModeler:
         self.save_profile(profile)
         return profile
 
-    def get_counter_tactics(self, steamid: str,
-                            map_name: Optional[str] = None) -> list[dict[str, Any]]:
+    def get_counter_tactics(
+        self, steamid: str, map_name: str | None = None
+    ) -> list[dict[str, Any]]:
         """
         Get counter-tactics for an opponent.
 
@@ -1000,21 +1031,19 @@ class OpponentModeler:
                 "steamid": profile.steamid,
                 "team": profile.team,
                 "country": profile.country,
-                "hltv_rating": profile.hltv_rating
+                "hltv_rating": profile.hltv_rating,
             },
             "playstyle": {
                 "type": profile.playstyle.value,
                 "confidence": profile.playstyle_confidence,
-                "description": self._describe_playstyle(profile.playstyle)
+                "description": self._describe_playstyle(profile.playstyle),
             },
-            "role": {
-                "predicted": profile.predicted_role,
-                "confidence": profile.role_confidence
-            },
+            "role": {"predicted": profile.predicted_role, "confidence": profile.role_confidence},
             "weapons": {
                 "primary": self._get_primary_weapon(profile),
-                "preferences": dict(sorted(profile.weapon_preferences.items(),
-                                          key=lambda x: x[1], reverse=True)[:5])
+                "preferences": dict(
+                    sorted(profile.weapon_preferences.items(), key=lambda x: x[1], reverse=True)[:5]
+                ),
             },
             "tendencies": [t.to_dict() for t in profile.tendencies[:5]],
             "map_performance": self._summarize_map_stats(profile),
@@ -1022,8 +1051,8 @@ class OpponentModeler:
             "data_quality": {
                 "demos_analyzed": profile.local_demos_count,
                 "has_hltv_data": profile.hltv_id is not None,
-                "last_updated": profile.last_updated
-            }
+                "last_updated": profile.last_updated,
+            },
         }
 
     def _describe_playstyle(self, playstyle: PlayStyle) -> str:
@@ -1034,7 +1063,7 @@ class OpponentModeler:
             PlayStyle.BALANCED: "Balanced playstyle, adapts to situations",
             PlayStyle.TACTICAL: "Tactical player, focuses on strategy over aim",
             PlayStyle.AIM_HEAVY: "Relies heavily on aim, less utility usage",
-            PlayStyle.UTILITY_HEAVY: "Uses lots of utility, team-oriented player"
+            PlayStyle.UTILITY_HEAVY: "Uses lots of utility, team-oriented player",
         }
         return descriptions.get(playstyle, "Unknown playstyle")
 
@@ -1054,12 +1083,11 @@ class OpponentModeler:
                 "games": games,
                 "avg_kills": stats.get("kills", 0) / games,
                 "avg_deaths": stats.get("deaths", 0) / games,
-                "avg_rating": stats.get("rating_sum", 1.0) / games
+                "avg_rating": stats.get("rating_sum", 1.0) / games,
             }
         return summary
 
-    def build_team_profile(self, team_name: str,
-                           player_steamids: list[str]) -> TeamProfile:
+    def build_team_profile(self, team_name: str, player_steamids: list[str]) -> TeamProfile:
         """
         Build a team profile from individual player profiles.
 
@@ -1096,7 +1124,7 @@ class OpponentModeler:
 # Convenience Functions
 # ============================================================================
 
-_default_modeler: Optional[OpponentModeler] = None
+_default_modeler: OpponentModeler | None = None
 
 
 def get_modeler() -> OpponentModeler:
@@ -1107,8 +1135,9 @@ def get_modeler() -> OpponentModeler:
     return _default_modeler
 
 
-def analyze_opponent(steamid: str, demo_data: dict[str, Any],
-                     player_stats: dict[str, Any]) -> dict[str, Any]:
+def analyze_opponent(
+    steamid: str, demo_data: dict[str, Any], player_stats: dict[str, Any]
+) -> dict[str, Any]:
     """
     Analyze an opponent and return their profile.
 
@@ -1138,7 +1167,7 @@ def get_scouting_report(steamid: str) -> dict[str, Any]:
     return get_modeler().get_scouting_report(steamid)
 
 
-def get_counter_tactics(steamid: str, map_name: Optional[str] = None) -> list[dict[str, Any]]:
+def get_counter_tactics(steamid: str, map_name: str | None = None) -> list[dict[str, Any]]:
     """
     Get counter-tactics for an opponent.
 

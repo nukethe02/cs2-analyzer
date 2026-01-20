@@ -20,210 +20,269 @@ def __getattr__(name):
     # Parser
     if name == "DemoParser":
         from opensight.parser import DemoParser
+
         return DemoParser
     elif name == "DemoData":
         from opensight.parser import DemoData
+
         return DemoData
     elif name == "calculate_ttd":
         from opensight.metrics import calculate_ttd
+
         return calculate_ttd
     elif name == "calculate_crosshair_placement":
         from opensight.metrics import calculate_crosshair_placement
+
         return calculate_crosshair_placement
     elif name == "ReplayWatcher":
         from opensight.watcher import ReplayWatcher
+
         return ReplayWatcher
     elif name == "EconomyAnalyzer":
         from opensight.economy import EconomyAnalyzer
+
         return EconomyAnalyzer
     elif name == "analyze_economy":
         from opensight.economy import analyze_economy
+
         return analyze_economy
     elif name == "BuyType":
         from opensight.economy import BuyType
+
         return BuyType
     elif name == "CombatAnalyzer":
         from opensight.combat import CombatAnalyzer
+
         return CombatAnalyzer
     elif name == "analyze_combat":
         from opensight.combat import analyze_combat
+
         return analyze_combat
     elif name == "UtilityAnalyzer":
         from opensight.utility import UtilityAnalyzer
+
         return UtilityAnalyzer
     elif name == "analyze_utility":
         from opensight.utility import analyze_utility
+
         return analyze_utility
     elif name == "UtilityMetrics":
         from opensight.analytics import UtilityMetrics
+
         return UtilityMetrics
     elif name == "compute_utility_metrics":
         from opensight.analytics import compute_utility_metrics
+
         return compute_utility_metrics
 
     # Advanced AI Coaching
     elif name == "AdaptiveCoach":
         from opensight.coaching import AdaptiveCoach
+
         return AdaptiveCoach
     elif name == "generate_coaching_insights":
         from opensight.coaching import generate_coaching_insights
+
         return generate_coaching_insights
 
     # Temporal Pattern Analysis
     elif name == "PatternAggregator":
         from opensight.patterns import PatternAggregator
+
         return PatternAggregator
     elif name == "analyze_demo_patterns":
         from opensight.patterns import analyze_demo_patterns
+
         return analyze_demo_patterns
 
     # Opponent Modeling
     elif name == "OpponentModeler":
         from opensight.opponent import OpponentModeler
+
         return OpponentModeler
     elif name == "get_scouting_report":
         from opensight.opponent import get_scouting_report
+
         return get_scouting_report
 
     # Team Playbook
     elif name == "PlaybookGenerator":
         from opensight.playbook import PlaybookGenerator
+
         return PlaybookGenerator
     elif name == "analyze_team_demo":
         from opensight.playbook import analyze_team_demo
+
         return analyze_team_demo
 
     # Real-time Coaching
     elif name == "RealtimeCoachingSession":
         from opensight.realtime import RealtimeCoachingSession
+
         return RealtimeCoachingSession
     elif name == "create_coaching_session":
         from opensight.realtime import create_coaching_session
+
         return create_coaching_session
 
     # Sentiment Analysis
     elif name == "CommunicationAnalyzer":
         from opensight.sentiment import CommunicationAnalyzer
+
         return CommunicationAnalyzer
     elif name == "analyze_team_morale":
         from opensight.sentiment import analyze_team_morale
+
         return analyze_team_morale
 
     # Custom Metrics
     elif name == "CustomMetricBuilder":
         from opensight.custom_metrics import CustomMetricBuilder
+
         return CustomMetricBuilder
     elif name == "create_custom_metric":
         from opensight.custom_metrics import create_custom_metric
+
         return create_custom_metric
 
     # Collaboration
     elif name == "CollaborationManager":
         from opensight.collaboration import CollaborationManager
+
         return CollaborationManager
     elif name == "create_collaboration_session":
         from opensight.collaboration import create_collaboration_session
+
         return create_collaboration_session
 
     # Profiling
     elif name == "TimingCollector":
         from opensight.profiling import TimingCollector
+
         return TimingCollector
     elif name == "SlowJobLogger":
         from opensight.profiling import SlowJobLogger
+
         return SlowJobLogger
     elif name == "Profiler":
         from opensight.profiling import Profiler
+
         return Profiler
     elif name == "stage_timer":
         from opensight.profiling import stage_timer
+
         return stage_timer
     elif name == "create_timing_context":
         from opensight.profiling import create_timing_context
+
         return create_timing_context
 
     # New modules
     elif name == "ParallelDemoAnalyzer":
         from opensight.parallel import ParallelDemoAnalyzer
+
         return ParallelDemoAnalyzer
     elif name == "analyze_batch":
         from opensight.parallel import analyze_batch
+
         return analyze_batch
     elif name == "CoordinateTransformer":
         from opensight.radar import CoordinateTransformer
+
         return CoordinateTransformer
     elif name == "RadarDataGenerator":
         from opensight.radar import RadarDataGenerator
+
         return RadarDataGenerator
     elif name == "ReplayGenerator":
         from opensight.replay import ReplayGenerator
+
         return ReplayGenerator
     elif name == "HLTVClient":
         from opensight.hltv import HLTVClient
+
         return HLTVClient
     elif name == "MatchEnricher":
         from opensight.hltv import MatchEnricher
+
         return MatchEnricher
     elif name == "DemoCache":
         from opensight.cache import DemoCache
+
         return DemoCache
     elif name == "CachedAnalyzer":
         from opensight.cache import CachedAnalyzer
+
         return CachedAnalyzer
     elif name == "FeedbackDatabase":
         from opensight.feedback import FeedbackDatabase
+
         return FeedbackDatabase
 
     # DataFrame Backend (Polars optimization)
     elif name == "get_backend":
         from opensight.backend import get_backend
+
         return get_backend
     elif name == "DataFrameBackend":
         from opensight.backend import DataFrameBackend
+
         return DataFrameBackend
     elif name == "PandasBackend":
         from opensight.backend import PandasBackend
+
         return PandasBackend
     elif name == "PolarsBackend":
         from opensight.backend import PolarsBackend
+
         return PolarsBackend
     elif name == "PolarsLazyBackend":
         from opensight.backend import PolarsLazyBackend
+
         return PolarsLazyBackend
     elif name == "save_dataframe":
         from opensight.backend import save_dataframe
+
         return save_dataframe
     elif name == "load_dataframe":
         from opensight.backend import load_dataframe
+
         return load_dataframe
     elif name == "convert_dataframe":
         from opensight.backend import convert_dataframe
+
         return convert_dataframe
     elif name == "is_polars_available":
         from opensight.backend import is_polars_available
+
         return is_polars_available
     elif name == "benchmark_backends":
         from opensight.backend import benchmark_backends
+
         return benchmark_backends
     elif name == "BackendConfig":
         from opensight.backend import BackendConfig
+
         return BackendConfig
     elif name == "set_backend_config":
         from opensight.backend import set_backend_config
+
         return set_backend_config
     elif name == "get_backend_config":
         from opensight.backend import get_backend_config
+
         return get_backend_config
 
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
+
 # Export
 from opensight.export import (
-    export_to_json,
+    export_analysis,
+    export_metrics_to_csv,
     export_to_excel,
     export_to_html,
-    export_metrics_to_csv,
-    export_analysis,
+    export_to_json,
 )
 
 __all__ = [

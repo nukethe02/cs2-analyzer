@@ -31,6 +31,7 @@ DEFAULT_SLOW_THRESHOLD_SECONDS = 60.0
 @dataclass
 class StageTime:
     """Timing result for a single stage."""
+
     name: str
     duration_seconds: float
     start_time: float
@@ -45,6 +46,7 @@ class StageTime:
 @dataclass
 class TimingStats:
     """Collection of timing statistics for a full analysis run."""
+
     stages: list[StageTime] = field(default_factory=list)
     total_seconds: float = 0.0
     file_path: str | None = None
@@ -54,12 +56,9 @@ class TimingStats:
 
     def add_stage(self, name: str, duration: float, start: float, end: float) -> None:
         """Add a timing stage."""
-        self.stages.append(StageTime(
-            name=name,
-            duration_seconds=duration,
-            start_time=start,
-            end_time=end
-        ))
+        self.stages.append(
+            StageTime(name=name, duration_seconds=duration, start_time=start, end_time=end)
+        )
 
     @property
     def total_ms(self) -> float:
@@ -94,11 +93,12 @@ class TimingStats:
                     "ms": round(s.duration_ms, 1),
                     "percent": (
                         round(s.duration_seconds / self.total_seconds * 100, 1)
-                        if self.total_seconds > 0 else 0
-                    )
+                        if self.total_seconds > 0
+                        else 0
+                    ),
                 }
                 for s in self.stages
-            }
+            },
         }
 
     def format_report(self, show_percentages: bool = True) -> str:
@@ -168,10 +168,7 @@ class TimingCollector:
             self._stats.total_seconds = time.perf_counter() - self._start_time
 
     def set_file_info(
-        self,
-        path: str | None = None,
-        size_bytes: int | None = None,
-        tick_count: int | None = None
+        self, path: str | None = None, size_bytes: int | None = None, tick_count: int | None = None
     ) -> None:
         """Set file information for the analysis."""
         if path:
@@ -284,6 +281,7 @@ def timed(name: str | None = None) -> Callable:
     Returns:
         Decorated function that records timing
     """
+
     def decorator(func: Callable) -> Callable:
         stage_name = name or func.__name__
 
@@ -394,15 +392,17 @@ class Profiler:
             # stat_tuple format:
             # (primitive_calls, total_calls, total_time, cumulative_time, callers)
             pcalls, ncalls, tottime, cumtime, _callers = stat_tuple
-            hotspots.append({
-                "file": file,
-                "line": line,
-                "function": func,
-                "calls": ncalls,
-                "total_time": tottime,
-                "cumulative_time": cumtime,
-                "time_per_call": tottime / ncalls if ncalls > 0 else 0,
-            })
+            hotspots.append(
+                {
+                    "file": file,
+                    "line": line,
+                    "function": func,
+                    "calls": ncalls,
+                    "total_time": tottime,
+                    "cumulative_time": cumtime,
+                    "time_per_call": tottime / ncalls if ncalls > 0 else 0,
+                }
+            )
 
         return hotspots
 
@@ -434,7 +434,7 @@ class SlowJobLogger:
     def __init__(
         self,
         threshold_seconds: float = DEFAULT_SLOW_THRESHOLD_SECONDS,
-        log_level: int = logging.WARNING
+        log_level: int = logging.WARNING,
     ) -> None:
         """Initialize slow job logger.
 
@@ -452,7 +452,7 @@ class SlowJobLogger:
         self,
         file_path: str | None = None,
         file_size_bytes: int | None = None,
-        tick_count: int | None = None
+        tick_count: int | None = None,
     ) -> Generator[None, None, None]:
         """Track a job for slow logging.
 
@@ -524,7 +524,7 @@ class SlowJobLogger:
 def create_timing_context(
     enable_timing: bool = True,
     enable_slow_logging: bool = True,
-    slow_threshold_seconds: float = DEFAULT_SLOW_THRESHOLD_SECONDS
+    slow_threshold_seconds: float = DEFAULT_SLOW_THRESHOLD_SECONDS,
 ) -> tuple[TimingCollector, SlowJobLogger]:
     """Create timing and slow logging context for an analysis.
 
@@ -541,7 +541,7 @@ def create_timing_context(
 
     slow_logger = SlowJobLogger(
         threshold_seconds=slow_threshold_seconds,
-        log_level=logging.WARNING if enable_slow_logging else logging.DEBUG
+        log_level=logging.WARNING if enable_slow_logging else logging.DEBUG,
     )
 
     return collector, slow_logger

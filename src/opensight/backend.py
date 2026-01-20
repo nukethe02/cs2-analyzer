@@ -35,13 +35,13 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
 
 # Lazy import flags
-_POLARS_AVAILABLE: Optional[bool] = None
-_PANDAS_AVAILABLE: Optional[bool] = None
+_POLARS_AVAILABLE: bool | None = None
+_PANDAS_AVAILABLE: bool | None = None
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -54,6 +54,7 @@ def _check_polars() -> bool:
     if _POLARS_AVAILABLE is None:
         try:
             import polars  # noqa: F401
+
             _POLARS_AVAILABLE = True
         except ImportError:
             _POLARS_AVAILABLE = False
@@ -66,6 +67,7 @@ def _check_pandas() -> bool:
     if _PANDAS_AVAILABLE is None:
         try:
             import pandas  # noqa: F401
+
             _PANDAS_AVAILABLE = True
         except ImportError:
             _PANDAS_AVAILABLE = False
@@ -75,6 +77,7 @@ def _check_pandas() -> bool:
 @dataclass
 class BackendConfig:
     """Configuration for DataFrame backend selection."""
+
     use_polars: bool = False
     lazy_mode: bool = True  # Use LazyFrames when possible
     cache_format: str = "parquet"  # 'parquet', 'feather', 'pickle'
@@ -82,7 +85,7 @@ class BackendConfig:
 
 
 # Global backend configuration
-_backend_config: Optional[BackendConfig] = None
+_backend_config: BackendConfig | None = None
 
 
 def get_backend_config() -> BackendConfig:
@@ -129,7 +132,7 @@ class DataFrameBackend(ABC):
         pass
 
     @abstractmethod
-    def empty(self, schema: Optional[dict[str, type]] = None) -> Any:
+    def empty(self, schema: dict[str, type] | None = None) -> Any:
         """Create an empty DataFrame."""
         pass
 
@@ -159,12 +162,12 @@ class DataFrameBackend(ABC):
         pass
 
     @abstractmethod
-    def to_pandas(self, df: Any) -> "pd.DataFrame":
+    def to_pandas(self, df: Any) -> pd.DataFrame:
         """Convert to pandas DataFrame."""
         pass
 
     @abstractmethod
-    def to_polars(self, df: Any) -> "pl.DataFrame":
+    def to_polars(self, df: Any) -> pl.DataFrame:
         """Convert to Polars DataFrame."""
         pass
 
@@ -227,30 +230,31 @@ class PandasBackend(DataFrameBackend):
         if not _check_pandas():
             raise ImportError("pandas is required for PandasBackend")
         import pandas as pd
+
         self._pd = pd
 
     @property
     def name(self) -> str:
         return "pandas"
 
-    def from_dict(self, data: dict[str, list]) -> "pd.DataFrame":
+    def from_dict(self, data: dict[str, list]) -> pd.DataFrame:
         return self._pd.DataFrame(data)
 
-    def from_records(self, records: list[dict]) -> "pd.DataFrame":
+    def from_records(self, records: list[dict]) -> pd.DataFrame:
         return self._pd.DataFrame.from_records(records)
 
-    def empty(self, schema: Optional[dict[str, type]] = None) -> "pd.DataFrame":
+    def empty(self, schema: dict[str, type] | None = None) -> pd.DataFrame:
         if schema:
             return self._pd.DataFrame({k: self._pd.Series(dtype=v) for k, v in schema.items()})
         return self._pd.DataFrame()
 
-    def concat(self, dfs: list["pd.DataFrame"], ignore_index: bool = True) -> "pd.DataFrame":
+    def concat(self, dfs: list[pd.DataFrame], ignore_index: bool = True) -> pd.DataFrame:
         valid_dfs = [df for df in dfs if df is not None and not df.empty]
         if not valid_dfs:
             return self._pd.DataFrame()
         return self._pd.concat(valid_dfs, ignore_index=ignore_index)
 
-    def filter(self, df: "pd.DataFrame", column: str, op: str, value: Any) -> "pd.DataFrame":
+    def filter(self, df: pd.DataFrame, column: str, op: str, value: Any) -> pd.DataFrame:
         if column not in df.columns:
             return df
         if op == "==":
@@ -272,60 +276,61 @@ class PandasBackend(DataFrameBackend):
         else:
             raise ValueError(f"Unknown operator: {op}")
 
-    def groupby_agg(self, df: "pd.DataFrame", by: list[str], aggs: dict[str, str]) -> "pd.DataFrame":
+    def groupby_agg(self, df: pd.DataFrame, by: list[str], aggs: dict[str, str]) -> pd.DataFrame:
         return df.groupby(by, as_index=False).agg(aggs)
 
-    def sort(self, df: "pd.DataFrame", by: list[str], descending: bool = False) -> "pd.DataFrame":
+    def sort(self, df: pd.DataFrame, by: list[str], descending: bool = False) -> pd.DataFrame:
         return df.sort_values(by=by, ascending=not descending)
 
-    def select(self, df: "pd.DataFrame", columns: list[str]) -> "pd.DataFrame":
+    def select(self, df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
         existing = [c for c in columns if c in df.columns]
         return df[existing]
 
-    def to_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
+    def to_pandas(self, df: pd.DataFrame) -> pd.DataFrame:
         return df
 
-    def to_polars(self, df: "pd.DataFrame") -> "pl.DataFrame":
+    def to_polars(self, df: pd.DataFrame) -> pl.DataFrame:
         if not _check_polars():
             raise ImportError("polars is required to convert to Polars DataFrame")
         import polars as pl
+
         return pl.from_pandas(df)
 
-    def is_empty(self, df: "pd.DataFrame") -> bool:
+    def is_empty(self, df: pd.DataFrame) -> bool:
         return df is None or df.empty
 
-    def len(self, df: "pd.DataFrame") -> int:
+    def len(self, df: pd.DataFrame) -> int:
         return len(df) if df is not None else 0
 
-    def columns(self, df: "pd.DataFrame") -> list[str]:
+    def columns(self, df: pd.DataFrame) -> list[str]:
         return list(df.columns) if df is not None else []
 
-    def iterrows(self, df: "pd.DataFrame"):
+    def iterrows(self, df: pd.DataFrame):
         if df is None or df.empty:
             return
         for idx, row in df.iterrows():
             yield idx, row.to_dict()
 
-    def get_column(self, df: "pd.DataFrame", column: str) -> Any:
+    def get_column(self, df: pd.DataFrame, column: str) -> Any:
         if column in df.columns:
             return df[column]
         return None
 
-    def unique(self, df: "pd.DataFrame", column: str) -> list:
+    def unique(self, df: pd.DataFrame, column: str) -> list:
         if column in df.columns:
             return df[column].dropna().unique().tolist()
         return []
 
-    def to_parquet(self, df: "pd.DataFrame", path: Path, compression: str = "zstd") -> None:
+    def to_parquet(self, df: pd.DataFrame, path: Path, compression: str = "zstd") -> None:
         df.to_parquet(path, compression=compression, index=False)
 
-    def read_parquet(self, path: Path) -> "pd.DataFrame":
+    def read_parquet(self, path: Path) -> pd.DataFrame:
         return self._pd.read_parquet(path)
 
-    def to_feather(self, df: "pd.DataFrame", path: Path) -> None:
+    def to_feather(self, df: pd.DataFrame, path: Path) -> None:
         df.to_feather(path)
 
-    def read_feather(self, path: Path) -> "pd.DataFrame":
+    def read_feather(self, path: Path) -> pd.DataFrame:
         return self._pd.read_feather(path)
 
 
@@ -336,6 +341,7 @@ class PolarsBackend(DataFrameBackend):
         if not _check_polars():
             raise ImportError("polars is required for PolarsBackend")
         import polars as pl
+
         self._pl = pl
         self._lazy_mode = lazy_mode
 
@@ -343,15 +349,15 @@ class PolarsBackend(DataFrameBackend):
     def name(self) -> str:
         return "polars"
 
-    def from_dict(self, data: dict[str, list]) -> "pl.DataFrame":
+    def from_dict(self, data: dict[str, list]) -> pl.DataFrame:
         return self._pl.DataFrame(data)
 
-    def from_records(self, records: list[dict]) -> "pl.DataFrame":
+    def from_records(self, records: list[dict]) -> pl.DataFrame:
         if not records:
             return self._pl.DataFrame()
         return self._pl.DataFrame(records)
 
-    def empty(self, schema: Optional[dict[str, type]] = None) -> "pl.DataFrame":
+    def empty(self, schema: dict[str, type] | None = None) -> pl.DataFrame:
         if schema:
             pl_schema = {}
             type_map = {
@@ -365,13 +371,13 @@ class PolarsBackend(DataFrameBackend):
             return self._pl.DataFrame(schema=pl_schema)
         return self._pl.DataFrame()
 
-    def concat(self, dfs: list["pl.DataFrame"], ignore_index: bool = True) -> "pl.DataFrame":
+    def concat(self, dfs: list[pl.DataFrame], ignore_index: bool = True) -> pl.DataFrame:
         valid_dfs = [df for df in dfs if df is not None and len(df) > 0]
         if not valid_dfs:
             return self._pl.DataFrame()
         return self._pl.concat(valid_dfs)
 
-    def filter(self, df: "pl.DataFrame", column: str, op: str, value: Any) -> "pl.DataFrame":
+    def filter(self, df: pl.DataFrame, column: str, op: str, value: Any) -> pl.DataFrame:
         if column not in df.columns:
             return df
         col = self._pl.col(column)
@@ -394,7 +400,7 @@ class PolarsBackend(DataFrameBackend):
         else:
             raise ValueError(f"Unknown operator: {op}")
 
-    def groupby_agg(self, df: "pl.DataFrame", by: list[str], aggs: dict[str, str]) -> "pl.DataFrame":
+    def groupby_agg(self, df: pl.DataFrame, by: list[str], aggs: dict[str, str]) -> pl.DataFrame:
         agg_exprs = []
         for col, agg_func in aggs.items():
             expr = self._pl.col(col)
@@ -414,69 +420,68 @@ class PolarsBackend(DataFrameBackend):
                 agg_exprs.append(expr.last())
         return df.group_by(by).agg(agg_exprs)
 
-    def sort(self, df: "pl.DataFrame", by: list[str], descending: bool = False) -> "pl.DataFrame":
+    def sort(self, df: pl.DataFrame, by: list[str], descending: bool = False) -> pl.DataFrame:
         return df.sort(by, descending=descending)
 
-    def select(self, df: "pl.DataFrame", columns: list[str]) -> "pl.DataFrame":
+    def select(self, df: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
         existing = [c for c in columns if c in df.columns]
         return df.select(existing)
 
-    def to_pandas(self, df: "pl.DataFrame") -> "pd.DataFrame":
+    def to_pandas(self, df: pl.DataFrame) -> pd.DataFrame:
         return df.to_pandas()
 
-    def to_polars(self, df: Union["pl.DataFrame", "pd.DataFrame"]) -> "pl.DataFrame":
+    def to_polars(self, df: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
         if isinstance(df, self._pl.DataFrame):
             return df
         # Assume it's pandas
         return self._pl.from_pandas(df)
 
-    def is_empty(self, df: "pl.DataFrame") -> bool:
+    def is_empty(self, df: pl.DataFrame) -> bool:
         return df is None or len(df) == 0
 
-    def len(self, df: "pl.DataFrame") -> int:
+    def len(self, df: pl.DataFrame) -> int:
         return len(df) if df is not None else 0
 
-    def columns(self, df: "pl.DataFrame") -> list[str]:
+    def columns(self, df: pl.DataFrame) -> list[str]:
         return df.columns if df is not None else []
 
-    def iterrows(self, df: "pl.DataFrame"):
+    def iterrows(self, df: pl.DataFrame):
         if df is None or len(df) == 0:
             return
-        for idx, row in enumerate(df.iter_rows(named=True)):
-            yield idx, row
+        yield from enumerate(df.iter_rows(named=True))
 
-    def get_column(self, df: "pl.DataFrame", column: str) -> Any:
+    def get_column(self, df: pl.DataFrame, column: str) -> Any:
         if column in df.columns:
             return df[column]
         return None
 
-    def unique(self, df: "pl.DataFrame", column: str) -> list:
+    def unique(self, df: pl.DataFrame, column: str) -> list:
         if column in df.columns:
             return df[column].drop_nulls().unique().to_list()
         return []
 
-    def to_parquet(self, df: "pl.DataFrame", path: Path, compression: str = "zstd") -> None:
+    def to_parquet(self, df: pl.DataFrame, path: Path, compression: str = "zstd") -> None:
         df.write_parquet(path, compression=compression)
 
-    def read_parquet(self, path: Path) -> "pl.DataFrame":
+    def read_parquet(self, path: Path) -> pl.DataFrame:
         return self._pl.read_parquet(path)
 
-    def to_feather(self, df: "pl.DataFrame", path: Path) -> None:
+    def to_feather(self, df: pl.DataFrame, path: Path) -> None:
         df.write_ipc(path)
 
-    def read_feather(self, path: Path) -> "pl.DataFrame":
+    def read_feather(self, path: Path) -> pl.DataFrame:
         return self._pl.read_ipc(path)
 
     # Polars-specific: LazyFrame support
-    def to_lazy(self, df: "pl.DataFrame") -> "pl.LazyFrame":
+    def to_lazy(self, df: pl.DataFrame) -> pl.LazyFrame:
         """Convert DataFrame to LazyFrame for query optimization."""
         return df.lazy()
 
-    def scan_parquet(self, path: Path) -> "pl.LazyFrame":
+    def scan_parquet(self, path: Path) -> pl.LazyFrame:
         """Lazy-scan a Parquet file for memory-efficient processing."""
         return self._pl.scan_parquet(path)
 
-    def collect(self, lf: "pl.LazyFrame") -> "pl.DataFrame":
+    def collect(self, lf: pl.LazyFrame) -> pl.DataFrame:
         """Collect a LazyFrame into a DataFrame."""
         return lf.collect()
 
@@ -498,7 +503,7 @@ class PolarsLazyBackend(PolarsBackend):
     def name(self) -> str:
         return "polars_lazy"
 
-    def scan_parquet_lazy(self, path: Path) -> "pl.LazyFrame":
+    def scan_parquet_lazy(self, path: Path) -> pl.LazyFrame:
         """
         Lazy-scan a Parquet file for memory-efficient processing.
 
@@ -507,7 +512,7 @@ class PolarsLazyBackend(PolarsBackend):
         """
         return self._pl.scan_parquet(path)
 
-    def filter_lazy(self, lf: "pl.LazyFrame", column: str, op: str, value: Any) -> "pl.LazyFrame":
+    def filter_lazy(self, lf: pl.LazyFrame, column: str, op: str, value: Any) -> pl.LazyFrame:
         """Filter a LazyFrame (optimized with predicate pushdown)."""
         col = self._pl.col(column)
         if op == "==":
@@ -528,8 +533,8 @@ class PolarsLazyBackend(PolarsBackend):
             raise ValueError(f"Unknown operator: {op}")
 
     def groupby_agg_lazy(
-        self, lf: "pl.LazyFrame", by: list[str], aggs: dict[str, str]
-    ) -> "pl.LazyFrame":
+        self, lf: pl.LazyFrame, by: list[str], aggs: dict[str, str]
+    ) -> pl.LazyFrame:
         """Group by and aggregate on LazyFrame (optimized)."""
         agg_exprs = []
         for col, agg_func in aggs.items():
@@ -548,12 +553,12 @@ class PolarsLazyBackend(PolarsBackend):
 
 
 # Singleton backend instances
-_pandas_backend: Optional[PandasBackend] = None
-_polars_backend: Optional[PolarsBackend] = None
-_polars_lazy_backend: Optional[PolarsLazyBackend] = None
+_pandas_backend: PandasBackend | None = None
+_polars_backend: PolarsBackend | None = None
+_polars_lazy_backend: PolarsLazyBackend | None = None
 
 
-def get_backend(use_polars: Optional[bool] = None, lazy: bool = False) -> DataFrameBackend:
+def get_backend(use_polars: bool | None = None, lazy: bool = False) -> DataFrameBackend:
     """
     Get the appropriate DataFrame backend.
 
@@ -592,7 +597,7 @@ def get_backend(use_polars: Optional[bool] = None, lazy: bool = False) -> DataFr
 def convert_dataframe(
     df: Any,
     to_backend: str,
-    from_backend: Optional[str] = None,
+    from_backend: str | None = None,
 ) -> Any:
     """
     Convert a DataFrame between backends.
@@ -612,10 +617,12 @@ def convert_dataframe(
     if from_backend is None:
         if _check_polars():
             import polars as pl
+
             if isinstance(df, (pl.DataFrame, pl.LazyFrame)):
                 from_backend = "polars"
         if from_backend is None and _check_pandas():
             import pandas as pd
+
             if isinstance(df, pd.DataFrame):
                 from_backend = "pandas"
 
@@ -627,9 +634,10 @@ def convert_dataframe(
         return df
 
     if to_backend == "pandas":
-        backend = get_backend(use_polars=False)
+        get_backend(use_polars=False)
         if from_backend == "polars":
             import polars as pl
+
             if isinstance(df, pl.LazyFrame):
                 df = df.collect()
             return df.to_pandas()
@@ -639,6 +647,7 @@ def convert_dataframe(
         if not _check_polars():
             raise ImportError("polars is required for conversion to Polars")
         import polars as pl
+
         if from_backend == "pandas":
             return pl.from_pandas(df)
         return df
@@ -651,11 +660,12 @@ def convert_dataframe(
 # Serialization Utilities
 # ============================================================================
 
+
 def save_dataframe(
     df: Any,
     path: Path,
-    format: Optional[str] = None,
-    compression: Optional[str] = None,
+    format: str | None = None,
+    compression: str | None = None,
 ) -> None:
     """
     Save a DataFrame to disk in an efficient format.
@@ -690,6 +700,7 @@ def save_dataframe(
     backend = None
     if _check_polars():
         import polars as pl
+
         if isinstance(df, (pl.DataFrame, pl.LazyFrame)):
             backend = get_backend(use_polars=True)
             if isinstance(df, pl.LazyFrame):
@@ -700,6 +711,7 @@ def save_dataframe(
         # Convert to pandas if needed
         if _check_polars():
             import polars as pl
+
             if isinstance(df, pl.DataFrame):
                 df = df.to_pandas()
 
@@ -724,8 +736,8 @@ def save_dataframe(
 
 def load_dataframe(
     path: Path,
-    format: Optional[str] = None,
-    use_polars: Optional[bool] = None,
+    format: str | None = None,
+    use_polars: bool | None = None,
     lazy: bool = False,
 ) -> Any:
     """
@@ -769,11 +781,13 @@ def load_dataframe(
     elif format == "csv":
         if backend.name == "polars":
             import polars as pl
+
             if lazy:
                 return pl.scan_csv(path)
             return pl.read_csv(path)
         else:
             import pandas as pd
+
             return pd.read_csv(path)
     else:
         raise ValueError(f"Unknown format: {format}")
@@ -782,6 +796,7 @@ def load_dataframe(
 # ============================================================================
 # Performance Benchmarking
 # ============================================================================
+
 
 def benchmark_backends(df_size: int = 100000) -> dict[str, float]:
     """
@@ -799,6 +814,7 @@ def benchmark_backends(df_size: int = 100000) -> dict[str, float]:
 
     # Generate test data
     import numpy as np
+
     np.random.seed(42)
     data = {
         "tick": list(range(df_size)),

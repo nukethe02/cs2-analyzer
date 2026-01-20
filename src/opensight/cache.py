@@ -11,16 +11,13 @@ Provides:
 
 from __future__ import annotations
 
-import logging
-import json
-import hashlib
 import gzip
-import shutil
-import time
-from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional, Any
+import hashlib
+import json
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +34,7 @@ DEFAULT_MAX_CACHE_SIZE_MB = 1000
 @dataclass
 class CacheEntry:
     """A cached analysis result."""
+
     key: str
     file_hash: str
     file_path: str
@@ -59,7 +57,7 @@ class CacheEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "CacheEntry":
+    def from_dict(cls, data: dict) -> CacheEntry:
         return cls(
             key=data["key"],
             file_hash=data["file_hash"],
@@ -75,10 +73,11 @@ class CacheEntry:
 @dataclass
 class CacheStats:
     """Cache statistics."""
+
     total_entries: int
     total_size_bytes: int
-    oldest_entry: Optional[datetime]
-    newest_entry: Optional[datetime]
+    oldest_entry: datetime | None
+    newest_entry: datetime | None
     hit_count: int = 0
     miss_count: int = 0
 
@@ -115,7 +114,7 @@ def compute_file_hash(file_path: Path, chunk_size: int = 65536) -> str:
         Hex digest of file hash
     """
     hasher = hashlib.sha256()
-    with open(file_path, 'rb') as f:
+    with open(file_path, "rb") as f:
         while chunk := f.read(chunk_size):
             hasher.update(chunk)
     return hasher.hexdigest()
@@ -142,7 +141,7 @@ class DemoCache:
 
     def __init__(
         self,
-        cache_dir: Optional[Path] = None,
+        cache_dir: Path | None = None,
         max_size_mb: int = DEFAULT_MAX_CACHE_SIZE_MB,
         max_age_days: int = DEFAULT_MAX_AGE_DAYS,
     ):
@@ -178,8 +177,7 @@ class DemoCache:
                 with open(self.index_path) as f:
                     data = json.load(f)
                 self._index = {
-                    k: CacheEntry.from_dict(v)
-                    for k, v in data.get("entries", {}).items()
+                    k: CacheEntry.from_dict(v) for k, v in data.get("entries", {}).items()
                 }
                 self._hit_count = data.get("hit_count", 0)
                 self._miss_count = data.get("miss_count", 0)
@@ -196,7 +194,7 @@ class DemoCache:
                 "hit_count": self._hit_count,
                 "miss_count": self._miss_count,
             }
-            with open(self.index_path, 'w') as f:
+            with open(self.index_path, "w") as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
             logger.warning(f"Failed to save cache index: {e}")
@@ -219,7 +217,7 @@ class DemoCache:
         key = self.get_cache_key(demo_path)
         return key in self._index and self._get_data_path(key).exists()
 
-    def get(self, demo_path: Path) -> Optional[dict]:
+    def get(self, demo_path: Path) -> dict | None:
         """
         Get cached analysis for a demo.
 
@@ -245,7 +243,7 @@ class DemoCache:
             return None
 
         try:
-            with gzip.open(data_path, 'rt') as f:
+            with gzip.open(data_path, "rt") as f:
                 data = json.load(f)
 
             # Update access time
@@ -274,13 +272,13 @@ class DemoCache:
 
         try:
             # Write compressed data
-            with gzip.open(data_path, 'wt') as f:
+            with gzip.open(data_path, "wt") as f:
                 json.dump(analysis_data, f)
 
             # Create index entry
             entry = CacheEntry(
                 key=key,
-                file_hash=key.split('_')[0],
+                file_hash=key.split("_")[0],
                 file_path=str(demo_path),
                 file_size=demo_path.stat().st_size,
                 created_at=datetime.now(),
@@ -432,7 +430,7 @@ class CachedAnalyzer:
     Automatically checks cache before analyzing and stores results.
     """
 
-    def __init__(self, cache: Optional[DemoCache] = None):
+    def __init__(self, cache: DemoCache | None = None):
         """
         Initialize the cached analyzer.
 
@@ -461,8 +459,8 @@ class CachedAnalyzer:
 
         # Run analysis
         logger.info(f"Analyzing {demo_path.name}")
-        from opensight.parser import DemoParser
         from opensight.analytics import DemoAnalyzer
+        from opensight.parser import DemoParser
 
         parser = DemoParser(demo_path)
         demo_data = parser.parse()
@@ -503,7 +501,8 @@ class CachedAnalyzer:
 
 # Convenience functions
 
-def get_cached_analysis(demo_path: Path) -> Optional[dict]:
+
+def get_cached_analysis(demo_path: Path) -> dict | None:
     """Get cached analysis if available."""
     cache = DemoCache()
     return cache.get(demo_path)
