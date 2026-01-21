@@ -520,7 +520,7 @@ def get_cache_stats() -> dict:
     return cache.get_stats().to_dict()
 
 
-def clear_cache():
+def clear_cache() -> None:
     """Clear all cached data."""
     cache = DemoCache()
     cache.clear()
