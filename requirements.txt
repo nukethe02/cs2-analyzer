@@ -14,6 +14,7 @@ typer>=0.9.0
 
 # Web application - FastAPI
 fastapi>=0.100.0
+pydantic>=2.0.0  # Request/response validation (also bundled with FastAPI)
 uvicorn[standard]>=0.23.0
 python-multipart>=0.0.6
 websockets>=11.0.0  # For real-time coaching WebSocket support
@@ -27,6 +28,13 @@ gunicorn>=21.0.0
 openpyxl>=3.1.0
 pyyaml>=6.0
 
+# Database (FREE - SQLite with SQLAlchemy)
+sqlalchemy>=2.0.0
+
+# PDF Export (optional, FREE - reportlab community edition)
+# Install with: pip install reportlab
+# Falls back to print-friendly HTML if not installed
+
 # Advanced features dependencies
 # Note: These use only Python standard library for core functionality
 # but optional integrations may require additional packages
@@ -39,10 +47,10 @@ pyyaml>=6.0
 # beautifulsoup4>=4.12.0
 # httpx>=0.25.0
 
-# Video analysis dependencies
-opencv-python-headless>=4.8.0  # Headless OpenCV for server deployment
-scikit-learn>=1.3.0  # ML algorithms for pattern recognition
-scipy>=1.11.0  # Scientific computing for signal processing
+# Optional: Discord bot integration (install separately if needed)
+# pip install discord.py aiohttp
+# discord.py>=2.3.0
+# aiohttp>=3.9.0
 
 # Development dependencies (install with: pip install -e ".[dev]")
 # pytest>=7.4.0

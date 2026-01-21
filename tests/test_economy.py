@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from opensight.economy import (
+from opensight.domains.economy import (
     BuyType,
     classify_buy_type,
     classify_team_buy,
@@ -17,7 +17,7 @@ from opensight.economy import (
     analyze_economy,
     WEAPON_COSTS,
 )
-from opensight.parser import DemoData
+from opensight.core.parser import DemoData
 
 
 class TestBuyTypeClassification:

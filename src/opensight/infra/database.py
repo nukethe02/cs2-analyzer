@@ -1,0 +1,870 @@
+"""
+OpenSight Match History Database System.
+
+Provides persistent storage for match history, player statistics,
+and performance tracking across multiple matches.
+
+Uses SQLite (free, no external dependencies) with SQLAlchemy ORM
+for clean database abstraction.
+
+All features are 100% FREE - no paid services required.
+"""
+
+import hashlib
+import json
+import logging
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    func,
+)
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import Session, relationship, sessionmaker
+
+logger = logging.getLogger(__name__)
+
+# Database configuration
+DEFAULT_DB_PATH = Path.home() / ".opensight" / "history.db"
+Base = declarative_base()
+
+
+# =============================================================================
+# Database Models
+# =============================================================================
+
+
+class Match(Base):
+    """Match metadata and summary."""
+
+    __tablename__ = "matches"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    demo_hash = Column(String(64), unique=True, nullable=False, index=True)
+    map_name = Column(String(50), nullable=False, index=True)
+    date_played = Column(DateTime, index=True)
+    date_analyzed = Column(DateTime, default=datetime.utcnow)
+
+    # Score
+    score_ct = Column(Integer, default=0)
+    score_t = Column(Integer, default=0)
+    total_rounds = Column(Integer, default=0)
+
+    # Match info
+    duration_seconds = Column(Float)
+    tick_rate = Column(Integer)
+    server_name = Column(String(200))
+
+    # Demo file info
+    demo_filename = Column(String(500))
+    demo_size_mb = Column(Float)
+
+    # Relationships
+    player_matches = relationship(
+        "PlayerMatch", back_populates="match", cascade="all, delete-orphan"
+    )
+    rounds = relationship("Round", back_populates="match", cascade="all, delete-orphan")
+
+    # Indexes for common queries
+    __table_args__ = (
+        Index("idx_match_date_map", "date_played", "map_name"),
+        Index("idx_match_analyzed", "date_analyzed"),
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "demo_hash": self.demo_hash,
+            "map_name": self.map_name,
+            "date_played": self.date_played.isoformat() if self.date_played else None,
+            "date_analyzed": (
+                self.date_analyzed.isoformat() if self.date_analyzed else None
+            ),
+            "score": f"{self.score_ct}-{self.score_t}",
+            "total_rounds": self.total_rounds,
+            "duration_seconds": self.duration_seconds,
+            "tick_rate": self.tick_rate,
+        }
+
+
+class PlayerMatch(Base):
+    """Player performance in a specific match."""
+
+    __tablename__ = "player_matches"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False, index=True)
+    steam_id = Column(String(20), nullable=False, index=True)
+    player_name = Column(String(100), nullable=False)
+    team = Column(String(20))  # CT, T, or team name
+
+    # Core stats
+    kills = Column(Integer, default=0)
+    deaths = Column(Integer, default=0)
+    assists = Column(Integer, default=0)
+    headshots = Column(Integer, default=0)
+    headshot_percentage = Column(Float, default=0.0)
+
+    # Damage
+    total_damage = Column(Integer, default=0)
+    adr = Column(Float, default=0.0)
+
+    # Ratings
+    hltv_rating = Column(Float, default=1.0, index=True)
+    kast_percentage = Column(Float, default=0.0)
+
+    # Advanced metrics
+    ttd_mean_ms = Column(Float)
+    ttd_median_ms = Column(Float)
+    cp_mean_deg = Column(Float)
+    cp_median_deg = Column(Float)
+
+    # Utility stats
+    flashbangs_thrown = Column(Integer, default=0)
+    smokes_thrown = Column(Integer, default=0)
+    he_thrown = Column(Integer, default=0)
+    molotovs_thrown = Column(Integer, default=0)
+    enemies_flashed = Column(Integer, default=0)
+    flash_assists = Column(Integer, default=0)
+
+    # Economy
+    total_spent = Column(Integer, default=0)
+    avg_equipment_value = Column(Float, default=0.0)
+
+    # Duels
+    opening_kills = Column(Integer, default=0)
+    opening_deaths = Column(Integer, default=0)
+    opening_attempts = Column(Integer, default=0)
+    opening_win_rate = Column(Float, default=0.0)
+
+    # Clutches
+    clutch_situations = Column(Integer, default=0)
+    clutch_wins = Column(Integer, default=0)
+    clutch_win_rate = Column(Float, default=0.0)
+
+    # Trades
+    kills_traded = Column(Integer, default=0)
+    deaths_traded = Column(Integer, default=0)
+    trade_kill_rate = Column(Float, default=0.0)
+
+    # Round participation
+    rounds_played = Column(Integer, default=0)
+    rounds_with_kill = Column(Integer, default=0)
+    rounds_with_damage = Column(Integer, default=0)
+
+    # Match result for this player
+    won_match = Column(Boolean)
+
+    # Relationships
+    match = relationship("Match", back_populates="player_matches")
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_player_steam_rating", "steam_id", "hltv_rating"),
+        Index("idx_player_match_team", "match_id", "team"),
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API responses."""
+        return {
+            "steam_id": self.steam_id,
+            "player_name": self.player_name,
+            "team": self.team,
+            "kills": self.kills,
+            "deaths": self.deaths,
+            "assists": self.assists,
+            "headshot_percentage": round(self.headshot_percentage, 1),
+            "adr": round(self.adr, 1),
+            "hltv_rating": round(self.hltv_rating, 2),
+            "kast_percentage": round(self.kast_percentage, 1),
+            "ttd_median_ms": (
+                round(self.ttd_median_ms, 1) if self.ttd_median_ms else None
+            ),
+            "cp_median_deg": (
+                round(self.cp_median_deg, 1) if self.cp_median_deg else None
+            ),
+            "opening_kills": self.opening_kills,
+            "opening_deaths": self.opening_deaths,
+            "clutch_wins": self.clutch_wins,
+            "clutch_situations": self.clutch_situations,
+            "won_match": self.won_match,
+        }
+
+
+class Round(Base):
+    """Round-by-round data for detailed analysis."""
+
+    __tablename__ = "rounds"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False, index=True)
+    round_num = Column(Integer, nullable=False)
+
+    # Winner
+    winner = Column(String(20))  # CT, T
+    win_type = Column(String(30))  # bomb_defused, elimination, time, bomb_exploded
+
+    # First kill info
+    first_kill_steam_id = Column(String(20))
+    first_death_steam_id = Column(String(20))
+    first_kill_weapon = Column(String(50))
+
+    # Economy
+    ct_equipment_value = Column(Integer)
+    t_equipment_value = Column(Integer)
+    ct_buy_type = Column(String(20))  # full, eco, force, etc.
+    t_buy_type = Column(String(20))
+
+    # Duration
+    duration_seconds = Column(Float)
+
+    # Relationships
+    match = relationship("Match", back_populates="rounds")
+
+    __table_args__ = (Index("idx_round_match_num", "match_id", "round_num"),)
+
+
+class PlayerProfile(Base):
+    """Aggregated player statistics across all matches."""
+
+    __tablename__ = "player_profiles"
+
+    steam_id = Column(String(20), primary_key=True)
+    player_name = Column(String(100), nullable=False)
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Career totals
+    total_matches = Column(Integer, default=0)
+    total_wins = Column(Integer, default=0)
+    total_losses = Column(Integer, default=0)
+    total_kills = Column(Integer, default=0)
+    total_deaths = Column(Integer, default=0)
+    total_assists = Column(Integer, default=0)
+    total_headshots = Column(Integer, default=0)
+    total_damage = Column(Integer, default=0)
+    total_rounds_played = Column(Integer, default=0)
+
+    # Average metrics (updated on each match)
+    avg_kills = Column(Float, default=0.0)
+    avg_deaths = Column(Float, default=0.0)
+    avg_adr = Column(Float, default=0.0)
+    avg_rating = Column(Float, default=1.0)
+    avg_kast = Column(Float, default=0.0)
+    avg_hs_percentage = Column(Float, default=0.0)
+
+    # Best performances (career highs)
+    best_rating = Column(Float, default=0.0)
+    best_kills = Column(Integer, default=0)
+    best_adr = Column(Float, default=0.0)
+    best_kast = Column(Float, default=0.0)
+
+    # Clutch/duel stats
+    total_clutch_situations = Column(Integer, default=0)
+    total_clutch_wins = Column(Integer, default=0)
+    total_opening_duels = Column(Integer, default=0)
+    total_opening_kills = Column(Integer, default=0)
+
+    # Map performance (JSON blob)
+    map_stats_json = Column(Text)  # {"de_dust2": {"matches": 5, "wins": 3, ...}}
+
+    # Recent form (last N matches rating)
+    recent_form_json = Column(Text)  # [1.2, 0.9, 1.1, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API responses."""
+        map_stats = json.loads(self.map_stats_json) if self.map_stats_json else {}
+        recent_form = json.loads(self.recent_form_json) if self.recent_form_json else []
+
+        return {
+            "steam_id": self.steam_id,
+            "player_name": self.player_name,
+            "last_updated": (
+                self.last_updated.isoformat() if self.last_updated else None
+            ),
+            "career": {
+                "matches": self.total_matches,
+                "wins": self.total_wins,
+                "losses": self.total_losses,
+                "win_rate": (
+                    round(self.total_wins / max(self.total_matches, 1) * 100, 1)
+                ),
+                "kills": self.total_kills,
+                "deaths": self.total_deaths,
+                "kd_ratio": round(
+                    self.total_kills / max(self.total_deaths, 1), 2
+                ),
+                "headshots": self.total_headshots,
+                "total_damage": self.total_damage,
+                "rounds_played": self.total_rounds_played,
+            },
+            "averages": {
+                "kills": round(self.avg_kills, 1),
+                "deaths": round(self.avg_deaths, 1),
+                "adr": round(self.avg_adr, 1),
+                "rating": round(self.avg_rating, 2),
+                "kast": round(self.avg_kast, 1),
+                "hs_percentage": round(self.avg_hs_percentage, 1),
+            },
+            "career_highs": {
+                "best_rating": round(self.best_rating, 2),
+                "best_kills": self.best_kills,
+                "best_adr": round(self.best_adr, 1),
+                "best_kast": round(self.best_kast, 1),
+            },
+            "clutches": {
+                "situations": self.total_clutch_situations,
+                "wins": self.total_clutch_wins,
+                "win_rate": round(
+                    self.total_clutch_wins
+                    / max(self.total_clutch_situations, 1)
+                    * 100,
+                    1,
+                ),
+            },
+            "opening_duels": {
+                "total": self.total_opening_duels,
+                "wins": self.total_opening_kills,
+                "win_rate": round(
+                    self.total_opening_kills / max(self.total_opening_duels, 1) * 100, 1
+                ),
+            },
+            "map_stats": map_stats,
+            "recent_form": recent_form[-10:],  # Last 10 matches
+        }
+
+
+# =============================================================================
+# Database Manager
+# =============================================================================
+
+
+class DatabaseManager:
+    """
+    Manages database connections and operations.
+
+    All operations are FREE - uses SQLite with no external dependencies.
+    """
+
+    def __init__(self, db_path: Path | str | None = None):
+        """Initialize database connection."""
+        if db_path is None:
+            db_path = os.environ.get("OPENSIGHT_DB_PATH", DEFAULT_DB_PATH)
+
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create engine with SQLite
+        self.engine = create_engine(
+            f"sqlite:///{self.db_path}",
+            echo=False,
+            connect_args={"check_same_thread": False},
+        )
+
+        # Create session factory
+        self.SessionLocal = sessionmaker(bind=self.engine)
+
+        # Create tables if they don't exist
+        Base.metadata.create_all(self.engine)
+
+        logger.info(f"Database initialized at: {self.db_path}")
+
+    def get_session(self) -> Session:
+        """Get a database session."""
+        return self.SessionLocal()
+
+    # =========================================================================
+    # Match Operations
+    # =========================================================================
+
+    def save_match(
+        self,
+        demo_hash: str,
+        map_name: str,
+        player_stats: list[dict],
+        match_info: dict | None = None,
+        round_data: list[dict] | None = None,
+    ) -> Match | None:
+        """
+        Save a match and all player statistics.
+
+        Args:
+            demo_hash: SHA256 hash of the demo file (for deduplication)
+            map_name: Map name
+            player_stats: List of player statistics dictionaries
+            match_info: Optional match metadata
+            round_data: Optional round-by-round data
+
+        Returns:
+            Match object if saved, None if already exists
+        """
+        session = self.get_session()
+        try:
+            # Check for duplicate
+            existing = (
+                session.query(Match).filter(Match.demo_hash == demo_hash).first()
+            )
+            if existing:
+                logger.info(f"Match already exists: {demo_hash[:16]}...")
+                return None
+
+            # Create match record
+            match_info = match_info or {}
+            match = Match(
+                demo_hash=demo_hash,
+                map_name=map_name,
+                date_played=match_info.get("date_played"),
+                score_ct=match_info.get("score_ct", 0),
+                score_t=match_info.get("score_t", 0),
+                total_rounds=match_info.get("total_rounds", 0),
+                duration_seconds=match_info.get("duration_seconds"),
+                tick_rate=match_info.get("tick_rate"),
+                server_name=match_info.get("server_name"),
+                demo_filename=match_info.get("demo_filename"),
+                demo_size_mb=match_info.get("demo_size_mb"),
+            )
+            session.add(match)
+            session.flush()  # Get match ID
+
+            # Determine winner
+            ct_won = match.score_ct > match.score_t
+
+            # Save player stats
+            for ps in player_stats:
+                player_won = None
+                if ps.get("team"):
+                    if ps["team"].upper() == "CT":
+                        player_won = ct_won
+                    elif ps["team"].upper() in ("T", "TERRORIST"):
+                        player_won = not ct_won
+
+                pm = PlayerMatch(
+                    match_id=match.id,
+                    steam_id=str(ps.get("steam_id", "")),
+                    player_name=ps.get("name", "Unknown"),
+                    team=ps.get("team"),
+                    kills=ps.get("kills", 0),
+                    deaths=ps.get("deaths", 0),
+                    assists=ps.get("assists", 0),
+                    headshots=ps.get("headshots", 0),
+                    headshot_percentage=ps.get("headshot_percentage", 0),
+                    total_damage=ps.get("total_damage", 0),
+                    adr=ps.get("adr", 0),
+                    hltv_rating=ps.get("hltv_rating", 1.0),
+                    kast_percentage=ps.get("kast_percentage", 0),
+                    ttd_mean_ms=ps.get("ttd_mean_ms"),
+                    ttd_median_ms=ps.get("ttd_median_ms"),
+                    cp_mean_deg=ps.get("cp_mean_deg"),
+                    cp_median_deg=ps.get("cp_median_deg"),
+                    flashbangs_thrown=ps.get("flashbangs_thrown", 0),
+                    smokes_thrown=ps.get("smokes_thrown", 0),
+                    he_thrown=ps.get("he_thrown", 0),
+                    molotovs_thrown=ps.get("molotovs_thrown", 0),
+                    enemies_flashed=ps.get("enemies_flashed", 0),
+                    opening_kills=ps.get("opening_kills", 0),
+                    opening_deaths=ps.get("opening_deaths", 0),
+                    opening_attempts=ps.get("opening_attempts", 0),
+                    opening_win_rate=ps.get("opening_win_rate", 0),
+                    clutch_situations=ps.get("clutch_situations", 0),
+                    clutch_wins=ps.get("clutch_wins", 0),
+                    clutch_win_rate=ps.get("clutch_win_rate", 0),
+                    kills_traded=ps.get("kills_traded", 0),
+                    deaths_traded=ps.get("deaths_traded", 0),
+                    rounds_played=ps.get("rounds_played", 0),
+                    won_match=player_won,
+                )
+                session.add(pm)
+
+                # Update player profile
+                self._update_player_profile(session, pm, map_name)
+
+            # Save round data if provided
+            if round_data:
+                for rd in round_data:
+                    round_obj = Round(
+                        match_id=match.id,
+                        round_num=rd.get("round_num", 0),
+                        winner=rd.get("winner"),
+                        win_type=rd.get("win_type"),
+                        first_kill_steam_id=rd.get("first_kill_steam_id"),
+                        first_death_steam_id=rd.get("first_death_steam_id"),
+                        ct_equipment_value=rd.get("ct_equipment_value"),
+                        t_equipment_value=rd.get("t_equipment_value"),
+                        ct_buy_type=rd.get("ct_buy_type"),
+                        t_buy_type=rd.get("t_buy_type"),
+                        duration_seconds=rd.get("duration_seconds"),
+                    )
+                    session.add(round_obj)
+
+            session.commit()
+            logger.info(
+                f"Saved match {demo_hash[:16]}... with {len(player_stats)} players"
+            )
+            return match
+
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to save match: {e}")
+            raise
+        finally:
+            session.close()
+
+    def _update_player_profile(
+        self, session: Session, pm: PlayerMatch, map_name: str
+    ) -> None:
+        """Update or create player profile with new match data."""
+        profile = (
+            session.query(PlayerProfile)
+            .filter(PlayerProfile.steam_id == pm.steam_id)
+            .first()
+        )
+
+        if not profile:
+            profile = PlayerProfile(
+                steam_id=pm.steam_id,
+                player_name=pm.player_name,
+            )
+            session.add(profile)
+
+        # Update totals
+        profile.player_name = pm.player_name  # Use latest name
+        profile.total_matches += 1
+        if pm.won_match is True:
+            profile.total_wins += 1
+        elif pm.won_match is False:
+            profile.total_losses += 1
+        profile.total_kills += pm.kills
+        profile.total_deaths += pm.deaths
+        profile.total_assists += pm.assists
+        profile.total_headshots += pm.headshots
+        profile.total_damage += pm.total_damage
+        profile.total_rounds_played += pm.rounds_played
+        profile.total_clutch_situations += pm.clutch_situations
+        profile.total_clutch_wins += pm.clutch_wins
+        profile.total_opening_duels += pm.opening_attempts
+        profile.total_opening_kills += pm.opening_kills
+
+        # Update averages
+        n = profile.total_matches
+        profile.avg_kills = profile.total_kills / n
+        profile.avg_deaths = profile.total_deaths / n
+        profile.avg_adr = (
+            profile.total_damage / max(profile.total_rounds_played, 1)
+        )
+        # Running average for rating
+        profile.avg_rating = (
+            (profile.avg_rating * (n - 1) + pm.hltv_rating) / n
+        )
+        profile.avg_kast = (
+            (profile.avg_kast * (n - 1) + pm.kast_percentage) / n
+        )
+        profile.avg_hs_percentage = (
+            (profile.avg_hs_percentage * (n - 1) + pm.headshot_percentage) / n
+        )
+
+        # Update career highs
+        if pm.hltv_rating > profile.best_rating:
+            profile.best_rating = pm.hltv_rating
+        if pm.kills > profile.best_kills:
+            profile.best_kills = pm.kills
+        if pm.adr > profile.best_adr:
+            profile.best_adr = pm.adr
+        if pm.kast_percentage > profile.best_kast:
+            profile.best_kast = pm.kast_percentage
+
+        # Update map stats
+        map_stats = (
+            json.loads(profile.map_stats_json) if profile.map_stats_json else {}
+        )
+        if map_name not in map_stats:
+            map_stats[map_name] = {"matches": 0, "wins": 0, "avg_rating": 0}
+        map_stats[map_name]["matches"] += 1
+        if pm.won_match:
+            map_stats[map_name]["wins"] += 1
+        old_avg = map_stats[map_name]["avg_rating"]
+        old_n = map_stats[map_name]["matches"] - 1
+        map_stats[map_name]["avg_rating"] = (
+            (old_avg * old_n + pm.hltv_rating) / map_stats[map_name]["matches"]
+        )
+        profile.map_stats_json = json.dumps(map_stats)
+
+        # Update recent form
+        recent_form = (
+            json.loads(profile.recent_form_json) if profile.recent_form_json else []
+        )
+        recent_form.append(round(pm.hltv_rating, 2))
+        if len(recent_form) > 20:  # Keep last 20
+            recent_form = recent_form[-20:]
+        profile.recent_form_json = json.dumps(recent_form)
+
+    def get_match_by_hash(self, demo_hash: str) -> Match | None:
+        """Get a match by its demo hash."""
+        session = self.get_session()
+        try:
+            return (
+                session.query(Match).filter(Match.demo_hash == demo_hash).first()
+            )
+        finally:
+            session.close()
+
+    def get_match_history(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        map_name: str | None = None,
+        steam_id: str | None = None,
+    ) -> list[dict]:
+        """
+        Get match history with optional filters.
+
+        Args:
+            limit: Maximum matches to return
+            offset: Pagination offset
+            map_name: Filter by map
+            steam_id: Filter by player Steam ID
+
+        Returns:
+            List of match dictionaries
+        """
+        session = self.get_session()
+        try:
+            query = session.query(Match)
+
+            if map_name:
+                query = query.filter(Match.map_name == map_name)
+
+            if steam_id:
+                query = query.join(PlayerMatch).filter(
+                    PlayerMatch.steam_id == steam_id
+                )
+
+            matches = (
+                query.order_by(Match.date_analyzed.desc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+
+            result = []
+            for m in matches:
+                match_dict = m.to_dict()
+                # Include player count
+                match_dict["player_count"] = len(m.player_matches)
+                result.append(match_dict)
+
+            return result
+        finally:
+            session.close()
+
+    def get_match_details(self, match_id: int) -> dict | None:
+        """Get full match details including all player stats."""
+        session = self.get_session()
+        try:
+            match = session.query(Match).filter(Match.id == match_id).first()
+            if not match:
+                return None
+
+            return {
+                "match": match.to_dict(),
+                "players": [pm.to_dict() for pm in match.player_matches],
+                "rounds": [
+                    {
+                        "round_num": r.round_num,
+                        "winner": r.winner,
+                        "win_type": r.win_type,
+                        "ct_equipment": r.ct_equipment_value,
+                        "t_equipment": r.t_equipment_value,
+                    }
+                    for r in sorted(match.rounds, key=lambda x: x.round_num)
+                ],
+            }
+        finally:
+            session.close()
+
+    # =========================================================================
+    # Player Profile Operations
+    # =========================================================================
+
+    def get_player_profile(self, steam_id: str) -> dict | None:
+        """Get a player's career profile."""
+        session = self.get_session()
+        try:
+            profile = (
+                session.query(PlayerProfile)
+                .filter(PlayerProfile.steam_id == steam_id)
+                .first()
+            )
+            return profile.to_dict() if profile else None
+        finally:
+            session.close()
+
+    def get_player_match_history(
+        self, steam_id: str, limit: int = 20
+    ) -> list[dict]:
+        """Get a player's recent matches."""
+        session = self.get_session()
+        try:
+            player_matches = (
+                session.query(PlayerMatch)
+                .join(Match)
+                .filter(PlayerMatch.steam_id == steam_id)
+                .order_by(Match.date_analyzed.desc())
+                .limit(limit)
+                .all()
+            )
+
+            return [
+                {
+                    "match_id": pm.match_id,
+                    "map_name": pm.match.map_name,
+                    "date": (
+                        pm.match.date_analyzed.isoformat()
+                        if pm.match.date_analyzed
+                        else None
+                    ),
+                    "score": f"{pm.match.score_ct}-{pm.match.score_t}",
+                    "team": pm.team,
+                    "kills": pm.kills,
+                    "deaths": pm.deaths,
+                    "rating": round(pm.hltv_rating, 2),
+                    "adr": round(pm.adr, 1),
+                    "won": pm.won_match,
+                }
+                for pm in player_matches
+            ]
+        finally:
+            session.close()
+
+    def search_players(self, name_query: str, limit: int = 10) -> list[dict]:
+        """Search for players by name."""
+        session = self.get_session()
+        try:
+            profiles = (
+                session.query(PlayerProfile)
+                .filter(PlayerProfile.player_name.ilike(f"%{name_query}%"))
+                .order_by(PlayerProfile.total_matches.desc())
+                .limit(limit)
+                .all()
+            )
+
+            return [
+                {
+                    "steam_id": p.steam_id,
+                    "name": p.player_name,
+                    "matches": p.total_matches,
+                    "avg_rating": round(p.avg_rating, 2),
+                }
+                for p in profiles
+            ]
+        finally:
+            session.close()
+
+    def get_leaderboard(
+        self,
+        metric: str = "avg_rating",
+        min_matches: int = 5,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Get player leaderboard by metric."""
+        session = self.get_session()
+        try:
+            valid_metrics = {
+                "avg_rating": PlayerProfile.avg_rating,
+                "avg_adr": PlayerProfile.avg_adr,
+                "avg_kast": PlayerProfile.avg_kast,
+                "total_kills": PlayerProfile.total_kills,
+                "total_matches": PlayerProfile.total_matches,
+            }
+
+            order_col = valid_metrics.get(metric, PlayerProfile.avg_rating)
+
+            profiles = (
+                session.query(PlayerProfile)
+                .filter(PlayerProfile.total_matches >= min_matches)
+                .order_by(order_col.desc())
+                .limit(limit)
+                .all()
+            )
+
+            return [
+                {
+                    "rank": i + 1,
+                    "steam_id": p.steam_id,
+                    "name": p.player_name,
+                    "matches": p.total_matches,
+                    "value": round(getattr(p, metric, 0), 2),
+                }
+                for i, p in enumerate(profiles)
+            ]
+        finally:
+            session.close()
+
+    # =========================================================================
+    # Statistics Operations
+    # =========================================================================
+
+    def get_global_stats(self) -> dict:
+        """Get global statistics across all matches."""
+        session = self.get_session()
+        try:
+            total_matches = session.query(func.count(Match.id)).scalar() or 0
+            total_players = (
+                session.query(func.count(PlayerProfile.steam_id)).scalar() or 0
+            )
+            total_rounds = (
+                session.query(func.sum(Match.total_rounds)).scalar() or 0
+            )
+
+            # Map distribution
+            map_counts = (
+                session.query(Match.map_name, func.count(Match.id))
+                .group_by(Match.map_name)
+                .all()
+            )
+
+            return {
+                "total_matches": total_matches,
+                "total_players": total_players,
+                "total_rounds": total_rounds,
+                "maps": {m: c for m, c in map_counts},
+            }
+        finally:
+            session.close()
+
+
+# =============================================================================
+# Utility Functions
+# =============================================================================
+
+
+def compute_demo_hash(file_path: Path | str) -> str:
+    """Compute SHA256 hash of a demo file for deduplication."""
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+
+# Global database instance (lazy initialization)
+_db_manager: DatabaseManager | None = None
+
+
+def get_db() -> DatabaseManager:
+    """Get the global database manager instance."""
+    global _db_manager
+    if _db_manager is None:
+        _db_manager = DatabaseManager()
+    return _db_manager
