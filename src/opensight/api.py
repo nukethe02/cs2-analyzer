@@ -1148,11 +1148,6 @@ async def submit_feedback(request: FeedbackRequest):
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
-# Legacy code preserved for reference when job infrastructure is added:
-def _compare_players_from_job_disabled(job_id: str, request: PlayerCompareRequest):
-    """
-    Compare two players using data from a completed analysis job.
-
 @app.post("/feedback/coaching")
 async def submit_coaching_feedback(request: CoachingFeedbackRequest):
     """Submit feedback on coaching insights."""
@@ -1174,6 +1169,15 @@ async def submit_coaching_feedback(request: CoachingFeedbackRequest):
         return {"status": "ok", "feedback_id": entry_id}
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
+
+
+# Legacy code preserved for reference when job infrastructure is added:
+def _compare_players_from_job_disabled(job_id: str, request: PlayerCompareRequest):
+    """
+    Compare two players using data from a completed analysis job.
+
+    This is more efficient than re-analyzing the demo if you've already
+    run /analyze - it uses the cached job results.
 
     Args:
         job_id: The job ID from a completed /analyze request
