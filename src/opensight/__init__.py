@@ -291,6 +291,48 @@ def __getattr__(name):
 
         return get_backend_config
 
+    # Game State Tracking
+    elif name == "GameStateTracker":
+        from opensight.analysis.game_state import GameStateTracker
+
+        return GameStateTracker
+    elif name == "track_game_state":
+        from opensight.analysis.game_state import track_game_state
+
+        return track_game_state
+    elif name == "GameState":
+        from opensight.analysis.game_state import GameState
+
+        return GameState
+
+    # Player Behavior Analysis
+    elif name == "PlayerBehaviorAnalyzer":
+        from opensight.analysis.player_behavior import PlayerBehaviorAnalyzer
+
+        return PlayerBehaviorAnalyzer
+    elif name == "analyze_player_behavior":
+        from opensight.analysis.player_behavior import analyze_player_behavior
+
+        return analyze_player_behavior
+    elif name == "PlayerBehaviorProfile":
+        from opensight.analysis.player_behavior import PlayerBehaviorProfile
+
+        return PlayerBehaviorProfile
+
+    # FACEIT Integration
+    elif name == "FACEITClient":
+        from opensight.integrations.faceit import FACEITClient
+
+        return FACEITClient
+    elif name == "get_faceit_player":
+        from opensight.integrations.faceit import get_faceit_player
+
+        return get_faceit_player
+    elif name == "get_faceit_match_history":
+        from opensight.integrations.faceit import get_faceit_match_history
+
+        return get_faceit_match_history
+
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
 
@@ -370,4 +412,16 @@ __all__ = [
     "export_to_excel",
     "export_to_html",
     "export_to_json",
+    # Game State Tracking
+    "GameStateTracker",
+    "track_game_state",
+    "GameState",
+    # Player Behavior Analysis
+    "PlayerBehaviorAnalyzer",
+    "analyze_player_behavior",
+    "PlayerBehaviorProfile",
+    # FACEIT Integration
+    "FACEITClient",
+    "get_faceit_player",
+    "get_faceit_match_history",
 ]
