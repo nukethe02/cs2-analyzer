@@ -3,11 +3,12 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch, AsyncMock
 import io
+import time
 import pytest
 
 from fastapi.testclient import TestClient
 
-from opensight.api import app
+from opensight.api import app, job_store, sharecode_cache, JobStatus
 
 
 client = TestClient(app)
@@ -82,94 +83,86 @@ class TestDecodeEndpoint:
 
 
 class TestAnalyzeEndpoint:
-    """Tests for the /analyze endpoint."""
+    """Tests for the /analyze endpoint (async job-based)."""
 
     def test_analyze_rejects_non_dem_file(self):
         """Analyze endpoint rejects non-.dem files."""
         files = {"file": ("test.txt", io.BytesIO(b"not a demo"), "text/plain")}
         response = client.post("/analyze", files=files)
         assert response.status_code == 400
-        assert "must be a .dem file" in response.json()["detail"]
+        assert ".dem" in response.json()["detail"]
 
-    def test_analyze_with_valid_demo(self):
-        """Analyze endpoint processes valid demo file."""
-        # Create mock DemoData
-        mock_demo_data = MagicMock()
-        mock_demo_data.map_name = "de_dust2"
-        mock_demo_data.duration_seconds = 1800.0
-        mock_demo_data.tick_rate = 64
-        mock_demo_data.num_rounds = 15
-        mock_demo_data.player_stats = {
-            12345: {
-                "name": "Player1",
-                "headshots": 5,
-                "total_damage": 1200,
-            }
-        }
-        mock_demo_data.kills = []
-        mock_demo_data.damages = []
+    def test_analyze_returns_202_with_job_id(self):
+        """Analyze endpoint returns 202 Accepted with job ID."""
+        files = {"file": ("test.dem", io.BytesIO(b"FAKE_DEMO"), "application/octet-stream")}
+        response = client.post("/analyze", files=files)
 
-        # Create mock PlayerAnalytics
-        mock_analytics = MagicMock()
-        mock_analytics.name = "Player1"
-        mock_analytics.team = "CT"
-        mock_analytics.kills = 10
-        mock_analytics.deaths = 5
-        mock_analytics.assists = 3
-        mock_analytics.adr = 80.0
-        mock_analytics.hs_percent = 50.0
-        mock_analytics.ttd_median_ms = 350.0
-        mock_analytics.ttd_mean_ms = 380.0
-        mock_analytics.ttd_min_ms = 200.0
-        mock_analytics.ttd_max_ms = 800.0
-        mock_analytics.ttd_std_ms = 120.0
-        mock_analytics.ttd_count = 10
-        mock_analytics.prefire_count = 2
-        mock_analytics.cp_median_error_deg = 4.5
-        mock_analytics.cp_mean_error_deg = 5.2
-        mock_analytics.cp_pitch_bias_deg = -0.5
-        mock_analytics.weapon_kills = {"ak47": 8, "awp": 2}
+        # Should return 202 Accepted
+        assert response.status_code == 202
+        data = response.json()
 
-        with patch("opensight.parser.DemoParser") as mock_parser_cls, \
-             patch("opensight.analytics.DemoAnalyzer") as mock_analyzer_cls:
+        # Should contain job tracking info
+        assert "job_id" in data
+        # Status may be "pending" or "processing" depending on timing
+        assert data["status"] in ("pending", "processing")
+        assert "status_url" in data
+        assert "download_url" in data
 
-            mock_parser = MagicMock()
-            mock_parser.parse.return_value = mock_demo_data
-            mock_parser_cls.return_value = mock_parser
+    def test_analyze_empty_file_rejected(self):
+        """Analyze endpoint rejects empty files."""
+        files = {"file": ("test.dem", io.BytesIO(b""), "application/octet-stream")}
+        response = client.post("/analyze", files=files)
+        assert response.status_code == 400
+        assert "Empty file" in response.json()["detail"]
 
-            mock_analyzer = MagicMock()
-            mock_analyzer.analyze.return_value = {12345: mock_analytics}
-            mock_analyzer_cls.return_value = mock_analyzer
 
-            files = {"file": ("test.dem", io.BytesIO(b"FAKE_DEMO"), "application/octet-stream")}
-            response = client.post("/analyze", files=files)
+class TestJobStatusEndpoint:
+    """Tests for the /analyze/{job_id} endpoint."""
 
-            assert response.status_code == 200
-            data = response.json()
+    def test_job_status_not_found(self):
+        """Job status returns 404 for unknown job."""
+        response = client.get("/analyze/nonexistent-job-id")
+        assert response.status_code == 404
 
-            # Check demo info
-            assert data["demo_info"]["map"] == "de_dust2"
-            assert data["demo_info"]["rounds"] == 15
+    def test_job_status_returns_info(self):
+        """Job status returns job information."""
+        # Create a test job directly
+        job = job_store.create_job("test.dem", 1024)
+        response = client.get(f"/analyze/{job.job_id}")
 
-            # Check player data
-            assert "12345" in data["players"]
-            player = data["players"]["12345"]
-            assert player["name"] == "Player1"
-            assert player["stats"]["kills"] == 10
-            assert player["advanced"]["ttd_median_ms"] == 350.0
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == job.job_id
+        assert data["status"] == "pending"
+        assert data["filename"] == "test.dem"
 
-    def test_analyze_handles_parser_error(self):
-        """Analyze endpoint handles parser errors gracefully."""
-        with patch("opensight.parser.DemoParser") as mock_parser_cls:
-            mock_parser = MagicMock()
-            mock_parser.parse.side_effect = Exception("Parse error")
-            mock_parser_cls.return_value = mock_parser
 
-            files = {"file": ("test.dem", io.BytesIO(b"FAKE_DEMO"), "application/octet-stream")}
-            response = client.post("/analyze", files=files)
+class TestJobsListEndpoint:
+    """Tests for the /jobs endpoint."""
 
-            assert response.status_code == 500
-            assert "Analysis failed" in response.json()["detail"]
+    def test_jobs_list_returns_array(self):
+        """Jobs list returns array of jobs."""
+        response = client.get("/jobs")
+        assert response.status_code == 200
+        data = response.json()
+        assert "jobs" in data
+        assert isinstance(data["jobs"], list)
+
+
+class TestDownloadEndpoint:
+    """Tests for the /analyze/{job_id}/download endpoint."""
+
+    def test_download_not_found(self):
+        """Download returns 404 for unknown job."""
+        response = client.get("/analyze/nonexistent-job-id/download")
+        assert response.status_code == 404
+
+    def test_download_not_completed(self):
+        """Download returns 400 for incomplete job."""
+        job = job_store.create_job("test.dem", 1024)
+        response = client.get(f"/analyze/{job.job_id}/download")
+        assert response.status_code == 400
+        assert "not completed" in response.json()["detail"]
 
 
 class TestAboutEndpoint:
@@ -203,3 +196,81 @@ class TestAboutEndpoint:
 
         assert "ttd" in data["methodology"]
         assert "crosshair_placement" in data["methodology"]
+
+    def test_about_includes_api_optimization(self):
+        """About endpoint includes API optimization documentation."""
+        response = client.get("/about")
+        data = response.json()
+
+        assert "api_optimization" in data
+        assert "async_analysis" in data["api_optimization"]
+        assert "caching" in data["api_optimization"]
+
+
+class TestCacheEndpoints:
+    """Tests for cache management endpoints."""
+
+    def test_cache_stats_returns_info(self):
+        """Cache stats endpoint returns cache information."""
+        response = client.get("/cache/stats")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "sharecode_cache" in data
+        assert "job_store" in data
+        assert "maxsize" in data["sharecode_cache"]
+
+    def test_cache_clear_clears_caches(self):
+        """Cache clear endpoint clears all caches."""
+        # Add something to sharecode cache
+        sharecode_cache.set("test-code", {"test": "data"})
+
+        response = client.post("/cache/clear")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+
+        # Cache should be empty
+        assert sharecode_cache.get("test-code") is None
+
+
+class TestShareCodeCaching:
+    """Tests for share code caching."""
+
+    def test_sharecode_cache_set_and_get(self):
+        """Sharecode cache can set and get values."""
+        sharecode_cache.set("test-code-1", {"match_id": 123})
+        result = sharecode_cache.get("test-code-1")
+        assert result == {"match_id": 123}
+
+    def test_sharecode_cache_miss(self):
+        """Sharecode cache returns None for missing keys."""
+        result = sharecode_cache.get("nonexistent-code")
+        assert result is None
+
+
+class TestGZipCompression:
+    """Tests for GZip compression middleware."""
+
+    def test_gzip_enabled_for_large_response(self):
+        """GZip compression is applied for large responses."""
+        # Request about endpoint which returns sizeable JSON
+        response = client.get(
+            "/about",
+            headers={"Accept-Encoding": "gzip"}
+        )
+        assert response.status_code == 200
+        # The middleware handles decompression, so we just verify it works
+        data = response.json()
+        assert "name" in data
+
+
+class TestStaticAssetCaching:
+    """Tests for static asset cache headers."""
+
+    def test_root_has_cache_headers(self):
+        """Root endpoint includes cache-control headers."""
+        response = client.get("/")
+        assert response.status_code == 200
+        # Check for cache-control header
+        assert "cache-control" in response.headers
+        assert "max-age" in response.headers["cache-control"]

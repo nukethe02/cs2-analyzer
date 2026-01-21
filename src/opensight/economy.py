@@ -8,10 +8,9 @@ Implements economy tracking and buy round classification:
 - Economic efficiency metrics (damage per dollar, etc.)
 """
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
-import logging
 
 import pandas as pd
 
@@ -22,11 +21,12 @@ logger = logging.getLogger(__name__)
 
 class BuyType(Enum):
     """Classification of buy round types."""
-    PISTOL = "pistol"        # First round or after half
-    ECO = "eco"              # $0-1500 team spend
-    FORCE = "force"          # $1500-3500 team spend (or partial buy)
-    HALF_BUY = "half_buy"    # $3500-4500 team spend
-    FULL_BUY = "full"        # $4500+ team spend (rifles/AWPs + util)
+
+    PISTOL = "pistol"  # First round or after half
+    ECO = "eco"  # $0-1500 team spend
+    FORCE = "force"  # $1500-3500 team spend (or partial buy)
+    HALF_BUY = "half_buy"  # $3500-4500 team spend
+    FULL_BUY = "full"  # $4500+ team spend (rifles/AWPs + util)
     UNKNOWN = "unknown"
 
 
@@ -85,9 +85,9 @@ WEAPON_COSTS = {
 }
 
 # Team equipment thresholds (for 5-player team total)
-ECO_THRESHOLD = 1500          # Below this = eco
-FORCE_THRESHOLD = 3500        # Below this but above eco = force buy
-HALF_BUY_THRESHOLD = 4500     # Below this but above force = half buy
+ECO_THRESHOLD = 1500  # Below this = eco
+FORCE_THRESHOLD = 3500  # Below this but above eco = force buy
+HALF_BUY_THRESHOLD = 4500  # Below this but above force = half buy
 # Above HALF_BUY_THRESHOLD = full buy
 
 # Per-player thresholds
@@ -99,6 +99,7 @@ PLAYER_FULL_THRESHOLD = 2500
 @dataclass
 class PlayerRoundEconomy:
     """Economy data for a single player in a single round."""
+
     steam_id: int
     round_num: int
     equipment_value: int
@@ -116,6 +117,7 @@ class PlayerRoundEconomy:
 @dataclass
 class TeamRoundEconomy:
     """Economy data for a team in a single round."""
+
     round_num: int
     team: int  # 2=T, 3=CT
     total_equipment: int
@@ -129,6 +131,7 @@ class TeamRoundEconomy:
 @dataclass
 class EconomyStats:
     """Comprehensive economy statistics for a match."""
+
     rounds_analyzed: int
     team_economies: dict[int, list[TeamRoundEconomy]]  # team -> rounds
     player_economies: dict[int, list[PlayerRoundEconomy]]  # steam_id -> rounds
@@ -136,14 +139,15 @@ class EconomyStats:
     # Aggregated stats
     eco_round_win_rate: dict[int, float]  # team -> win rate on eco rounds
     force_buy_win_rate: dict[int, float]  # team -> win rate on force rounds
-    full_buy_win_rate: dict[int, float]   # team -> win rate on full buy rounds
+    full_buy_win_rate: dict[int, float]  # team -> win rate on full buy rounds
     avg_equipment_value: dict[int, float]  # team -> avg equipment
-    damage_per_dollar: dict[int, float]    # player steam_id -> efficiency
+    damage_per_dollar: dict[int, float]  # player steam_id -> efficiency
 
 
 @dataclass
 class PlayerEconomyProfile:
     """Economy profile for a single player."""
+
     steam_id: int
     name: str
 
@@ -342,7 +346,7 @@ class EconomyAnalyzer:
             return
 
         # Find column names
-        def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+        def find_col(df: pd.DataFrame, options: list[str]) -> str | None:
             for col in options:
                 if col in df.columns:
                     return col
@@ -489,12 +493,8 @@ class EconomyAnalyzer:
     def _build_team_economies(self) -> None:
         """Build team-level economy data from player economies."""
         # Group players by team
-        t_players = [
-            sid for sid, team in self.data.player_teams.items() if team == 2
-        ]
-        ct_players = [
-            sid for sid, team in self.data.player_teams.items() if team == 3
-        ]
+        t_players = [sid for sid, team in self.data.player_teams.items() if team == 2]
+        ct_players = [sid for sid, team in self.data.player_teams.items() if team == 3]
 
         # Get all round numbers
         all_rounds = set()
@@ -537,7 +537,8 @@ class EconomyAnalyzer:
         # Get damage data
         damages_df = self.data.damages_df
         if damages_df is not None and not damages_df.empty:
-            def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+
+            def find_col(df: pd.DataFrame, options: list[str]) -> str | None:
                 for col in options:
                     if col in df.columns:
                         return col
@@ -549,11 +550,11 @@ class EconomyAnalyzer:
             if dmg_att_col and dmg_col:
                 for steam_id in self._player_economies:
                     player_damage = damages_df[damages_df[dmg_att_col] == steam_id]
-                    total_damage = safe_int(player_damage[dmg_col].sum()) if not player_damage.empty else 0
-
-                    total_spent = sum(
-                        pr.spent for pr in self._player_economies.get(steam_id, [])
+                    total_damage = (
+                        safe_int(player_damage[dmg_col].sum()) if not player_damage.empty else 0
                     )
+
+                    total_spent = sum(pr.spent for pr in self._player_economies.get(steam_id, []))
 
                     if total_spent > 0:
                         damage_per_dollar[steam_id] = total_damage / total_spent
@@ -566,13 +567,15 @@ class EconomyAnalyzer:
             force_buy_win_rate={2: 0.0, 3: 0.0},
             full_buy_win_rate={2: 0.0, 3: 0.0},
             avg_equipment_value={
-                2: sum(tr.avg_equipment for tr in self._team_economies[2]) / max(len(self._team_economies[2]), 1),
-                3: sum(tr.avg_equipment for tr in self._team_economies[3]) / max(len(self._team_economies[3]), 1),
+                2: sum(tr.avg_equipment for tr in self._team_economies[2])
+                / max(len(self._team_economies[2]), 1),
+                3: sum(tr.avg_equipment for tr in self._team_economies[3])
+                / max(len(self._team_economies[3]), 1),
             },
             damage_per_dollar=damage_per_dollar,
         )
 
-    def get_player_profile(self, steam_id: int) -> Optional[PlayerEconomyProfile]:
+    def get_player_profile(self, steam_id: int) -> PlayerEconomyProfile | None:
         """
         Get economy profile for a specific player.
 
@@ -591,7 +594,9 @@ class EconomyAnalyzer:
 
         # Count round types
         eco_rounds = sum(1 for pr in player_rounds if pr.buy_type == BuyType.ECO)
-        force_rounds = sum(1 for pr in player_rounds if pr.buy_type in [BuyType.FORCE, BuyType.HALF_BUY])
+        force_rounds = sum(
+            1 for pr in player_rounds if pr.buy_type in [BuyType.FORCE, BuyType.HALF_BUY]
+        )
         full_buy_rounds = sum(1 for pr in player_rounds if pr.buy_type == BuyType.FULL_BUY)
 
         # Calculate averages
@@ -608,7 +613,8 @@ class EconomyAnalyzer:
 
         damages_df = self.data.damages_df
         if damages_df is not None and not damages_df.empty:
-            def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+
+            def find_col(df: pd.DataFrame, options: list[str]) -> str | None:
                 for col in options:
                     if col in df.columns:
                         return col
@@ -619,7 +625,9 @@ class EconomyAnalyzer:
 
             if dmg_att_col and dmg_col:
                 player_damage = damages_df[damages_df[dmg_att_col] == steam_id]
-                total_damage = safe_int(player_damage[dmg_col].sum()) if not player_damage.empty else 0
+                total_damage = (
+                    safe_int(player_damage[dmg_col].sum()) if not player_damage.empty else 0
+                )
 
                 if total_spent > 0:
                     damage_per_dollar = total_damage / total_spent
@@ -627,7 +635,8 @@ class EconomyAnalyzer:
         # Get kill count
         kills_df = self.data.kills_df
         if not kills_df.empty and total_spent > 0:
-            def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+
+            def find_col(df: pd.DataFrame, options: list[str]) -> str | None:
                 for col in options:
                     if col in df.columns:
                         return col

@@ -11,16 +11,16 @@ Implements:
 
 from __future__ import annotations
 
-import os
-import logging
 import hashlib
 import json
+import logging
+import os
 import time
-from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from typing import Optional, Callable, Any
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-import multiprocessing as mp
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ MAX_WORKERS = os.cpu_count() or 8
 @dataclass
 class DemoAnalysisTask:
     """A single demo analysis task."""
+
     demo_path: Path
     task_id: str = ""
     priority: int = 0  # Higher = more priority
@@ -45,12 +46,13 @@ class DemoAnalysisTask:
 @dataclass
 class DemoAnalysisResult:
     """Result of a single demo analysis."""
+
     task_id: str
     demo_path: str
     success: bool
     duration_seconds: float
-    error_message: Optional[str] = None
-    analysis_data: Optional[dict] = None
+    error_message: str | None = None
+    analysis_data: dict | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -59,6 +61,7 @@ class DemoAnalysisResult:
 @dataclass
 class BatchAnalysisProgress:
     """Progress tracking for batch analysis."""
+
     total_tasks: int
     completed_tasks: int = 0
     failed_tasks: int = 0
@@ -87,6 +90,7 @@ class BatchAnalysisProgress:
 @dataclass
 class BatchAnalysisResult:
     """Result of batch analysis."""
+
     total_demos: int
     successful: int
     failed: int
@@ -119,8 +123,8 @@ def _analyze_single_demo(task: DemoAnalysisTask) -> DemoAnalysisResult:
 
     try:
         # Import here to avoid pickle issues with multiprocessing
-        from opensight.parser import DemoParser
         from opensight.analytics import DemoAnalyzer
+        from opensight.parser import DemoParser
 
         # Parse the demo
         parser = DemoParser(task.demo_path)
@@ -189,7 +193,7 @@ class ParallelDemoAnalyzer:
         self,
         workers: int = DEFAULT_WORKERS,
         use_processes: bool = True,
-        progress_callback: Optional[Callable[[BatchAnalysisProgress], None]] = None,
+        progress_callback: Callable[[BatchAnalysisProgress], None] | None = None,
     ):
         """
         Initialize the parallel analyzer.
@@ -252,10 +256,7 @@ class ParallelDemoAnalyzer:
 
         with ExecutorClass(max_workers=self.workers) as executor:
             # Submit all tasks
-            future_to_task = {
-                executor.submit(_analyze_single_demo, task): task
-                for task in tasks
-            }
+            future_to_task = {executor.submit(_analyze_single_demo, task): task for task in tasks}
 
             # Collect results as they complete
             for future in as_completed(future_to_task, timeout=timeout_per_demo * len(tasks)):
@@ -274,13 +275,15 @@ class ParallelDemoAnalyzer:
 
                 except Exception as e:
                     logger.error(f"Task {task.task_id} failed: {e}")
-                    results.append(DemoAnalysisResult(
-                        task_id=task.task_id,
-                        demo_path=str(task.demo_path),
-                        success=False,
-                        duration_seconds=0.0,
-                        error_message=str(e),
-                    ))
+                    results.append(
+                        DemoAnalysisResult(
+                            task_id=task.task_id,
+                            demo_path=str(task.demo_path),
+                            success=False,
+                            duration_seconds=0.0,
+                            error_message=str(e),
+                        )
+                    )
                     progress.failed_tasks += 1
                     progress.completed_tasks += 1
 
@@ -292,7 +295,9 @@ class ParallelDemoAnalyzer:
         successful = sum(1 for r in results if r.success)
         failed = len(results) - successful
 
-        logger.info(f"Batch analysis complete: {successful}/{len(results)} successful in {total_duration:.1f}s")
+        logger.info(
+            f"Batch analysis complete: {successful}/{len(results)} successful in {total_duration:.1f}s"
+        )
 
         return BatchAnalysisResult(
             total_demos=len(results),
@@ -338,7 +343,7 @@ class BackgroundAnalyzer:
     Runs analysis in background threads/processes and stores results.
     """
 
-    def __init__(self, result_dir: Optional[Path] = None):
+    def __init__(self, result_dir: Path | None = None):
         """
         Initialize the background analyzer.
 
@@ -348,7 +353,7 @@ class BackgroundAnalyzer:
         self.result_dir = result_dir or Path.home() / ".opensight" / "results"
         self.result_dir.mkdir(parents=True, exist_ok=True)
 
-        self._executor: Optional[ThreadPoolExecutor] = None
+        self._executor: ThreadPoolExecutor | None = None
         self._pending_tasks: dict[str, Any] = {}
 
     def start(self, workers: int = 2):
@@ -387,9 +392,7 @@ class BackgroundAnalyzer:
         self._pending_tasks[task.task_id] = future
 
         # Add callback to save result
-        future.add_done_callback(
-            lambda f: self._save_result(task.task_id, f)
-        )
+        future.add_done_callback(lambda f: self._save_result(task.task_id, f))
 
         logger.info(f"Submitted background task {task.task_id} for {demo_path}")
         return task.task_id
@@ -445,17 +448,20 @@ class BackgroundAnalyzer:
             try:
                 with open(path) as f:
                     data = json.load(f)
-                    results.append({
-                        "task_id": path.stem,
-                        "demo_path": data.get("demo_path"),
-                        "success": data.get("success"),
-                    })
+                    results.append(
+                        {
+                            "task_id": path.stem,
+                            "demo_path": data.get("demo_path"),
+                            "success": data.get("success"),
+                        }
+                    )
             except Exception:
                 continue
         return results
 
 
 # Convenience functions
+
 
 def analyze_demos_parallel(
     demo_paths: list[Path],

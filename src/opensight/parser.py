@@ -1,52 +1,57 @@
 """
-Demo Parser for CS2 Replay Files - COMPREHENSIVE EDITION
+Demo Parser for CS2 Replay Files - awpy Edition
 
-Extracts ALL available data from CS2 demos using demoparser2:
+Extracts data from CS2 demos using awpy library (primary parser).
+awpy handles edge cases like warmup, overtime, and malformed demos
+that custom parsing code often crashes on.
+
+Data extracted:
 - Kills, Deaths, Assists with position/angle data
 - All damage events with hitgroups
-- Weapon fire events (for accuracy tracking)
-- Player blind events (flash effectiveness)
-- All grenade events (flash, HE, smoke, molotov)
-- Bomb events (plant, defuse, explode)
 - Round events with economy data
-- Player positions and velocities (for movement analysis)
+- Grenade events (flash, HE, smoke, molotov)
+- Bomb events (plant, defuse, explode)
+- Player positions and velocities (tick data)
 
-This parser aims to extract the same level of detail you would get
-from watching the entire demo and taking comprehensive notes.
+The standardized MatchData structure provides a robust, well-typed
+interface for analysis code.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Optional, TYPE_CHECKING
 import logging
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
-import numpy as np
-
-# Type checking imports
-if TYPE_CHECKING:
-    from demoparser2 import DemoParser as Demoparser2
-
-# Try demoparser2 first (more control over what data we extract)
-try:
-    from demoparser2 import DemoParser as Demoparser2
-    DEMOPARSER2_AVAILABLE = True
-except ImportError:
-    DEMOPARSER2_AVAILABLE = False
-
-# awpy as fallback
-try:
-    from awpy import Demo
-    AWPY_AVAILABLE = True
-except ImportError:
-    AWPY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
+# Parser availability flag - checked lazily on first use
+_AWPY_AVAILABLE: bool | None = None
 
-# Safe type conversion helpers
+
+def _check_awpy_available() -> bool:
+    """Lazily check if awpy is available."""
+    global _AWPY_AVAILABLE
+    if _AWPY_AVAILABLE is None:
+        try:
+            from awpy import Demo as _  # noqa: F401
+
+            _AWPY_AVAILABLE = True
+        except ImportError:
+            _AWPY_AVAILABLE = False
+    return _AWPY_AVAILABLE
+
+
+# =============================================================================
+# Safe Type Conversion Helpers
+# =============================================================================
+
+
 def safe_int(value: Any, default: int = 0) -> int:
     """Safely convert a value to int."""
     if value is None:
@@ -90,9 +95,18 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+# =============================================================================
+# Data Classes - Standardized Schema Following awpy's Output
+# =============================================================================
+
+
 @dataclass
 class KillEvent:
-    """A kill event with timing, position, and angle data."""
+    """A kill event with timing, position, and angle data.
+
+    Schema aligned with awpy's kills DataFrame.
+    """
+
     tick: int
     round_num: int
     attacker_steamid: int
@@ -107,26 +121,31 @@ class KillEvent:
     noscope: bool = False
     thrusmoke: bool = False
     attackerblind: bool = False  # Attacker was flashed
-    assister_steamid: Optional[int] = None
-    assister_name: Optional[str] = None
+    assister_steamid: int | None = None
+    assister_name: str | None = None
+    assister_side: str | None = None
     flash_assist: bool = False
     # Attacker position and view angles
-    attacker_x: Optional[float] = None
-    attacker_y: Optional[float] = None
-    attacker_z: Optional[float] = None
-    attacker_pitch: Optional[float] = None
-    attacker_yaw: Optional[float] = None
+    attacker_x: float | None = None
+    attacker_y: float | None = None
+    attacker_z: float | None = None
+    attacker_pitch: float | None = None
+    attacker_yaw: float | None = None
     # Victim position
-    victim_x: Optional[float] = None
-    victim_y: Optional[float] = None
-    victim_z: Optional[float] = None
+    victim_x: float | None = None
+    victim_y: float | None = None
+    victim_z: float | None = None
     # Distance
-    distance: Optional[float] = None
+    distance: float | None = None
 
 
 @dataclass
 class DamageEvent:
-    """A damage event with full details."""
+    """A damage event with full details.
+
+    Schema aligned with awpy's damages DataFrame.
+    """
+
     tick: int
     round_num: int
     attacker_steamid: int
@@ -144,220 +163,280 @@ class DamageEvent:
 
 
 @dataclass
-class WeaponFireEvent:
-    """A weapon fire event for accuracy tracking."""
-    tick: int
-    round_num: int
-    player_steamid: int
-    player_name: str
-    player_side: str
-    weapon: str
-    # Position and aim data
-    player_x: Optional[float] = None
-    player_y: Optional[float] = None
-    player_z: Optional[float] = None
-    pitch: Optional[float] = None
-    yaw: Optional[float] = None
-    # Movement state (for counter-strafing analysis)
-    velocity_x: Optional[float] = None
-    velocity_y: Optional[float] = None
-    velocity_z: Optional[float] = None
-    is_scoped: bool = False
+class RoundInfo:
+    """Comprehensive round information.
 
+    Schema aligned with awpy's rounds DataFrame.
+    """
 
-@dataclass
-class BlindEvent:
-    """A player blind event from flashbang."""
-    tick: int
     round_num: int
-    attacker_steamid: int  # Who threw the flash
-    attacker_name: str
-    attacker_side: str
-    victim_steamid: int  # Who got flashed
-    victim_name: str
-    victim_side: str
-    blind_duration: float  # Duration in seconds
-    is_teammate: bool = False
+    start_tick: int
+    end_tick: int
+    freeze_end_tick: int
+    winner: str  # "CT" or "T"
+    reason: str  # 'bomb_defused', 'target_bombed', 'elimination', 'time_expired', etc.
+    ct_score: int = 0
+    t_score: int = 0
+    bomb_plant_tick: int | None = None
+    bomb_site: str = ""  # 'A', 'B', or empty if not planted
+    # Economy data (optional)
+    ct_team_money: int = 0
+    t_team_money: int = 0
+    ct_equipment_value: int = 0
+    t_equipment_value: int = 0
+    round_type: str = ""  # 'pistol', 'eco', 'force', 'full_buy'
 
 
 @dataclass
 class GrenadeEvent:
-    """A grenade event (thrown or detonated)."""
+    """A grenade event (thrown or detonated).
+
+    Schema aligned with awpy's grenades DataFrame.
+    """
+
     tick: int
     round_num: int
     player_steamid: int
     player_name: str
     player_side: str
     grenade_type: str  # 'flashbang', 'hegrenade', 'smokegrenade', 'molotov', 'incgrenade', 'decoy'
-    event_type: str  # 'thrown', 'detonate', 'expire'
-    x: Optional[float] = None
-    y: Optional[float] = None
-    z: Optional[float] = None
-    # For HE grenades
-    damage_dealt: int = 0
-    enemies_hit: int = 0
-    teammates_hit: int = 0
+    x: float | None = None
+    y: float | None = None
+    z: float | None = None
+    entity_id: int | None = None
 
 
 @dataclass
 class BombEvent:
-    """A bomb-related event."""
+    """A bomb-related event.
+
+    Schema aligned with awpy's bomb DataFrame.
+    """
+
     tick: int
     round_num: int
     player_steamid: int
     player_name: str
-    event_type: str  # 'beginplant', 'planted', 'begindefuse', 'defused', 'exploded', 'dropped', 'pickup'
+    event_type: str  # 'dropped', 'carried', 'planted', 'defused', 'detonated'
     site: str = ""  # 'A' or 'B'
-    x: Optional[float] = None
-    y: Optional[float] = None
-    z: Optional[float] = None
+    x: float | None = None
+    y: float | None = None
+    z: float | None = None
 
 
 @dataclass
-class RoundInfo:
-    """Comprehensive round information."""
-    round_num: int
+class SmokeEvent:
+    """A smoke grenade effect.
+
+    Schema aligned with awpy's smokes DataFrame.
+    """
+
     start_tick: int
     end_tick: int
-    freeze_end_tick: int
-    winner: str  # "CT" or "T"
-    reason: str  # 'bomb_defused', 'target_bombed', 'elimination', 'time_expired'
-    ct_score: int = 0
-    t_score: int = 0
-    # Economy data
-    ct_team_money: int = 0
-    t_team_money: int = 0
-    ct_equipment_value: int = 0
-    t_equipment_value: int = 0
-    # Round type classification
-    round_type: str = ""  # 'pistol', 'eco', 'force', 'full_buy'
-
-
-@dataclass
-class PlayerRoundSnapshot:
-    """Player state snapshot at a point in time."""
-    tick: int
     round_num: int
-    steamid: int
-    name: str
-    side: str
-    # Position
+    thrower_steamid: int
+    thrower_name: str
+    thrower_side: str
     x: float
     y: float
     z: float
-    # View angles
-    pitch: float
-    yaw: float
-    # Movement
-    velocity_x: float
-    velocity_y: float
-    velocity_z: float
-    # State
-    health: int
-    armor: int
-    is_alive: bool
-    is_scoped: bool
-    is_walking: bool
-    is_crouching: bool
-    # Economy
-    money: int
-    equipment_value: int
-    # Location
-    place_name: str  # e.g., "BombsiteA", "CTSpawn", "LongA"
+    entity_id: int | None = None
 
 
 @dataclass
-class DemoData:
-    """Complete parsed demo data - comprehensive edition."""
+class InfernoEvent:
+    """A molotov/incendiary fire effect.
+
+    Schema aligned with awpy's infernos DataFrame.
+    """
+
+    start_tick: int
+    end_tick: int
+    round_num: int
+    thrower_steamid: int
+    thrower_name: str
+    thrower_side: str
+    x: float
+    y: float
+    z: float
+    entity_id: int | None = None
+
+
+@dataclass
+class WeaponFireEvent:
+    """A weapon fire event for accuracy tracking.
+
+    Schema aligned with awpy's shots DataFrame.
+    """
+
+    tick: int
+    round_num: int
+    player_steamid: int
+    player_name: str
+    player_side: str
+    weapon: str
+    player_x: float | None = None
+    player_y: float | None = None
+    player_z: float | None = None
+    pitch: float | None = None
+    yaw: float | None = None
+    is_silenced: bool = False
+
+
+@dataclass
+class BlindEvent:
+    """A player blind event from flashbang."""
+
+    tick: int
+    round_num: int
+    attacker_steamid: int
+    attacker_name: str
+    attacker_side: str
+    victim_steamid: int
+    victim_name: str
+    victim_side: str
+    blind_duration: float
+    is_teammate: bool = False
+
+
+# =============================================================================
+# MatchData - The Primary Data Structure
+# =============================================================================
+
+
+@dataclass
+class MatchData:
+    """
+    Complete parsed match data - robust structure using awpy's standardized schema.
+
+    This dataclass holds all parsed demo data in a well-typed, consistent format.
+    It handles edge cases like warmup rounds, overtime, and malformed demos that
+    custom parsing code often crashes on.
+
+    Attributes:
+        file_path: Path to the original demo file
+        map_name: Map name (e.g., 'de_dust2', 'de_inferno')
+        duration_seconds: Total demo duration in seconds
+        tick_rate: Server tick rate (usually 64 or 128)
+        num_rounds: Total number of rounds played
+
+        game_rounds: List of round objects with start/end ticks, winner, reason
+        kills: List of kill events using awpy's standardized schema
+        damages: List of damage events
+        bomb_events: List of plant/defuse/explode events
+        grenades: List of grenade throw events
+        smokes: List of smoke effect events (start/end)
+        infernos: List of molotov/incendiary fire events
+        weapon_fires: List of weapon fire events (shots)
+        blinds: List of player blind events
+
+        player_stats: Dictionary of basic player statistics
+        player_names: Mapping of steamid -> player name
+        player_teams: Mapping of steamid -> team (CT/T)
+
+        kills_df: Raw kills DataFrame from awpy
+        damages_df: Raw damages DataFrame from awpy
+        rounds_df: Raw rounds DataFrame from awpy
+    """
+
     file_path: Path
     map_name: str
     duration_seconds: float
-    tick_rate: int
+    tick_rate: float
     num_rounds: int
     server_name: str = ""
     game_mode: str = ""  # 'competitive', 'premier', 'casual'
 
-    # Player info
+    # Core Game Data - Lists of typed events
+    game_rounds: list[RoundInfo] = field(default_factory=list)
+    kills: list[KillEvent] = field(default_factory=list)
+    damages: list[DamageEvent] = field(default_factory=list)
+    bomb_events: list[BombEvent] = field(default_factory=list)
+
+    # Extended Events
+    grenades: list[GrenadeEvent] = field(default_factory=list)
+    smokes: list[SmokeEvent] = field(default_factory=list)
+    infernos: list[InfernoEvent] = field(default_factory=list)
+    weapon_fires: list[WeaponFireEvent] = field(default_factory=list)
+    blinds: list[BlindEvent] = field(default_factory=list)
+
+    # Player Info
     player_stats: dict[int, dict] = field(default_factory=dict)
     player_names: dict[int, str] = field(default_factory=dict)
     player_teams: dict[int, str] = field(default_factory=dict)
 
-    # Core Events
-    kills: list[KillEvent] = field(default_factory=list)
-    damages: list[DamageEvent] = field(default_factory=list)
-    rounds: list[RoundInfo] = field(default_factory=list)
-
-    # Extended Events (NEW - for comprehensive analysis)
-    weapon_fires: list[WeaponFireEvent] = field(default_factory=list)
-    blinds: list[BlindEvent] = field(default_factory=list)
-    grenades: list[GrenadeEvent] = field(default_factory=list)
-    bomb_events: list[BombEvent] = field(default_factory=list)
-
-    # DataFrames for detailed analysis
+    # Raw DataFrames for detailed analysis (from awpy)
     kills_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     damages_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     rounds_df: pd.DataFrame = field(default_factory=pd.DataFrame)
-    weapon_fires_df: pd.DataFrame = field(default_factory=pd.DataFrame)
-    blinds_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     grenades_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     bomb_events_df: pd.DataFrame = field(default_factory=pd.DataFrame)
-    ticks_df: Optional[pd.DataFrame] = None
+    smokes_df: pd.DataFrame = field(default_factory=pd.DataFrame)
+    infernos_df: pd.DataFrame = field(default_factory=pd.DataFrame)
+    weapon_fires_df: pd.DataFrame = field(default_factory=pd.DataFrame)
+    blinds_df: pd.DataFrame = field(default_factory=pd.DataFrame)
+    ticks_df: pd.DataFrame | None = None
 
-    # Match summary
+    # Match Summary
     final_score_ct: int = 0
     final_score_t: int = 0
+
+    # Backward compatibility alias
+    @property
+    def rounds(self) -> list[RoundInfo]:
+        """Alias for game_rounds for backward compatibility."""
+        return self.game_rounds
+
+
+# Backward compatibility alias
+DemoData = MatchData
+
+
+# =============================================================================
+# Demo Parser using awpy
+# =============================================================================
 
 
 class DemoParser:
     """
-    Comprehensive CS2 demo parser using demoparser2.
+    CS2 demo parser using awpy library.
 
-    Extracts ALL available data for complete match analysis:
-    - Kills with position, angles, wallbangs, noscopes, thrusmoke
-    - Damage events with hitgroups
-    - Weapon fire events (for accuracy tracking)
-    - Player blind events (flash effectiveness)
-    - Grenade events (all types)
-    - Bomb events (plant, defuse, etc.)
-    - Round data with economy
-    - Player positions/velocities (tick data)
+    awpy handles edge cases (warmup, overtime, malformed demos) robustly,
+    providing a standardized output format based on demoparser2.
+
+    Usage:
+        parser = DemoParser("demo.dem")
+        data = parser.parse()
+
+        # Access typed events
+        for kill in data.kills:
+            print(f"{kill.attacker_name} killed {kill.victim_name}")
+
+        # Access raw DataFrames for vectorized analysis
+        kills_df = data.kills_df
     """
 
-    # Comprehensive player properties to extract
+    # Player properties to extract for tick data
     PLAYER_PROPS = [
-        "X", "Y", "Z",                    # Position
-        "pitch", "yaw",                    # View angles
-        "velocity_X", "velocity_Y", "velocity_Z",  # Movement
-        "health", "armor_value",           # Health/armor
-        "is_alive", "is_scoped",           # State
-        "balance", "current_equip_value",  # Economy
-        "last_place_name",                 # Location name
-        "in_crouch", "is_walking",         # Movement state
-    ]
-
-    # Events to parse
-    EVENTS_TO_PARSE = [
-        "player_death",      # Kills
-        "player_hurt",       # Damage
-        "weapon_fire",       # Shots fired (for accuracy)
-        "player_blind",      # Flash effectiveness
-        "grenade_thrown",    # All grenade throws
-        "flashbang_detonate",
-        "hegrenade_detonate",
-        "smokegrenade_detonate",
-        "molotov_detonate",
-        "inferno_startburn",
-        "inferno_expire",
-        "bomb_planted",
-        "bomb_defused",
-        "bomb_exploded",
-        "bomb_dropped",
-        "bomb_pickup",
-        "bomb_beginplant",
-        "bomb_begindefuse",
-        "round_start",
-        "round_end",
-        "round_freeze_end",
+        "X",
+        "Y",
+        "Z",
+        "pitch",
+        "yaw",
+        "velocity_X",
+        "velocity_Y",
+        "velocity_Z",
+        "health",
+        "armor_value",
+        "is_alive",
+        "is_scoped",
+        "balance",
+        "current_equip_value",
+        "last_place_name",
+        "in_crouch",
+        "is_walking",
+        "has_helmet",
+        "has_defuser",
     ]
 
     # Memory-efficient dtypes for DataFrame columns
@@ -383,6 +462,12 @@ class DemoParser:
     TICK_CHUNK_SIZE = 500000
 
     def __init__(self, demo_path: str | Path):
+        """
+        Initialize the demo parser.
+
+        Args:
+            demo_path: Path to the .dem file
+        """
         self.demo_path = Path(demo_path)
         if not self.demo_path.exists():
             raise FileNotFoundError(f"Demo file not found: {demo_path}")
@@ -391,72 +476,84 @@ class DemoParser:
         # Cache for column lookups
         self._column_cache: dict[str, Optional[str]] = {}
 
-    def parse(self, include_ticks: bool = False, comprehensive: bool = True) -> DemoData:
+        self._data: MatchData | None = None
+        self._demo: Any | None = None  # awpy Demo object
+
+    def parse(self, include_ticks: bool = False) -> MatchData:
         """
-        Parse the demo file and extract all relevant data.
+        Parse the demo file using awpy and extract all relevant data.
 
         Args:
-            include_ticks: If True, parse tick-level position data (slower but more detailed)
-            comprehensive: If True, parse all events including weapon_fire, grenades, blinds
+            include_ticks: If True, parse tick-level position data (slower, more memory)
+
+        Returns:
+            MatchData with all parsed events and DataFrames
         """
         if self._data is not None:
             return self._data
 
-        if DEMOPARSER2_AVAILABLE:
-            logger.info("Using demoparser2 for comprehensive parsing")
-            return self._parse_with_demoparser2(include_ticks, comprehensive)
-        elif AWPY_AVAILABLE:
-            logger.info("Using awpy parser (fallback - limited data)")
-            return self._parse_with_awpy(include_ticks)
+        if not _check_awpy_available():
+            raise ImportError(
+                "awpy is required for demo parsing. Install with: pip install awpy\n"
+                "Note: awpy requires Python >= 3.11"
+            )
+
+        from awpy import Demo
+
+        logger.info(f"Parsing demo with awpy: {self.demo_path}")
+        parse_start = time.time()
+
+        # Initialize awpy Demo
+        demo = Demo(str(self.demo_path), verbose=False)
+        self._demo = demo
+
+        # Parse with player props if we want tick data
+        if include_ticks:
+            demo.parse(player_props=self.PLAYER_PROPS)
         else:
-            raise ImportError("No parser available. Install demoparser2: pip install demoparser2")
+            demo.parse()
 
-    def _parse_event_safe(self, parser: Demoparser2, event_name: str,
-                          player_props: list[str] = None, other_props: list[str] = None) -> pd.DataFrame:
-        """Safely parse an event, returning empty DataFrame on failure."""
-        try:
-            kwargs = {}
-            if player_props:
-                kwargs["player"] = player_props
-            if other_props:
-                kwargs["other"] = other_props
+        logger.info(f"awpy parsing took {time.time() - parse_start:.2f}s")
 
-            df = parser.parse_event(event_name, **kwargs) if kwargs else parser.parse_event(event_name)
+        # Extract header metadata
+        header = demo.header or {}
+        map_name = header.get("map_name", "unknown")
+        server_name = header.get("server_name", "")
 
-            if df is not None and not df.empty:
-                logger.debug(f"Parsed {len(df)} {event_name} events")
-                return df
-        except Exception as e:
-            logger.debug(f"Could not parse {event_name}: {e}")
-        return pd.DataFrame()
+        # Convert Polars DataFrames to Pandas
+        kills_df = demo.kills.to_pandas() if demo.kills is not None else pd.DataFrame()
+        damages_df = demo.damages.to_pandas() if demo.damages is not None else pd.DataFrame()
+        rounds_df = demo.rounds.to_pandas() if demo.rounds is not None else pd.DataFrame()
+        grenades_df = demo.grenades.to_pandas() if demo.grenades is not None else pd.DataFrame()
 
-    def _parse_with_demoparser2(self, include_ticks: bool = False, comprehensive: bool = True) -> DemoData:
-        """Parse using demoparser2 with comprehensive event extraction."""
-        logger.info(f"Parsing demo: {self.demo_path}")
-        parser = Demoparser2(str(self.demo_path))
-        self._parser = parser
+        # SAFETY: awpy grenades can contain tick-level trajectory data (millions of rows)
+        # We only need one row per grenade throw, so deduplicate by entity_id
+        if not grenades_df.empty and len(grenades_df) > 1000:
+            original_len = len(grenades_df)
 
-        # Parse header
-        map_name = "unknown"
-        server_name = ""
-        try:
-            header = parser.parse_header()
-            if isinstance(header, dict):
-                map_name = header.get("map_name", "unknown")
-                server_name = header.get("server_name", "")
-                logger.info(f"Map: {map_name}, Server: {server_name}")
-        except Exception as e:
-            logger.warning(f"Failed to parse header: {e}")
+            # Try to deduplicate by entity_id (get first occurrence = throw event)
+            if "entity_id" in grenades_df.columns:
+                grenades_df = grenades_df.drop_duplicates(subset=["entity_id"], keep="first")
+                logger.info(
+                    f"Deduplicated grenades by entity_id: {original_len} -> {len(grenades_df)} rows"
+                )
 
-        # ===========================================
-        # CORE EVENTS - Always parse these
-        # ===========================================
+            # If still too large, apply hard cap to prevent memory exhaustion
+            if len(grenades_df) > 10000:
+                logger.warning(
+                    f"Grenade dataset still large ({len(grenades_df)} rows). Limiting to 10,000 to prevent crash."
+                )
+                grenades_df = grenades_df.head(10000)
 
-        # Parse kills WITH comprehensive data
-        kills_df = self._parse_event_safe(
-            parser, "player_death",
-            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z"],
-            other_props=["total_rounds_played"]
+        bomb_df = demo.bomb.to_pandas() if demo.bomb is not None else pd.DataFrame()
+        shots_df = demo.shots.to_pandas() if demo.shots is not None else pd.DataFrame()
+        ticks_df = demo.ticks.to_pandas() if include_ticks and demo.ticks is not None else None
+
+        # Log parsed data sizes
+        logger.info(
+            f"Parsed: {len(kills_df)} kills, {len(damages_df)} damages, "
+            f"{len(rounds_df)} rounds, {len(grenades_df)} grenades, "
+            f"{len(bomb_df)} bomb events, {len(shots_df)} shots"
         )
         if kills_df.empty:
             # Fallback without player props
@@ -534,27 +631,21 @@ class DemoParser:
         weapon_fires_df = self._optimize_dtypes(weapon_fires_df) if comprehensive else weapon_fires_df
         blinds_df = self._optimize_dtypes(blinds_df) if comprehensive else blinds_df
 
-        # Calculate duration
-        tick_rate = 64
+        if not kills_df.empty:
+            logger.debug(f"Kill columns: {list(kills_df.columns)}")
+
+        # Calculate duration and tick rate
+        tick_rate = 64  # CS2 default
         max_tick = 0
         if not kills_df.empty and "tick" in kills_df.columns:
-            max_tick = max(max_tick, int(kills_df["tick"].max()))
+            max_tick = int(kills_df["tick"].max())
+        if not rounds_df.empty and "end" in rounds_df.columns:
+            max_tick = max(max_tick, int(rounds_df["end"].max()))
         duration_seconds = max_tick / tick_rate
 
-        # Determine round count
-        num_rounds = 1
-        if not round_end_df.empty:
-            num_rounds = len(round_end_df)
-        elif not kills_df.empty:
-            round_col = self._find_column(kills_df, ["total_rounds_played", "round", "round_num"])
-            if round_col:
-                num_rounds = int(kills_df[round_col].max())
+        num_rounds = len(rounds_df) if not rounds_df.empty else 1
 
-        # Extract player info and calculate stats
-        player_names, player_teams = self._extract_players(kills_df, damages_df)
-        player_stats = self._calculate_stats(kills_df, damages_df, player_names, player_teams, num_rounds)
-
-        # Build structured events - CORE
+        # Build typed event lists
         kills = self._build_kills(kills_df)
         damages = self._build_damages(damages_df)
         rounds = self._build_rounds(round_end_df, round_start_df, round_freeze_df)
@@ -596,51 +687,49 @@ class DemoParser:
                 bomb_events_df = pd.concat(bomb_frames, ignore_index=True)
 
         # Calculate final scores
-        final_ct = 0
-        final_t = 0
-        if rounds:
-            for r in rounds:
-                if r.winner == "CT":
-                    final_ct += 1
-                elif r.winner == "T":
-                    final_t += 1
+        final_ct = sum(1 for r in game_rounds if r.winner == "CT")
+        final_t = sum(1 for r in game_rounds if r.winner == "T")
 
-        self._data = DemoData(
+        self._data = MatchData(
             file_path=self.demo_path,
             map_name=map_name,
             duration_seconds=duration_seconds,
             tick_rate=tick_rate,
             num_rounds=num_rounds,
             server_name=server_name,
+            # Core events
+            game_rounds=game_rounds,
+            kills=kills,
+            damages=damages,
+            bomb_events=bomb_events,
+            # Extended events
+            grenades=grenades,
+            smokes=smokes,
+            infernos=infernos,
+            weapon_fires=weapon_fires,
+            # Player info
             player_stats=player_stats,
             player_names=player_names,
             player_teams=player_teams,
-            # Core events
-            kills=kills,
-            damages=damages,
-            rounds=rounds,
-            # Extended events
-            weapon_fires=weapon_fires,
-            blinds=blinds,
-            grenades=grenades,
-            bomb_events=bomb_events,
-            # DataFrames
+            # Raw DataFrames
             kills_df=kills_df,
             damages_df=damages_df,
-            rounds_df=round_end_df,
-            weapon_fires_df=weapon_fires_df,
-            blinds_df=blinds_df,
+            rounds_df=rounds_df,
             grenades_df=grenades_df,
-            bomb_events_df=bomb_events_df,
+            bomb_events_df=bomb_df,
+            smokes_df=smokes_df,
+            infernos_df=infernos_df,
+            weapon_fires_df=shots_df,
             ticks_df=ticks_df,
             # Scores
             final_score_ct=final_ct,
             final_score_t=final_t,
         )
 
-        logger.info(f"Parsing complete: {len(player_stats)} players, {num_rounds} rounds, {len(kills)} kills")
-        if comprehensive:
-            logger.info(f"Extended data: {len(weapon_fires)} shots, {len(blinds)} blinds, {len(grenades)} grenades, {len(bomb_events)} bomb events")
+        logger.info(
+            f"Parsing complete: {len(player_stats)} players, {num_rounds} rounds, "
+            f"{len(kills)} kills, {final_ct}-{final_t}"
+        )
         return self._data
 
     def _find_column(self, df: pd.DataFrame, options: list[str], cache_key: str = None) -> Optional[str]:
@@ -769,7 +858,7 @@ class DemoParser:
         damages_df: pd.DataFrame,
         player_names: dict[int, str],
         player_teams: dict[int, str],
-        num_rounds: int
+        num_rounds: int,
     ) -> dict[int, dict]:
         """Calculate player statistics using vectorized operations."""
         stats: dict[int, dict] = {}
@@ -865,468 +954,68 @@ class DemoParser:
 
         return stats
 
-    def _build_kills(self, kills_df: pd.DataFrame) -> list[KillEvent]:
-        """Build KillEvent list from kills DataFrame."""
-        kills = []
-        if kills_df.empty:
-            return kills
 
-        # Find columns
-        att_id = self._find_column(kills_df, ["attacker_steamid", "attacker_steam_id"])
-        att_name = self._find_column(kills_df, ["attacker_name"])
-        att_team = self._find_column(kills_df, ["attacker_team_name", "attacker_side"])
-        vic_id = self._find_column(kills_df, ["user_steamid", "victim_steamid"])
-        vic_name = self._find_column(kills_df, ["user_name", "victim_name"])
-        vic_team = self._find_column(kills_df, ["user_team_name", "victim_side"])
-        round_col = self._find_column(kills_df, ["total_rounds_played", "round", "round_num"])
-
-        # Position columns (from player props)
-        att_x = self._find_column(kills_df, ["attacker_X", "attacker_x"])
-        att_y = self._find_column(kills_df, ["attacker_Y", "attacker_y"])
-        att_z = self._find_column(kills_df, ["attacker_Z", "attacker_z"])
-        att_pitch = self._find_column(kills_df, ["attacker_pitch"])
-        att_yaw = self._find_column(kills_df, ["attacker_yaw"])
-        vic_x = self._find_column(kills_df, ["user_X", "victim_X", "user_x", "victim_x"])
-        vic_y = self._find_column(kills_df, ["user_Y", "victim_Y", "user_y", "victim_y"])
-        vic_z = self._find_column(kills_df, ["user_Z", "victim_Z", "user_z", "victim_z"])
-
-        logger.info(f"Position columns found - attacker: X={att_x}, Y={att_y}, Z={att_z}, pitch={att_pitch}, yaw={att_yaw}")
-        logger.info(f"Position columns found - victim: X={vic_x}, Y={vic_y}, Z={vic_z}")
-
-        for _, row in kills_df.iterrows():
-            # Get team values
-            att_side = "Unknown"
-            if att_team:
-                att_side_val = row.get(att_team)
-                if isinstance(att_side_val, str):
-                    att_side = "CT" if "CT" in att_side_val.upper() else "T" if "T" in att_side_val.upper() else att_side_val
-                elif isinstance(att_side_val, (int, float)):
-                    att_side = "CT" if int(att_side_val) == 3 else "T" if int(att_side_val) == 2 else "Unknown"
-
-            vic_side = "Unknown"
-            if vic_team:
-                vic_side_val = row.get(vic_team)
-                if isinstance(vic_side_val, str):
-                    vic_side = "CT" if "CT" in vic_side_val.upper() else "T" if "T" in vic_side_val.upper() else vic_side_val
-                elif isinstance(vic_side_val, (int, float)):
-                    vic_side = "CT" if int(vic_side_val) == 3 else "T" if int(vic_side_val) == 2 else "Unknown"
-
-            kill = KillEvent(
-                tick=safe_int(row.get("tick")),
-                round_num=safe_int(row.get(round_col)) if round_col else 0,
-                attacker_steamid=safe_int(row.get(att_id)) if att_id else 0,
-                attacker_name=safe_str(row.get(att_name)) if att_name else "",
-                attacker_side=att_side,
-                victim_steamid=safe_int(row.get(vic_id)) if vic_id else 0,
-                victim_name=safe_str(row.get(vic_name)) if vic_name else "",
-                victim_side=vic_side,
-                weapon=safe_str(row.get("weapon", "")),
-                headshot=safe_bool(row.get("headshot")),
-                assister_steamid=safe_int(row.get("assister_steamid")) if row.get("assister_steamid") else None,
-                assister_name=safe_str(row.get("assister_name")) if row.get("assister_name") else None,
-                flash_assist=safe_bool(row.get("flash_assist")),
-                # Position data
-                attacker_x=safe_float(row.get(att_x)) if att_x and row.get(att_x) is not None else None,
-                attacker_y=safe_float(row.get(att_y)) if att_y and row.get(att_y) is not None else None,
-                attacker_z=safe_float(row.get(att_z)) if att_z and row.get(att_z) is not None else None,
-                attacker_pitch=safe_float(row.get(att_pitch)) if att_pitch and row.get(att_pitch) is not None else None,
-                attacker_yaw=safe_float(row.get(att_yaw)) if att_yaw and row.get(att_yaw) is not None else None,
-                victim_x=safe_float(row.get(vic_x)) if vic_x and row.get(vic_x) is not None else None,
-                victim_y=safe_float(row.get(vic_y)) if vic_y and row.get(vic_y) is not None else None,
-                victim_z=safe_float(row.get(vic_z)) if vic_z and row.get(vic_z) is not None else None,
-            )
-            kills.append(kill)
-
-        # Log position data availability
-        kills_with_pos = sum(1 for k in kills if k.attacker_x is not None)
-        logger.info(f"Built {len(kills)} kill events, {kills_with_pos} have position data")
-
-        return kills
-
-    def _build_damages(self, damages_df: pd.DataFrame) -> list[DamageEvent]:
-        """Build DamageEvent list from damages DataFrame."""
-        damages = []
-        if damages_df.empty:
-            return damages
-
-        att_id = self._find_column(damages_df, ["attacker_steamid", "attacker_steam_id"])
-        att_name = self._find_column(damages_df, ["attacker_name"])
-        att_team = self._find_column(damages_df, ["attacker_team_name", "attacker_side"])
-        vic_id = self._find_column(damages_df, ["user_steamid", "victim_steamid"])
-        vic_name = self._find_column(damages_df, ["user_name", "victim_name"])
-        vic_team = self._find_column(damages_df, ["user_team_name", "victim_side"])
-        dmg_col = self._find_column(damages_df, ["dmg_health", "damage", "dmg"])
-        round_col = self._find_column(damages_df, ["total_rounds_played", "round", "round_num"])
-
-        for _, row in damages_df.iterrows():
-            att_side = "Unknown"
-            if att_team:
-                att_side_val = row.get(att_team)
-                if isinstance(att_side_val, str):
-                    att_side = "CT" if "CT" in att_side_val.upper() else "T" if "T" in att_side_val.upper() else att_side_val
-
-            vic_side = "Unknown"
-            if vic_team:
-                vic_side_val = row.get(vic_team)
-                if isinstance(vic_side_val, str):
-                    vic_side = "CT" if "CT" in vic_side_val.upper() else "T" if "T" in vic_side_val.upper() else vic_side_val
-
-            dmg = DamageEvent(
-                tick=safe_int(row.get("tick")),
-                round_num=safe_int(row.get(round_col)) if round_col else 0,
-                attacker_steamid=safe_int(row.get(att_id)) if att_id else 0,
-                attacker_name=safe_str(row.get(att_name)) if att_name else "",
-                attacker_side=att_side,
-                victim_steamid=safe_int(row.get(vic_id)) if vic_id else 0,
-                victim_name=safe_str(row.get(vic_name)) if vic_name else "",
-                victim_side=vic_side,
-                damage=safe_int(row.get(dmg_col)) if dmg_col else 0,
-                damage_armor=safe_int(row.get("dmg_armor", 0)),
-                health_remaining=safe_int(row.get("health", row.get("health_remaining", 0))),
-                armor_remaining=safe_int(row.get("armor", row.get("armor_remaining", 0))),
-                weapon=safe_str(row.get("weapon", "")),
-                hitgroup=safe_str(row.get("hitgroup", "generic")),
-            )
-            damages.append(dmg)
-
-        return damages
-
-    def _build_rounds(self, rounds_df: pd.DataFrame,
-                      round_start_df: pd.DataFrame = None,
-                      round_freeze_df: pd.DataFrame = None) -> list[RoundInfo]:
-        """Build RoundInfo list from rounds DataFrame."""
-        rounds = []
-        if rounds_df.empty:
-            return rounds
-
-        for idx, row in rounds_df.iterrows():
-            # Determine winner from reason or winner column
-            winner = "Unknown"
-            reason = safe_str(row.get("reason", ""))
-            winner_col = row.get("winner")
-
-            if winner_col is not None:
-                if isinstance(winner_col, str):
-                    winner = "CT" if "CT" in winner_col.upper() else "T" if "T" in winner_col.upper() else winner_col
-                elif isinstance(winner_col, (int, float)):
-                    winner = "CT" if int(winner_col) == 3 else "T" if int(winner_col) == 2 else "Unknown"
-            elif reason:
-                # Infer from reason
-                ct_reasons = ["bomb_defused", "ct_win", "target_saved"]
-                t_reasons = ["target_bombed", "terrorist_win", "t_win"]
-                reason_lower = reason.lower()
-                if any(r in reason_lower for r in ct_reasons):
-                    winner = "CT"
-                elif any(r in reason_lower for r in t_reasons):
-                    winner = "T"
-
-            # Get start tick from round_start_df if available
-            start_tick = safe_int(row.get("start_tick", 0))
-            freeze_end_tick = 0
-            if round_start_df is not None and not round_start_df.empty:
-                matching_start = round_start_df[round_start_df.index == idx]
-                if not matching_start.empty:
-                    start_tick = safe_int(matching_start.iloc[0].get("tick", start_tick))
-            if round_freeze_df is not None and not round_freeze_df.empty:
-                matching_freeze = round_freeze_df[round_freeze_df.index == idx]
-                if not matching_freeze.empty:
-                    freeze_end_tick = safe_int(matching_freeze.iloc[0].get("tick", 0))
-
-            round_info = RoundInfo(
-                round_num=idx + 1,
-                start_tick=start_tick,
-                end_tick=safe_int(row.get("tick", row.get("end_tick", 0))),
-                freeze_end_tick=freeze_end_tick,
-                winner=winner,
-                reason=reason,
-                ct_score=safe_int(row.get("ct_score", 0)),
-                t_score=safe_int(row.get("t_score", 0)),
-            )
-            rounds.append(round_info)
-
-        return rounds
-
-    def _build_weapon_fires(self, weapon_fires_df: pd.DataFrame) -> list[WeaponFireEvent]:
-        """Build WeaponFireEvent list for accuracy tracking."""
-        fires = []
-        if weapon_fires_df.empty:
-            return fires
-
-        # Find columns
-        player_id = self._find_column(weapon_fires_df, ["user_steamid", "player_steamid", "steamid"])
-        player_name_col = self._find_column(weapon_fires_df, ["user_name", "player_name", "name"])
-        player_team = self._find_column(weapon_fires_df, ["user_team_name", "player_team"])
-        round_col = self._find_column(weapon_fires_df, ["total_rounds_played", "round", "round_num"])
-        weapon_col = self._find_column(weapon_fires_df, ["weapon"])
-
-        # Position columns
-        x_col = self._find_column(weapon_fires_df, ["user_X", "player_X", "X"])
-        y_col = self._find_column(weapon_fires_df, ["user_Y", "player_Y", "Y"])
-        z_col = self._find_column(weapon_fires_df, ["user_Z", "player_Z", "Z"])
-        pitch_col = self._find_column(weapon_fires_df, ["user_pitch", "player_pitch", "pitch"])
-        yaw_col = self._find_column(weapon_fires_df, ["user_yaw", "player_yaw", "yaw"])
-        vel_x = self._find_column(weapon_fires_df, ["user_velocity_X", "velocity_X"])
-        vel_y = self._find_column(weapon_fires_df, ["user_velocity_Y", "velocity_Y"])
-        vel_z = self._find_column(weapon_fires_df, ["user_velocity_Z", "velocity_Z"])
-        scoped_col = self._find_column(weapon_fires_df, ["user_is_scoped", "is_scoped"])
-
-        for _, row in weapon_fires_df.iterrows():
-            side = "Unknown"
-            if player_team:
-                team_val = row.get(player_team)
-                if isinstance(team_val, str):
-                    side = "CT" if "CT" in team_val.upper() else "T" if "T" in team_val.upper() else team_val
-
-            fire = WeaponFireEvent(
-                tick=safe_int(row.get("tick")),
-                round_num=safe_int(row.get(round_col)) if round_col else 0,
-                player_steamid=safe_int(row.get(player_id)) if player_id else 0,
-                player_name=safe_str(row.get(player_name_col)) if player_name_col else "",
-                player_side=side,
-                weapon=safe_str(row.get(weapon_col)) if weapon_col else "",
-                player_x=safe_float(row.get(x_col)) if x_col else None,
-                player_y=safe_float(row.get(y_col)) if y_col else None,
-                player_z=safe_float(row.get(z_col)) if z_col else None,
-                pitch=safe_float(row.get(pitch_col)) if pitch_col else None,
-                yaw=safe_float(row.get(yaw_col)) if yaw_col else None,
-                velocity_x=safe_float(row.get(vel_x)) if vel_x else None,
-                velocity_y=safe_float(row.get(vel_y)) if vel_y else None,
-                velocity_z=safe_float(row.get(vel_z)) if vel_z else None,
-                is_scoped=safe_bool(row.get(scoped_col)) if scoped_col else False,
-            )
-            fires.append(fire)
-
-        logger.info(f"Built {len(fires)} weapon fire events")
-        return fires
-
-    def _build_blinds(self, blinds_df: pd.DataFrame, player_teams: dict[int, str]) -> list[BlindEvent]:
-        """Build BlindEvent list for flash effectiveness tracking."""
-        blinds = []
-        if blinds_df.empty:
-            return blinds
-
-        # Find columns
-        att_id = self._find_column(blinds_df, ["attacker_steamid", "attacker_steam_id"])
-        att_name = self._find_column(blinds_df, ["attacker_name"])
-        vic_id = self._find_column(blinds_df, ["user_steamid", "userid", "victim_steamid"])
-        vic_name = self._find_column(blinds_df, ["user_name", "victim_name"])
-        duration_col = self._find_column(blinds_df, ["blind_duration", "duration"])
-        round_col = self._find_column(blinds_df, ["total_rounds_played", "round", "round_num"])
-
-        for _, row in blinds_df.iterrows():
-            attacker_sid = safe_int(row.get(att_id)) if att_id else 0
-            victim_sid = safe_int(row.get(vic_id)) if vic_id else 0
-
-            att_side = player_teams.get(attacker_sid, "Unknown")
-            vic_side = player_teams.get(victim_sid, "Unknown")
-            is_teammate = att_side == vic_side and att_side != "Unknown"
-
-            blind = BlindEvent(
-                tick=safe_int(row.get("tick")),
-                round_num=safe_int(row.get(round_col)) if round_col else 0,
-                attacker_steamid=attacker_sid,
-                attacker_name=safe_str(row.get(att_name)) if att_name else "",
-                attacker_side=att_side,
-                victim_steamid=victim_sid,
-                victim_name=safe_str(row.get(vic_name)) if vic_name else "",
-                victim_side=vic_side,
-                blind_duration=safe_float(row.get(duration_col)) if duration_col else 0.0,
-                is_teammate=is_teammate,
-            )
-            blinds.append(blind)
-
-        logger.info(f"Built {len(blinds)} blind events")
-        return blinds
-
-    def _build_grenades(self, thrown_df: pd.DataFrame, flash_df: pd.DataFrame,
-                        he_df: pd.DataFrame, smoke_df: pd.DataFrame, molly_df: pd.DataFrame) -> list[GrenadeEvent]:
-        """Build GrenadeEvent list from various grenade DataFrames."""
-        grenades = []
-
-        def process_thrown(df: pd.DataFrame):
-            if df.empty:
-                return
-            player_id = self._find_column(df, ["user_steamid", "player_steamid", "steamid"])
-            player_name_col = self._find_column(df, ["user_name", "player_name"])
-            player_team = self._find_column(df, ["user_team_name", "player_team"])
-            grenade_type_col = self._find_column(df, ["weapon", "grenade_type", "grenade"])
-            round_col = self._find_column(df, ["total_rounds_played", "round"])
-            x_col = self._find_column(df, ["X", "x"])
-            y_col = self._find_column(df, ["Y", "y"])
-            z_col = self._find_column(df, ["Z", "z"])
-
-            for _, row in df.iterrows():
-                side = "Unknown"
-                if player_team:
-                    team_val = row.get(player_team)
-                    if isinstance(team_val, str):
-                        side = "CT" if "CT" in team_val.upper() else "T"
-
-                grenades.append(GrenadeEvent(
-                    tick=safe_int(row.get("tick")),
-                    round_num=safe_int(row.get(round_col)) if round_col else 0,
-                    player_steamid=safe_int(row.get(player_id)) if player_id else 0,
-                    player_name=safe_str(row.get(player_name_col)) if player_name_col else "",
-                    player_side=side,
-                    grenade_type=safe_str(row.get(grenade_type_col)) if grenade_type_col else "unknown",
-                    event_type="thrown",
-                    x=safe_float(row.get(x_col)) if x_col else None,
-                    y=safe_float(row.get(y_col)) if y_col else None,
-                    z=safe_float(row.get(z_col)) if z_col else None,
-                ))
-
-        def process_detonate(df: pd.DataFrame, grenade_type: str):
-            if df.empty:
-                return
-            player_id = self._find_column(df, ["user_steamid", "player_steamid", "steamid", "thrower_steamid"])
-            player_name_col = self._find_column(df, ["user_name", "player_name", "thrower_name"])
-            round_col = self._find_column(df, ["total_rounds_played", "round"])
-            x_col = self._find_column(df, ["X", "x"])
-            y_col = self._find_column(df, ["Y", "y"])
-            z_col = self._find_column(df, ["Z", "z"])
-
-            for _, row in df.iterrows():
-                grenades.append(GrenadeEvent(
-                    tick=safe_int(row.get("tick")),
-                    round_num=safe_int(row.get(round_col)) if round_col else 0,
-                    player_steamid=safe_int(row.get(player_id)) if player_id else 0,
-                    player_name=safe_str(row.get(player_name_col)) if player_name_col else "",
-                    player_side="Unknown",
-                    grenade_type=grenade_type,
-                    event_type="detonate",
-                    x=safe_float(row.get(x_col)) if x_col else None,
-                    y=safe_float(row.get(y_col)) if y_col else None,
-                    z=safe_float(row.get(z_col)) if z_col else None,
-                ))
-
-        process_thrown(thrown_df)
-        process_detonate(flash_df, "flashbang")
-        process_detonate(he_df, "hegrenade")
-        process_detonate(smoke_df, "smokegrenade")
-        process_detonate(molly_df, "molotov")
-
-        logger.info(f"Built {len(grenades)} grenade events")
-        return grenades
-
-    def _build_bomb_events(self, planted_df: pd.DataFrame, defused_df: pd.DataFrame,
-                           exploded_df: pd.DataFrame) -> list[BombEvent]:
-        """Build BombEvent list from bomb DataFrames."""
-        bomb_events = []
-
-        def process_bomb_df(df: pd.DataFrame, event_type: str):
-            if df.empty:
-                return
-            player_id = self._find_column(df, ["user_steamid", "player_steamid", "steamid"])
-            player_name_col = self._find_column(df, ["user_name", "player_name"])
-            round_col = self._find_column(df, ["total_rounds_played", "round"])
-            site_col = self._find_column(df, ["site", "bombsite"])
-            x_col = self._find_column(df, ["X", "x"])
-            y_col = self._find_column(df, ["Y", "y"])
-            z_col = self._find_column(df, ["Z", "z"])
-
-            for _, row in df.iterrows():
-                bomb_events.append(BombEvent(
-                    tick=safe_int(row.get("tick")),
-                    round_num=safe_int(row.get(round_col)) if round_col else 0,
-                    player_steamid=safe_int(row.get(player_id)) if player_id else 0,
-                    player_name=safe_str(row.get(player_name_col)) if player_name_col else "",
-                    event_type=event_type,
-                    site=safe_str(row.get(site_col)) if site_col else "",
-                    x=safe_float(row.get(x_col)) if x_col else None,
-                    y=safe_float(row.get(y_col)) if y_col else None,
-                    z=safe_float(row.get(z_col)) if z_col else None,
-                ))
-
-        process_bomb_df(planted_df, "planted")
-        process_bomb_df(defused_df, "defused")
-        process_bomb_df(exploded_df, "exploded")
-
-        logger.info(f"Built {len(bomb_events)} bomb events")
-        return bomb_events
-
-    def _parse_with_awpy(self, include_ticks: bool = False) -> DemoData:
-        """Fallback parser using awpy."""
-        logger.info(f"Parsing demo with awpy: {self.demo_path}")
-
-        demo = Demo(str(self.demo_path), verbose=False)
-
-        # Parse with player props if we want tick data
-        if include_ticks:
-            demo.parse(player_props=self.PLAYER_PROPS)
-        else:
-            demo.parse()
-
-        header = demo.header or {}
-        map_name = header.get("map_name", "unknown")
-
-        # Convert Polars to Pandas
-        kills_df = demo.kills.to_pandas() if demo.kills is not None else pd.DataFrame()
-        damages_df = demo.damages.to_pandas() if demo.damages is not None else pd.DataFrame()
-        rounds_df = demo.rounds.to_pandas() if demo.rounds is not None else pd.DataFrame()
-        ticks_df = demo.ticks.to_pandas() if include_ticks and demo.ticks is not None else None
-
-        logger.info(f"awpy parsed: {len(kills_df)} kills, {len(damages_df)} damages, {len(rounds_df)} rounds")
-        if not kills_df.empty:
-            logger.info(f"Kill columns: {list(kills_df.columns)}")
-
-        # Calculate stats
-        tick_rate = 64
-        max_tick = 0
-        if not kills_df.empty and "tick" in kills_df.columns:
-            max_tick = int(kills_df["tick"].max())
-        duration_seconds = max_tick / tick_rate
-
-        num_rounds = len(rounds_df) if not rounds_df.empty else 1
-
-        player_names, player_teams = self._extract_players(kills_df, damages_df)
-        player_stats = self._calculate_stats(kills_df, damages_df, player_names, player_teams, num_rounds)
-        kills = self._build_kills(kills_df)
-        damages = self._build_damages(damages_df)
-        rounds = self._build_rounds(rounds_df)
-
-        # Calculate scores
-        final_ct = sum(1 for r in rounds if r.winner == "CT")
-        final_t = sum(1 for r in rounds if r.winner == "T")
-
-        self._data = DemoData(
-            file_path=self.demo_path,
-            map_name=map_name,
-            duration_seconds=duration_seconds,
-            tick_rate=tick_rate,
-            num_rounds=num_rounds,
-            player_stats=player_stats,
-            player_names=player_names,
-            player_teams=player_teams,
-            kills=kills,
-            damages=damages,
-            rounds=rounds,
-            kills_df=kills_df,
-            damages_df=damages_df,
-            rounds_df=rounds_df,
-            ticks_df=ticks_df,
-            final_score_ct=final_ct,
-            final_score_t=final_t,
-        )
-
-        logger.info("awpy parsing complete (limited data - no weapon_fire/blinds/grenades)")
-        return self._data
+# =============================================================================
+# Convenience Functions
+# =============================================================================
 
 
-def parse_demo(demo_path: str | Path, include_ticks: bool = False, comprehensive: bool = True) -> DemoData:
+def parse_demo(
+    demo_path: str | Path,
+    include_ticks: bool = False,
+) -> MatchData:
     """
     Convenience function to parse a demo file.
 
     Args:
         demo_path: Path to the .dem file
-        include_ticks: If True, parse tick-level position data (slower)
-        comprehensive: If True, parse all events (weapon_fire, grenades, blinds, bombs)
+        include_ticks: If True, parse tick-level position data (slower, more memory)
 
     Returns:
-        DemoData with all parsed events and DataFrames
+        MatchData with all parsed events and DataFrames
+
+    Example:
+        data = parse_demo("demo.dem")
+
+        # Iterate over kills
+        for kill in data.kills:
+            print(f"{kill.attacker_name} -> {kill.victim_name}")
+
+        # Use DataFrames for analysis
+        adr = data.damages_df.groupby("attacker_steamid")["damage"].sum() / data.num_rounds
     """
     parser = DemoParser(demo_path)
-    return parser.parse(include_ticks=include_ticks, comprehensive=comprehensive)
+    return parser.parse(include_ticks=include_ticks)
 
 
-# Alias for backward compatibility
-PlayerState = PlayerRoundSnapshot
+# =============================================================================
+# Backward Compatibility - Legacy Enums and Functions
+# =============================================================================
+
+
+class ParserBackend(Enum):
+    """Available parser backends (legacy - awpy is now the only backend)."""
+
+    AWPY = "awpy"
+    AUTO = "auto"
+
+
+class ParseMode(Enum):
+    """Parsing mode (legacy - awpy always parses comprehensively)."""
+
+    MINIMAL = "minimal"
+    STANDARD = "standard"
+    COMPREHENSIVE = "comprehensive"
+
+
+# Legacy dataframe optimization (no longer needed with awpy)
+def optimize_dataframe_dtypes(df: pd.DataFrame, inplace: bool = True) -> pd.DataFrame:
+    """Legacy function - returns DataFrame unchanged (awpy handles optimization)."""
+    return df
+
+
+# Legacy aliases
+PlayerState = None  # Was PlayerRoundSnapshot
+PlayerRoundSnapshot = None
+WeaponFireEvent_legacy = WeaponFireEvent
+BlindEvent_legacy = BlindEvent

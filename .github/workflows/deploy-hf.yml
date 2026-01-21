@@ -1,0 +1,43 @@
+name: Deploy to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    name: Deploy to HF Spaces
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hugging Face Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Configure git
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          # Add Hugging Face remote
+          git remote add hf https://thenuke02:${HF_TOKEN}@huggingface.co/spaces/thenuke02/cs2-analyzer
+
+          # Get current branch/ref
+          CURRENT_REF="${GITHUB_REF#refs/heads/}"
+          echo "Deploying from: $CURRENT_REF"
+
+          # Push current HEAD to HF's main branch
+          git push hf HEAD:main --force

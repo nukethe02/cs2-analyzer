@@ -19,7 +19,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,21 +28,61 @@ logger = logging.getLogger(__name__)
 # Configuration Dataclasses
 # ============================================================================
 
+
+@dataclass
+class BackendConfig:
+    """Configuration for DataFrame backend (pandas vs polars)."""
+
+    # Use Polars for DataFrame operations (faster, better memory efficiency)
+    use_polars: bool = False
+
+    # Use LazyFrames for large tick data (memory efficient, query optimization)
+    lazy_mode: bool = True
+
+    # Cache format for intermediate results ('parquet', 'feather', 'pickle')
+    # Parquet: Best for archival, cross-language compatibility
+    # Feather: Fastest Python-to-Python IPC
+    cache_format: str = "parquet"
+
+    # Compression for Parquet files ('zstd', 'lz4', 'snappy', 'gzip', None)
+    # zstd: Best balance of compression ratio and speed
+    compression: str = "zstd"
+
+
 @dataclass
 class ParserConfig:
     """Configuration for demo parsing."""
 
-    tick_fields: list[str] = field(default_factory=lambda: [
-        "tick", "steamid", "X", "Y", "Z", "pitch", "yaw",
-        "health", "armor_value", "team_num", "active_weapon_name"
-    ])
-    parse_events: list[str] = field(default_factory=lambda: [
-        "player_death", "player_hurt", "weapon_fire",
-        "round_start", "round_end"
-    ])
+    tick_fields: list[str] = field(
+        default_factory=lambda: [
+            "tick",
+            "steamid",
+            "X",
+            "Y",
+            "Z",
+            "pitch",
+            "yaw",
+            "health",
+            "armor_value",
+            "team_num",
+            "active_weapon_name",
+        ]
+    )
+    parse_events: list[str] = field(
+        default_factory=lambda: [
+            "player_death",
+            "player_hurt",
+            "weapon_fire",
+            "round_start",
+            "round_end",
+        ]
+    )
     fallback_to_minimal: bool = True
     cache_parsed_demos: bool = True
-    cache_directory: Optional[str] = None
+    cache_directory: str | None = None
+
+    # Use Polars for DataFrame storage in DemoData (otherwise pandas)
+    use_polars: bool = False
 
 
 @dataclass
@@ -84,7 +124,7 @@ class WatcherConfig:
     debounce_seconds: float = 2.0
     recursive: bool = False
     auto_analyze: bool = True
-    custom_replays_folder: Optional[str] = None
+    custom_replays_folder: str | None = None
 
 
 @dataclass
@@ -104,7 +144,7 @@ class LoggingConfig:
 
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    file: Optional[str] = None
+    file: str | None = None
     file_max_bytes: int = 10 * 1024 * 1024  # 10MB
     file_backup_count: int = 5
 
@@ -118,6 +158,7 @@ class OpenSightConfig:
     watcher: WatcherConfig = field(default_factory=WatcherConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    backend: BackendConfig = field(default_factory=BackendConfig)
 
     # Version of the config format
     config_version: str = "1.0"
@@ -126,6 +167,7 @@ class OpenSightConfig:
 # ============================================================================
 # Configuration Loading
 # ============================================================================
+
 
 def get_default_config_paths() -> list[Path]:
     """Get the default paths to search for configuration files."""
@@ -154,7 +196,8 @@ def load_yaml_config(path: Path) -> dict[str, Any]:
     """Load configuration from a YAML file."""
     try:
         import yaml
-        with open(path, "r") as f:
+
+        with open(path) as f:
             return yaml.safe_load(f) or {}
     except ImportError:
         logger.warning("PyYAML not installed, cannot load YAML config")
@@ -178,7 +221,7 @@ def load_toml_config(path: Path) -> dict[str, Any]:
 
 def load_json_config(path: Path) -> dict[str, Any]:
     """Load configuration from a JSON file."""
-    with open(path, "r") as f:
+    with open(path) as f:
         return json.load(f)
 
 
@@ -211,6 +254,13 @@ def load_env_config() -> dict[str, Any]:
         "OPENSIGHT_EXPORT_FORMAT": ("export", "default_format"),
         "OPENSIGHT_TTD_LOOKBACK_MS": ("metrics", "ttd_max_lookback_ms"),
         "OPENSIGHT_TRADE_WINDOW_MS": ("metrics", "trade_window_ms"),
+        # Backend configuration
+        "OPENSIGHT_USE_POLARS": ("backend", "use_polars"),
+        "OPENSIGHT_LAZY_MODE": ("backend", "lazy_mode"),
+        "OPENSIGHT_CACHE_FORMAT": ("backend", "cache_format"),
+        "OPENSIGHT_COMPRESSION": ("backend", "compression"),
+        # Parser backend configuration
+        "OPENSIGHT_PARSER_USE_POLARS": ("parser", "use_polars"),
     }
 
     for env_var, (section, key) in env_mappings.items():
@@ -277,13 +327,15 @@ def dict_to_config(data: dict[str, Any]) -> OpenSightConfig:
             if hasattr(config.logging, key):
                 setattr(config.logging, key, value)
 
+    if "backend" in data:
+        for key, value in data["backend"].items():
+            if hasattr(config.backend, key):
+                setattr(config.backend, key, value)
+
     return config
 
 
-def load_config(
-    config_file: Optional[Path] = None,
-    include_env: bool = True
-) -> OpenSightConfig:
+def load_config(config_file: Path | None = None, include_env: bool = True) -> OpenSightConfig:
     """
     Load configuration from all sources.
 
@@ -319,6 +371,7 @@ def load_config(
 # Configuration Saving
 # ============================================================================
 
+
 def save_config(config: OpenSightConfig, path: Path) -> None:
     """
     Save configuration to a file.
@@ -333,6 +386,7 @@ def save_config(config: OpenSightConfig, path: Path) -> None:
     if suffix in (".yaml", ".yml"):
         try:
             import yaml
+
             with open(path, "w") as f:
                 yaml.dump(data, f, default_flow_style=False, sort_keys=False)
         except ImportError:
@@ -341,6 +395,7 @@ def save_config(config: OpenSightConfig, path: Path) -> None:
     elif suffix == ".toml":
         try:
             import toml
+
             with open(path, "w") as f:
                 toml.dump(data, f)
         except ImportError:
@@ -359,6 +414,7 @@ def save_config(config: OpenSightConfig, path: Path) -> None:
 def config_to_dict(config: OpenSightConfig) -> dict[str, Any]:
     """Convert OpenSightConfig to a dictionary."""
     from dataclasses import asdict
+
     return asdict(config)
 
 
@@ -366,7 +422,7 @@ def config_to_dict(config: OpenSightConfig) -> dict[str, Any]:
 # Global Configuration
 # ============================================================================
 
-_global_config: Optional[OpenSightConfig] = None
+_global_config: OpenSightConfig | None = None
 
 
 def get_config() -> OpenSightConfig:
@@ -402,6 +458,7 @@ DEFAULT_CONFIG_YAML = """# OpenSight Configuration
 parser:
   cache_parsed_demos: true
   fallback_to_minimal: true
+  # use_polars: false  # Use Polars for DataFrame storage in DemoData
 
 # Metrics calculation settings
 metrics:
@@ -429,6 +486,17 @@ export:
 logging:
   level: INFO
   # file: /path/to/opensight.log
+
+# DataFrame backend settings
+# Polars offers significant performance benefits for large tick data:
+# - LazyFrames reduce memory usage
+# - Better query optimization
+# - Parallel execution
+backend:
+  use_polars: false  # Set to true to use Polars instead of pandas
+  lazy_mode: true    # Use LazyFrames for large tick data (Polars only)
+  cache_format: parquet  # parquet, feather, or pickle
+  compression: zstd      # zstd, lz4, snappy, gzip (for parquet)
 """
 
 

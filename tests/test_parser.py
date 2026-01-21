@@ -12,7 +12,7 @@ from opensight.parser import (
     DemoParser,
     KillEvent,
     DamageEvent,
-    PlayerState,
+    RoundInfo,
     safe_int,
     safe_str,
     safe_bool,
@@ -157,35 +157,23 @@ class TestDataClasses:
         assert event.damage == 27
         assert event.hitgroup == "head"
 
-    def test_player_state_creation(self):
-        """PlayerState (PlayerRoundSnapshot) can be created with required fields."""
-        state = PlayerState(
-            tick=1000,
+    def test_round_info_creation(self):
+        """RoundInfo can be created with required fields."""
+        round_info = RoundInfo(
             round_num=1,
-            steamid=12345,
-            name="Player1",
-            side="T",
-            x=100.0,
-            y=200.0,
-            z=300.0,
-            pitch=0.0,
-            yaw=90.0,
-            velocity_x=0.0,
-            velocity_y=0.0,
-            velocity_z=0.0,
-            health=100,
-            armor=100,
-            is_alive=True,
-            is_scoped=False,
-            is_walking=False,
-            is_crouching=False,
-            money=4000,
-            equipment_value=5500,
-            place_name="TSpawn",
+            start_tick=1000,
+            end_tick=5000,
+            freeze_end_tick=1200,
+            winner="CT",
+            reason="bomb_defused",
+            ct_score=1,
+            t_score=0,
+            bomb_plant_tick=3000,
+            bomb_site="A",
         )
-        assert state.tick == 1000
-        assert state.side == "T"
-        assert state.health == 100
+        assert round_info.round_num == 1
+        assert round_info.winner == "CT"
+        assert round_info.bomb_site == "A"
 
 
 class TestDemoData:
@@ -248,14 +236,15 @@ class TestDemoParser:
         with pytest.raises(FileNotFoundError):
             DemoParser("/nonexistent/path/demo.dem")
 
-    def test_parser_raises_on_missing_demoparser2(self, tmp_path):
-        """Parser raises ImportError when demoparser2 not available."""
+    def test_parser_raises_on_missing_awpy(self, tmp_path):
+        """Parser raises ImportError when awpy not available."""
         demo_file = tmp_path / "test.dem"
         demo_file.write_bytes(b"FAKE_DEMO_DATA")
 
-        with patch("opensight.parser.Demoparser2", None):
+        # Patch the lazy availability check function
+        with patch("opensight.parser._check_awpy_available", return_value=False):
             parser = DemoParser(demo_file)
-            with pytest.raises(ImportError, match="demoparser2 is required"):
+            with pytest.raises(ImportError, match="awpy is required"):
                 parser.parse()
 
     def test_parse_caches_result(self, tmp_path):
@@ -263,20 +252,38 @@ class TestDemoParser:
         demo_file = tmp_path / "test.dem"
         demo_file.write_bytes(b"FAKE_DEMO_DATA")
 
-        # Create mock demoparser2
-        mock_parser = MagicMock()
-        mock_parser.parse_header.return_value = {"map_name": "de_dust2"}
-        mock_parser.parse_event.return_value = pd.DataFrame()
+        # Create mock awpy Demo class
+        mock_demo_instance = MagicMock()
+        mock_demo_instance.header = {"map_name": "de_dust2"}
+        mock_demo_instance.kills = MagicMock()
+        mock_demo_instance.kills.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.damages = MagicMock()
+        mock_demo_instance.damages.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.rounds = MagicMock()
+        mock_demo_instance.rounds.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.grenades = MagicMock()
+        mock_demo_instance.grenades.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.bomb = MagicMock()
+        mock_demo_instance.bomb.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.shots = MagicMock()
+        mock_demo_instance.shots.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.smokes = None
+        mock_demo_instance.infernos = None
 
-        with patch("opensight.parser.Demoparser2", return_value=mock_parser):
-            parser = DemoParser(demo_file)
-            result1 = parser.parse()
-            result2 = parser.parse()
+        mock_demo_class = MagicMock(return_value=mock_demo_instance)
+        mock_awpy = MagicMock(Demo=mock_demo_class)
 
-            # Should be same object (cached)
-            assert result1 is result2
-            # parse_header should only be called once
-            assert mock_parser.parse_header.call_count == 1
+        # Patch awpy import
+        with patch("opensight.parser._check_awpy_available", return_value=True):
+            with patch.dict("sys.modules", {"awpy": mock_awpy}):
+                parser = DemoParser(demo_file)
+                result1 = parser.parse()
+                result2 = parser.parse()
+
+                # Should be same object (cached)
+                assert result1 is result2
+                # Demo constructor should only be called once
+                assert mock_demo_class.call_count == 1
 
 
 class TestParseDemoFunction:
@@ -287,10 +294,71 @@ class TestParseDemoFunction:
         demo_file = tmp_path / "test.dem"
         demo_file.write_bytes(b"FAKE_DEMO_DATA")
 
-        mock_parser = MagicMock()
-        mock_parser.parse_header.return_value = {"map_name": "de_mirage"}
-        mock_parser.parse_event.return_value = pd.DataFrame()
+        # Create mock awpy Demo class
+        mock_demo_instance = MagicMock()
+        mock_demo_instance.header = {"map_name": "de_mirage"}
+        mock_demo_instance.kills = MagicMock()
+        mock_demo_instance.kills.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.damages = MagicMock()
+        mock_demo_instance.damages.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.rounds = MagicMock()
+        mock_demo_instance.rounds.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.grenades = MagicMock()
+        mock_demo_instance.grenades.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.bomb = MagicMock()
+        mock_demo_instance.bomb.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.shots = MagicMock()
+        mock_demo_instance.shots.to_pandas.return_value = pd.DataFrame()
+        mock_demo_instance.smokes = None
+        mock_demo_instance.infernos = None
 
-        with patch("opensight.parser.Demoparser2", return_value=mock_parser):
-            result = parse_demo(demo_file)
-            assert result.map_name == "de_mirage"
+        mock_demo_class = MagicMock(return_value=mock_demo_instance)
+        mock_awpy = MagicMock(Demo=mock_demo_class)
+
+        # Patch awpy import
+        with patch("opensight.parser._check_awpy_available", return_value=True):
+            with patch.dict("sys.modules", {"awpy": mock_awpy}):
+                result = parse_demo(demo_file)
+                assert result.map_name == "de_mirage"
+
+
+class TestOptimizations:
+    """Tests for legacy optimization features (now no-ops with awpy)."""
+
+    def test_parse_mode_enum(self):
+        """Test ParseMode enum values (legacy)."""
+        from opensight.parser import ParseMode
+
+        assert ParseMode.MINIMAL.value == "minimal"
+        assert ParseMode.STANDARD.value == "standard"
+        assert ParseMode.COMPREHENSIVE.value == "comprehensive"
+
+    def test_parser_backend_enum(self):
+        """Test ParserBackend enum values (legacy - only AWPY and AUTO)."""
+        from opensight.parser import ParserBackend
+
+        assert ParserBackend.AWPY.value == "awpy"
+        assert ParserBackend.AUTO.value == "auto"
+
+    def test_optimize_dataframe_dtypes_empty(self):
+        """Test dtype optimization on empty DataFrame (legacy no-op)."""
+        from opensight.parser import optimize_dataframe_dtypes
+
+        df = pd.DataFrame()
+        result = optimize_dataframe_dtypes(df)
+        assert result.empty
+
+    def test_optimize_dataframe_dtypes_passthrough(self):
+        """Test optimize_dataframe_dtypes returns DataFrame unchanged (awpy handles this)."""
+        from opensight.parser import optimize_dataframe_dtypes
+
+        df = pd.DataFrame({
+            "tick": np.array([100, 200, 300], dtype=np.int64),
+            "damage": np.array([50, 75, 100], dtype=np.int64),
+        })
+        original_dtypes = df.dtypes.copy()
+        result = optimize_dataframe_dtypes(df.copy(), inplace=False)
+
+        # Should pass through unchanged (awpy handles optimization)
+        assert result["tick"].dtype == original_dtypes["tick"]
+        assert result["damage"].dtype == original_dtypes["damage"]

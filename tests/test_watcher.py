@@ -165,17 +165,21 @@ class TestDemoFileHandler:
         """Test that modifications update pending file timestamps."""
         # First, schedule a file for processing
         file_path = "/path/to/match.dem"
+        old_time = time.time() - 10
         with handler._lock:
-            handler._pending_files[file_path] = time.time() - 10
+            # _pending_files stores (timestamp, event_count) tuples
+            handler._pending_files[file_path] = (old_time, 1)
 
         mock_event = Mock()
         mock_event.is_directory = False
         mock_event.src_path = file_path
 
-        old_time = handler._pending_files[file_path]
         handler.on_modified(mock_event)
 
-        assert handler._pending_files[file_path] > old_time
+        # After modification, timestamp should be updated and event count incremented
+        new_time, new_count = handler._pending_files[file_path]
+        assert new_time > old_time
+        assert new_count == 2
 
 
 class TestReplayWatcher:
