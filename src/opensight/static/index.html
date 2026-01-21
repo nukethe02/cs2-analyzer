@@ -3,356 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CS2 Demo Analyzer - OpenSight</title>
+    <title>OpenSight - CS2 Demo Analyzer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* Custom scrollbar for dark theme */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #1e293b;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
-        }
+        /* Custom scrollbar for dark mode */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
-        /* Drop zone animation */
-        .drop-zone-active {
-            border-color: #3b82f6 !important;
-            background-color: rgba(59, 130, 246, 0.1) !important;
-        }
-
-        /* Spinner animation */
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .spinner {
-            animation: spin 1s linear infinite;
-        }
+        /* Drag and drop highlight */
+        .drop-zone.drag-over { border-color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); }
 
         /* Tab transitions */
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
+        .tab-content { display: none; animation: fadeIn 0.2s ease-in-out; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        /* Rating color classes */
-        .rating-excellent { color: #22c55e; }
-        .rating-good { color: #84cc16; }
-        .rating-average { color: #eab308; }
-        .rating-below { color: #f97316; }
-        .rating-poor { color: #ef4444; }
+        /* Loading spinner */
+        .spinner { border: 3px solid #475569; border-top: 3px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Stat card hover effect */
+        .stat-card { transition: transform 0.2s, box-shadow 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); }
+
+        /* Monospace for numbers */
+        .font-mono-num { font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace; }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-200 font-sans min-h-screen flex">
-
-    <!-- Fixed Sidebar Navigation -->
-    <aside id="sidebar" class="fixed left-0 top-0 h-screen w-64 bg-slate-950 border-r border-slate-800 flex flex-col z-50">
-        <!-- Logo -->
-        <div class="p-6 border-b border-slate-800">
-            <h1 class="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
-                OpenSight
-            </h1>
-            <p class="text-xs text-slate-500 mt-1">CS2 Analytics Platform</p>
-        </div>
-
-        <!-- Navigation -->
-        <nav class="flex-1 py-4">
-            <div class="px-3 mb-2">
-                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Analysis</span>
+<body class="bg-slate-900 text-slate-200 font-sans">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <nav class="w-64 bg-slate-800 border-r border-slate-700 flex flex-col">
+            <!-- Logo -->
+            <div class="p-6 border-b border-slate-700">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-white">OpenSight</h1>
+                        <p class="text-xs text-slate-400">CS2 Demo Analyzer</p>
+                    </div>
+                </div>
             </div>
 
-            <button class="sidebar-item active w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3" data-tab="overview">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
-                </svg>
-                Overview
-            </button>
-
-            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="heatmaps">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-                </svg>
-                Heatmaps
-            </button>
-
-            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="killmap">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                </svg>
-                Kill Map
-            </button>
-
-            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="utility">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"/>
-                </svg>
-                Utility
-            </button>
-
-            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="compare">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                </svg>
-                Compare
-            </button>
-
-            <div class="px-3 mt-6 mb-2">
-                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Match Data</span>
+            <!-- Navigation -->
+            <div class="flex-1 p-4 space-y-2">
+                <button id="nav-overview" class="nav-btn active w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    <span>Overview</span>
+                </button>
+                <button id="nav-advanced" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                    <span>Advanced</span>
+                </button>
+                <button id="nav-compare" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    <span>Compare</span>
+                </button>
             </div>
 
-            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="players">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
-                </svg>
-                Players
-            </button>
-
-            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="timeline">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                Timeline
-            </button>
-
-            <button class="sidebar-item w-full text-left px-6 py-3 border-l-2 border-transparent flex items-center gap-3 text-slate-400" data-tab="coaching">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                </svg>
-                AI Coaching
-            </button>
+            <!-- Footer -->
+            <div class="p-4 border-t border-slate-700">
+                <div class="text-xs text-slate-500">
+                    <p>OpenSight v1.0</p>
+                    <p class="mt-1">Professional CS2 Analytics</p>
+                </div>
+            </div>
         </nav>
 
-        <!-- Footer -->
-        <div class="p-4 border-t border-slate-800">
-            <div class="text-xs text-slate-500">
-                <p>100% Free &amp; Local</p>
-                <a href="https://github.com/nukethe02/cs2-analyzer" target="_blank" class="text-cyan-400 hover:underline">GitHub</a>
-            </div>
-        </div>
-    </aside>
-
-    <main class="ml-64 flex-1 min-h-screen">
-        <!-- Upload Section -->
-        <section id="upload-section" class="mb-8">
-            <div
-                id="drop-zone"
-                class="border-2 border-dashed border-slate-600 rounded-lg p-12 text-center cursor-pointer hover:border-slate-500 hover:bg-slate-800/50 transition-all duration-200"
-            >
-                <div id="upload-content">
-                    <svg class="mx-auto h-12 w-12 text-slate-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                    </svg>
-                    <p class="text-lg text-slate-300 mb-2">Drop your demo file here</p>
-                    <p class="text-sm text-slate-500 mb-4">or click to browse</p>
-                    <p class="text-xs text-slate-600">Supports .dem and .dem.gz files up to 500MB</p>
-                </div>
-                <input type="file" id="file-input" class="hidden" accept=".dem,.dem.gz">
-            </div>
-
-            <!-- Progress Indicator -->
-            <div id="progress-section" class="hidden mt-6">
-                <div class="bg-slate-800 rounded-lg p-6 text-center">
-                    <svg class="spinner mx-auto h-10 w-10 text-blue-500 mb-4" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <p id="progress-text" class="text-slate-300">Uploading demo...</p>
-                    <div class="mt-4 w-full bg-slate-700 rounded-full h-2">
-                        <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
-                    </div>
-                    <p id="progress-detail" class="text-sm text-slate-500 mt-2"></p>
-                </div>
-            </div>
-
-            <!-- Error Message -->
-            <div id="error-section" class="hidden mt-6">
-                <div class="bg-red-900/30 border border-red-800 rounded-lg p-4">
-                    <div class="flex items-start">
-                        <svg class="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <div>
-                            <h3 class="text-red-400 font-medium">Analysis Error</h3>
-                            <p id="error-message" class="text-red-300 text-sm mt-1"></p>
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto">
+            <!-- Upload Section (shown when no data) -->
+            <div id="upload-section" class="h-full flex items-center justify-center p-6">
+                <div class="w-full max-w-2xl">
+                    <div id="drop-zone" class="drop-zone border-2 border-dashed border-slate-600 rounded-xl p-12 text-center cursor-pointer hover:border-slate-500 transition-colors">
+                        <div class="mb-6">
+                            <svg class="w-16 h-16 mx-auto text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
                         </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Results Section -->
-        <section id="results-section" class="hidden">
-            <!-- Tab Navigation -->
-            <div class="flex border-b border-slate-700 mb-6">
-                <button
-                    id="tab-overview"
-                    class="tab-btn px-6 py-3 text-sm font-medium border-b-2 border-blue-500 text-blue-400"
-                    data-tab="overview"
-                >
-                    Overview
-                </button>
-                <button
-                    id="tab-advanced"
-                    class="tab-btn px-6 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-300"
-                    data-tab="advanced"
-                >
-                    Advanced
-                </button>
-            </div>
-
-            <!-- Overview Tab -->
-            <div id="content-overview" class="tab-content active">
-                <!-- Match Overview Card -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                    <div class="bg-slate-800 rounded-lg p-6">
-                        <h3 class="text-slate-400 text-sm font-medium uppercase tracking-wider mb-3">Map</h3>
-                        <p id="match-map" class="text-2xl font-bold text-white">-</p>
-                    </div>
-                    <div class="bg-slate-800 rounded-lg p-6">
-                        <h3 class="text-slate-400 text-sm font-medium uppercase tracking-wider mb-3">Score</h3>
-                        <p id="match-score" class="text-2xl font-bold text-white">-</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Kill Map Tab -->
-        <section id="tab-killmap" class="tab-content hidden p-8">
-            <div id="killmap-content" class="max-w-6xl mx-auto">
-                <div class="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 class="text-2xl font-bold text-white">Kill Map</h2>
-                        <p class="text-slate-400 mt-1">Visualize kill locations on the radar</p>
-                    </div>
-                </div>
-
-                <div id="killmap-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700 p-16 text-center">
-                    <svg class="w-16 h-16 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
-                    <p class="text-slate-500">Upload a demo file to view kill map</p>
-                </div>
-            </div>
-
-                <div id="killmap-display" class="hidden">
-                    <!-- Kill Map controls and radar -->
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
-                        <!-- Filters -->
-                        <div class="flex flex-wrap gap-4 mb-6 items-center justify-between">
-                            <div class="flex gap-4">
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" id="killmap-show-ct" checked class="w-4 h-4 accent-ct">
-                                    <span class="text-sm text-ct font-medium">CT Kills</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" id="killmap-show-t" checked class="w-4 h-4 accent-t">
-                                    <span class="text-sm text-t font-medium">T Kills</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" id="killmap-show-hs" checked class="w-4 h-4 accent-yellow-500">
-                                    <span class="text-sm text-slate-300">Highlight Headshots</span>
-                                </label>
-                            </div>
-                            <div class="flex gap-4">
-                                <select id="killmap-player-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm">
-                                    <option value="all">All Players</option>
-                                </select>
-                                <select id="killmap-round-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm">
-                                    <option value="all">All Rounds</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Map Container -->
-                        <div id="killmap-container" class="relative w-full max-w-4xl mx-auto aspect-square rounded-lg overflow-hidden bg-slate-900">
-                            <!-- Radar background image -->
-                            <div id="killmap-radar" class="absolute inset-0 bg-center bg-contain bg-no-repeat"></div>
-                            <!-- Kill dots overlay -->
-                            <div id="killmap-overlay" class="absolute inset-0"></div>
-                            <!-- Tooltip -->
-                            <div id="killmap-tooltip" class="absolute hidden bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm pointer-events-none z-50 shadow-xl"></div>
-                            <!-- Loading/Error state -->
-                            <div id="killmap-loading" class="absolute inset-0 flex items-center justify-center text-slate-500 hidden">
-                                Loading map...
-                            </div>
-                            <div id="killmap-no-map" class="absolute inset-0 flex items-center justify-center text-slate-500 hidden">
-                                <div class="text-center">
-                                    <svg class="w-12 h-12 mx-auto mb-2 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-                                    </svg>
-                                    <p>Map preview not available for this map</p>
-                                    <p class="text-xs mt-1">Kill data is still shown in the table below</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Legend -->
-                        <div class="flex justify-center gap-8 mt-4 text-sm">
-                            <div class="flex items-center gap-2">
-                                <span class="w-3 h-3 rounded-full bg-ct shadow-lg shadow-ct/40"></span>
-                                <span class="text-slate-400">CT Kill</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-3 h-3 rounded-full bg-t shadow-lg shadow-t/40"></span>
-                                <span class="text-slate-400">T Kill</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-3 h-3 rounded-full bg-yellow-400 ring-2 ring-yellow-300/50"></span>
-                                <span class="text-slate-400">Headshot</span>
-                            </div>
-                        </div>
-
-                        <!-- Stats Summary -->
-                        <div id="killmap-stats" class="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-700">
-                            <div class="text-center">
-                                <div class="text-2xl font-bold text-ct" id="killmap-ct-kills">0</div>
-                                <div class="text-xs text-slate-500 uppercase">CT Kills</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-2xl font-bold text-t" id="killmap-t-kills">0</div>
-                                <div class="text-xs text-slate-500 uppercase">T Kills</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-2xl font-bold text-yellow-400" id="killmap-headshots">0</div>
-                                <div class="text-xs text-slate-500 uppercase">Headshots</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-2xl font-bold text-slate-300" id="killmap-total">0</div>
-                                <div class="text-xs text-slate-500 uppercase">Total Kills</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Kill List Table -->
-                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mt-6">
-                        <h3 class="text-lg font-semibold text-white mb-4">Kill Feed</h3>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="text-slate-400 border-b border-slate-700">
-                                        <th class="text-left py-2 px-3">Round</th>
-                                        <th class="text-left py-2 px-3">Attacker</th>
-                                        <th class="text-left py-2 px-3">Weapon</th>
-                                        <th class="text-left py-2 px-3">Victim</th>
-                                        <th class="text-center py-2 px-3">HS</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="killmap-table-body" class="divide-y divide-slate-700/50">
-                                </tbody>
-                            </table>
-                        </div>
+                        <h2 class="text-2xl font-semibold text-white mb-2">Upload Demo File</h2>
+                        <p class="text-slate-400 mb-6">Drag and drop your .dem or .dem.gz file here</p>
+                        <input type="file" id="file-input" class="hidden" accept=".dem,.dem.gz">
+                        <button id="browse-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
+                            Browse Files
+                        </button>
+                        <p class="text-xs text-slate-500 mt-4">Supports Valve MM, FACEIT, ESEA, and POV demos (max 500MB)</p>
                     </div>
 
                     <!-- Share Code Decode -->
@@ -368,155 +117,139 @@
                         <div id="decode-result" class="mt-3 text-sm hidden"></div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Match Info Row -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                    <div class="bg-slate-800 rounded-lg p-4">
-                        <h4 class="text-slate-500 text-xs uppercase tracking-wider mb-1">Tick Rate</h4>
-                        <p id="match-tickrate" class="text-lg font-semibold text-slate-200">-</p>
-                    </div>
-                    <div class="bg-slate-800 rounded-lg p-4">
-                        <h4 class="text-slate-500 text-xs uppercase tracking-wider mb-1">Duration</h4>
-                        <p id="match-duration" class="text-lg font-semibold text-slate-200">-</p>
-                    </div>
-                    <div class="bg-slate-800 rounded-lg p-4">
-                        <h4 class="text-slate-500 text-xs uppercase tracking-wider mb-1">Total Kills</h4>
-                        <p id="match-kills" class="text-lg font-semibold text-slate-200">-</p>
-                    </div>
-                    <div class="bg-slate-800 rounded-lg p-4">
-                        <h4 class="text-slate-500 text-xs uppercase tracking-wider mb-1">MVP</h4>
-                        <p id="match-mvp" class="text-lg font-semibold text-slate-200">-</p>
-                    </div>
-                </div>
-
-                <!-- Players Table -->
-                <div class="bg-slate-800 rounded-lg overflow-hidden">
-                    <div class="px-6 py-4 border-b border-slate-700">
-                        <h2 class="text-lg font-semibold text-white">Player Statistics</h2>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-slate-700/50">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Player</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">K</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">D</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">A</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">K/D</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">HS%</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">ADR</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Rating</th>
-                                </tr>
-                            </thead>
-                            <tbody id="players-table-body" class="divide-y divide-slate-700">
-                                <!-- Populated by JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
+            <!-- Loading Overlay -->
+            <div id="loading-overlay" class="hidden fixed inset-0 bg-slate-900/80 flex items-center justify-center z-50">
+                <div class="text-center">
+                    <div class="spinner mx-auto mb-4"></div>
+                    <p class="text-lg font-medium">Analyzing Demo...</p>
+                    <p class="text-sm text-slate-400 mt-1">This may take a moment</p>
                 </div>
             </div>
 
-            <!-- Advanced Tab -->
-            <div id="content-advanced" class="tab-content">
-                <!-- Advanced Metrics Table -->
-                <div class="bg-slate-800 rounded-lg overflow-hidden">
-                    <div class="px-6 py-4 border-b border-slate-700">
-                        <h2 class="text-lg font-semibold text-white">Advanced Metrics</h2>
-                        <p class="text-sm text-slate-400 mt-1">Time to Damage (TTD) and Crosshair Placement (CP) analysis</p>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-slate-700/50">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Player</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">ADR</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">KAST%</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Mean TTD (ms)</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Median CP (deg)</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Aim Rating</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Entry Rate</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Utility</th>
-                                </tr>
-                            </thead>
-                            <tbody id="advanced-table-body" class="divide-y divide-slate-700">
-                                <!-- Populated by JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Metric Benchmarks -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                    <div class="bg-slate-800 rounded-lg p-6">
-                        <h3 class="text-white font-semibold mb-4">TTD Benchmarks</h3>
-                        <ul class="space-y-2 text-sm">
-                            <li class="flex justify-between"><span class="text-slate-400">Elite</span><span class="rating-excellent">&lt;200ms</span></li>
-                            <li class="flex justify-between"><span class="text-slate-400">Good</span><span class="rating-good">200-350ms</span></li>
-                            <li class="flex justify-between"><span class="text-slate-400">Average</span><span class="rating-average">350-500ms</span></li>
-                            <li class="flex justify-between"><span class="text-slate-400">Slow</span><span class="rating-poor">&gt;500ms</span></li>
-                        </ul>
-                    </div>
-                    <div class="bg-slate-800 rounded-lg p-6">
-                        <h3 class="text-white font-semibold mb-4">Crosshair Placement Benchmarks</h3>
-                        <ul class="space-y-2 text-sm">
-                            <li class="flex justify-between"><span class="text-slate-400">Elite</span><span class="rating-excellent">&lt;5&deg;</span></li>
-                            <li class="flex justify-between"><span class="text-slate-400">Good</span><span class="rating-good">5-15&deg;</span></li>
-                            <li class="flex justify-between"><span class="text-slate-400">Average</span><span class="rating-average">15-25&deg;</span></li>
-                            <li class="flex justify-between"><span class="text-slate-400">Needs Work</span><span class="rating-poor">&gt;25&deg;</span></li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Weapons Tab -->
-                <div id="tab-weapons" class="tab-content">
-                    <div class="bg-slate-800 rounded-xl p-6">
-                        <!-- Player Selection -->
-                        <div class="mb-6">
-                            <label class="block text-sm font-medium text-slate-300 mb-2">Select Player</label>
-                            <select id="weapons-player-select" class="w-full max-w-md px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500">
-                                <!-- Options populated by JS -->
-                            </select>
+            <!-- Dashboard Content (shown after analysis) -->
+            <div id="dashboard-content" class="hidden p-6">
+                <!-- Match Header -->
+                <div id="match-header" class="mb-6 p-6 bg-slate-800 rounded-xl">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-white" id="map-name">de_dust2</h2>
+                            <p class="text-slate-400 mt-1">
+                                <span id="match-score" class="text-lg font-semibold">13 - 16</span>
+                                <span class="mx-2">|</span>
+                                <span id="match-rounds">29 rounds</span>
+                                <span class="mx-2">|</span>
+                                <span id="tick-rate">64 tick</span>
+                            </p>
                         </div>
+                        <button id="new-analysis-btn" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                            </svg>
+                            New Analysis
+                        </button>
+                    </div>
+                </div>
 
-                        <!-- Weapons Table -->
+                <!-- Tab Contents -->
+                <!-- Overview Tab -->
+                <div id="tab-overview" class="tab-content active">
+                    <div class="bg-slate-800 rounded-xl overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-700">
+                            <h3 class="text-lg font-semibold text-white">Player Statistics</h3>
+                        </div>
                         <div class="overflow-x-auto">
                             <table class="w-full">
                                 <thead>
                                     <tr class="bg-slate-700/50 text-left text-sm text-slate-300">
-                                        <th class="px-6 py-3 font-semibold">Weapon</th>
-                                        <th class="px-6 py-3 font-semibold text-center">Kills</th>
+                                        <th class="px-6 py-3 font-semibold">Player</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Team</th>
+                                        <th class="px-6 py-3 font-semibold text-center">K</th>
+                                        <th class="px-6 py-3 font-semibold text-center">D</th>
+                                        <th class="px-6 py-3 font-semibold text-center">A</th>
+                                        <th class="px-6 py-3 font-semibold text-center">+/-</th>
+                                        <th class="px-6 py-3 font-semibold text-center">ADR</th>
                                         <th class="px-6 py-3 font-semibold text-center">HS%</th>
-                                        <th class="px-6 py-3 font-semibold text-center">Damage</th>
-                                        <th class="px-6 py-3 font-semibold text-center">Shots</th>
-                                        <th class="px-6 py-3 font-semibold text-center">Accuracy</th>
+                                        <th class="px-6 py-3 font-semibold text-center">KAST</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Rating</th>
                                     </tr>
                                 </thead>
-                                <tbody id="weapons-table" class="divide-y divide-slate-700">
-                                    <!-- Weapon rows populated by JS -->
+                                <tbody id="players-table" class="divide-y divide-slate-700">
+                                    <!-- Player rows populated by JS -->
                                 </tbody>
                             </table>
                         </div>
+                    </div>
 
-                        <!-- No Data Message -->
-                        <div id="weapons-no-data" class="hidden text-center py-8 text-slate-400">
-                            <p>No weapon data available for this player</p>
+                    <!-- Kill Matrix -->
+                    <div class="mt-6 bg-slate-800 rounded-xl overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-700">
+                            <h3 class="text-lg font-semibold text-white">Kill Matrix</h3>
+                            <p class="text-sm text-slate-400 mt-1">Who killed whom (rows = attackers, columns = victims)</p>
+                        </div>
+                        <div class="overflow-x-auto p-6">
+                            <div id="kill-matrix-container">
+                                <!-- Kill matrix populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced Tab -->
+                <div id="tab-advanced" class="tab-content">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="advanced-cards">
+                        <!-- Player cards populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Compare Tab -->
+                <div id="tab-compare" class="tab-content">
+                    <div class="bg-slate-800 rounded-xl p-6">
+                        <!-- Player Selection -->
+                        <div class="flex flex-wrap gap-4 mb-6">
+                            <div class="flex-1 min-w-[200px]">
+                                <label class="block text-sm font-medium text-slate-300 mb-2">Player A</label>
+                                <select id="player-a-select" class="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                                    <!-- Options populated by JS -->
+                                </select>
+                            </div>
+                            <div class="flex items-end pb-2">
+                                <span class="text-slate-400 font-medium">vs</span>
+                            </div>
+                            <div class="flex-1 min-w-[200px]">
+                                <label class="block text-sm font-medium text-slate-300 mb-2">Player B</label>
+                                <select id="player-b-select" class="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                                    <!-- Options populated by JS -->
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Radar Chart -->
+                        <div class="flex justify-center">
+                            <div class="w-full max-w-2xl aspect-square">
+                                <canvas id="compare-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Comparison Stats -->
+                        <div class="mt-6 grid grid-cols-2 gap-4" id="comparison-stats">
+                            <!-- Stats populated by JS -->
                         </div>
                     </div>
                 </div>
             </div>
-        </section>
-    </main>
-
-    <!-- Footer -->
-    <footer class="bg-slate-800 border-t border-slate-700 mt-auto">
-        <div class="max-w-7xl mx-auto px-4 py-4">
-            <p class="text-center text-sm text-slate-500">
-                OpenSight - Professional-grade CS2 demo analysis
-            </p>
-        </div>
-    </footer>
+        </main>
+    </div>
 
     <script>
+        // =============================================================================
+        // Global State
+        // =============================================================================
+        let currentMatchData = null;
+        let radarChart = null;
+
+        // =============================================================================
         // DOM Elements
         // =============================================================================
         const uploadSection = document.getElementById('upload-section');
@@ -534,16 +267,14 @@
         const navBtns = {
             overview: document.getElementById('nav-overview'),
             advanced: document.getElementById('nav-advanced'),
-            compare: document.getElementById('nav-compare'),
-            weapons: document.getElementById('nav-weapons')
+            compare: document.getElementById('nav-compare')
         };
 
         // Tab contents
         const tabContents = {
             overview: document.getElementById('tab-overview'),
             advanced: document.getElementById('tab-advanced'),
-            compare: document.getElementById('tab-compare'),
-            weapons: document.getElementById('tab-weapons')
+            compare: document.getElementById('tab-compare')
         };
 
         // =============================================================================
@@ -604,11 +335,9 @@
             navBtns[tabName].classList.add('active', 'bg-slate-700', 'text-white');
             navBtns[tabName].classList.remove('text-slate-400', 'hover:bg-slate-700/50', 'hover:text-white');
 
-                // Initialize tab-specific content if data exists
-                if (analysisData) {
-                    if (tab === 'heatmaps') initHeatmap(analysisData.heatmap_data || {});
-                    if (tab === 'killmap') renderKillMapContent();
-                }
+            // Update tab contents
+            Object.keys(tabContents).forEach(key => {
+                tabContents[key].classList.remove('active');
             });
             tabContents[tabName].classList.add('active');
 
@@ -670,51 +399,45 @@
                 return;
             }
 
-        // Format numbers
-        function formatNumber(num, decimals = 1) {
-            if (num === null || num === undefined) return '-';
-            return Number(num).toFixed(decimals);
-        }
+            // Show loading
+            loadingOverlay.classList.remove('hidden');
 
-        // Get rating class based on HLTV rating
-        function getRatingClass(rating) {
-            if (rating >= 1.3) return 'rating-excellent';
-            if (rating >= 1.1) return 'rating-good';
-            if (rating >= 0.9) return 'rating-average';
-            if (rating >= 0.7) return 'rating-below';
-            return 'rating-poor';
-        }
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
 
-        // Get TTD rating class
-        function getTtdClass(ttd) {
-            if (ttd === null || ttd === undefined) return '';
-            if (ttd < 200) return 'rating-excellent';
-            if (ttd < 350) return 'rating-good';
-            if (ttd < 500) return 'rating-average';
-            return 'rating-poor';
-        }
-
-        // Get CP rating class
-        function getCpClass(cp) {
-            if (cp === null || cp === undefined) return '';
-            if (cp < 5) return 'rating-excellent';
-            if (cp < 15) return 'rating-good';
-            if (cp < 25) return 'rating-average';
-            return 'rating-poor';
-        }
-
-        // Tab Navigation
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tabId = btn.dataset.tab;
-
-                // Update button states
-                document.querySelectorAll('.tab-btn').forEach(b => {
-                    b.classList.remove('border-blue-500', 'text-blue-400');
-                    b.classList.add('border-transparent', 'text-slate-400');
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
                 });
-                btn.classList.remove('border-transparent', 'text-slate-400');
-                btn.classList.add('border-blue-500', 'text-blue-400');
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Analysis failed');
+                }
+
+                currentMatchData = await response.json();
+                showDashboard();
+            } catch (error) {
+                alert('Error analyzing demo: ' + error.message);
+            } finally {
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        // =============================================================================
+        // Share Code Decode
+        // =============================================================================
+        decodeBtn.addEventListener('click', async () => {
+            const code = sharecodeInput.value.trim();
+            if (!code) return;
+
+            try {
+                const response = await fetch('/decode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
 
                 const data = await response.json();
                 decodeResult.classList.remove('hidden');
@@ -748,7 +471,6 @@
             renderOverview();
             renderAdvanced();
             populatePlayerSelects();
-            populateWeaponsSelect();
         }
 
         newAnalysisBtn.addEventListener('click', () => {
@@ -818,14 +540,12 @@
                 return;
             }
 
-            // Show placeholders become real content
-            renderPlayersContent(ctPlayers, tPlayers);
-            renderUtilityContent(players);
-            renderTimelineContent(data.rounds || []);
-            renderCoachingContent(data.coaching || []);
-            renderCompareContent(players);
-            renderHeatmapContent();
-            renderKillMapContent();
+            // Build matrix lookup
+            const matrixLookup = {};
+            killMatrix.forEach(entry => {
+                const key = `${entry.attacker_name}-${entry.victim_name}`;
+                matrixLookup[key] = entry.count;
+            });
 
             // Create table
             let html = '<table class="min-w-full text-sm">';
@@ -837,242 +557,293 @@
             });
             html += '</tr></thead><tbody>';
 
-                    // Reset all placeholders
-                    ['players', 'utility', 'timeline', 'coaching', 'compare', 'heatmap', 'killmap'].forEach(tab => {
-                        const display = document.getElementById(`${tab}-display`);
-                        const placeholder = document.getElementById(`${tab}-placeholder`);
-                        if (display) display.classList.add('hidden');
-                        if (placeholder) placeholder.classList.remove('hidden');
-                    });
+            // Data rows
+            players.forEach((attacker, i) => {
+                const rowBg = i % 2 === 0 ? 'bg-slate-700/30' : '';
+                html += `<tr class="${rowBg}"><td class="px-3 py-2 text-slate-300 font-medium">${escapeHtml(attacker.name || 'Unknown')}</td>`;
+                players.forEach(victim => {
+                    const key = `${attacker.name}-${victim.name}`;
+                    const count = matrixLookup[key] || 0;
+                    const cellClass = attacker.name === victim.name ? 'bg-slate-600/30 text-slate-500' :
+                                     count > 0 ? 'text-white' : 'text-slate-500';
+                    html += `<td class="px-3 py-2 text-center font-mono-num ${cellClass}">${attacker.name === victim.name ? '-' : count}</td>`;
                 });
-                document.getElementById(`content-${tabId}`).classList.add('active');
+                html += '</tr>';
             });
-        });
 
-        // File Input Handlers
-        dropZone.addEventListener('click', () => fileInput.click());
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
 
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('drop-zone-active');
-        });
+        // =============================================================================
+        // Render Advanced Tab
+        // =============================================================================
+        function renderAdvanced() {
+            const players = Object.values(currentMatchData.players || {});
+            players.sort((a, b) => (b.hltv_rating || 0) - (a.hltv_rating || 0));
 
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('drop-zone-active');
-        });
+            const container = document.getElementById('advanced-cards');
+            container.innerHTML = players.map(p => {
+                const ttd = p.ttd_mean_ms;
+                const cp = p.cp_median_error_deg;
+                const openingWin = p.opening_duels?.win_rate || 0;
+                const clutchWin = p.clutches?.win_rate || 0;
+                const kast = p.kast_percentage || 0;
 
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('drop-zone-active');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFile(files[0]);
+                // TTD Tier (lower is better)
+                const ttdBadge = ttd !== null ? getTierBadge(ttd, [200, 350, 500], ['Elite', 'Good', 'Average', 'Slow'], true) : '<span class="text-slate-500">N/A</span>';
+
+                // CP Tier (lower is better)
+                const cpBadge = cp !== null ? getTierBadge(cp, [5, 15, 25], ['Elite', 'Good', 'Average', 'Needs Work'], true) : '<span class="text-slate-500">N/A</span>';
+
+                return `
+                    <div class="stat-card bg-slate-800 rounded-xl p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-white">${escapeHtml(p.name || 'Unknown')}</h3>
+                                <p class="text-sm text-slate-400">${getTeamBadge(p.team)} <span class="ml-2">${formatNumber(p.hltv_rating, 2)} Rating</span></p>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <!-- TTD -->
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-slate-400">Time to Damage</p>
+                                    <p class="text-xl font-semibold font-mono-num text-white">${ttd !== null ? formatNumber(ttd, 0) + ' ms' : 'N/A'}</p>
+                                </div>
+                                ${ttdBadge}
+                            </div>
+
+                            <!-- Crosshair Placement -->
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-slate-400">Crosshair Placement</p>
+                                    <p class="text-xl font-semibold font-mono-num text-white">${cp !== null ? formatNumber(cp, 1) + '°' : 'N/A'}</p>
+                                </div>
+                                ${cpBadge}
+                            </div>
+
+                            <!-- Opening Duels -->
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-slate-400">Opening Duel Win Rate</p>
+                                    <p class="text-xl font-semibold font-mono-num text-white">${formatNumber(openingWin, 0)}%</p>
+                                </div>
+                                <div class="text-xs text-slate-400">
+                                    ${p.opening_duels?.attempts || 0} duels
+                                </div>
+                            </div>
+
+                            <!-- Clutches -->
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-slate-400">Clutch Win Rate</p>
+                                    <p class="text-xl font-semibold font-mono-num text-white">${formatNumber(clutchWin, 0)}%</p>
+                                </div>
+                                <div class="text-xs text-slate-400">
+                                    ${p.clutches?.won || 0}/${p.clutches?.attempts || 0}
+                                </div>
+                            </div>
+
+                            <!-- KAST -->
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-slate-400">KAST</p>
+                                    <p class="text-xl font-semibold font-mono-num text-white">${formatNumber(kast, 0)}%</p>
+                                </div>
+                                ${getTierBadge(kast, [80, 70, 60], ['Elite', 'Good', 'Average', 'Low'])}
+                            </div>
+
+                            <!-- Utility Stats -->
+                            <div class="pt-4 border-t border-slate-700">
+                                <p class="text-sm text-slate-400 mb-2">Utility Usage</p>
+                                <div class="grid grid-cols-2 gap-2 text-xs">
+                                    <div class="bg-slate-700/50 rounded px-2 py-1">
+                                        <span class="text-slate-400">Flashes:</span>
+                                        <span class="font-mono-num ml-1">${p.utility?.flashbangs_thrown || 0}</span>
+                                    </div>
+                                    <div class="bg-slate-700/50 rounded px-2 py-1">
+                                        <span class="text-slate-400">HE:</span>
+                                        <span class="font-mono-num ml-1">${p.utility?.he_thrown || 0}</span>
+                                    </div>
+                                    <div class="bg-slate-700/50 rounded px-2 py-1">
+                                        <span class="text-slate-400">Smokes:</span>
+                                        <span class="font-mono-num ml-1">${p.utility?.smokes_thrown || 0}</span>
+                                    </div>
+                                    <div class="bg-slate-700/50 rounded px-2 py-1">
+                                        <span class="text-slate-400">Molotovs:</span>
+                                        <span class="font-mono-num ml-1">${p.utility?.molotovs_thrown || 0}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // =============================================================================
+        // Render Compare Tab
+        // =============================================================================
+        function populatePlayerSelects() {
+            const players = Object.values(currentMatchData.players || {});
+            const selectA = document.getElementById('player-a-select');
+            const selectB = document.getElementById('player-b-select');
+
+            const options = players.map((p, i) =>
+                `<option value="${i}">${escapeHtml(p.name || 'Unknown')} (${p.team || '?'})</option>`
+            ).join('');
+
+            selectA.innerHTML = options;
+            selectB.innerHTML = options;
+
+            // Select different players by default
+            if (players.length >= 2) {
+                selectB.selectedIndex = 1;
             }
-        });
 
-        fileInput.addEventListener('change', () => {
-            if (fileInput.files.length > 0) {
-                handleFile(fileInput.files[0]);
+            // Add change listeners
+            selectA.addEventListener('change', renderCompare);
+            selectB.addEventListener('change', renderCompare);
+        }
+
+        function renderCompare() {
+            const players = Object.values(currentMatchData.players || {});
+            const selectA = document.getElementById('player-a-select');
+            const selectB = document.getElementById('player-b-select');
+
+            if (players.length < 2) return;
+
+            const playerA = players[selectA.selectedIndex];
+            const playerB = players[selectB.selectedIndex];
+
+            // Normalize values to 0-100 scale
+            function normalize(value, min, max, inverse = false) {
+                if (value === null || value === undefined) return 50;
+                const clamped = Math.max(min, Math.min(max, value));
+                const normalized = ((clamped - min) / (max - min)) * 100;
+                return inverse ? 100 - normalized : normalized;
             }
-        });
 
-        // Show/Hide UI States
-        function showProgress() {
-            progressSection.classList.remove('hidden');
-            errorSection.classList.add('hidden');
-            resultsSection.classList.add('hidden');
-        }
+            const metricsA = {
+                adr: normalize(playerA.adr, 0, 130),
+                hsPercent: playerA.headshot_percentage || 0,
+                openingWin: playerA.opening_duels?.win_rate || 0,
+                clutchWin: playerA.clutches?.win_rate || 0,
+                kast: playerA.kast_percentage || 0,
+                reflex: normalize(playerA.ttd_mean_ms || 400, 100, 600, true) // Inverse: lower TTD = higher score
+            };
 
-        function showError(message) {
-            progressSection.classList.add('hidden');
-            errorSection.classList.remove('hidden');
-            errorMessage.textContent = message;
-        }
+            const metricsB = {
+                adr: normalize(playerB.adr, 0, 130),
+                hsPercent: playerB.headshot_percentage || 0,
+                openingWin: playerB.opening_duels?.win_rate || 0,
+                clutchWin: playerB.clutches?.win_rate || 0,
+                kast: playerB.kast_percentage || 0,
+                reflex: normalize(playerB.ttd_mean_ms || 400, 100, 600, true)
+            };
 
-        function showResults() {
-            progressSection.classList.add('hidden');
-            errorSection.classList.add('hidden');
-            resultsSection.classList.remove('hidden');
-        }
+            // Update or create chart
+            const ctx = document.getElementById('compare-chart').getContext('2d');
 
-        function updateProgress(text, percent, detail = '') {
-            progressText.textContent = text;
-            progressBar.style.width = `${percent}%`;
-            progressDetail.textContent = detail;
-        }
-
-        // Poll for job status
-        async function pollJobStatus(jobId) {
-            const pollInterval = 1000; // 1 second
-            const maxAttempts = 600; // 10 minutes max
-            let attempts = 0;
-
-            while (attempts < maxAttempts) {
-                try {
-                    const response = await fetch(`/analyze/${jobId}`);
-                    const data = await response.json();
-
-                    if (data.status === 'completed') {
-                        updateProgress('Analysis complete!', 100);
-                        return data.result;
-                    } else if (data.status === 'failed') {
-                        throw new Error(data.error || 'Analysis failed');
-                    } else if (data.status === 'processing') {
-                        const progress = data.progress || 0;
-                        updateProgress('Analyzing demo...', Math.max(10, progress), `${progress}% complete`);
-                    } else {
-                        updateProgress('Waiting in queue...', 5, 'Job queued');
+            const chartData = {
+                labels: ['ADR', 'HS%', 'Opening Win', 'Clutch Win', 'KAST', 'Reflex'],
+                datasets: [
+                    {
+                        label: playerA.name || 'Player A',
+                        data: [metricsA.adr, metricsA.hsPercent, metricsA.openingWin, metricsA.clutchWin, metricsA.kast, metricsA.reflex],
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgba(59, 130, 246, 1)'
+                    },
+                    {
+                        label: playerB.name || 'Player B',
+                        data: [metricsB.adr, metricsB.hsPercent, metricsB.openingWin, metricsB.clutchWin, metricsB.kast, metricsB.reflex],
+                        backgroundColor: 'rgba(234, 179, 8, 0.2)',
+                        borderColor: 'rgba(234, 179, 8, 1)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgba(234, 179, 8, 1)'
                     }
-                } catch (error) {
-                    throw error;
+                ]
+            };
+
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20,
+                            color: '#94a3b8',
+                            backdropColor: 'transparent'
+                        },
+                        grid: {
+                            color: '#334155'
+                        },
+                        angleLines: {
+                            color: '#334155'
+                        },
+                        pointLabels: {
+                            color: '#e2e8f0',
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#e2e8f0',
+                            padding: 20,
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
                 }
+            };
 
-                await new Promise(resolve => setTimeout(resolve, pollInterval));
-                attempts++;
-            }
-
-            throw new Error('Analysis timed out');
-        }
-
-        // Handle File Upload
-        async function handleFile(file) {
-            // Validate file
-            const validExtensions = ['.dem', '.dem.gz'];
-            const fileName = file.name.toLowerCase();
-            const isValid = validExtensions.some(ext => fileName.endsWith(ext));
-
-            if (!isValid) {
-                showError('Invalid file type. Please upload a .dem or .dem.gz file.');
-                return;
-            }
-
-            if (file.size > 500 * 1024 * 1024) {
-                showError('File too large. Maximum size is 500MB.');
-                return;
-            }
-
-            showProgress();
-            updateProgress('Uploading demo...', 0, `${(file.size / 1024 / 1024).toFixed(1)} MB`);
-
-            try {
-                // Upload file
-                const formData = new FormData();
-                formData.append('file', file);
-
-                const uploadResponse = await fetch('/analyze', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!uploadResponse.ok) {
-                    const errorData = await uploadResponse.json().catch(() => ({}));
-                    throw new Error(errorData.detail || `Upload failed: ${uploadResponse.status}`);
-                }
-
-                const uploadResult = await uploadResponse.json();
-                updateProgress('Processing demo...', 10, 'Job submitted');
-
-                // Poll for results
-                const result = await pollJobStatus(uploadResult.job_id);
-
-                // Display results
-                displayResults(result);
-                showResults();
-
-            } catch (error) {
-                console.error('Analysis error:', error);
-                showError(error.message || 'An unexpected error occurred');
-            }
-        }
-
-        // Display Results
-        function displayResults(data) {
-            const demoInfo = data.demo_info || {};
-            const players = data.players || {};
-
-            // Match Overview
-            document.getElementById('match-map').textContent = escapeHtml(demoInfo.map || 'Unknown');
-            document.getElementById('match-score').textContent = escapeHtml(demoInfo.score || '-');
-            document.getElementById('match-rounds').textContent = demoInfo.rounds || '-';
-            document.getElementById('match-tickrate').textContent = demoInfo.tick_rate ? `${demoInfo.tick_rate} tick` : '-';
-            document.getElementById('match-duration').textContent = demoInfo.duration_minutes ? `${formatNumber(demoInfo.duration_minutes, 1)} min` : '-';
-            document.getElementById('match-kills').textContent = demoInfo.total_kills || '-';
-
-            // MVP
-            if (data.mvp) {
-                document.getElementById('match-mvp').textContent = escapeHtml(data.mvp.name);
+            if (radarChart) {
+                radarChart.data = chartData;
+                radarChart.update();
             } else {
-                document.getElementById('match-mvp').textContent = '-';
+                radarChart = new Chart(ctx, {
+                    type: 'radar',
+                    data: chartData,
+                    options: chartOptions
+                });
             }
 
-            // Convert players object to array and sort by rating
-            const playerList = Object.entries(players).map(([steamId, player]) => ({
-                steamId,
-                ...player
-            })).sort((a, b) => {
-                const ratingA = a.rating?.hltv_rating || 0;
-                const ratingB = b.rating?.hltv_rating || 0;
-                return ratingB - ratingA;
-            });
-
-            // Populate Overview Table
-            playersTableBody.innerHTML = playerList.map(player => {
-                const stats = player.stats || {};
-                const rating = player.rating || {};
-                const ratingValue = rating.hltv_rating || 0;
-                const ratingClass = getRatingClass(ratingValue);
-                const teamClass = player.team === 'CT' ? 'text-blue-400' : 'text-yellow-400';
-
-                return `
-                    <tr class="hover:bg-slate-700/50">
-                        <td class="px-4 py-3">
-                            <div class="flex items-center">
-                                <span class="${teamClass} font-medium mr-2">${escapeHtml(player.team || '')}</span>
-                                <span class="text-white font-medium">${escapeHtml(player.name || 'Unknown')}</span>
-                            </div>
-                        </td>
-                        <td class="px-4 py-3 text-center text-slate-300">${stats.kills || 0}</td>
-                        <td class="px-4 py-3 text-center text-slate-300">${stats.deaths || 0}</td>
-                        <td class="px-4 py-3 text-center text-slate-300">${stats.assists || 0}</td>
-                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(stats.kd_ratio, 2)}</td>
-                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(stats.headshot_pct, 0)}%</td>
-                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(stats.adr, 1)}</td>
-                        <td class="px-4 py-3 text-center font-semibold ${ratingClass}">${formatNumber(ratingValue, 2)}</td>
-                    </tr>
-                `;
-            }).join('');
-
-            // Populate Advanced Table
-            advancedTableBody.innerHTML = playerList.map(player => {
-                const stats = player.stats || {};
-                const rating = player.rating || {};
-                const advanced = player.advanced || {};
-                const utility = player.utility || {};
-
-                const ttdValue = advanced.ttd_mean_ms;
-                const cpValue = advanced.cp_median_error_deg;
-                const ttdClass = getTtdClass(ttdValue);
-                const cpClass = getCpClass(cpValue);
-                const teamClass = player.team === 'CT' ? 'text-blue-400' : 'text-yellow-400';
-
-                return `
-                    <tr class="hover:bg-slate-700/50">
-                        <td class="px-4 py-3">
-                            <div class="flex items-center">
-                                <span class="${teamClass} font-medium mr-2">${escapeHtml(player.team || '')}</span>
-                                <span class="text-white font-medium">${escapeHtml(player.name || 'Unknown')}</span>
-                            </div>
-                        </td>
-                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(stats.adr, 1)}</td>
-                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(rating.kast_percentage, 0)}%</td>
-                        <td class="px-4 py-3 text-center ${ttdClass}">${ttdValue !== null && ttdValue !== undefined ? formatNumber(ttdValue, 0) : '-'}</td>
-                        <td class="px-4 py-3 text-center ${cpClass}">${cpValue !== null && cpValue !== undefined ? formatNumber(cpValue, 1) + '°' : '-'}</td>
-                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(rating.aim_rating, 0)}</td>
-                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(rating.entry_success_rate, 0)}%</td>
-                        <td class="px-4 py-3 text-center text-slate-300">${formatNumber(rating.utility_rating, 0)}</td>
-                    </tr>
-                `;
-            }).join('');
+            // Render comparison stats
+            const statsContainer = document.getElementById('comparison-stats');
+            statsContainer.innerHTML = `
+                <div class="bg-slate-700/50 rounded-lg p-4">
+                    <h4 class="text-sm font-semibold text-blue-400 mb-3">${escapeHtml(playerA.name || 'Player A')}</h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span class="text-slate-400">K/D:</span> <span class="font-mono-num">${formatNumber(playerA.kd_ratio, 2)}</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">ADR:</span> <span class="font-mono-num">${formatNumber(playerA.adr, 1)}</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">Rating:</span> <span class="font-mono-num ${getRatingColor(playerA.hltv_rating)}">${formatNumber(playerA.hltv_rating, 2)}</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">TTD:</span> <span class="font-mono-num">${playerA.ttd_mean_ms ? formatNumber(playerA.ttd_mean_ms, 0) + ' ms' : 'N/A'}</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">CP:</span> <span class="font-mono-num">${playerA.cp_median_error_deg ? formatNumber(playerA.cp_median_error_deg, 1) + '°' : 'N/A'}</span></div>
+                    </div>
+                </div>
+                <div class="bg-slate-700/50 rounded-lg p-4">
+                    <h4 class="text-sm font-semibold text-yellow-400 mb-3">${escapeHtml(playerB.name || 'Player B')}</h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span class="text-slate-400">K/D:</span> <span class="font-mono-num">${formatNumber(playerB.kd_ratio, 2)}</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">ADR:</span> <span class="font-mono-num">${formatNumber(playerB.adr, 1)}</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">Rating:</span> <span class="font-mono-num ${getRatingColor(playerB.hltv_rating)}">${formatNumber(playerB.hltv_rating, 2)}</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">TTD:</span> <span class="font-mono-num">${playerB.ttd_mean_ms ? formatNumber(playerB.ttd_mean_ms, 0) + ' ms' : 'N/A'}</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">CP:</span> <span class="font-mono-num">${playerB.cp_median_error_deg ? formatNumber(playerB.cp_median_error_deg, 1) + '°' : 'N/A'}</span></div>
+                    </div>
+                </div>
+            `;
         }
     </script>
 </body>
