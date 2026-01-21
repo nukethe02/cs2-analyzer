@@ -1009,7 +1009,11 @@ class DemoParser:
                 if isinstance(winner_col, str):
                     winner = "CT" if "CT" in winner_col.upper() else "T" if "T" in winner_col.upper() else winner_col
                 elif isinstance(winner_col, (int, float)):
-                    winner = "CT" if int(winner_col) == 3 else "T" if int(winner_col) == 2 else "Unknown"
+                    # Check for NaN before converting to int
+                    if pd.isna(winner_col):
+                        pass  # Leave winner as "Unknown"
+                    else:
+                        winner = "CT" if int(winner_col) == 3 else "T" if int(winner_col) == 2 else "Unknown"
             elif reason:
                 # Infer from reason
                 ct_reasons = ["bomb_defused", "ct_win", "target_saved"]
