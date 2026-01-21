@@ -213,33 +213,88 @@ def classify_team_buy(total_equipment: int, is_pistol_round: bool = False) -> Bu
         return BuyType.FULL_BUY
 
 
+# Weapon name variations for better matching
+WEAPON_NAME_ALIASES = {
+    # M4 variations
+    "m4a4": "m4a1",
+    "m4a1-s": "m4a1_silencer",
+    "m4a1s": "m4a1_silencer",
+    "m4a1silencer": "m4a1_silencer",
+    # AK variations
+    "ak-47": "ak47",
+    # Pistol variations
+    "p2000": "hkp2000",
+    "usps": "usp_silencer",
+    "usp-s": "usp_silencer",
+    "usp_s": "usp_silencer",
+    "cz-75": "cz75a",
+    "dual_berettas": "elite",
+    "dualies": "elite",
+    "r8": "revolver",
+    # SMG variations
+    "mp5": "mp5sd",
+    "ppbizon": "bizon",
+    # AWP/Scout
+    "scout": "ssg08",
+    "ssg08_silencer": "ssg08",
+    # Shotguns
+    "sawedoff": "sawedoff",
+    "sawed-off": "sawedoff",
+    # Grenades
+    "flash": "flashbang",
+    "he": "hegrenade",
+    "smoke": "smokegrenade",
+    "molly": "molotov",
+    "inc": "incgrenade",
+}
+
+# Cache for weapon cost lookups
+_weapon_cost_cache: dict[str, int] = {}
+
+
 def estimate_weapon_cost(weapon_name: str) -> int:
     """
-    Estimate the cost of a weapon by name.
+    Estimate the cost of a weapon by name with improved matching.
 
     Args:
         weapon_name: The weapon name (e.g., 'ak47', 'm4a1_silencer').
 
     Returns:
-        Estimated cost in dollars.
+        Estimated cost in dollars (0-10000 range).
     """
     if not weapon_name:
         return 0
 
     # Normalize weapon name
-    weapon = weapon_name.lower().replace(" ", "_")
+    weapon = weapon_name.lower().replace(" ", "_").replace("-", "_")
+
+    # Check cache first
+    if weapon in _weapon_cost_cache:
+        return _weapon_cost_cache[weapon]
+
+    cost = 0
 
     # Direct lookup
     if weapon in WEAPON_COSTS:
-        return WEAPON_COSTS[weapon]
+        cost = WEAPON_COSTS[weapon]
+    # Check aliases
+    elif weapon in WEAPON_NAME_ALIASES:
+        aliased = WEAPON_NAME_ALIASES[weapon]
+        cost = WEAPON_COSTS.get(aliased, 0)
+    else:
+        # Try partial match
+        for known_weapon, wcost in WEAPON_COSTS.items():
+            if known_weapon in weapon or weapon in known_weapon:
+                cost = wcost
+                break
 
-    # Try partial match
-    for known_weapon, cost in WEAPON_COSTS.items():
-        if known_weapon in weapon or weapon in known_weapon:
-            return cost
+    # Validate cost is in reasonable range (0-10000)
+    cost = max(0, min(cost, 10000))
 
-    # Default to 0 for unknown weapons
-    return 0
+    # Cache the result
+    _weapon_cost_cache[weapon] = cost
+
+    return cost
 
 
 class EconomyAnalyzer:
@@ -276,10 +331,10 @@ class EconomyAnalyzer:
 
     def _analyze_from_kills(self) -> None:
         """
-        Analyze economy from kill events.
+        Analyze economy from kill events with improved estimation.
 
         Uses weapon data from kills to estimate equipment values per round.
-        This is an approximation when full economy events aren't available.
+        Also uses grenade events and damage data for more accurate estimates.
         """
         kills_df = self.data.kills_df
         if kills_df.empty:
@@ -295,16 +350,51 @@ class EconomyAnalyzer:
 
         att_col = find_col(kills_df, ["attacker_steamid", "attacker_steam_id"])
         weapon_col = find_col(kills_df, ["weapon"])
-        round_col = find_col(kills_df, ["total_rounds_played"])
+        round_col = find_col(kills_df, ["total_rounds_played", "round_num", "round"])
 
         if not att_col or not weapon_col:
             logger.warning("Missing columns for economy analysis")
             return
 
+        # Determine pistol rounds from DemoData.rounds if available
+        pistol_rounds = {1, 16}  # Default: first round and after halftime
+        if hasattr(self.data, 'rounds') and self.data.rounds:
+            pistol_rounds = {1}  # Round 1 is always pistol
+            # MR15 format: round 16 is second half pistol
+            # MR12 format: round 13 is second half pistol
+            num_rounds = self.data.num_rounds
+            if num_rounds >= 24:  # MR12
+                pistol_rounds.add(13)
+            else:  # MR15 or shorter
+                pistol_rounds.add(16)
+
+        # Pre-calculate grenade usage per player per round if available
+        grenade_counts: dict[tuple[int, int], int] = {}  # (steam_id, round_num) -> count
+        if hasattr(self.data, 'grenades') and self.data.grenades:
+            for grenade in self.data.grenades:
+                if grenade.event_type == 'thrown':
+                    key = (grenade.player_steamid, grenade.round_num)
+                    grenade_counts[key] = grenade_counts.get(key, 0) + 1
+
+        # Pre-calculate armor info from damage events if available
+        player_has_armor: dict[tuple[int, int], bool] = {}  # (steam_id, round_num) -> has_armor
+        damages_df = self.data.damages_df
+        if not damages_df.empty:
+            vic_col = find_col(damages_df, ["user_steamid", "victim_steamid"])
+            armor_col = find_col(damages_df, ["armor", "armor_remaining"])
+            if vic_col and armor_col:
+                for _, row in damages_df.iterrows():
+                    vic_id = safe_int(row.get(vic_col))
+                    round_num = safe_int(row.get(round_col, 0)) if round_col else 0
+                    armor = safe_int(row.get(armor_col, 0))
+                    if vic_id and armor > 0:
+                        player_has_armor[(vic_id, round_num)] = True
+
         # Group kills by round and player
         for steam_id in self.data.player_names:
             player_rounds: list[PlayerRoundEconomy] = []
             team = self.data.player_teams.get(steam_id, 0)
+            team_str = str(team) if isinstance(team, int) else team
 
             # Get this player's kills
             player_kills = kills_df[kills_df[att_col] == steam_id]
@@ -313,34 +403,50 @@ class EconomyAnalyzer:
                 # Group by round if available
                 if round_col and round_col in player_kills.columns:
                     for round_num in player_kills[round_col].unique():
+                        round_num_int = int(round_num)
                         round_kills = player_kills[player_kills[round_col] == round_num]
                         weapons = round_kills[weapon_col].unique()
 
                         # Estimate equipment value from weapons used
                         max_weapon_cost = max(
-                            estimate_weapon_cost(w) for w in weapons
-                        ) if len(weapons) > 0 else 0
+                            (estimate_weapon_cost(w) for w in weapons if w),
+                            default=0
+                        )
 
-                        # Rough estimate: weapon + armor (assume armor if rifle)
+                        # Estimate armor from damage data or weapon cost
+                        has_armor = player_has_armor.get((steam_id, round_num_int), max_weapon_cost >= 1800)
+                        has_helmet = has_armor and max_weapon_cost >= 1500  # More likely helmet with better weapons
+
+                        # Rough estimate: weapon + armor
                         equipment_estimate = max_weapon_cost
-                        if max_weapon_cost >= 1800:  # Likely has armor
+                        if has_helmet:
                             equipment_estimate += 1000  # Vest + helmet
+                        elif has_armor:
+                            equipment_estimate += 650  # Just vest
 
-                        is_pistol = int(round_num) in [1, 16]
+                        # Add grenade cost estimation
+                        grenade_count = grenade_counts.get((steam_id, round_num_int), 0)
+                        grenade_cost = min(grenade_count * 300, 1200)  # Estimate ~300 per grenade, max 4
+                        equipment_estimate += grenade_cost
+
+                        # Validate equipment value (0-10000 range)
+                        equipment_estimate = max(0, min(equipment_estimate, 10000))
+
+                        is_pistol = round_num_int in pistol_rounds
                         buy_type = classify_buy_type(equipment_estimate, is_pistol)
 
                         player_round = PlayerRoundEconomy(
                             steam_id=steam_id,
-                            round_num=int(round_num),
+                            round_num=round_num_int,
                             equipment_value=equipment_estimate,
                             start_money=0,  # Unknown without full economy data
                             end_money=0,
                             spent=equipment_estimate,
-                            weapon=weapons[0] if len(weapons) > 0 else "",
-                            has_armor=max_weapon_cost >= 1800,
-                            has_helmet=max_weapon_cost >= 1800,
-                            has_defuser=team == 3,  # Assume CT has defuser
-                            grenade_count=0,
+                            weapon=str(weapons[0]) if len(weapons) > 0 else "",
+                            has_armor=has_armor,
+                            has_helmet=has_helmet,
+                            has_defuser=team_str in ("3", "CT"),  # CT has defuser
+                            grenade_count=grenade_count,
                             buy_type=buy_type,
                         )
                         player_rounds.append(player_round)
@@ -348,12 +454,16 @@ class EconomyAnalyzer:
                     # No round info - create single summary
                     weapons = player_kills[weapon_col].unique()
                     max_weapon_cost = max(
-                        estimate_weapon_cost(w) for w in weapons
-                    ) if len(weapons) > 0 else 0
+                        (estimate_weapon_cost(w) for w in weapons if w),
+                        default=0
+                    )
 
                     equipment_estimate = max_weapon_cost
                     if max_weapon_cost >= 1800:
                         equipment_estimate += 1000
+
+                    # Validate
+                    equipment_estimate = max(0, min(equipment_estimate, 10000))
 
                     player_round = PlayerRoundEconomy(
                         steam_id=steam_id,
@@ -362,10 +472,10 @@ class EconomyAnalyzer:
                         start_money=0,
                         end_money=0,
                         spent=equipment_estimate,
-                        weapon=weapons[0] if len(weapons) > 0 else "",
+                        weapon=str(weapons[0]) if len(weapons) > 0 else "",
                         has_armor=max_weapon_cost >= 1800,
                         has_helmet=max_weapon_cost >= 1800,
-                        has_defuser=team == 3,
+                        has_defuser=team_str in ("3", "CT"),
                         grenade_count=0,
                         buy_type=classify_buy_type(equipment_estimate),
                     )

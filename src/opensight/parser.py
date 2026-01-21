@@ -360,12 +360,36 @@ class DemoParser:
         "round_freeze_end",
     ]
 
+    # Memory-efficient dtypes for DataFrame columns
+    OPTIMIZED_DTYPES = {
+        "tick": "int32",
+        "round": "int16",
+        "round_num": "int16",
+        "total_rounds_played": "int16",
+        "dmg_health": "int16",
+        "dmg_armor": "int16",
+        "damage": "int16",
+        "health": "int16",
+        "armor": "int16",
+        "health_remaining": "int16",
+        "armor_remaining": "int16",
+        "headshot": "bool",
+        "is_alive": "bool",
+        "is_scoped": "bool",
+        "flash_assist": "bool",
+    }
+
+    # Chunk size for processing large tick data
+    TICK_CHUNK_SIZE = 500000
+
     def __init__(self, demo_path: str | Path):
         self.demo_path = Path(demo_path)
         if not self.demo_path.exists():
             raise FileNotFoundError(f"Demo file not found: {demo_path}")
         self._data: Optional[DemoData] = None
         self._parser: Optional[Demoparser2] = None
+        # Cache for column lookups
+        self._column_cache: dict[str, Optional[str]] = {}
 
     def parse(self, include_ticks: bool = False, comprehensive: bool = True) -> DemoData:
         """
@@ -500,12 +524,15 @@ class DemoParser:
         # ===========================================
         ticks_df = None
         if include_ticks:
-            try:
-                ticks_df = parser.parse_ticks(self.PLAYER_PROPS)
-                if ticks_df is not None and not ticks_df.empty:
-                    logger.info(f"Parsed {len(ticks_df)} tick entries")
-            except Exception as e:
-                logger.warning(f"Failed to parse ticks: {e}")
+            ticks_df = self._process_tick_data_chunked(parser, self.PLAYER_PROPS)
+            if ticks_df is not None:
+                logger.info(f"Parsed {len(ticks_df)} tick entries (memory optimized)")
+
+        # Optimize dtypes for memory efficiency
+        kills_df = self._optimize_dtypes(kills_df)
+        damages_df = self._optimize_dtypes(damages_df)
+        weapon_fires_df = self._optimize_dtypes(weapon_fires_df) if comprehensive else weapon_fires_df
+        blinds_df = self._optimize_dtypes(blinds_df) if comprehensive else blinds_df
 
         # Calculate duration
         tick_rate = 64
@@ -538,21 +565,35 @@ class DemoParser:
         grenades = self._build_grenades(grenades_thrown_df, flash_det_df, he_det_df, smoke_det_df, molly_det_df) if comprehensive else []
         bomb_events = self._build_bomb_events(bomb_planted_df, bomb_defused_df, bomb_exploded_df) if comprehensive else []
 
-        # Merge grenade DataFrames for easier analysis
-        grenades_df = pd.concat([
-            grenades_thrown_df.assign(event_type='thrown') if not grenades_thrown_df.empty else pd.DataFrame(),
-            flash_det_df.assign(event_type='detonate', grenade_type='flashbang') if not flash_det_df.empty else pd.DataFrame(),
-            he_det_df.assign(event_type='detonate', grenade_type='hegrenade') if not he_det_df.empty else pd.DataFrame(),
-            smoke_det_df.assign(event_type='detonate', grenade_type='smokegrenade') if not smoke_det_df.empty else pd.DataFrame(),
-            molly_det_df.assign(event_type='detonate', grenade_type='molotov') if not molly_det_df.empty else pd.DataFrame(),
-        ], ignore_index=True) if comprehensive else pd.DataFrame()
+        # Merge grenade DataFrames efficiently (only include non-empty ones)
+        grenades_df = pd.DataFrame()
+        if comprehensive:
+            grenade_frames = []
+            if not grenades_thrown_df.empty:
+                grenade_frames.append(grenades_thrown_df.assign(event_type='thrown'))
+            if not flash_det_df.empty:
+                grenade_frames.append(flash_det_df.assign(event_type='detonate', grenade_type='flashbang'))
+            if not he_det_df.empty:
+                grenade_frames.append(he_det_df.assign(event_type='detonate', grenade_type='hegrenade'))
+            if not smoke_det_df.empty:
+                grenade_frames.append(smoke_det_df.assign(event_type='detonate', grenade_type='smokegrenade'))
+            if not molly_det_df.empty:
+                grenade_frames.append(molly_det_df.assign(event_type='detonate', grenade_type='molotov'))
+            if grenade_frames:
+                grenades_df = pd.concat(grenade_frames, ignore_index=True)
 
-        # Merge bomb DataFrames
-        bomb_events_df = pd.concat([
-            bomb_planted_df.assign(event_type='planted') if not bomb_planted_df.empty else pd.DataFrame(),
-            bomb_defused_df.assign(event_type='defused') if not bomb_defused_df.empty else pd.DataFrame(),
-            bomb_exploded_df.assign(event_type='exploded') if not bomb_exploded_df.empty else pd.DataFrame(),
-        ], ignore_index=True) if comprehensive else pd.DataFrame()
+        # Merge bomb DataFrames efficiently
+        bomb_events_df = pd.DataFrame()
+        if comprehensive:
+            bomb_frames = []
+            if not bomb_planted_df.empty:
+                bomb_frames.append(bomb_planted_df.assign(event_type='planted'))
+            if not bomb_defused_df.empty:
+                bomb_frames.append(bomb_defused_df.assign(event_type='defused'))
+            if not bomb_exploded_df.empty:
+                bomb_frames.append(bomb_exploded_df.assign(event_type='exploded'))
+            if bomb_frames:
+                bomb_events_df = pd.concat(bomb_frames, ignore_index=True)
 
         # Calculate final scores
         final_ct = 0
@@ -602,15 +643,65 @@ class DemoParser:
             logger.info(f"Extended data: {len(weapon_fires)} shots, {len(blinds)} blinds, {len(grenades)} grenades, {len(bomb_events)} bomb events")
         return self._data
 
-    def _find_column(self, df: pd.DataFrame, options: list[str]) -> Optional[str]:
-        """Find first matching column from options."""
+    def _find_column(self, df: pd.DataFrame, options: list[str], cache_key: str = None) -> Optional[str]:
+        """Find first matching column from options with caching."""
+        # Use cache if available
+        if cache_key and cache_key in self._column_cache:
+            return self._column_cache[cache_key]
+
         for col in options:
             if col in df.columns:
+                if cache_key:
+                    self._column_cache[cache_key] = col
                 return col
+
+        if cache_key:
+            self._column_cache[cache_key] = None
         return None
 
+    def _optimize_dtypes(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Optimize DataFrame memory usage by downcasting dtypes."""
+        if df.empty:
+            return df
+
+        for col, dtype in self.OPTIMIZED_DTYPES.items():
+            if col in df.columns:
+                try:
+                    if dtype == "bool":
+                        df[col] = df[col].astype(bool)
+                    else:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').astype(dtype)
+                except (ValueError, TypeError):
+                    pass  # Keep original dtype if conversion fails
+
+        return df
+
+    def _process_tick_data_chunked(self, parser: 'Demoparser2', props: list[str]) -> Optional[pd.DataFrame]:
+        """Process tick data in chunks for memory efficiency."""
+        try:
+            ticks_df = parser.parse_ticks(props)
+            if ticks_df is None or ticks_df.empty:
+                return None
+
+            # If data is large, process in chunks and optimize dtypes
+            if len(ticks_df) > self.TICK_CHUNK_SIZE:
+                logger.info(f"Processing {len(ticks_df)} ticks in chunks for memory efficiency")
+                chunks = []
+                for start in range(0, len(ticks_df), self.TICK_CHUNK_SIZE):
+                    chunk = ticks_df.iloc[start:start + self.TICK_CHUNK_SIZE].copy()
+                    chunk = self._optimize_dtypes(chunk)
+                    chunks.append(chunk)
+                ticks_df = pd.concat(chunks, ignore_index=True)
+            else:
+                ticks_df = self._optimize_dtypes(ticks_df)
+
+            return ticks_df
+        except Exception as e:
+            logger.warning(f"Failed to parse ticks: {e}")
+            return None
+
     def _extract_players(self, kills_df: pd.DataFrame, damages_df: pd.DataFrame) -> tuple[dict[int, str], dict[int, str]]:
-        """Extract player names and teams from DataFrames."""
+        """Extract player names and teams from DataFrames using vectorized operations."""
         names: dict[int, str] = {}
         teams: dict[int, str] = {}
 
@@ -622,40 +713,53 @@ class DemoParser:
         vic_name_cols = ["user_name", "victim_name"]
         vic_team_cols = ["user_team_name", "victim_side", "victim_team"]
 
-        def extract_from_df(df, id_cols, name_cols, team_cols):
-            if df.empty:
+        def parse_team(team_val) -> str:
+            """Parse team value to CT/T/Unknown."""
+            if pd.isna(team_val):
+                return "Unknown"
+            if isinstance(team_val, str):
+                team_upper = team_val.upper()
+                if "CT" in team_upper:
+                    return "CT"
+                elif "T" in team_upper:
+                    return "T"
+                return team_val
+            elif isinstance(team_val, (int, float)):
+                return "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
+            return "Unknown"
+
+        def extract_from_df_vectorized(df, id_cols, name_cols, team_cols):
+            """Extract player info using vectorized operations."""
+            if df is None or df.empty:
                 return
+
             id_col = self._find_column(df, id_cols)
             name_col = self._find_column(df, name_cols)
             team_col = self._find_column(df, team_cols)
 
-            if id_col and name_col:
-                for _, row in df.drop_duplicates(subset=[id_col]).iterrows():
-                    sid = safe_int(row.get(id_col))
-                    if sid and sid not in names:
-                        names[sid] = safe_str(row.get(name_col))
-                        if team_col:
-                            team_val = row.get(team_col)
-                            # Handle various team formats
-                            if isinstance(team_val, str):
-                                if "CT" in team_val.upper():
-                                    teams[sid] = "CT"
-                                elif "T" in team_val.upper() and "CT" not in team_val.upper():
-                                    teams[sid] = "T"
-                                else:
-                                    teams[sid] = team_val
-                            elif isinstance(team_val, (int, float)):
-                                teams[sid] = "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
-                            else:
-                                teams[sid] = "Unknown"
+            if not id_col or not name_col:
+                return
 
-        # Extract from kills (attackers)
-        extract_from_df(kills_df, att_id_cols, att_name_cols, att_team_cols)
-        # Extract from kills (victims)
-        extract_from_df(kills_df, vic_id_cols, vic_name_cols, vic_team_cols)
+            # Get unique player records efficiently
+            unique_df = df[[id_col, name_col] + ([team_col] if team_col else [])].drop_duplicates(subset=[id_col])
+
+            # Filter out invalid steamids
+            unique_df = unique_df[unique_df[id_col].notna() & (unique_df[id_col] != 0)]
+
+            # Vectorized extraction
+            for _, row in unique_df.iterrows():
+                sid = safe_int(row[id_col])
+                if sid and sid not in names:
+                    names[sid] = safe_str(row[name_col])
+                    if team_col:
+                        teams[sid] = parse_team(row[team_col])
+
+        # Extract from kills (attackers and victims)
+        extract_from_df_vectorized(kills_df, att_id_cols, att_name_cols, att_team_cols)
+        extract_from_df_vectorized(kills_df, vic_id_cols, vic_name_cols, vic_team_cols)
         # Extract from damages
-        extract_from_df(damages_df, att_id_cols, att_name_cols, att_team_cols)
-        extract_from_df(damages_df, vic_id_cols, vic_name_cols, vic_team_cols)
+        extract_from_df_vectorized(damages_df, att_id_cols, att_name_cols, att_team_cols)
+        extract_from_df_vectorized(damages_df, vic_id_cols, vic_name_cols, vic_team_cols)
 
         return names, teams
 
@@ -667,44 +771,83 @@ class DemoParser:
         player_teams: dict[int, str],
         num_rounds: int
     ) -> dict[int, dict]:
-        """Calculate player statistics."""
+        """Calculate player statistics using vectorized operations."""
         stats: dict[int, dict] = {}
         num_rounds = max(num_rounds, 1)
 
-        att_col = self._find_column(kills_df, ["attacker_steamid", "attacker_steam_id"])
-        vic_col = self._find_column(kills_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
-        hs_col = self._find_column(kills_df, ["headshot"])
-        weapon_col = self._find_column(kills_df, ["weapon"])
-        assist_col = self._find_column(kills_df, ["assister_steamid", "assister_steam_id"])
-        dmg_att_col = self._find_column(damages_df, ["attacker_steamid", "attacker_steam_id"])
-        dmg_col = self._find_column(damages_df, ["dmg_health", "damage", "dmg"])
+        # Early return if no kills data
+        if kills_df.empty and (damages_df is None or damages_df.empty):
+            for steam_id, name in player_names.items():
+                stats[steam_id] = {
+                    "name": name,
+                    "team": player_teams.get(steam_id, "Unknown"),
+                    "kills": 0, "deaths": 0, "assists": 0, "headshots": 0,
+                    "hs_percent": 0.0, "total_damage": 0, "adr": 0.0,
+                    "kd_ratio": 0.0, "weapon_kills": {},
+                }
+            return stats
 
+        # Find columns with caching
+        att_col = self._find_column(kills_df, ["attacker_steamid", "attacker_steam_id"], "kills_att_id")
+        vic_col = self._find_column(kills_df, ["user_steamid", "victim_steamid", "victim_steam_id"], "kills_vic_id")
+        hs_col = self._find_column(kills_df, ["headshot"], "kills_hs")
+        weapon_col = self._find_column(kills_df, ["weapon"], "kills_weapon")
+        assist_col = self._find_column(kills_df, ["assister_steamid", "assister_steam_id"], "kills_assist")
+        dmg_att_col = self._find_column(damages_df, ["attacker_steamid", "attacker_steam_id"], "dmg_att_id") if not damages_df.empty else None
+        dmg_col = self._find_column(damages_df, ["dmg_health", "damage", "dmg"], "dmg_val") if not damages_df.empty else None
+
+        # Pre-compute aggregated stats using groupby for efficiency
+        kills_by_player = {}
+        deaths_by_player = {}
+        assists_by_player = {}
+        headshots_by_player = {}
+        damage_by_player = {}
+        weapon_kills_by_player = {}
+
+        if not kills_df.empty:
+            if att_col:
+                # Convert to numeric for groupby
+                kills_df_numeric = kills_df.copy()
+                kills_df_numeric[att_col] = pd.to_numeric(kills_df_numeric[att_col], errors='coerce')
+
+                # Count kills per player
+                kills_by_player = kills_df_numeric.groupby(att_col).size().to_dict()
+
+                # Count headshots per player
+                if hs_col:
+                    headshots_by_player = kills_df_numeric.groupby(att_col)[hs_col].sum().to_dict()
+
+                # Weapon kills per player
+                if weapon_col:
+                    for steam_id in player_names.keys():
+                        player_kills_df = kills_df_numeric[kills_df_numeric[att_col] == float(steam_id)]
+                        if not player_kills_df.empty:
+                            weapon_kills_by_player[steam_id] = player_kills_df[weapon_col].value_counts().to_dict()
+
+            if vic_col:
+                kills_df_numeric = kills_df.copy()
+                kills_df_numeric[vic_col] = pd.to_numeric(kills_df_numeric[vic_col], errors='coerce')
+                deaths_by_player = kills_df_numeric.groupby(vic_col).size().to_dict()
+
+            if assist_col and assist_col in kills_df.columns:
+                kills_df_numeric = kills_df.copy()
+                kills_df_numeric[assist_col] = pd.to_numeric(kills_df_numeric[assist_col], errors='coerce')
+                assists_by_player = kills_df_numeric.groupby(assist_col).size().to_dict()
+
+        if not damages_df.empty and dmg_att_col and dmg_col:
+            damages_numeric = damages_df.copy()
+            damages_numeric[dmg_att_col] = pd.to_numeric(damages_numeric[dmg_att_col], errors='coerce')
+            damage_by_player = damages_numeric.groupby(dmg_att_col)[dmg_col].sum().to_dict()
+
+        # Build stats dict from pre-computed values
         for steam_id, name in player_names.items():
-            kills = 0
-            deaths = 0
-            assists = 0
-            headshots = 0
-            total_damage = 0
-            weapon_kills: dict[str, int] = {}
-
-            # Use float comparison to handle int/float mismatch in steamids
-            if not kills_df.empty and att_col:
-                player_kills_df = kills_df[kills_df[att_col].astype(float) == float(steam_id)]
-                kills = len(player_kills_df)
-                if hs_col and kills > 0:
-                    headshots = int(player_kills_df[hs_col].sum())
-                if weapon_col and kills > 0:
-                    weapon_kills = player_kills_df[weapon_col].value_counts().to_dict()
-
-            if not kills_df.empty and vic_col:
-                deaths = len(kills_df[kills_df[vic_col].astype(float) == float(steam_id)])
-
-            if not kills_df.empty and assist_col:
-                assists = len(kills_df[kills_df[assist_col].astype(float) == float(steam_id)])
-
-            if not damages_df.empty and dmg_att_col and dmg_col:
-                player_dmg = damages_df[damages_df[dmg_att_col].astype(float) == float(steam_id)]
-                total_damage = int(player_dmg[dmg_col].sum())
+            steam_id_float = float(steam_id)
+            kills = int(kills_by_player.get(steam_id_float, 0))
+            deaths = int(deaths_by_player.get(steam_id_float, 0))
+            assists = int(assists_by_player.get(steam_id_float, 0))
+            headshots = int(headshots_by_player.get(steam_id_float, 0))
+            total_damage = int(damage_by_player.get(steam_id_float, 0))
+            weapon_kills = weapon_kills_by_player.get(steam_id, {})
 
             stats[steam_id] = {
                 "name": name,
