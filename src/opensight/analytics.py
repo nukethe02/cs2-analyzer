@@ -1613,7 +1613,7 @@ class DemoAnalyzer:
                             player_teams_lookup[att_id] = "CT"
                         elif "T" in team_upper:
                             player_teams_lookup[att_id] = "T"
-                    elif isinstance(team_val, (int, float)):
+                    elif isinstance(team_val, (int, float)) and pd.notna(team_val):
                         player_teams_lookup[att_id] = "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
 
         total_trades = 0
