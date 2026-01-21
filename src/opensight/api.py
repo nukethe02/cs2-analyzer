@@ -1754,6 +1754,185 @@ async def get_global_stats():
 
 
 # =============================================================================
+# Team Performance Analysis Endpoints (FREE - local processing)
+# =============================================================================
+
+
+@app.post("/team-analysis")
+async def analyze_team_performance(file: UploadFile = File(...)):
+    """
+    Analyze team performance metrics from an uploaded demo file.
+
+    Returns comprehensive metrics for both CT and T teams including:
+    - KDA ratios
+    - Kill distances
+    - Round win rates
+    - Trade success rates
+    - Player breakdowns
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    if not (file.filename.endswith(".dem") or file.filename.endswith(".dem.gz")):
+        raise HTTPException(status_code=400, detail="Only .dem and .dem.gz files accepted")
+
+    temp_path = None
+    try:
+        # Save uploaded file
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".dem") as tmp:
+            content = await file.read()
+            if len(content) == 0:
+                raise HTTPException(status_code=400, detail="Empty file uploaded")
+            tmp.write(content)
+            temp_path = tmp.name
+
+        # Parse demo
+        from opensight.parser import DemoParser
+
+        parser = DemoParser()
+        match_data = parser.parse(temp_path)
+
+        # Calculate team metrics
+        from opensight.team_performance_metrics import calculate_team_metrics
+
+        analysis = calculate_team_metrics(match_data)
+
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "analysis": analysis.to_dict(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Team analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    finally:
+        if temp_path:
+            import os
+
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+
+@app.post("/team-comparison")
+async def compare_teams_endpoint(file: UploadFile = File(...)):
+    """
+    Compare CT and T team performance from a demo file.
+
+    Returns detailed comparison including:
+    - Metric-by-metric comparison
+    - Team strengths and weaknesses
+    - Improvement recommendations
+    - Visual chart data
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    if not (file.filename.endswith(".dem") or file.filename.endswith(".dem.gz")):
+        raise HTTPException(status_code=400, detail="Only .dem and .dem.gz files accepted")
+
+    temp_path = None
+    try:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".dem") as tmp:
+            content = await file.read()
+            if len(content) == 0:
+                raise HTTPException(status_code=400, detail="Empty file uploaded")
+            tmp.write(content)
+            temp_path = tmp.name
+
+        # Parse and analyze
+        from opensight.parser import DemoParser
+        from opensight.team_comparison import compare_teams_from_match, generate_comparison_charts
+
+        parser = DemoParser()
+        match_data = parser.parse(temp_path)
+        comparison = compare_teams_from_match(match_data)
+        charts = generate_comparison_charts(comparison)
+
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "comparison": comparison.to_dict(),
+            "charts": charts,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Team comparison failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
+    finally:
+        if temp_path:
+            import os
+
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+
+@app.post("/team-comparison/html")
+async def get_team_comparison_html(file: UploadFile = File(...)):
+    """
+    Generate an HTML report comparing team performance.
+
+    Returns a complete HTML page with charts and analysis.
+    Can be saved and opened in any browser.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    if not (file.filename.endswith(".dem") or file.filename.endswith(".dem.gz")):
+        raise HTTPException(status_code=400, detail="Only .dem and .dem.gz files accepted")
+
+    temp_path = None
+    try:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".dem") as tmp:
+            content = await file.read()
+            if len(content) == 0:
+                raise HTTPException(status_code=400, detail="Empty file uploaded")
+            tmp.write(content)
+            temp_path = tmp.name
+
+        # Parse and generate report
+        from opensight.parser import DemoParser
+        from opensight.team_comparison import compare_teams_from_match, generate_comparison_html
+
+        parser = DemoParser()
+        match_data = parser.parse(temp_path)
+        comparison = compare_teams_from_match(match_data)
+        html_report = generate_comparison_html(comparison)
+
+        from fastapi.responses import HTMLResponse
+
+        return HTMLResponse(content=html_report, media_type="text/html")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"HTML report generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+    finally:
+        if temp_path:
+            import os
+
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+
+# =============================================================================
 # Development Server
 # =============================================================================
 
