@@ -28,6 +28,13 @@ gunicorn>=21.0.0
 openpyxl>=3.1.0
 pyyaml>=6.0
 
+# Database (FREE - SQLite with SQLAlchemy)
+sqlalchemy>=2.0.0
+
+# PDF Export (optional, FREE - reportlab community edition)
+# Install with: pip install reportlab
+# Falls back to print-friendly HTML if not installed
+
 # Advanced features dependencies
 # Note: These use only Python standard library for core functionality
 # but optional integrations may require additional packages

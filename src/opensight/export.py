@@ -21,20 +21,20 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
-from opensight.parser import DemoData
 from opensight.metrics import (
-    EngagementMetrics,
-    TTDResult,
+    ComprehensivePlayerMetrics,
     CrosshairPlacementResult,
     EconomyMetrics,
-    UtilityMetrics,
+    EngagementMetrics,
+    OpeningDuelMetrics,
     PositioningMetrics,
     TradeMetrics,
-    OpeningDuelMetrics,
-    ComprehensivePlayerMetrics,
+    TTDResult,
+    UtilityMetrics,
 )
+from opensight.parser import DemoData
 
 logger = logging.getLogger(__name__)
 
@@ -43,22 +43,24 @@ logger = logging.getLogger(__name__)
 # Type Definitions
 # ============================================================================
 
-MetricsDict = dict[int, Union[
-    EngagementMetrics,
-    TTDResult,
-    CrosshairPlacementResult,
-    EconomyMetrics,
-    UtilityMetrics,
-    PositioningMetrics,
-    TradeMetrics,
-    OpeningDuelMetrics,
-    ComprehensivePlayerMetrics,
-]]
+MetricsDict = dict[
+    int,
+    EngagementMetrics
+    | TTDResult
+    | CrosshairPlacementResult
+    | EconomyMetrics
+    | UtilityMetrics
+    | PositioningMetrics
+    | TradeMetrics
+    | OpeningDuelMetrics
+    | ComprehensivePlayerMetrics,
+]
 
 
 # ============================================================================
 # Data Conversion Utilities
 # ============================================================================
+
 
 def dataclass_to_dict(obj: Any) -> Any:
     """Convert a dataclass (or nested dataclasses) to a dictionary."""
@@ -93,9 +95,10 @@ def flatten_dict(d: dict, parent_key: str = "", sep: str = "_") -> dict:
 # JSON Export
 # ============================================================================
 
+
 def export_to_json(
     data: dict[str, Any],
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
     indent: int = 2,
     include_metadata: bool = True,
 ) -> str:
@@ -136,9 +139,10 @@ def export_to_json(
 # CSV Export
 # ============================================================================
 
+
 def export_metrics_to_csv(
     metrics: MetricsDict,
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
     delimiter: str = ",",
     include_header: bool = True,
 ) -> str:
@@ -202,7 +206,7 @@ def export_metrics_to_csv(
 def export_demo_summary_csv(
     demo_data: DemoData,
     metrics: dict[int, ComprehensivePlayerMetrics],
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
 ) -> str:
     """
     Export a summary of demo analysis to CSV.
@@ -293,6 +297,7 @@ def export_demo_summary_csv(
 # Excel Export
 # ============================================================================
 
+
 def export_to_excel(
     demo_data: DemoData,
     metrics: dict[int, ComprehensivePlayerMetrics],
@@ -341,7 +346,7 @@ def export_to_excel(
 
         # Summary sheet
         summary_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             row = {
                 "Player": pm.player_name,
                 "Team": pm.team,
@@ -351,7 +356,9 @@ def export_to_excel(
             if pm.engagement:
                 row["K"] = pm.engagement.total_kills
                 row["D"] = pm.engagement.total_deaths
-                row["K/D"] = round(pm.engagement.total_kills / max(pm.engagement.total_deaths, 1), 2)
+                row["K/D"] = round(
+                    pm.engagement.total_kills / max(pm.engagement.total_deaths, 1), 2
+                )
                 row["HS%"] = round(pm.engagement.headshot_percentage, 1)
                 row["DPR"] = round(pm.engagement.damage_per_round, 1)
 
@@ -366,85 +373,95 @@ def export_to_excel(
 
         # TTD sheet
         ttd_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.ttd:
-                ttd_rows.append({
-                    "Player": pm.player_name,
-                    "Engagements": pm.ttd.engagement_count,
-                    "Mean (ms)": round(pm.ttd.mean_ttd_ms, 0),
-                    "Median (ms)": round(pm.ttd.median_ttd_ms, 0),
-                    "Min (ms)": round(pm.ttd.min_ttd_ms, 0),
-                    "Max (ms)": round(pm.ttd.max_ttd_ms, 0),
-                    "Std Dev": round(pm.ttd.std_ttd_ms, 1),
-                })
+                ttd_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Engagements": pm.ttd.engagement_count,
+                        "Mean (ms)": round(pm.ttd.mean_ttd_ms, 0),
+                        "Median (ms)": round(pm.ttd.median_ttd_ms, 0),
+                        "Min (ms)": round(pm.ttd.min_ttd_ms, 0),
+                        "Max (ms)": round(pm.ttd.max_ttd_ms, 0),
+                        "Std Dev": round(pm.ttd.std_ttd_ms, 1),
+                    }
+                )
 
         if ttd_rows:
             pd.DataFrame(ttd_rows).to_excel(writer, sheet_name="Time to Damage", index=False)
 
         # Economy sheet
         econ_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.economy:
-                econ_rows.append({
-                    "Player": pm.player_name,
-                    "Money Spent": pm.economy.total_money_spent,
-                    "Value Killed": pm.economy.total_value_killed,
-                    "Efficiency": round(pm.economy.weapon_efficiency, 2),
-                    "Favorite Weapon": pm.economy.favorite_weapon,
-                    "Eco Kills": pm.economy.eco_round_kills,
-                    "Force Kills": pm.economy.force_buy_kills,
-                    "Full Buy Kills": pm.economy.full_buy_kills,
-                })
+                econ_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Money Spent": pm.economy.total_money_spent,
+                        "Value Killed": pm.economy.total_value_killed,
+                        "Efficiency": round(pm.economy.weapon_efficiency, 2),
+                        "Favorite Weapon": pm.economy.favorite_weapon,
+                        "Eco Kills": pm.economy.eco_round_kills,
+                        "Force Kills": pm.economy.force_buy_kills,
+                        "Full Buy Kills": pm.economy.full_buy_kills,
+                    }
+                )
 
         if econ_rows:
             pd.DataFrame(econ_rows).to_excel(writer, sheet_name="Economy", index=False)
 
         # Utility sheet
         util_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.utility:
-                util_rows.append({
-                    "Player": pm.player_name,
-                    "Total Grenades": pm.utility.total_grenades_used,
-                    "Smokes": pm.utility.smokes_thrown,
-                    "Flashes": pm.utility.flashes_thrown,
-                    "HE Grenades": pm.utility.he_grenades_thrown,
-                    "Molotovs": pm.utility.molotovs_thrown,
-                    "Utility Damage": round(pm.utility.utility_damage, 1),
-                    "Efficiency": round(pm.utility.utility_efficiency, 2),
-                })
+                util_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Total Grenades": pm.utility.total_grenades_used,
+                        "Smokes": pm.utility.smokes_thrown,
+                        "Flashes": pm.utility.flashes_thrown,
+                        "HE Grenades": pm.utility.he_grenades_thrown,
+                        "Molotovs": pm.utility.molotovs_thrown,
+                        "Utility Damage": round(pm.utility.utility_damage, 1),
+                        "Efficiency": round(pm.utility.utility_efficiency, 2),
+                    }
+                )
 
         if util_rows:
             pd.DataFrame(util_rows).to_excel(writer, sheet_name="Utility", index=False)
 
         # Trades sheet
         trade_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.trades:
-                trade_rows.append({
-                    "Player": pm.player_name,
-                    "Trades Completed": pm.trades.trades_completed,
-                    "Deaths Traded": pm.trades.deaths_traded,
-                    "Trade Success %": round(pm.trades.trade_success_rate, 1),
-                    "Avg Trade Time (ms)": round(pm.trades.avg_trade_time_ms, 0),
-                })
+                trade_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Trades Completed": pm.trades.trades_completed,
+                        "Deaths Traded": pm.trades.deaths_traded,
+                        "Trade Success %": round(pm.trades.trade_success_rate, 1),
+                        "Avg Trade Time (ms)": round(pm.trades.avg_trade_time_ms, 0),
+                    }
+                )
 
         if trade_rows:
             pd.DataFrame(trade_rows).to_excel(writer, sheet_name="Trades", index=False)
 
         # Opening Duels sheet
         opening_rows = []
-        for steam_id, pm in metrics.items():
+        for _steam_id, pm in metrics.items():
             if pm.opening_duels:
-                opening_rows.append({
-                    "Player": pm.player_name,
-                    "Opening Kills": pm.opening_duels.opening_kills,
-                    "Opening Deaths": pm.opening_duels.opening_deaths,
-                    "Attempts": pm.opening_duels.opening_attempts,
-                    "Success %": round(pm.opening_duels.opening_success_rate, 1),
-                    "Avg Time (ms)": round(pm.opening_duels.avg_opening_time_ms, 0),
-                    "Weapon": pm.opening_duels.opening_weapon,
-                })
+                opening_rows.append(
+                    {
+                        "Player": pm.player_name,
+                        "Opening Kills": pm.opening_duels.opening_kills,
+                        "Opening Deaths": pm.opening_duels.opening_deaths,
+                        "Attempts": pm.opening_duels.opening_attempts,
+                        "Success %": round(pm.opening_duels.opening_success_rate, 1),
+                        "Avg Time (ms)": round(pm.opening_duels.avg_opening_time_ms, 0),
+                        "Weapon": pm.opening_duels.opening_weapon,
+                    }
+                )
 
         if opening_rows:
             pd.DataFrame(opening_rows).to_excel(writer, sheet_name="Opening Duels", index=False)
@@ -456,11 +473,12 @@ def export_to_excel(
 # HTML Report Export
 # ============================================================================
 
+
 def export_to_html(
     demo_data: DemoData,
     metrics: dict[int, ComprehensivePlayerMetrics],
-    output_path: Optional[Path] = None,
-    title: Optional[str] = None,
+    output_path: Path | None = None,
+    title: str | None = None,
 ) -> str:
     """
     Export analysis results to an HTML report.
@@ -481,11 +499,7 @@ def export_to_html(
     round_count = len(demo_data.rounds) if hasattr(demo_data, 'game_rounds') and demo_data.rounds else demo_data.num_rounds
 
     # Sort players by rating
-    sorted_players = sorted(
-        metrics.values(),
-        key=lambda x: x.overall_rating(),
-        reverse=True
-    )
+    sorted_players = sorted(metrics.values(), key=lambda x: x.overall_rating(), reverse=True)
 
     # Build player rows
     player_rows = ""
@@ -664,11 +678,12 @@ def export_to_html(
 # Unified Export Function
 # ============================================================================
 
+
 def export_analysis(
     demo_data: DemoData,
     metrics: dict[int, ComprehensivePlayerMetrics],
     output_path: Path,
-    format: Optional[str] = None,
+    format: str | None = None,
 ) -> None:
     """
     Export analysis results to the specified format.
@@ -695,10 +710,7 @@ def export_analysis(
                 "tick_rate": demo_data.tick_rate,
                 "rounds": json_round_count,
             },
-            "players": {
-                str(sid): dataclass_to_dict(pm)
-                for sid, pm in metrics.items()
-            },
+            "players": {str(sid): dataclass_to_dict(pm) for sid, pm in metrics.items()},
         }
         export_to_json(data, output_path)
 
@@ -711,5 +723,366 @@ def export_analysis(
     elif format in ("html", "htm"):
         export_to_html(demo_data, metrics, output_path)
 
+    elif format == "pdf":
+        export_to_pdf(demo_data, metrics, output_path)
+
     else:
         raise ValueError(f"Unsupported export format: {format}")
+
+
+# ============================================================================
+# PDF Export (FREE - uses built-in HTML conversion or optional reportlab)
+# ============================================================================
+
+
+def export_to_pdf(
+    demo_data: DemoData,
+    metrics: dict[int, ComprehensivePlayerMetrics],
+    output_path: Path | None = None,
+) -> bytes:
+    """
+    Export analysis results to PDF format.
+
+    Uses a pure-Python approach that works without external dependencies.
+    If reportlab is available, uses it for better formatting.
+    Otherwise, generates an HTML file with print-friendly styles.
+
+    ALL FUNCTIONALITY IS FREE - no paid services required.
+
+    Args:
+        demo_data: Parsed demo data
+        metrics: Player metrics dictionary
+        output_path: Optional path to write PDF
+
+    Returns:
+        PDF bytes if reportlab available, HTML bytes otherwise
+    """
+    try:
+        # Try to use reportlab (free, optional)
+        return _export_pdf_reportlab(demo_data, metrics, output_path)
+    except ImportError:
+        # Fallback to print-friendly HTML
+        logger.warning(
+            "reportlab not installed. Generating print-friendly HTML instead. "
+            "Install with: pip install reportlab"
+        )
+        html = _generate_pdf_html(demo_data, metrics)
+        if output_path:
+            # Save as HTML with .pdf extension note
+            html_path = output_path.with_suffix(".html")
+            html_path.write_text(html)
+            logger.info(f"Exported print-friendly HTML to: {html_path}")
+        return html.encode()
+
+
+def _export_pdf_reportlab(
+    demo_data: DemoData,
+    metrics: dict[int, ComprehensivePlayerMetrics],
+    output_path: Path | None = None,
+) -> bytes:
+    """Generate PDF using reportlab (free library)."""
+    from io import BytesIO
+
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        PageBreak,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=0.5 * inch,
+        leftMargin=0.5 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "Title",
+        parent=styles["Title"],
+        fontSize=24,
+        spaceAfter=20,
+        textColor=colors.HexColor("#1a1a2e"),
+    )
+    heading_style = ParagraphStyle(
+        "Heading",
+        parent=styles["Heading1"],
+        fontSize=14,
+        spaceAfter=10,
+        textColor=colors.HexColor("#4a5568"),
+    )
+    normal_style = styles["Normal"]
+
+    elements = []
+
+    # Title
+    elements.append(Paragraph("OpenSight Match Analysis Report", title_style))
+    elements.append(Spacer(1, 0.2 * inch))
+
+    # Match Info
+    elements.append(Paragraph("Match Information", heading_style))
+    match_info = [
+        ["Map", demo_data.map_name],
+        ["Duration", f"{demo_data.duration_seconds / 60:.1f} minutes"],
+        ["Tick Rate", str(demo_data.tick_rate)],
+        ["Total Rounds", str(len(demo_data.round_starts))],
+        ["Players", str(len(demo_data.player_names))],
+    ]
+    match_table = Table(match_info, colWidths=[2 * inch, 3 * inch])
+    match_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f7fafc")),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#2d3748")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+            ]
+        )
+    )
+    elements.append(match_table)
+    elements.append(Spacer(1, 0.3 * inch))
+
+    # Player Statistics
+    elements.append(Paragraph("Player Statistics", heading_style))
+
+    # Sort players by rating
+    sorted_players = sorted(
+        metrics.items(),
+        key=lambda x: x[1].overall_rating(),
+        reverse=True,
+    )
+
+    # Build player table
+    headers = ["Player", "Team", "K", "D", "A", "HS%", "ADR", "KAST", "Rating"]
+    player_data = [headers]
+
+    for steam_id, pm in sorted_players:
+        player_name = demo_data.player_names.get(steam_id, "Unknown")[:20]
+        team = demo_data.player_teams.get(steam_id, "")
+        row = [
+            player_name,
+            team,
+            str(pm.engagement.total_kills),
+            str(pm.engagement.total_deaths),
+            str(pm.engagement.assists),
+            f"{pm.engagement.headshot_percentage:.1f}%",
+            f"{pm.engagement.damage_per_round:.1f}",
+            f"{pm.engagement.kast_percentage:.1f}%",
+            f"{pm.overall_rating():.2f}",
+        ]
+        player_data.append(row)
+
+    player_table = Table(player_data, repeatRows=1)
+    player_table.setStyle(
+        TableStyle(
+            [
+                # Header
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                # Body
+                ("FONTSIZE", (0, 1), (-1, -1), 9),
+                ("ALIGN", (2, 0), (-1, -1), "CENTER"),
+                # Alternating rows
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7fafc")]),
+                # Borders
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    elements.append(player_table)
+    elements.append(Spacer(1, 0.3 * inch))
+
+    # Footer
+    footer_text = f"Generated by OpenSight | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    elements.append(Paragraph(footer_text, normal_style))
+
+    # Build PDF
+    doc.build(elements)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+
+    if output_path:
+        output_path.write_bytes(pdf_bytes)
+        logger.info(f"Exported PDF to: {output_path}")
+
+    return pdf_bytes
+
+
+def _generate_pdf_html(
+    demo_data: DemoData,
+    metrics: dict[int, ComprehensivePlayerMetrics],
+) -> str:
+    """Generate print-friendly HTML as PDF fallback."""
+    # Sort players by rating
+    sorted_players = sorted(
+        metrics.items(),
+        key=lambda x: x[1].overall_rating(),
+        reverse=True,
+    )
+
+    player_rows = ""
+    for steam_id, pm in sorted_players:
+        name = demo_data.player_names.get(steam_id, "Unknown")
+        team = demo_data.player_teams.get(steam_id, "")
+        kd = pm.engagement.total_kills / max(pm.engagement.total_deaths, 1)
+        rating = pm.overall_rating()
+
+        player_rows += f"""
+        <tr>
+            <td>{name}</td>
+            <td>{team}</td>
+            <td>{pm.engagement.total_kills}</td>
+            <td>{pm.engagement.total_deaths}</td>
+            <td>{kd:.2f}</td>
+            <td>{pm.engagement.headshot_percentage:.1f}%</td>
+            <td>{pm.engagement.damage_per_round:.1f}</td>
+            <td class="rating">{rating:.2f}</td>
+        </tr>
+        """
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>OpenSight Match Report</title>
+    <style>
+        @media print {{
+            body {{ margin: 0; padding: 20px; }}
+            .no-print {{ display: none; }}
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: white;
+            color: #1a1a2e;
+            padding: 40px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }}
+        h1 {{
+            color: #1a1a2e;
+            border-bottom: 3px solid #ffd700;
+            padding-bottom: 10px;
+        }}
+        h2 {{
+            color: #4a5568;
+            margin-top: 30px;
+        }}
+        .info-grid {{
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            margin: 20px 0;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }}
+        .info-item {{ text-align: center; }}
+        .info-item .value {{ font-size: 1.5em; font-weight: bold; color: #1a1a2e; }}
+        .info-item .label {{ color: #718096; font-size: 0.9em; }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }}
+        th {{
+            background: #1a1a2e;
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+        }}
+        td {{
+            padding: 10px 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }}
+        tr:nth-child(even) {{ background: #f7fafc; }}
+        .rating {{ font-weight: bold; }}
+        .footer {{
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            color: #718096;
+            font-size: 0.9em;
+        }}
+        .print-btn {{
+            background: #ffd700;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 1em;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }}
+    </style>
+</head>
+<body>
+    <button class="print-btn no-print" onclick="window.print()">Print / Save as PDF</button>
+
+    <h1>OpenSight Match Analysis Report</h1>
+
+    <h2>Match Information</h2>
+    <div class="info-grid">
+        <div class="info-item">
+            <div class="value">{demo_data.map_name}</div>
+            <div class="label">Map</div>
+        </div>
+        <div class="info-item">
+            <div class="value">{demo_data.duration_seconds / 60:.1f}m</div>
+            <div class="label">Duration</div>
+        </div>
+        <div class="info-item">
+            <div class="value">{demo_data.tick_rate}</div>
+            <div class="label">Tick Rate</div>
+        </div>
+        <div class="info-item">
+            <div class="value">{len(demo_data.round_starts)}</div>
+            <div class="label">Rounds</div>
+        </div>
+        <div class="info-item">
+            <div class="value">{len(demo_data.player_names)}</div>
+            <div class="label">Players</div>
+        </div>
+    </div>
+
+    <h2>Player Statistics</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Player</th>
+                <th>Team</th>
+                <th>K</th>
+                <th>D</th>
+                <th>K/D</th>
+                <th>HS%</th>
+                <th>ADR</th>
+                <th>Rating</th>
+            </tr>
+        </thead>
+        <tbody>
+            {player_rows}
+        </tbody>
+    </table>
+
+    <div class="footer">
+        Generated by OpenSight | {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}<br>
+        <span class="no-print">Use browser's Print function (Ctrl+P) to save as PDF</span>
+    </div>
+</body>
+</html>
+"""

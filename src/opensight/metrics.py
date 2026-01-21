@@ -12,10 +12,9 @@ These metrics are derived from tick-level demo data and provide insights
 comparable to professional analytics platforms.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
-from enum import Enum
 import logging
+from dataclasses import dataclass
+from enum import Enum
 
 import numpy as np
 import pandas as pd
@@ -54,8 +53,10 @@ def _get_round_ticks(demo_data: DemoData) -> tuple[list[int], list[int]]:
 # Constants and Enums
 # ============================================================================
 
+
 class WeaponCategory(Enum):
     """CS2 weapon categories for economy analysis."""
+
     PISTOL = "pistol"
     SMG = "smg"
     RIFLE = "rifle"
@@ -69,6 +70,7 @@ class WeaponCategory(Enum):
 
 class GrenadeType(Enum):
     """CS2 grenade types."""
+
     SMOKE = "smokegrenade"
     FLASH = "flashbang"
     HE = "hegrenade"
@@ -80,46 +82,90 @@ class GrenadeType(Enum):
 # Weapon prices for economy calculations
 WEAPON_PRICES: dict[str, int] = {
     # Pistols
-    "usp_silencer": 200, "p2000": 200, "glock": 200, "p250": 300,
-    "tec9": 500, "fiveseven": 500, "cz75a": 500, "deagle": 700,
-    "revolver": 600, "dualies": 400,
+    "usp_silencer": 200,
+    "p2000": 200,
+    "glock": 200,
+    "p250": 300,
+    "tec9": 500,
+    "fiveseven": 500,
+    "cz75a": 500,
+    "deagle": 700,
+    "revolver": 600,
+    "dualies": 400,
     # SMGs
-    "mac10": 1050, "mp9": 1250, "mp7": 1500, "ump45": 1200,
-    "p90": 2350, "bizon": 1400, "mp5sd": 1500,
+    "mac10": 1050,
+    "mp9": 1250,
+    "mp7": 1500,
+    "ump45": 1200,
+    "p90": 2350,
+    "bizon": 1400,
+    "mp5sd": 1500,
     # Rifles
-    "ak47": 2700, "m4a1": 2900, "m4a1_silencer": 2900, "famas": 2050,
-    "galilar": 1800, "sg556": 3000, "aug": 3300,
+    "ak47": 2700,
+    "m4a1": 2900,
+    "m4a1_silencer": 2900,
+    "famas": 2050,
+    "galilar": 1800,
+    "sg556": 3000,
+    "aug": 3300,
     # Snipers
-    "awp": 4750, "ssg08": 1700, "scar20": 5000, "g3sg1": 5000,
+    "awp": 4750,
+    "ssg08": 1700,
+    "scar20": 5000,
+    "g3sg1": 5000,
     # Shotguns
-    "nova": 1050, "xm1014": 2000, "mag7": 1300, "sawedoff": 1100,
+    "nova": 1050,
+    "xm1014": 2000,
+    "mag7": 1300,
+    "sawedoff": 1100,
     # Machine guns
-    "m249": 5200, "negev": 1700,
+    "m249": 5200,
+    "negev": 1700,
     # Grenades
-    "hegrenade": 300, "flashbang": 200, "smokegrenade": 300,
-    "molotov": 400, "incgrenade": 600, "decoy": 50,
+    "hegrenade": 300,
+    "flashbang": 200,
+    "smokegrenade": 300,
+    "molotov": 400,
+    "incgrenade": 600,
+    "decoy": 50,
 }
 
 # Weapon categories for classification
 WEAPON_CATEGORIES: dict[str, WeaponCategory] = {
-    "usp_silencer": WeaponCategory.PISTOL, "p2000": WeaponCategory.PISTOL,
-    "glock": WeaponCategory.PISTOL, "p250": WeaponCategory.PISTOL,
-    "tec9": WeaponCategory.PISTOL, "fiveseven": WeaponCategory.PISTOL,
-    "cz75a": WeaponCategory.PISTOL, "deagle": WeaponCategory.PISTOL,
-    "revolver": WeaponCategory.PISTOL, "dualies": WeaponCategory.PISTOL,
-    "mac10": WeaponCategory.SMG, "mp9": WeaponCategory.SMG,
-    "mp7": WeaponCategory.SMG, "ump45": WeaponCategory.SMG,
-    "p90": WeaponCategory.SMG, "bizon": WeaponCategory.SMG,
+    "usp_silencer": WeaponCategory.PISTOL,
+    "p2000": WeaponCategory.PISTOL,
+    "glock": WeaponCategory.PISTOL,
+    "p250": WeaponCategory.PISTOL,
+    "tec9": WeaponCategory.PISTOL,
+    "fiveseven": WeaponCategory.PISTOL,
+    "cz75a": WeaponCategory.PISTOL,
+    "deagle": WeaponCategory.PISTOL,
+    "revolver": WeaponCategory.PISTOL,
+    "dualies": WeaponCategory.PISTOL,
+    "mac10": WeaponCategory.SMG,
+    "mp9": WeaponCategory.SMG,
+    "mp7": WeaponCategory.SMG,
+    "ump45": WeaponCategory.SMG,
+    "p90": WeaponCategory.SMG,
+    "bizon": WeaponCategory.SMG,
     "mp5sd": WeaponCategory.SMG,
-    "ak47": WeaponCategory.RIFLE, "m4a1": WeaponCategory.RIFLE,
-    "m4a1_silencer": WeaponCategory.RIFLE, "famas": WeaponCategory.RIFLE,
-    "galilar": WeaponCategory.RIFLE, "sg556": WeaponCategory.RIFLE,
+    "ak47": WeaponCategory.RIFLE,
+    "m4a1": WeaponCategory.RIFLE,
+    "m4a1_silencer": WeaponCategory.RIFLE,
+    "famas": WeaponCategory.RIFLE,
+    "galilar": WeaponCategory.RIFLE,
+    "sg556": WeaponCategory.RIFLE,
     "aug": WeaponCategory.RIFLE,
-    "awp": WeaponCategory.SNIPER, "ssg08": WeaponCategory.SNIPER,
-    "scar20": WeaponCategory.SNIPER, "g3sg1": WeaponCategory.SNIPER,
-    "nova": WeaponCategory.SHOTGUN, "xm1014": WeaponCategory.SHOTGUN,
-    "mag7": WeaponCategory.SHOTGUN, "sawedoff": WeaponCategory.SHOTGUN,
-    "m249": WeaponCategory.MACHINE_GUN, "negev": WeaponCategory.MACHINE_GUN,
+    "awp": WeaponCategory.SNIPER,
+    "ssg08": WeaponCategory.SNIPER,
+    "scar20": WeaponCategory.SNIPER,
+    "g3sg1": WeaponCategory.SNIPER,
+    "nova": WeaponCategory.SHOTGUN,
+    "xm1014": WeaponCategory.SHOTGUN,
+    "mag7": WeaponCategory.SHOTGUN,
+    "sawedoff": WeaponCategory.SHOTGUN,
+    "m249": WeaponCategory.MACHINE_GUN,
+    "negev": WeaponCategory.MACHINE_GUN,
     "knife": WeaponCategory.KNIFE,
 }
 
@@ -196,18 +242,15 @@ class EngagementMetrics:
 
     steam_id: int
     player_name: str
-    ttd: Optional[TTDResult]
-    crosshair_placement: Optional[CrosshairPlacementResult]
+    ttd: TTDResult | None
+    crosshair_placement: CrosshairPlacementResult | None
     total_kills: int
     total_deaths: int
     headshot_percentage: float
     damage_per_round: float
 
 
-def calculate_angle_between_vectors(
-    view_dir: np.ndarray,
-    target_dir: np.ndarray
-) -> float:
+def calculate_angle_between_vectors(view_dir: np.ndarray, target_dir: np.ndarray) -> float:
     """
     Calculate the angle in degrees between two direction vectors.
 
@@ -255,8 +298,8 @@ def _find_visibility_start(
     target_pos: pd.DataFrame,
     damage_tick: int,
     tick_rate: int,
-    max_lookback_ms: float = 2000.0
-) -> Optional[int]:
+    max_lookback_ms: float = 2000.0,
+) -> int | None:
     """
     Find the tick when a player first had visibility of a target.
 
@@ -278,13 +321,11 @@ def _find_visibility_start(
 
     # Get player positions in the lookback window
     player_window = player_pos[
-        (player_pos["tick"] >= start_tick) &
-        (player_pos["tick"] <= damage_tick)
+        (player_pos["tick"] >= start_tick) & (player_pos["tick"] <= damage_tick)
     ].sort_values("tick")
 
     target_window = target_pos[
-        (target_pos["tick"] >= start_tick) &
-        (target_pos["tick"] <= damage_tick)
+        (target_pos["tick"] >= start_tick) & (target_pos["tick"] <= damage_tick)
     ].sort_values("tick")
 
     if player_window.empty or target_window.empty:
@@ -325,10 +366,7 @@ def _find_visibility_start(
     return None
 
 
-def calculate_ttd(
-    demo_data: DemoData,
-    steam_id: Optional[int] = None
-) -> dict[int, TTDResult]:
+def calculate_ttd(demo_data: DemoData, steam_id: int | None = None) -> dict[int, TTDResult]:
     """
     Calculate Time to Damage for players.
 
@@ -394,10 +432,7 @@ def calculate_ttd(
 
             # Find when attacker first saw victim
             visibility_tick = _find_visibility_start(
-                attacker_pos,
-                victim_pos,
-                damage_tick,
-                demo_data.tick_rate
+                attacker_pos, victim_pos, damage_tick, demo_data.tick_rate
             )
 
             if visibility_tick is not None and visibility_tick < damage_tick:
@@ -422,9 +457,7 @@ def calculate_ttd(
 
 
 def calculate_crosshair_placement(
-    demo_data: DemoData,
-    steam_id: Optional[int] = None,
-    sample_interval_ticks: int = 16
+    demo_data: DemoData, steam_id: int | None = None, sample_interval_ticks: int = 16
 ) -> dict[int, CrosshairPlacementResult]:
     """
     Calculate Crosshair Placement quality for players.
@@ -489,22 +522,20 @@ def calculate_crosshair_placement(
                 continue
 
             player_row = player_at_tick.iloc[0]
-            player_xyz = np.array([
-                player_row[x_col],
-                player_row[y_col],
-                player_row[z_col] + 64  # Eye height approximation
-            ])
+            player_xyz = np.array(
+                [
+                    player_row[x_col],
+                    player_row[y_col],
+                    player_row[z_col] + 64,  # Eye height approximation
+                ]
+            )
 
             # Get view direction
-            view_dir = angles_to_direction(
-                player_row["pitch"],
-                player_row["yaw"]
-            )
+            view_dir = angles_to_direction(player_row["pitch"], player_row["yaw"])
 
             # Find enemies at this tick
             enemies_at_tick = positions[
-                (positions["tick"] == tick) &
-                (positions[steamid_col] != player_id)
+                (positions["tick"] == tick) & (positions[steamid_col] != player_id)
             ]
 
             # Filter to enemy team only
@@ -520,11 +551,13 @@ def calculate_crosshair_placement(
             # Calculate angle to closest enemy
             min_angle = float("inf")
             for _, enemy_row in enemies_at_tick.iterrows():
-                enemy_xyz = np.array([
-                    enemy_row[x_col],
-                    enemy_row[y_col],
-                    enemy_row[z_col] + 64  # Eye height
-                ])
+                enemy_xyz = np.array(
+                    [
+                        enemy_row[x_col],
+                        enemy_row[y_col],
+                        enemy_row[z_col] + 64,  # Eye height
+                    ]
+                )
 
                 direction = enemy_xyz - player_xyz
                 distance = np.linalg.norm(direction)
@@ -561,8 +594,7 @@ def calculate_crosshair_placement(
 
 
 def calculate_engagement_metrics(
-    demo_data: DemoData,
-    steam_id: Optional[int] = None
+    demo_data: DemoData, steam_id: int | None = None
 ) -> dict[int, EngagementMetrics]:
     """
     Calculate comprehensive engagement metrics for players.
@@ -589,21 +621,33 @@ def calculate_engagement_metrics(
     num_rounds = max(demo_data.num_rounds, 1)
 
     # Helper to find column names
-    def find_col(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+    def find_col(df: pd.DataFrame, options: list[str]) -> str | None:
         for col in options:
             if col in df.columns:
                 return col
         return None
 
     # Find kill column names
-    att_col = find_col(kills_df, ["attacker_steamid", "attacker_steam_id"]) if not kills_df.empty else None
+    att_col = (
+        find_col(kills_df, ["attacker_steamid", "attacker_steam_id"])
+        if not kills_df.empty
+        else None
+    )
     vic_col = find_col(kills_df, ["user_steamid", "victim_steamid"]) if not kills_df.empty else None
     hs_col = find_col(kills_df, ["headshot"]) if not kills_df.empty else None
 
     # Find damage column names
     damage_df = demo_data.damages_df
-    dmg_att_col = find_col(damage_df, ["attacker_steamid", "attacker_steam_id"]) if damage_df is not None and not damage_df.empty else None
-    dmg_col = find_col(damage_df, ["dmg_health", "damage", "dmg"]) if damage_df is not None and not damage_df.empty else None
+    dmg_att_col = (
+        find_col(damage_df, ["attacker_steamid", "attacker_steam_id"])
+        if damage_df is not None and not damage_df.empty
+        else None
+    )
+    dmg_col = (
+        find_col(damage_df, ["dmg_health", "damage", "dmg"])
+        if damage_df is not None and not damage_df.empty
+        else None
+    )
 
     for player_id in player_ids:
         total_kills = 0
@@ -653,6 +697,7 @@ def calculate_engagement_metrics(
 # ============================================================================
 # Economy Metrics
 # ============================================================================
+
 
 @dataclass
 class EconomyMetrics:
@@ -721,8 +766,7 @@ def classify_buy_type(loadout_value: int) -> str:
 
 
 def calculate_economy_metrics(
-    demo_data: DemoData,
-    steam_id: Optional[int] = None
+    demo_data: DemoData, steam_id: int | None = None
 ) -> dict[int, EconomyMetrics]:
     """
     Calculate economy metrics for players.
@@ -805,7 +849,9 @@ def calculate_economy_metrics(
         weapon_efficiency = total_damage / max(money_spent, 1)
 
         # Find favorite weapon
-        favorite_weapon = max(weapon_kills.keys(), key=lambda w: weapon_kills[w]) if weapon_kills else "unknown"
+        favorite_weapon = (
+            max(weapon_kills.keys(), key=lambda w: weapon_kills[w]) if weapon_kills else "unknown"
+        )
 
         # Estimate kills by round type (simplified without round economy data)
         total_kills = len(player_kills)
@@ -833,6 +879,7 @@ def calculate_economy_metrics(
 # ============================================================================
 # Utility Metrics
 # ============================================================================
+
 
 @dataclass
 class UtilityMetrics:
@@ -872,8 +919,7 @@ class GrenadeEvent:
 
 
 def calculate_utility_metrics(
-    demo_data: DemoData,
-    steam_id: Optional[int] = None
+    demo_data: DemoData, steam_id: int | None = None
 ) -> dict[int, UtilityMetrics]:
     """
     Calculate utility usage metrics for players.
@@ -914,8 +960,12 @@ def calculate_utility_metrics(
     for player_id in player_ids:
         # Count grenades thrown (from shots/weapon_fire events)
         grenades_thrown: dict[str, int] = {
-            "hegrenade": 0, "flashbang": 0, "smokegrenade": 0,
-            "molotov": 0, "incgrenade": 0, "decoy": 0
+            "hegrenade": 0,
+            "flashbang": 0,
+            "smokegrenade": 0,
+            "molotov": 0,
+            "incgrenade": 0,
+            "decoy": 0,
         }
 
         if not shots_df.empty and "weapon" in shots_df.columns and shots_steamid_col:
@@ -979,6 +1029,7 @@ def calculate_utility_metrics(
 # Positioning Metrics
 # ============================================================================
 
+
 @dataclass
 class PositioningMetrics:
     """Positioning and map control analysis for a player."""
@@ -1039,11 +1090,7 @@ class OpeningDuelMetrics:
         )
 
 
-def get_area_at_position(
-    x: float,
-    y: float,
-    map_name: str
-) -> Optional[str]:
+def get_area_at_position(x: float, y: float, map_name: str) -> str | None:
     """
     Get the map area name for a given position.
 
@@ -1063,8 +1110,7 @@ def get_area_at_position(
 
 
 def calculate_positioning_metrics(
-    demo_data: DemoData,
-    steam_id: Optional[int] = None
+    demo_data: DemoData, steam_id: int | None = None
 ) -> dict[int, PositioningMetrics]:
     """
     Calculate positioning metrics for players.
@@ -1130,16 +1176,14 @@ def calculate_positioning_metrics(
                 prev_area = area
 
         # Convert to percentages
-        area_coverage = {
-            area: (count / total_ticks) * 100
-            for area, count in area_times.items()
-        } if total_ticks > 0 else {}
+        area_coverage = (
+            {area: (count / total_ticks) * 100 for area, count in area_times.items()}
+            if total_ticks > 0
+            else {}
+        )
 
         # Calculate time in sites vs mid
-        site_time = sum(
-            pct for area, pct in area_coverage.items()
-            if "site" in area.lower()
-        )
+        site_time = sum(pct for area, pct in area_coverage.items() if "site" in area.lower())
         mid_time = area_coverage.get("mid", 0.0)
 
         # Calculate average distance from teammates
@@ -1237,9 +1281,7 @@ def calculate_positioning_metrics(
 
 
 def calculate_trade_metrics(
-    demo_data: DemoData,
-    steam_id: Optional[int] = None,
-    trade_window_ms: float = 2000.0
+    demo_data: DemoData, steam_id: int | None = None, trade_window_ms: float = 2000.0
 ) -> dict[int, TradeMetrics]:
     """
     Calculate trade kill metrics for players.
@@ -1339,9 +1381,7 @@ def calculate_trade_metrics(
 
 
 def calculate_opening_metrics(
-    demo_data: DemoData,
-    steam_id: Optional[int] = None,
-    opening_window_seconds: float = 30.0
+    demo_data: DemoData, steam_id: int | None = None, opening_window_seconds: float = 30.0
 ) -> dict[int, OpeningDuelMetrics]:
     """
     Calculate opening duel metrics for players.
@@ -1378,10 +1418,7 @@ def calculate_opening_metrics(
         player_ids = {steam_id} if steam_id in player_ids else set()
 
     player_stats: dict[int, dict] = {
-        pid: {
-            "kills": 0, "deaths": 0, "attempts": 0,
-            "times": [], "weapons": []
-        }
+        pid: {"kills": 0, "deaths": 0, "attempts": 0, "times": [], "weapons": []}
         for pid in player_ids
     }
 
@@ -1391,8 +1428,8 @@ def calculate_opening_metrics(
 
         # Get first kill of the round
         round_kills = kills_df[
-            (kills_df["tick"] >= round_start) &
-            (kills_df["tick"] <= min(round_start + opening_window_ticks, round_end))
+            (kills_df["tick"] >= round_start)
+            & (kills_df["tick"] <= min(round_start + opening_window_ticks, round_end))
         ].sort_values("tick")
 
         if round_kills.empty:
@@ -1428,7 +1465,11 @@ def calculate_opening_metrics(
         for w in stats["weapons"]:
             w_clean = str(w).lower().replace("weapon_", "")
             weapon_counts[w_clean] = weapon_counts.get(w_clean, 0) + 1
-        opening_weapon = max(weapon_counts.keys(), key=lambda w: weapon_counts[w]) if weapon_counts else "unknown"
+        opening_weapon = (
+            max(weapon_counts.keys(), key=lambda w: weapon_counts[w])
+            if weapon_counts
+            else "unknown"
+        )
 
         results[int(player_id)] = OpeningDuelMetrics(
             steam_id=int(player_id),
@@ -1448,6 +1489,7 @@ def calculate_opening_metrics(
 # Comprehensive Analysis
 # ============================================================================
 
+
 @dataclass
 class ComprehensivePlayerMetrics:
     """All metrics combined for a player."""
@@ -1455,14 +1497,14 @@ class ComprehensivePlayerMetrics:
     steam_id: int
     player_name: str
     team: str
-    engagement: Optional[EngagementMetrics]
-    economy: Optional[EconomyMetrics]
-    utility: Optional[UtilityMetrics]
-    positioning: Optional[PositioningMetrics]
-    trades: Optional[TradeMetrics]
-    opening_duels: Optional[OpeningDuelMetrics]
-    ttd: Optional[TTDResult]
-    crosshair_placement: Optional[CrosshairPlacementResult]
+    engagement: EngagementMetrics | None
+    economy: EconomyMetrics | None
+    utility: UtilityMetrics | None
+    positioning: PositioningMetrics | None
+    trades: TradeMetrics | None
+    opening_duels: OpeningDuelMetrics | None
+    ttd: TTDResult | None
+    crosshair_placement: CrosshairPlacementResult | None
 
     def overall_rating(self) -> float:
         """
@@ -1494,8 +1536,7 @@ class ComprehensivePlayerMetrics:
 
 
 def calculate_comprehensive_metrics(
-    demo_data: DemoData,
-    steam_id: Optional[int] = None
+    demo_data: DemoData, steam_id: int | None = None
 ) -> dict[int, ComprehensivePlayerMetrics]:
     """
     Calculate all available metrics for players.

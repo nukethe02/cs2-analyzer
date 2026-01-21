@@ -5,21 +5,22 @@ Provides personalized coaching insights based on player rank, role, and map pool
 Uses reinforcement learning to prioritize the most impactful mistakes for each user.
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional, Any
+import hashlib
 import json
 import math
-import hashlib
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
-
+from typing import Any
 
 # ============================================================================
 # Player Profile Enums and Types
 # ============================================================================
 
+
 class PlayerRank(Enum):
     """CS2 competitive ranks."""
+
     UNRANKED = 0
     SILVER_1 = 1
     SILVER_2 = 2
@@ -54,6 +55,7 @@ class PlayerRank(Enum):
 
 class PlayerRole(Enum):
     """Standard CS2 player roles."""
+
     ENTRY_FRAGGER = "entry"
     AWP = "awp"
     SUPPORT = "support"
@@ -66,6 +68,7 @@ class PlayerRole(Enum):
 
 class SkillArea(Enum):
     """Skill areas for coaching focus."""
+
     AIM_MECHANICS = "aim_mechanics"
     CROSSHAIR_PLACEMENT = "crosshair_placement"
     MOVEMENT = "movement"
@@ -87,14 +90,16 @@ class SkillArea(Enum):
 # Player Profile Data Structures
 # ============================================================================
 
+
 @dataclass
 class PlayerProfile:
     """Complete player profile for coaching personalization."""
+
     steamid: str
     name: str = "Unknown"
     rank: PlayerRank = PlayerRank.UNRANKED
     primary_role: PlayerRole = PlayerRole.UNKNOWN
-    secondary_role: Optional[PlayerRole] = None
+    secondary_role: PlayerRole | None = None
     map_pool: list[str] = field(default_factory=list)
     hours_played: float = 0.0
     demos_analyzed: int = 0
@@ -131,7 +136,7 @@ class PlayerProfile:
             "avg_ttd_ms": self.avg_ttd_ms,
             "avg_cp_error": self.avg_cp_error,
             "focus_areas": [a.value for a in self.focus_areas],
-            "coaching_history": self.coaching_history[-50:]  # Keep last 50 entries
+            "coaching_history": self.coaching_history[-50:],  # Keep last 50 entries
         }
 
     @classmethod
@@ -149,7 +154,7 @@ class PlayerProfile:
             avg_ttd_ms=data.get("avg_ttd_ms", 0.0),
             avg_cp_error=data.get("avg_cp_error", 0.0),
             map_pool=data.get("map_pool", []),
-            coaching_history=data.get("coaching_history", [])
+            coaching_history=data.get("coaching_history", []),
         )
 
         # Parse rank
@@ -183,6 +188,7 @@ class PlayerProfile:
 @dataclass
 class CoachingInsight:
     """A single coaching insight/recommendation."""
+
     skill_area: SkillArea
     severity: str  # "critical", "high", "medium", "low"
     title: str
@@ -212,7 +218,7 @@ class CoachingInsight:
             "confidence": round(self.confidence, 3),
             "times_shown": self.times_shown,
             "times_acknowledged": self.times_acknowledged,
-            "improvement_observed": self.improvement_observed
+            "improvement_observed": self.improvement_observed,
         }
 
 
@@ -220,9 +226,11 @@ class CoachingInsight:
 # Reinforcement Learning Priority System
 # ============================================================================
 
+
 @dataclass
 class RLState:
     """State representation for RL priority learning."""
+
     # Player context
     rank_tier: int  # 0=low, 1=mid, 2=high, 3=pro
     role_id: int
@@ -247,7 +255,7 @@ class RLState:
             self.consistency,
             self.skill_area_id / 15.0,
             self.severity_id / 3.0,
-            min(self.times_shown / 10.0, 1.0)
+            min(self.times_shown / 10.0, 1.0),
         ]
 
 
@@ -257,8 +265,12 @@ class AdaptivePriorityLearner:
     Uses a simple Q-learning approach with function approximation.
     """
 
-    def __init__(self, learning_rate: float = 0.1, discount_factor: float = 0.95,
-                 exploration_rate: float = 0.1):
+    def __init__(
+        self,
+        learning_rate: float = 0.1,
+        discount_factor: float = 0.95,
+        exploration_rate: float = 0.1,
+    ):
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
         self.exploration_rate = exploration_rate
@@ -292,7 +304,7 @@ class AdaptivePriorityLearner:
         """Compute Q-value for state-action pair."""
         features = state.to_vector()
         weights = self.weights_show if action == "show" else self.weights_hide
-        return sum(f * w for f, w in zip(features, weights))
+        return sum(f * w for f, w in zip(features, weights, strict=False))
 
     def compute_priority(self, state: RLState) -> float:
         """Compute priority score for showing an insight."""
@@ -307,8 +319,9 @@ class AdaptivePriorityLearner:
         priority = exp_show / (exp_show + exp_hide)
         return priority
 
-    def update(self, state: RLState, action: str, reward: float,
-               next_state: Optional[RLState] = None) -> None:
+    def update(
+        self, state: RLState, action: str, reward: float, next_state: RLState | None = None
+    ) -> None:
         """Update weights based on observed reward."""
         features = state.to_vector()
 
@@ -334,8 +347,9 @@ class AdaptivePriorityLearner:
         self.total_reward += reward
         self.num_updates += 1
 
-    def get_reward(self, insight: CoachingInsight, acknowledged: bool,
-                   improvement_observed: bool) -> float:
+    def get_reward(
+        self, insight: CoachingInsight, acknowledged: bool, improvement_observed: bool
+    ) -> float:
         """Compute reward for showing an insight."""
         reward = 0.0
 
@@ -366,7 +380,7 @@ class AdaptivePriorityLearner:
             "weights_show": self.weights_show,
             "weights_hide": self.weights_hide,
             "total_reward": self.total_reward,
-            "num_updates": self.num_updates
+            "num_updates": self.num_updates,
         }
 
     @classmethod
@@ -375,7 +389,7 @@ class AdaptivePriorityLearner:
         learner = cls(
             learning_rate=data.get("learning_rate", 0.1),
             discount_factor=data.get("discount_factor", 0.95),
-            exploration_rate=data.get("exploration_rate", 0.1)
+            exploration_rate=data.get("exploration_rate", 0.1),
         )
         learner.weights_show = data.get("weights_show", learner.weights_show)
         learner.weights_hide = data.get("weights_hide", learner.weights_hide)
@@ -398,7 +412,7 @@ RANK_BENCHMARKS = {
     "hs_percent": [30, 35, 40, 45, 50],
     "utility_per_round": [0.5, 1.0, 1.5, 2.0, 2.5],
     "opening_duel_wr": [35, 40, 45, 50, 55],
-    "trade_rate": [20, 30, 40, 50, 60]
+    "trade_rate": [20, 30, 40, 50, 60],
 }
 
 # Role-specific focus areas
@@ -407,50 +421,50 @@ ROLE_FOCUS_AREAS = {
         SkillArea.AIM_MECHANICS,
         SkillArea.CROSSHAIR_PLACEMENT,
         SkillArea.ENTRY_FRAGGING,
-        SkillArea.MOVEMENT
+        SkillArea.MOVEMENT,
     ],
     PlayerRole.AWP: [
         SkillArea.AWP_USAGE,
         SkillArea.POSITIONING,
         SkillArea.GAME_SENSE,
-        SkillArea.ECONOMY
+        SkillArea.ECONOMY,
     ],
     PlayerRole.SUPPORT: [
         SkillArea.UTILITY_USAGE,
         SkillArea.TRADING,
         SkillArea.COMMUNICATION,
-        SkillArea.POSITIONING
+        SkillArea.POSITIONING,
     ],
     PlayerRole.LURKER: [
         SkillArea.GAME_SENSE,
         SkillArea.POSITIONING,
         SkillArea.CLUTCHING,
-        SkillArea.MAP_KNOWLEDGE
+        SkillArea.MAP_KNOWLEDGE,
     ],
     PlayerRole.IGL: [
         SkillArea.GAME_SENSE,
         SkillArea.COMMUNICATION,
         SkillArea.ECONOMY,
-        SkillArea.MAP_KNOWLEDGE
+        SkillArea.MAP_KNOWLEDGE,
     ],
     PlayerRole.RIFLER: [
         SkillArea.AIM_MECHANICS,
         SkillArea.CROSSHAIR_PLACEMENT,
         SkillArea.TRADING,
-        SkillArea.UTILITY_USAGE
+        SkillArea.UTILITY_USAGE,
     ],
     PlayerRole.FLEX: [
         SkillArea.AIM_MECHANICS,
         SkillArea.UTILITY_USAGE,
         SkillArea.GAME_SENSE,
-        SkillArea.TRADING
+        SkillArea.TRADING,
     ],
     PlayerRole.UNKNOWN: [
         SkillArea.AIM_MECHANICS,
         SkillArea.CROSSHAIR_PLACEMENT,
         SkillArea.UTILITY_USAGE,
-        SkillArea.POSITIONING
-    ]
+        SkillArea.POSITIONING,
+    ],
 }
 
 # Map-specific tips
@@ -458,38 +472,38 @@ MAP_TIPS = {
     "de_dust2": {
         SkillArea.POSITIONING: ["Control long doors as CT", "Hold catwalk angles"],
         SkillArea.UTILITY_USAGE: ["Practice A site smokes", "Learn B tunnels mollies"],
-        SkillArea.MAP_KNOWLEDGE: ["Understand mid control importance", "Learn boost spots"]
+        SkillArea.MAP_KNOWLEDGE: ["Understand mid control importance", "Learn boost spots"],
     },
     "de_mirage": {
         SkillArea.POSITIONING: ["Window room control is crucial", "Connector presence"],
         SkillArea.UTILITY_USAGE: ["A site execute smokes", "Jungle/connector mollies"],
-        SkillArea.MAP_KNOWLEDGE: ["Underpass timings", "Palace control"]
+        SkillArea.MAP_KNOWLEDGE: ["Underpass timings", "Palace control"],
     },
     "de_inferno": {
         SkillArea.POSITIONING: ["Banana control defines rounds", "Apps presence"],
         SkillArea.UTILITY_USAGE: ["Banana utility essential", "A site smokes"],
-        SkillArea.MAP_KNOWLEDGE: ["Timing-based plays", "Second mid control"]
+        SkillArea.MAP_KNOWLEDGE: ["Timing-based plays", "Second mid control"],
     },
     "de_nuke": {
         SkillArea.POSITIONING: ["Vertical play understanding", "Outside control"],
         SkillArea.UTILITY_USAGE: ["Heaven smokes", "Secret area utility"],
-        SkillArea.MAP_KNOWLEDGE: ["Vent usage", "Ramp control importance"]
+        SkillArea.MAP_KNOWLEDGE: ["Vent usage", "Ramp control importance"],
     },
     "de_ancient": {
         SkillArea.POSITIONING: ["Mid control variations", "Elbow holds"],
         SkillArea.UTILITY_USAGE: ["A site executes", "Mid smokes"],
-        SkillArea.MAP_KNOWLEDGE: ["Cave timings", "Donut area usage"]
+        SkillArea.MAP_KNOWLEDGE: ["Cave timings", "Donut area usage"],
     },
     "de_anubis": {
         SkillArea.POSITIONING: ["Canal control", "Connector angles"],
         SkillArea.UTILITY_USAGE: ["B site executes", "Mid control smokes"],
-        SkillArea.MAP_KNOWLEDGE: ["Palace timings", "Water area usage"]
+        SkillArea.MAP_KNOWLEDGE: ["Palace timings", "Water area usage"],
     },
     "de_vertigo": {
         SkillArea.POSITIONING: ["Ramp control", "Mid presence"],
         SkillArea.UTILITY_USAGE: ["A ramp smokes", "B site utility"],
-        SkillArea.MAP_KNOWLEDGE: ["Elevator usage", "Scaffold plays"]
-    }
+        SkillArea.MAP_KNOWLEDGE: ["Elevator usage", "Scaffold plays"],
+    },
 }
 
 
@@ -513,12 +527,13 @@ def get_rank_tier(rank: PlayerRank) -> int:
 # Adaptive Coaching Engine
 # ============================================================================
 
+
 class AdaptiveCoach:
     """
     Main coaching engine that generates personalized insights.
     """
 
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Path | None = None):
         self.data_dir = data_dir or Path.home() / ".opensight" / "coaching"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -537,10 +552,10 @@ class AdaptiveCoach:
         learner_path = self.data_dir / "learner_state.json"
         if learner_path.exists():
             try:
-                with open(learner_path, "r") as f:
+                with open(learner_path) as f:
                     data = json.load(f)
                 self.learner = AdaptivePriorityLearner.from_dict(data)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
 
     def _save_learner(self) -> None:
@@ -549,7 +564,7 @@ class AdaptiveCoach:
         try:
             with open(learner_path, "w") as f:
                 json.dump(self.learner.to_dict(), f, indent=2)
-        except IOError:
+        except OSError:
             pass
 
     def get_profile(self, steamid: str) -> PlayerProfile:
@@ -558,10 +573,10 @@ class AdaptiveCoach:
             profile_path = self.data_dir / f"profile_{steamid}.json"
             if profile_path.exists():
                 try:
-                    with open(profile_path, "r") as f:
+                    with open(profile_path) as f:
                         data = json.load(f)
                     self.profiles[steamid] = PlayerProfile.from_dict(data)
-                except (json.JSONDecodeError, IOError):
+                except (OSError, json.JSONDecodeError):
                     self.profiles[steamid] = PlayerProfile(steamid=steamid)
             else:
                 self.profiles[steamid] = PlayerProfile(steamid=steamid)
@@ -574,13 +589,17 @@ class AdaptiveCoach:
         try:
             with open(profile_path, "w") as f:
                 json.dump(profile.to_dict(), f, indent=2)
-        except IOError:
+        except OSError:
             pass
 
-    def update_profile(self, steamid: str, name: str = "",
-                       rank: Optional[PlayerRank] = None,
-                       role: Optional[PlayerRole] = None,
-                       map_pool: Optional[list[str]] = None) -> PlayerProfile:
+    def update_profile(
+        self,
+        steamid: str,
+        name: str = "",
+        rank: PlayerRank | None = None,
+        role: PlayerRole | None = None,
+        map_pool: list[str] | None = None,
+    ) -> PlayerProfile:
         """Update player profile settings."""
         profile = self.get_profile(steamid)
 
@@ -602,71 +621,75 @@ class AdaptiveCoach:
             SkillArea.AIM_MECHANICS: [
                 {
                     "title": "Slow Time to Damage",
-                    "condition": lambda stats, bench: stats.get("ttd_median_ms", 999) > bench["ttd_ms"],
+                    "condition": lambda stats, bench: stats.get("ttd_median_ms", 999)
+                    > bench["ttd_ms"],
                     "severity": "high",
                     "description": "Your reaction time from first damage to kill is slower than expected for your rank.",
                     "tips": [
                         "Practice aim trainers like Aim Lab or Kovaak's",
                         "Focus on pre-aiming common angles",
-                        "Work on crosshair placement to reduce adjustment time"
+                        "Work on crosshair placement to reduce adjustment time",
                     ],
                     "drills": [
                         "Yprac aim training maps",
                         "Deathmatch with specific weapon focus",
-                        "1v1 arena maps"
-                    ]
+                        "1v1 arena maps",
+                    ],
                 },
                 {
                     "title": "Low Headshot Percentage",
-                    "condition": lambda stats, bench: stats.get("hs_percent", 0) < bench["hs_percent"],
+                    "condition": lambda stats, bench: stats.get("hs_percent", 0)
+                    < bench["hs_percent"],
                     "severity": "medium",
                     "description": "Your headshot percentage is below average. Focus on head-level aim.",
                     "tips": [
                         "Keep crosshair at head level",
                         "Practice head-level pre-aims for common positions",
-                        "Slow down and aim for heads in deathmatch"
+                        "Slow down and aim for heads in deathmatch",
                     ],
                     "drills": [
                         "Headshot-only deathmatch servers",
                         "Aim_botz with head-level targets",
-                        "Prefire practice maps"
-                    ]
-                }
+                        "Prefire practice maps",
+                    ],
+                },
             ],
             SkillArea.CROSSHAIR_PLACEMENT: [
                 {
                     "title": "High Crosshair Angle Error",
-                    "condition": lambda stats, bench: stats.get("cp_median_error", 999) > bench["cp_error_deg"],
+                    "condition": lambda stats, bench: stats.get("cp_median_error", 999)
+                    > bench["cp_error_deg"],
                     "severity": "high",
                     "description": "Your crosshair is often far from where enemies appear. This costs valuable milliseconds.",
                     "tips": [
                         "Pre-aim common angles when moving",
                         "Keep crosshair at head level always",
-                        "Clear angles systematically instead of randomly"
+                        "Clear angles systematically instead of randomly",
                     ],
                     "drills": [
                         "Prefire practice workshop maps",
                         "Slow-paced deathmatch focusing on placement",
-                        "VOD review of professional players"
-                    ]
+                        "VOD review of professional players",
+                    ],
                 }
             ],
             SkillArea.UTILITY_USAGE: [
                 {
                     "title": "Low Utility Usage",
-                    "condition": lambda stats, bench: stats.get("utility_per_round", 0) < bench["utility_per_round"],
+                    "condition": lambda stats, bench: stats.get("utility_per_round", 0)
+                    < bench["utility_per_round"],
                     "severity": "medium",
                     "description": "You're not using enough utility each round. Grenades can win rounds.",
                     "tips": [
                         "Buy utility every round you can",
                         "Learn 2-3 smokes per map for executes",
-                        "Use flashes for entry and support"
+                        "Use flashes for entry and support",
                     ],
                     "drills": [
                         "Smoke/flash/molly practice maps",
                         "Execute practice in offline server",
-                        "Watch pro utility usage"
-                    ]
+                        "Watch pro utility usage",
+                    ],
                 },
                 {
                     "title": "Flashing Teammates",
@@ -676,67 +699,70 @@ class AdaptiveCoach:
                     "tips": [
                         "Communicate flash timing",
                         "Use pop flashes that don't blind teammates",
-                        "Wait for teammates to be ready"
+                        "Wait for teammates to be ready",
                     ],
                     "drills": [
                         "Practice flash lineups in offline server",
                         "Learn popflash techniques",
-                        "Coordinate with team on utility"
-                    ]
-                }
+                        "Coordinate with team on utility",
+                    ],
+                },
             ],
             SkillArea.TRADING: [
                 {
                     "title": "Low Trade Rate",
-                    "condition": lambda stats, bench: stats.get("trade_rate", 0) < bench["trade_rate"],
+                    "condition": lambda stats, bench: stats.get("trade_rate", 0)
+                    < bench["trade_rate"],
                     "severity": "high",
                     "description": "You're not trading teammates quickly enough when they die.",
                     "tips": [
                         "Stay closer to teammates",
                         "Be ready to swing immediately after teammate dies",
-                        "Use utility to help with trades"
+                        "Use utility to help with trades",
                     ],
                     "drills": [
                         "Practice buddy system in retakes",
                         "Work on peek timing drills",
-                        "Review demos for trade opportunities missed"
-                    ]
+                        "Review demos for trade opportunities missed",
+                    ],
                 }
             ],
             SkillArea.ENTRY_FRAGGING: [
                 {
                     "title": "Low Opening Duel Win Rate",
-                    "condition": lambda stats, bench: stats.get("opening_duel_wr", 0) < bench["opening_duel_wr"],
+                    "condition": lambda stats, bench: stats.get("opening_duel_wr", 0)
+                    < bench["opening_duel_wr"],
                     "severity": "medium",
                     "description": "You're losing too many opening duels as an entry fragger.",
                     "tips": [
                         "Use utility before entering",
                         "Work on prefire timing",
-                        "Consider changing entry spots"
+                        "Consider changing entry spots",
                     ],
                     "drills": [
                         "Prefire maps for common spots",
                         "Flash and entry practice",
-                        "1v1 arena for raw dueling"
-                    ]
+                        "1v1 arena for raw dueling",
+                    ],
                 }
             ],
             SkillArea.POSITIONING: [
                 {
                     "title": "Overaggressive Positioning",
-                    "condition": lambda stats, bench: stats.get("deaths_per_round", 1) > 0.8 and stats.get("kast", 0) < 60,
+                    "condition": lambda stats, bench: stats.get("deaths_per_round", 1) > 0.8
+                    and stats.get("kast", 0) < 60,
                     "severity": "medium",
                     "description": "You're dying too often without impact. Consider safer positions.",
                     "tips": [
                         "Hold angles instead of pushing",
                         "Stay alive for retakes",
-                        "Position where you can be traded"
+                        "Position where you can be traded",
                     ],
                     "drills": [
                         "Study CT positioning in pro matches",
                         "Practice holding specific angles",
-                        "Work on when to fall back"
-                    ]
+                        "Work on when to fall back",
+                    ],
                 }
             ],
             SkillArea.ECONOMY: [
@@ -748,31 +774,32 @@ class AdaptiveCoach:
                     "tips": [
                         "Follow team's buy calls",
                         "Save for full buys when appropriate",
-                        "Understand eco round strategy"
+                        "Understand eco round strategy",
                     ],
                     "drills": [
                         "Practice eco round strategies",
                         "Learn force buy situations",
-                        "Review economy management"
-                    ]
+                        "Review economy management",
+                    ],
                 }
             ],
             SkillArea.CLUTCHING: [
                 {
                     "title": "Low Clutch Win Rate",
-                    "condition": lambda stats, bench: stats.get("clutch_win_rate", 0) < 30 and stats.get("clutch_attempts", 0) > 5,
+                    "condition": lambda stats, bench: stats.get("clutch_win_rate", 0) < 30
+                    and stats.get("clutch_attempts", 0) > 5,
                     "severity": "low",
                     "description": "Your clutch conversion rate is low. Work on 1vX situations.",
                     "tips": [
                         "Take your time in clutches",
                         "Use sound to track enemies",
-                        "Isolate 1v1 duels"
+                        "Isolate 1v1 duels",
                     ],
                     "drills": [
                         "Retake servers",
                         "1v1/1v2 clutch scenarios",
-                        "Decision-making practice"
-                    ]
+                        "Decision-making practice",
+                    ],
                 }
             ],
             SkillArea.GAME_SENSE: [
@@ -784,39 +811,36 @@ class AdaptiveCoach:
                     "tips": [
                         "Wait for information before rotating",
                         "Use utility to cover rotations",
-                        "Understand timing windows"
+                        "Understand timing windows",
                     ],
                     "drills": [
                         "Watch demos for timing patterns",
                         "Practice map timings",
-                        "Learn callout timing"
-                    ]
+                        "Learn callout timing",
+                    ],
                 }
             ],
             SkillArea.AWP_USAGE: [
                 {
                     "title": "Aggressive AWP Dies Often",
-                    "condition": lambda stats, bench: stats.get("awp_deaths", 0) > stats.get("awp_kills", 0) * 0.7,
+                    "condition": lambda stats, bench: stats.get("awp_deaths", 0)
+                    > stats.get("awp_kills", 0) * 0.7,
                     "severity": "high",
                     "description": "You're dying too much with the AWP. It's a $4750 investment.",
                     "tips": [
                         "Hold angles instead of peeking",
                         "Reposition after shots",
-                        "Stay alive - AWP is expensive"
+                        "Stay alive - AWP is expensive",
                     ],
-                    "drills": [
-                        "AWP positioning maps",
-                        "Peek timing practice",
-                        "Movement with AWP"
-                    ]
+                    "drills": ["AWP positioning maps", "Peek timing practice", "Movement with AWP"],
                 }
-            ]
+            ],
         }
         return templates
 
-    def generate_insights(self, player_stats: dict[str, Any],
-                          steamid: str,
-                          map_name: str = "") -> list[CoachingInsight]:
+    def generate_insights(
+        self, player_stats: dict[str, Any], steamid: str, map_name: str = ""
+    ) -> list[CoachingInsight]:
         """
         Generate personalized coaching insights for a player.
 
@@ -835,8 +859,9 @@ class AdaptiveCoach:
         benchmarks = {k: v[min(rank_tier, len(v) - 1)] for k, v in RANK_BENCHMARKS.items()}
 
         insights = []
-        role_focus = ROLE_FOCUS_AREAS.get(profile.primary_role,
-                                          ROLE_FOCUS_AREAS[PlayerRole.UNKNOWN])
+        role_focus = ROLE_FOCUS_AREAS.get(
+            profile.primary_role, ROLE_FOCUS_AREAS[PlayerRole.UNKNOWN]
+        )
 
         # Check each skill area
         for skill_area, templates in self.insight_templates.items():
@@ -849,7 +874,7 @@ class AdaptiveCoach:
                         title=template["title"],
                         description=template["description"],
                         improvement_tips=template["tips"],
-                        practice_drills=template["drills"]
+                        practice_drills=template["drills"],
                     )
 
                     # Add map-specific tips if available
@@ -866,7 +891,7 @@ class AdaptiveCoach:
                         consistency=self._compute_consistency(profile),
                         skill_area_id=list(SkillArea).index(skill_area),
                         severity_id=["low", "medium", "high", "critical"].index(insight.severity),
-                        times_shown=self._get_times_shown(profile, skill_area)
+                        times_shown=self._get_times_shown(profile, skill_area),
                     )
 
                     insight.priority_score = self.learner.compute_priority(state)
@@ -881,11 +906,13 @@ class AdaptiveCoach:
         insights.sort(key=lambda x: x.priority_score, reverse=True)
 
         # Record in profile history
-        profile.coaching_history.append({
-            "map": map_name,
-            "insights_generated": len(insights),
-            "top_issues": [i.title for i in insights[:3]]
-        })
+        profile.coaching_history.append(
+            {
+                "map": map_name,
+                "insights_generated": len(insights),
+                "top_issues": [i.title for i in insights[:3]],
+            }
+        )
         self.save_profile(profile)
 
         return insights
@@ -902,8 +929,8 @@ class AdaptiveCoach:
 
         # Trend based on number of issues decreasing
         if len(recent) >= 2:
-            early_issues = sum(h.get("insights_generated", 0) for h in recent[:len(recent)//2])
-            late_issues = sum(h.get("insights_generated", 0) for h in recent[len(recent)//2:])
+            early_issues = sum(h.get("insights_generated", 0) for h in recent[: len(recent) // 2])
+            late_issues = sum(h.get("insights_generated", 0) for h in recent[len(recent) // 2 :])
 
             if early_issues > 0:
                 trend = (early_issues - late_issues) / early_issues
@@ -940,8 +967,13 @@ class AdaptiveCoach:
                 count += 1
         return count
 
-    def record_feedback(self, steamid: str, insight_title: str,
-                        acknowledged: bool, improvement_observed: bool = False) -> None:
+    def record_feedback(
+        self,
+        steamid: str,
+        insight_title: str,
+        acknowledged: bool,
+        improvement_observed: bool = False,
+    ) -> None:
         """
         Record user feedback on an insight for RL learning.
 
@@ -974,7 +1006,7 @@ class AdaptiveCoach:
             consistency=self._compute_consistency(profile),
             skill_area_id=list(SkillArea).index(skill_area),
             severity_id=["low", "medium", "high", "critical"].index(severity),
-            times_shown=self._get_times_shown(profile, skill_area)
+            times_shown=self._get_times_shown(profile, skill_area),
         )
 
         # Compute reward
@@ -983,7 +1015,7 @@ class AdaptiveCoach:
             severity=severity,
             title=insight_title,
             description="",
-            times_shown=self._get_times_shown(profile, skill_area)
+            times_shown=self._get_times_shown(profile, skill_area),
         )
         reward = self.learner.get_reward(insight, acknowledged, improvement_observed)
 
@@ -991,8 +1023,7 @@ class AdaptiveCoach:
         self.learner.update(state, "show", reward)
         self._save_learner()
 
-    def get_practice_plan(self, steamid: str,
-                          duration_minutes: int = 30) -> dict[str, Any]:
+    def get_practice_plan(self, steamid: str, duration_minutes: int = 30) -> dict[str, Any]:
         """
         Generate a personalized practice plan based on identified weaknesses.
 
@@ -1024,7 +1055,7 @@ class AdaptiveCoach:
             "focus_areas": [],
             "warmup": [],
             "main_practice": [],
-            "cooldown": []
+            "cooldown": [],
         }
 
         # Determine focus areas from most frequent issues
@@ -1037,15 +1068,13 @@ class AdaptiveCoach:
         warmup_time = max(5, int(duration_minutes * 0.1))
         plan["warmup"] = [
             {"activity": "Aim trainer warmup", "duration": warmup_time // 2},
-            {"activity": "Deathmatch warmup", "duration": warmup_time // 2}
+            {"activity": "Deathmatch warmup", "duration": warmup_time // 2},
         ]
         time_remaining -= warmup_time
 
         # Cooldown (10% of time)
         cooldown_time = max(5, int(duration_minutes * 0.1))
-        plan["cooldown"] = [
-            {"activity": "Review one recent demo round", "duration": cooldown_time}
-        ]
+        plan["cooldown"] = [{"activity": "Review one recent demo round", "duration": cooldown_time}]
         time_remaining -= cooldown_time
 
         # Main practice based on issues
@@ -1056,55 +1085,67 @@ class AdaptiveCoach:
             activity_time = time_remaining // 3
 
             if "TTD" in issue or "Aim" in issue:
-                plan["main_practice"].append({
-                    "activity": "Aim training (tracking and flicking)",
-                    "duration": activity_time,
-                    "details": "Focus on headshot level tracking"
-                })
+                plan["main_practice"].append(
+                    {
+                        "activity": "Aim training (tracking and flicking)",
+                        "duration": activity_time,
+                        "details": "Focus on headshot level tracking",
+                    }
+                )
                 plan["focus_areas"].append("aim_mechanics")
             elif "Crosshair" in issue:
-                plan["main_practice"].append({
-                    "activity": "Prefire practice maps",
-                    "duration": activity_time,
-                    "details": "Work on pre-aiming common angles"
-                })
+                plan["main_practice"].append(
+                    {
+                        "activity": "Prefire practice maps",
+                        "duration": activity_time,
+                        "details": "Work on pre-aiming common angles",
+                    }
+                )
                 plan["focus_areas"].append("crosshair_placement")
             elif "Utility" in issue or "Flash" in issue:
-                plan["main_practice"].append({
-                    "activity": "Utility lineups practice",
-                    "duration": activity_time,
-                    "details": f"Learn 3 new lineups for {profile.map_pool[0] if profile.map_pool else 'dust2'}"
-                })
+                plan["main_practice"].append(
+                    {
+                        "activity": "Utility lineups practice",
+                        "duration": activity_time,
+                        "details": f"Learn 3 new lineups for {profile.map_pool[0] if profile.map_pool else 'dust2'}",
+                    }
+                )
                 plan["focus_areas"].append("utility_usage")
             elif "Trade" in issue:
-                plan["main_practice"].append({
-                    "activity": "Retake servers",
-                    "duration": activity_time,
-                    "details": "Practice trading and buddy system"
-                })
+                plan["main_practice"].append(
+                    {
+                        "activity": "Retake servers",
+                        "duration": activity_time,
+                        "details": "Practice trading and buddy system",
+                    }
+                )
                 plan["focus_areas"].append("trading")
             else:
-                plan["main_practice"].append({
-                    "activity": "Deathmatch focused practice",
-                    "duration": activity_time,
-                    "details": "General mechanics improvement"
-                })
+                plan["main_practice"].append(
+                    {
+                        "activity": "Deathmatch focused practice",
+                        "duration": activity_time,
+                        "details": "General mechanics improvement",
+                    }
+                )
 
             time_remaining -= activity_time
 
         # Fill remaining time with general practice if needed
         if time_remaining > 5:
-            plan["main_practice"].append({
-                "activity": "Competitive match or retakes",
-                "duration": time_remaining,
-                "details": "Apply learned skills in live environment"
-            })
+            plan["main_practice"].append(
+                {
+                    "activity": "Competitive match or retakes",
+                    "duration": time_remaining,
+                    "details": "Apply learned skills in live environment",
+                }
+            )
 
         return plan
 
-    def compare_to_role_benchmarks(self, player_stats: dict[str, Any],
-                                    role: PlayerRole,
-                                    rank: PlayerRank) -> dict[str, Any]:
+    def compare_to_role_benchmarks(
+        self, player_stats: dict[str, Any], role: PlayerRole, rank: PlayerRank
+    ) -> dict[str, Any]:
         """
         Compare player stats to role-specific benchmarks.
 
@@ -1123,25 +1164,40 @@ class AdaptiveCoach:
         # Define role-specific expected values (multipliers on base benchmarks)
         role_multipliers = {
             PlayerRole.ENTRY_FRAGGER: {
-                "adr": 1.1, "opening_duel_wr": 1.2, "ttd_ms": 0.9,
-                "trade_rate": 0.8, "kast": 0.95
+                "adr": 1.1,
+                "opening_duel_wr": 1.2,
+                "ttd_ms": 0.9,
+                "trade_rate": 0.8,
+                "kast": 0.95,
             },
             PlayerRole.AWP: {
-                "adr": 0.9, "opening_duel_wr": 1.1, "ttd_ms": 1.1,
-                "kast": 1.0, "trade_rate": 0.7
+                "adr": 0.9,
+                "opening_duel_wr": 1.1,
+                "ttd_ms": 1.1,
+                "kast": 1.0,
+                "trade_rate": 0.7,
             },
             PlayerRole.SUPPORT: {
-                "adr": 0.9, "utility_per_round": 1.5, "trade_rate": 1.3,
-                "kast": 1.05, "ttd_ms": 1.0
+                "adr": 0.9,
+                "utility_per_round": 1.5,
+                "trade_rate": 1.3,
+                "kast": 1.05,
+                "ttd_ms": 1.0,
             },
             PlayerRole.LURKER: {
-                "adr": 0.95, "kast": 0.9, "clutch_win_rate": 1.2,
-                "trade_rate": 0.6, "ttd_ms": 1.0
+                "adr": 0.95,
+                "kast": 0.9,
+                "clutch_win_rate": 1.2,
+                "trade_rate": 0.6,
+                "ttd_ms": 1.0,
             },
             PlayerRole.IGL: {
-                "adr": 0.85, "kast": 1.0, "utility_per_round": 1.2,
-                "trade_rate": 1.0, "ttd_ms": 1.1
-            }
+                "adr": 0.85,
+                "kast": 1.0,
+                "utility_per_round": 1.2,
+                "trade_rate": 1.0,
+                "ttd_ms": 1.1,
+            },
         }
 
         multipliers = role_multipliers.get(role, {})
@@ -1163,18 +1219,18 @@ class AdaptiveCoach:
                 "actual": actual,
                 "expected_for_role": round(expected, 2),
                 "performance_percent": round(performance, 1),
-                "status": "above" if performance > 100 else "below" if performance < 100 else "at"
+                "status": "above" if performance > 100 else "below" if performance < 100 else "at",
             }
 
         return {
             "role": role.value,
             "rank": rank.name,
             "comparisons": comparisons,
-            "overall_fit": sum(c["performance_percent"] for c in comparisons.values()) / len(comparisons)
+            "overall_fit": sum(c["performance_percent"] for c in comparisons.values())
+            / len(comparisons),
         }
 
-    def suggest_role(self, player_stats: dict[str, Any],
-                     rank: PlayerRank) -> dict[str, Any]:
+    def suggest_role(self, player_stats: dict[str, Any], rank: PlayerRank) -> dict[str, Any]:
         """
         Suggest optimal role based on player statistics.
 
@@ -1201,7 +1257,7 @@ class AdaptiveCoach:
             "recommended_role": sorted_roles[0][0].value,
             "recommended_fit": round(sorted_roles[0][1], 1),
             "secondary_role": sorted_roles[1][0].value if len(sorted_roles) > 1 else None,
-            "all_roles": {r.value: round(s, 1) for r, s in sorted_roles}
+            "all_roles": {r.value: round(s, 1) for r, s in sorted_roles},
         }
 
 
@@ -1209,9 +1265,11 @@ class AdaptiveCoach:
 # Coaching Session Management
 # ============================================================================
 
+
 @dataclass
 class CoachingSession:
     """Represents an active coaching session."""
+
     session_id: str
     steamid: str
     started_at: str
@@ -1226,14 +1284,14 @@ class CoachingSession:
             "started_at": self.started_at,
             "insights_shown": self.insights_shown,
             "feedback_received": self.feedback_received,
-            "demos_analyzed": self.demos_analyzed
+            "demos_analyzed": self.demos_analyzed,
         }
 
 
 class CoachingSessionManager:
     """Manages coaching sessions for continuity."""
 
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Path | None = None):
         self.data_dir = data_dir or Path.home() / ".opensight" / "sessions"
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.active_sessions: dict[str, CoachingSession] = {}
@@ -1242,20 +1300,20 @@ class CoachingSessionManager:
         """Create a new coaching session."""
         from datetime import datetime
 
-        session_id = hashlib.md5(f"{steamid}_{datetime.now().isoformat()}".encode()).hexdigest()[:12]
+        session_id = hashlib.md5(f"{steamid}_{datetime.now().isoformat()}".encode()).hexdigest()[
+            :12
+        ]
         session = CoachingSession(
-            session_id=session_id,
-            steamid=steamid,
-            started_at=datetime.now().isoformat()
+            session_id=session_id, steamid=steamid, started_at=datetime.now().isoformat()
         )
         self.active_sessions[session_id] = session
         return session
 
-    def get_session(self, session_id: str) -> Optional[CoachingSession]:
+    def get_session(self, session_id: str) -> CoachingSession | None:
         """Get an existing session."""
         return self.active_sessions.get(session_id)
 
-    def end_session(self, session_id: str) -> Optional[dict[str, Any]]:
+    def end_session(self, session_id: str) -> dict[str, Any] | None:
         """End a session and return summary."""
         session = self.active_sessions.pop(session_id, None)
         if session:
@@ -1264,14 +1322,15 @@ class CoachingSessionManager:
             try:
                 with open(session_path, "w") as f:
                     json.dump(session.to_dict(), f, indent=2)
-            except IOError:
+            except OSError:
                 pass
 
             return {
                 "session_id": session_id,
                 "demos_analyzed": len(session.demos_analyzed),
                 "insights_shown": len(session.insights_shown),
-                "feedback_rate": len(session.feedback_received) / max(1, len(session.insights_shown))
+                "feedback_rate": len(session.feedback_received)
+                / max(1, len(session.insights_shown)),
             }
         return None
 
@@ -1280,7 +1339,7 @@ class CoachingSessionManager:
 # Module-level convenience functions
 # ============================================================================
 
-_default_coach: Optional[AdaptiveCoach] = None
+_default_coach: AdaptiveCoach | None = None
 
 
 def get_coach() -> AdaptiveCoach:
@@ -1291,11 +1350,13 @@ def get_coach() -> AdaptiveCoach:
     return _default_coach
 
 
-def generate_coaching_insights(player_stats: dict[str, Any],
-                               steamid: str,
-                               map_name: str = "",
-                               rank: Optional[PlayerRank] = None,
-                               role: Optional[PlayerRole] = None) -> list[dict[str, Any]]:
+def generate_coaching_insights(
+    player_stats: dict[str, Any],
+    steamid: str,
+    map_name: str = "",
+    rank: PlayerRank | None = None,
+    role: PlayerRole | None = None,
+) -> list[dict[str, Any]]:
     """
     Convenience function to generate coaching insights.
 
@@ -1324,7 +1385,8 @@ def get_practice_plan(steamid: str, duration_minutes: int = 30) -> dict[str, Any
     return get_coach().get_practice_plan(steamid, duration_minutes)
 
 
-def suggest_player_role(player_stats: dict[str, Any],
-                        rank: PlayerRank = PlayerRank.GOLD_NOVA_MASTER) -> dict[str, Any]:
+def suggest_player_role(
+    player_stats: dict[str, Any], rank: PlayerRank = PlayerRank.GOLD_NOVA_MASTER
+) -> dict[str, Any]:
     """Suggest optimal role for player based on stats."""
     return get_coach().suggest_role(player_stats, rank)

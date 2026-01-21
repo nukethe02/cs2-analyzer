@@ -8,9 +8,8 @@ The share code uses a custom base57 alphabet and encodes 144 bits of data
 using big-endian bitwise operations.
 """
 
-from dataclasses import dataclass
-from typing import Optional
 import struct
+from dataclasses import dataclass
 
 # CS2 share code alphabet (excludes ambiguous characters: 0, 1, I, O, l)
 SHARECODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
@@ -110,12 +109,7 @@ def decode_sharecode(code: str) -> ShareCodeInfo:
     else:
         raise ValueError("Decoded share code has insufficient bytes")
 
-    return ShareCodeInfo(
-        match_id=match_id,
-        outcome_id=outcome_id,
-        token=token,
-        raw_code=code
-    )
+    return ShareCodeInfo(match_id=match_id, outcome_id=outcome_id, token=token, raw_code=code)
 
 
 def encode_sharecode(match_id: int, outcome_id: int, token: int) -> str:
@@ -132,9 +126,7 @@ def encode_sharecode(match_id: int, outcome_id: int, token: int) -> str:
     """
     # Pack the values into bytes
     raw_bytes = (
-        struct.pack("<Q", match_id) +
-        struct.pack("<Q", outcome_id) +
-        struct.pack("<H", token)
+        struct.pack("<Q", match_id) + struct.pack("<Q", outcome_id) + struct.pack("<H", token)
     )
 
     # Convert bytes to big integer

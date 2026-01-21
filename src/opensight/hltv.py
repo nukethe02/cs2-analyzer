@@ -15,16 +15,14 @@ consider using official APIs when available.
 
 from __future__ import annotations
 
-import logging
-import re
-import json
 import hashlib
-from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional
-from datetime import datetime, timedelta
-import urllib.request
+import json
+import logging
 import urllib.parse
+import urllib.request
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +36,7 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 @dataclass
 class HLTVPlayerStats:
     """HLTV player statistics."""
+
     player_id: int
     nickname: str
     full_name: str = ""
@@ -73,6 +72,7 @@ class HLTVPlayerStats:
 @dataclass
 class HLTVTeamInfo:
     """HLTV team information."""
+
     team_id: int
     name: str
     country: str = ""
@@ -93,6 +93,7 @@ class HLTVTeamInfo:
 @dataclass
 class MapStatistics:
     """Map-specific statistics."""
+
     map_name: str
     ct_win_rate: float = 50.0
     t_win_rate: float = 50.0
@@ -199,7 +200,7 @@ class HLTVCache:
     Cache for HLTV data to avoid excessive requests.
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         """
         Initialize the cache.
 
@@ -214,7 +215,7 @@ class HLTVCache:
         hash_key = hashlib.md5(key.encode()).hexdigest()
         return self.cache_dir / f"{hash_key}.json"
 
-    def get(self, key: str) -> Optional[dict]:
+    def get(self, key: str) -> dict | None:
         """Get cached data if not expired."""
         path = self._get_cache_path(key)
         if not path.exists():
@@ -238,11 +239,14 @@ class HLTVCache:
         """Cache data."""
         path = self._get_cache_path(key)
         try:
-            with open(path, 'w') as f:
-                json.dump({
-                    "cached_at": datetime.now().isoformat(),
-                    "value": value,
-                }, f)
+            with open(path, "w") as f:
+                json.dump(
+                    {
+                        "cached_at": datetime.now().isoformat(),
+                        "value": value,
+                    },
+                    f,
+                )
         except Exception as e:
             logger.warning(f"Failed to cache: {e}")
 
@@ -263,7 +267,7 @@ class HLTVClient:
     and caching to minimize requests.
     """
 
-    def __init__(self, cache: Optional[HLTVCache] = None):
+    def __init__(self, cache: HLTVCache | None = None):
         """
         Initialize the HLTV client.
 
@@ -273,12 +277,12 @@ class HLTVClient:
         self.cache = cache or HLTVCache()
         self.base_url = "https://www.hltv.org"
 
-    def _make_request(self, url: str) -> Optional[str]:
+    def _make_request(self, url: str) -> str | None:
         """Make HTTP request with error handling."""
         try:
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=10) as response:
-                return response.read().decode('utf-8')
+                return response.read().decode("utf-8")
         except Exception as e:
             logger.warning(f"HLTV request failed: {e}")
             return None
@@ -295,7 +299,7 @@ class HLTVClient:
         """
         return steam_id in PRO_PLAYERS_DB
 
-    def get_pro_player_info(self, steam_id: int) -> Optional[dict]:
+    def get_pro_player_info(self, steam_id: int) -> dict | None:
         """
         Get info about a pro player.
 
@@ -309,7 +313,7 @@ class HLTVClient:
             return PRO_PLAYERS_DB[steam_id].copy()
         return None
 
-    def get_map_stats(self, map_name: str) -> Optional[MapStatistics]:
+    def get_map_stats(self, map_name: str) -> MapStatistics | None:
         """
         Get statistics for a map.
 
@@ -339,10 +343,12 @@ class HLTVClient:
 
         for steam_id, info in PRO_PLAYERS_DB.items():
             if nickname_lower in info["name"].lower():
-                results.append({
-                    "steam_id": steam_id,
-                    **info,
-                })
+                results.append(
+                    {
+                        "steam_id": steam_id,
+                        **info,
+                    }
+                )
 
         return results
 
@@ -377,7 +383,7 @@ class MatchEnricher:
     Enriches match analysis with external HLTV data.
     """
 
-    def __init__(self, hltv_client: Optional[HLTVClient] = None):
+    def __init__(self, hltv_client: HLTVClient | None = None):
         """
         Initialize the enricher.
 
@@ -413,12 +419,14 @@ class MatchEnricher:
                 if self.hltv.is_pro_player(steam_id):
                     pro_info = self.hltv.get_pro_player_info(steam_id)
                     if pro_info:
-                        pro_players.append({
-                            "steam_id": steam_id,
-                            "match_name": player_data.get("name", ""),
-                            "pro_name": pro_info.get("name", ""),
-                            "team": pro_info.get("team", ""),
-                        })
+                        pro_players.append(
+                            {
+                                "steam_id": steam_id,
+                                "match_name": player_data.get("name", ""),
+                                "pro_name": pro_info.get("name", ""),
+                                "team": pro_info.get("team", ""),
+                            }
+                        )
             except (ValueError, TypeError):
                 continue
 
@@ -432,22 +440,28 @@ class MatchEnricher:
             # Side advantage insight
             ct_wr = map_stats.ct_win_rate
             if ct_wr > 52:
-                insights.append({
-                    "type": "map_meta",
-                    "message": f"{map_stats.map_name} is CT-sided ({ct_wr:.1f}% CT win rate in pro play)",
-                })
+                insights.append(
+                    {
+                        "type": "map_meta",
+                        "message": f"{map_stats.map_name} is CT-sided ({ct_wr:.1f}% CT win rate in pro play)",
+                    }
+                )
             elif ct_wr < 48:
-                insights.append({
-                    "type": "map_meta",
-                    "message": f"{map_stats.map_name} is T-sided ({100-ct_wr:.1f}% T win rate in pro play)",
-                })
+                insights.append(
+                    {
+                        "type": "map_meta",
+                        "message": f"{map_stats.map_name} is T-sided ({100 - ct_wr:.1f}% T win rate in pro play)",
+                    }
+                )
 
             # Add meta weapons
             if map_stats.meta_weapons:
-                insights.append({
-                    "type": "meta",
-                    "message": f"Meta weapons on {map_stats.map_name}: {', '.join(map_stats.meta_weapons)}",
-                })
+                insights.append(
+                    {
+                        "type": "meta",
+                        "message": f"Meta weapons on {map_stats.map_name}: {', '.join(map_stats.meta_weapons)}",
+                    }
+                )
 
             enriched["external_insights"] = insights
 
@@ -480,6 +494,7 @@ class MatchEnricher:
 
 # Convenience functions
 
+
 def enrich_match_analysis(analysis_data: dict) -> dict:
     """
     Convenience function to enrich analysis with HLTV data.
@@ -494,7 +509,7 @@ def enrich_match_analysis(analysis_data: dict) -> dict:
     return enricher.enrich_analysis(analysis_data)
 
 
-def get_map_statistics(map_name: str) -> Optional[dict]:
+def get_map_statistics(map_name: str) -> dict | None:
     """Get statistics for a map."""
     stats = MAP_STATS_DB.get(map_name.lower())
     return stats.to_dict() if stats else None

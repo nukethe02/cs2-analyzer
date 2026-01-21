@@ -21,14 +21,15 @@ import pickle
 import tempfile
 import time
 import traceback
-from dataclasses import asdict, is_dataclass
+from dataclasses import is_dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
-from tempfile import NamedTemporaryFile
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 __version__ = "0.4.0"
@@ -38,10 +39,13 @@ __version__ = "0.4.0"
 # Request/Response Models
 # =============================================================================
 
+
 class PlayerCompareRequest(BaseModel):
     """Request body for player comparison endpoint."""
+
     player_a: str
     player_b: str
+
 
 # Security constants
 MAX_FILE_SIZE_MB = 500
@@ -50,8 +54,7 @@ ALLOWED_EXTENSIONS = (".dem", ".dem.gz")
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -194,10 +197,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files directory
+# Path is relative to where uvicorn runs (from /app in Docker, or project root locally)
+STATIC_DIR = Path(__file__).parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.on_event("startup")
+async def validate_imports():
+    """Validate critical imports at startup to catch errors early."""
+    errors = []
+    try:
+        from opensight.analytics import DemoAnalyzer
+    except ImportError as e:
+        errors.append(f"analytics.DemoAnalyzer: {e}")
+
+    try:
+        from opensight.parser import DemoParser
+    except ImportError as e:
+        errors.append(f"parser.DemoParser: {e}")
+
+    if errors:
+        logger.error(f"Critical import errors at startup: {errors}")
+        # Don't raise - allow app to start but log the errors
+    else:
+        logger.info("✅ All critical imports validated successfully")
+
 
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
 
 def dataclass_to_dict(obj: Any) -> Any:
     """Recursively convert dataclasses to dicts for JSON serialization."""
@@ -246,8 +277,12 @@ def player_stats_to_dict(player: Any) -> dict:
         "ttd_samples": len(player.ttd_values),
         "prefire_count": player.prefire_count,
         # Crosshair Placement
-        "cp_median_error_deg": round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None,
-        "cp_mean_error_deg": round(player.cp_mean_error_deg, 1) if player.cp_mean_error_deg else None,
+        "cp_median_error_deg": round(player.cp_median_error_deg, 1)
+        if player.cp_median_error_deg
+        else None,
+        "cp_mean_error_deg": round(player.cp_mean_error_deg, 1)
+        if player.cp_mean_error_deg
+        else None,
         "cp_samples": len(player.cp_values),
         # Opening duels
         "opening_duel_wins": player.opening_duels.wins,
@@ -732,9 +767,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 # Endpoints
 # =============================================================================
 
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the main web interface with drop-zone."""
+    # Prefer the feature-rich static index.html if available
+    static_index = STATIC_DIR / "index.html"
+    if static_index.exists():
+        return HTMLResponse(content=static_index.read_text(), status_code=200)
+    # Fallback to embedded template
     return HTMLResponse(content=HTML_TEMPLATE, status_code=200)
 
 
@@ -763,7 +804,7 @@ async def analyze_demo(file: UploadFile = File(...)):
         if not filename_lower.endswith(ALLOWED_EXTENSIONS):
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid file type. Allowed: .dem, .dem.gz. Got: {file.filename}"
+                detail=f"Invalid file type. Allowed: .dem, .dem.gz. Got: {file.filename}",
             )
 
         # Read file content and check size
@@ -776,10 +817,10 @@ async def analyze_demo(file: UploadFile = File(...)):
         if file_size_bytes > MAX_FILE_SIZE_BYTES:
             raise HTTPException(
                 status_code=413,
-                detail=f"File too large: {file_size_bytes / (1024*1024):.1f}MB. Maximum: {MAX_FILE_SIZE_MB}MB"
+                detail=f"File too large: {file_size_bytes / (1024 * 1024):.1f}MB. Maximum: {MAX_FILE_SIZE_MB}MB",
             )
 
-        logger.info(f"Received file: {file.filename} ({file_size_bytes / (1024*1024):.1f}MB)")
+        logger.info(f"Received file: {file.filename} ({file_size_bytes / (1024 * 1024):.1f}MB)")
 
         # Write to temporary file
         suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
@@ -803,14 +844,21 @@ async def analyze_demo(file: UploadFile = File(...)):
             return cached_result
 
         # Import and run analysis (cache miss)
+        from opensight.analytics import (
+            DemoAnalyzer,
+            calculate_economy_history,
+            compute_kill_positions,
+            compute_utility_metrics,
+        )
         from opensight.parser import DemoParser
-        from opensight.analytics import DemoAnalyzer, compute_kill_positions, compute_utility_metrics, calculate_economy_history
 
         # Parse the demo
         logger.info("Starting demo parsing...")
         parser = DemoParser(tmp_path)
         match_data = parser.parse()
-        logger.info(f"Parsed: {len(match_data.kills)} kills, {len(match_data.damages)} damages, {match_data.num_rounds} rounds")
+        logger.info(
+            f"Parsed: {len(match_data.kills)} kills, {len(match_data.damages)} damages, {match_data.num_rounds} rounds"
+        )
 
         # Run analytics
         logger.info("Starting analytics...")
@@ -819,10 +867,7 @@ async def analyze_demo(file: UploadFile = File(...)):
         logger.info(f"Analysis complete: {len(analysis.players)} players")
 
         # Build response
-        players_list = [
-            player_stats_to_dict(player)
-            for player in analysis.get_leaderboard()
-        ]
+        players_list = [player_stats_to_dict(player) for player in analysis.get_leaderboard()]
 
         response = {
             "map_name": analysis.map_name,
@@ -844,9 +889,7 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         # Utility stats per player (Scope.gg style nade stats)
         utility_metrics = compute_utility_metrics(match_data)
-        response["utility_stats"] = [
-            metrics.to_dict() for metrics in utility_metrics.values()
-        ]
+        response["utility_stats"] = [metrics.to_dict() for metrics in utility_metrics.values()]
 
         # AI Coaching insights
         response["coaching"] = analysis.coaching_insights
@@ -869,13 +912,7 @@ async def analyze_demo(file: UploadFile = File(...)):
         logger.error(f"Analysis failed: {e}\n{tb}")
 
         # Return error response
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "Analysis failed",
-                "detail": str(e)
-            }
-        )
+        return JSONResponse(status_code=500, content={"error": "Analysis failed", "detail": str(e)})
 
     finally:
         # Always clean up temporary file
@@ -891,6 +928,7 @@ async def analyze_demo(file: UploadFile = File(...)):
 # Additional Endpoints (for compatibility)
 # =============================================================================
 
+
 @app.get("/readiness")
 async def readiness():
     """
@@ -899,7 +937,6 @@ async def readiness():
     Checks disk space, temp directory, and core dependencies.
     """
     import shutil
-    import os
 
     checks = {}
     all_ready = True
@@ -909,7 +946,10 @@ async def readiness():
         temp_dir = tempfile.gettempdir()
         disk_usage = shutil.disk_usage(temp_dir)
         free_mb = disk_usage.free / (1024 * 1024)
-        checks["disk_space"] = {"status": "ok" if free_mb >= 100 else "fail", "free_mb": round(free_mb)}
+        checks["disk_space"] = {
+            "status": "ok" if free_mb >= 100 else "fail",
+            "free_mb": round(free_mb),
+        }
         if free_mb < 100:
             all_ready = False
     except Exception as e:
@@ -972,18 +1012,16 @@ async def compare_players_endpoint(
     filename_lower = file.filename.lower()
     if not filename_lower.endswith(ALLOWED_EXTENSIONS):
         raise HTTPException(
-            status_code=400,
-            detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
+            status_code=400, detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
         )
 
     # Verify analysis modules are available
     try:
-        from opensight.parser import DemoParser
         from opensight.analytics import DemoAnalyzer, compare_players
+        from opensight.parser import DemoParser
     except ImportError as e:
         raise HTTPException(
-            status_code=503,
-            detail=f"Demo analysis not available. Missing: {str(e)}"
+            status_code=503, detail=f"Demo analysis not available. Missing: {str(e)}"
         )
 
     # Read and validate file
@@ -994,7 +1032,7 @@ async def compare_players_endpoint(
     if file_size_bytes > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB"
+            detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB",
         )
 
     if file_size_bytes == 0:
@@ -1023,15 +1061,17 @@ async def compare_players_endpoint(
             raise HTTPException(status_code=400, detail=str(e))
 
         # Return comparison data
-        return JSONResponse(content={
-            "status": "success",
-            "demo_info": {
-                "map": analysis.map_name,
-                "rounds": analysis.total_rounds,
-                "score": f"{analysis.team1_score} - {analysis.team2_score}",
-            },
-            "comparison": comparison,
-        })
+        return JSONResponse(
+            content={
+                "status": "success",
+                "demo_info": {
+                    "map": analysis.map_name,
+                    "rounds": analysis.total_rounds,
+                    "score": f"{analysis.team1_score} - {analysis.team2_score}",
+                },
+                "comparison": comparison,
+            }
+        )
 
     except HTTPException:
         raise
@@ -1085,14 +1125,55 @@ async def submit_coaching_feedback(request: CoachingFeedbackRequest):
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
+@app.post("/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    """Submit feedback on analysis accuracy."""
+    try:
+        from datetime import datetime
+        from opensight.feedback import FeedbackDatabase, FeedbackEntry
+        db = FeedbackDatabase()
+        feedback = FeedbackEntry(
+            id=None,
+            demo_hash=request.demo_hash,
+            user_id=request.player_steam_id,
+            rating=request.rating,
+            category=request.metric_name,
+            comment=request.comment or "",
+            analysis_version=__version__,
+            created_at=datetime.now(),
+            metadata={"correction_value": request.correction_value} if request.correction_value else {},
+        )
+        entry_id = db.add_feedback(feedback)
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
 # Legacy code preserved for reference when job infrastructure is added:
 def _compare_players_from_job_disabled(job_id: str, request: PlayerCompareRequest):
     """
     Compare two players using data from a completed analysis job.
 
-    This is more efficient than re-analyzing the demo if you've already
-    run /analyze - it uses the cached job results.
+@app.post("/feedback/coaching")
+async def submit_coaching_feedback(request: CoachingFeedbackRequest):
+    """Submit feedback on coaching insights."""
+    try:
+        from datetime import datetime
+        from opensight.feedback import FeedbackDatabase, CoachingFeedback
+        db = FeedbackDatabase()
+        feedback = CoachingFeedback(
+            id=None,
+            demo_hash=request.demo_hash,
+            player_steam_id="",  # Not provided in request
+            insight_category="coaching",
+            insight_message=request.insight_id,
+            was_helpful=request.was_helpful,
+            user_correction=request.correction,
+            created_at=datetime.now(),
+        )
+        entry_id = db.add_coaching_feedback(feedback)
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
     Args:
         job_id: The job ID from a completed /analyze request
@@ -1117,6 +1198,7 @@ def _compare_players_from_job_disabled(job_id: str, request: PlayerCompareReques
 # Excel Export Endpoint
 # =============================================================================
 
+
 @app.post("/export/excel")
 async def export_to_excel(file: UploadFile = File(...)):
     """
@@ -1139,22 +1221,21 @@ async def export_to_excel(file: UploadFile = File(...)):
     filename_lower = file.filename.lower()
     if not filename_lower.endswith(ALLOWED_EXTENSIONS):
         raise HTTPException(
-            status_code=400,
-            detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
+            status_code=400, detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
         )
 
     # Verify required modules
     try:
         import pandas as pd
         from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
         from openpyxl.utils.dataframe import dataframe_to_rows
-        from opensight.parser import DemoParser
+
         from opensight.analytics import DemoAnalyzer
+        from opensight.parser import DemoParser
     except ImportError as e:
         raise HTTPException(
-            status_code=503,
-            detail=f"Excel export not available. Missing: {str(e)}"
+            status_code=503, detail=f"Excel export not available. Missing: {str(e)}"
         )
 
     # Read and validate file
@@ -1165,7 +1246,7 @@ async def export_to_excel(file: UploadFile = File(...)):
     if file_size_bytes > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB"
+            detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB",
         )
 
     if file_size_bytes == 0:
@@ -1195,10 +1276,10 @@ async def export_to_excel(file: UploadFile = File(...)):
         header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
         header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         thin_border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin"),
         )
         ct_fill = PatternFill(start_color="D6EAF8", end_color="D6EAF8", fill_type="solid")
         t_fill = PatternFill(start_color="FDEBD0", end_color="FDEBD0", fill_type="solid")
@@ -1240,22 +1321,26 @@ async def export_to_excel(file: UploadFile = File(...)):
         # Create player stats dataframe
         overview_data = []
         for player in analysis.get_leaderboard():
-            overview_data.append({
-                "Name": player.name,
-                "Team": player.team,
-                "K": player.kills,
-                "D": player.deaths,
-                "A": player.assists,
-                "K/D": round(player.kd_ratio, 2),
-                "+/-": player.kd_diff,
-                "ADR": round(player.adr, 1),
-                "HS%": round(player.headshot_percentage, 1),
-                "KAST%": round(player.kast_percentage, 1),
-                "Rating": round(player.hltv_rating, 2),
-                "Impact": round(player.impact_rating, 2),
-                "Aim Rating": round(player.aim_rating, 1) if player.aim_rating else 0,
-                "Utility Rating": round(player.utility_rating, 1) if player.utility_rating else 0,
-            })
+            overview_data.append(
+                {
+                    "Name": player.name,
+                    "Team": player.team,
+                    "K": player.kills,
+                    "D": player.deaths,
+                    "A": player.assists,
+                    "K/D": round(player.kd_ratio, 2),
+                    "+/-": player.kd_diff,
+                    "ADR": round(player.adr, 1),
+                    "HS%": round(player.headshot_percentage, 1),
+                    "KAST%": round(player.kast_percentage, 1),
+                    "Rating": round(player.hltv_rating, 2),
+                    "Impact": round(player.impact_rating, 2),
+                    "Aim Rating": round(player.aim_rating, 1) if player.aim_rating else 0,
+                    "Utility Rating": round(player.utility_rating, 1)
+                    if player.utility_rating
+                    else 0,
+                }
+            )
 
         df_overview = pd.DataFrame(overview_data)
 
@@ -1295,21 +1380,23 @@ async def export_to_excel(file: UploadFile = File(...)):
 
         kills_data = []
         for kill in data.kills:
-            kills_data.append({
-                "Round": kill.round_num,
-                "Tick": kill.tick,
-                "Attacker": kill.attacker_name,
-                "Attacker Team": kill.attacker_side,
-                "Victim": kill.victim_name,
-                "Victim Team": kill.victim_side,
-                "Weapon": kill.weapon,
-                "Headshot": "Yes" if kill.headshot else "No",
-                "Wallbang": "Yes" if kill.wallbang else "No",
-                "Through Smoke": "Yes" if kill.through_smoke else "No",
-                "No Scope": "Yes" if kill.no_scope else "No",
-                "Blind Kill": "Yes" if kill.blind_kill else "No",
-                "Assister": kill.assister_name or "",
-            })
+            kills_data.append(
+                {
+                    "Round": kill.round_num,
+                    "Tick": kill.tick,
+                    "Attacker": kill.attacker_name,
+                    "Attacker Team": kill.attacker_side,
+                    "Victim": kill.victim_name,
+                    "Victim Team": kill.victim_side,
+                    "Weapon": kill.weapon,
+                    "Headshot": "Yes" if kill.headshot else "No",
+                    "Wallbang": "Yes" if kill.wallbang else "No",
+                    "Through Smoke": "Yes" if kill.through_smoke else "No",
+                    "No Scope": "Yes" if kill.no_scope else "No",
+                    "Blind Kill": "Yes" if kill.blind_kill else "No",
+                    "Assister": kill.assister_name or "",
+                }
+            )
 
         if kills_data:
             df_kills = pd.DataFrame(kills_data)
@@ -1331,18 +1418,20 @@ async def export_to_excel(file: UploadFile = File(...)):
 
         damages_data = []
         for dmg in data.damages[:5000]:  # Limit to 5000 rows to prevent huge files
-            damages_data.append({
-                "Round": dmg.round_num,
-                "Tick": dmg.tick,
-                "Attacker": dmg.attacker_name,
-                "Attacker Team": dmg.attacker_side,
-                "Victim": dmg.victim_name,
-                "Victim Team": dmg.victim_side,
-                "Weapon": dmg.weapon,
-                "Damage": dmg.damage,
-                "Damage Armor": dmg.damage_armor,
-                "Hitgroup": dmg.hitgroup,
-            })
+            damages_data.append(
+                {
+                    "Round": dmg.round_num,
+                    "Tick": dmg.tick,
+                    "Attacker": dmg.attacker_name,
+                    "Attacker Team": dmg.attacker_side,
+                    "Victim": dmg.victim_name,
+                    "Victim Team": dmg.victim_side,
+                    "Weapon": dmg.weapon,
+                    "Damage": dmg.damage,
+                    "Damage Armor": dmg.damage_armor,
+                    "Hitgroup": dmg.hitgroup,
+                }
+            )
 
         if damages_data:
             df_damages = pd.DataFrame(damages_data)
@@ -1364,47 +1453,55 @@ async def export_to_excel(file: UploadFile = File(...)):
 
         advanced_data = []
         for player in analysis.get_leaderboard():
-            advanced_data.append({
-                "Name": player.name,
-                "Team": player.team,
-                # TTD Stats
-                "TTD Median (ms)": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
-                "TTD Mean (ms)": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
-                "TTD Samples": len(player.ttd_values),
-                "Prefire Kills": player.prefire_count,
-                # Crosshair Placement
-                "CP Median (deg)": round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None,
-                "CP Mean (deg)": round(player.cp_mean_error_deg, 1) if player.cp_mean_error_deg else None,
-                "CP Samples": len(player.cp_values),
-                # Opening Duels
-                "Opening Wins": player.opening_duels.wins,
-                "Opening Losses": player.opening_duels.losses,
-                "Opening Win%": round(player.opening_duels.win_rate, 1),
-                # Trades
-                "Kills Traded": player.trades.kills_traded,
-                "Deaths Traded": player.trades.deaths_traded,
-                # Clutches
-                "Clutch Attempts": player.clutches.total_situations,
-                "Clutch Wins": player.clutches.total_wins,
-                "1v1 W/A": f"{player.clutches.wins_1v1}/{player.clutches.situations_1v1}",
-                "1v2 W/A": f"{player.clutches.wins_1v2}/{player.clutches.situations_1v2}",
-                "1v3+ W/A": f"{player.clutches.wins_1v3 + player.clutches.wins_1v4 + player.clutches.wins_1v5}/{player.clutches.situations_1v3 + player.clutches.situations_1v4 + player.clutches.situations_1v5}",
-                # Multi-kills
-                "2K Rounds": player.multi_kills.rounds_with_2k,
-                "3K Rounds": player.multi_kills.rounds_with_3k,
-                "4K Rounds": player.multi_kills.rounds_with_4k,
-                "5K (Ace)": player.multi_kills.rounds_with_5k,
-                # Utility
-                "Flashes Thrown": player.utility.flashbangs_thrown,
-                "Smokes Thrown": player.utility.smokes_thrown,
-                "Enemies Flashed": player.utility.enemies_flashed,
-                "Flash Eff": round(player.utility.enemies_flashed_per_flash, 2),
-                "HE Thrown": player.utility.he_thrown,
-                "HE Damage": player.utility.he_damage,
-                "Molotov Thrown": player.utility.molotovs_thrown,
-                "Molotov Damage": player.utility.molotov_damage,
-                "Flash Assists": player.utility.flash_assists,
-            })
+            advanced_data.append(
+                {
+                    "Name": player.name,
+                    "Team": player.team,
+                    # TTD Stats
+                    "TTD Median (ms)": round(player.ttd_median_ms, 1)
+                    if player.ttd_median_ms
+                    else None,
+                    "TTD Mean (ms)": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
+                    "TTD Samples": len(player.ttd_values),
+                    "Prefire Kills": player.prefire_count,
+                    # Crosshair Placement
+                    "CP Median (deg)": round(player.cp_median_error_deg, 1)
+                    if player.cp_median_error_deg
+                    else None,
+                    "CP Mean (deg)": round(player.cp_mean_error_deg, 1)
+                    if player.cp_mean_error_deg
+                    else None,
+                    "CP Samples": len(player.cp_values),
+                    # Opening Duels
+                    "Opening Wins": player.opening_duels.wins,
+                    "Opening Losses": player.opening_duels.losses,
+                    "Opening Win%": round(player.opening_duels.win_rate, 1),
+                    # Trades
+                    "Kills Traded": player.trades.kills_traded,
+                    "Deaths Traded": player.trades.deaths_traded,
+                    # Clutches
+                    "Clutch Attempts": player.clutches.total_situations,
+                    "Clutch Wins": player.clutches.total_wins,
+                    "1v1 W/A": f"{player.clutches.wins_1v1}/{player.clutches.situations_1v1}",
+                    "1v2 W/A": f"{player.clutches.wins_1v2}/{player.clutches.situations_1v2}",
+                    "1v3+ W/A": f"{player.clutches.wins_1v3 + player.clutches.wins_1v4 + player.clutches.wins_1v5}/{player.clutches.situations_1v3 + player.clutches.situations_1v4 + player.clutches.situations_1v5}",
+                    # Multi-kills
+                    "2K Rounds": player.multi_kills.rounds_with_2k,
+                    "3K Rounds": player.multi_kills.rounds_with_3k,
+                    "4K Rounds": player.multi_kills.rounds_with_4k,
+                    "5K (Ace)": player.multi_kills.rounds_with_5k,
+                    # Utility
+                    "Flashes Thrown": player.utility.flashbangs_thrown,
+                    "Smokes Thrown": player.utility.smokes_thrown,
+                    "Enemies Flashed": player.utility.enemies_flashed,
+                    "Flash Eff": round(player.utility.enemies_flashed_per_flash, 2),
+                    "HE Thrown": player.utility.he_thrown,
+                    "HE Damage": player.utility.he_damage,
+                    "Molotov Thrown": player.utility.molotovs_thrown,
+                    "Molotov Damage": player.utility.molotov_damage,
+                    "Flash Assists": player.utility.flash_assists,
+                }
+            )
 
         df_advanced = pd.DataFrame(advanced_data)
         for r_idx, row in enumerate(dataframe_to_rows(df_advanced, index=False, header=True), 1):
@@ -1432,15 +1529,17 @@ async def export_to_excel(file: UploadFile = File(...)):
         rounds_data = []
         for round_info in data.rounds:
             round_kills = [k for k in data.kills if k.round_num == round_info.round_num]
-            rounds_data.append({
-                "Round": round_info.round_num,
-                "Winner": round_info.winner,
-                "Win Reason": round_info.reason,
-                "CT Score": round_info.ct_score,
-                "T Score": round_info.t_score,
-                "Kills": len(round_kills),
-                "Round Type": round_info.round_type or "unknown",
-            })
+            rounds_data.append(
+                {
+                    "Round": round_info.round_num,
+                    "Winner": round_info.winner,
+                    "Win Reason": round_info.reason,
+                    "CT Score": round_info.ct_score,
+                    "T Score": round_info.t_score,
+                    "Kills": len(round_kills),
+                    "Round Type": round_info.round_type or "unknown",
+                }
+            )
 
         if rounds_data:
             df_rounds = pd.DataFrame(rounds_data)
@@ -1473,9 +1572,7 @@ async def export_to_excel(file: UploadFile = File(...)):
         return Response(
             content=excel_buffer.getvalue(),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f'attachment; filename="{output_filename}"'
-            }
+            headers={"Content-Disposition": f'attachment; filename="{output_filename}"'},
         )
 
     except HTTPException:
@@ -1515,3 +1612,229 @@ async def about():
             "cp_median_error_deg": "Crosshair Placement - aim accuracy",
         },
     }
+
+
+# =============================================================================
+# Match History and Player Profile Endpoints (FREE - SQLite database)
+# =============================================================================
+
+
+@app.get("/history")
+async def get_match_history(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    map_name: str | None = Query(default=None),
+    steam_id: str | None = Query(default=None),
+):
+    """
+    Get match history with optional filters.
+
+    All data stored locally in SQLite (FREE, no cloud services).
+
+    Args:
+        limit: Maximum matches to return (1-100)
+        offset: Pagination offset
+        map_name: Filter by map name
+        steam_id: Filter by player Steam ID
+    """
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        matches = db.get_match_history(
+            limit=limit, offset=offset, map_name=map_name, steam_id=steam_id
+        )
+        stats = db.get_global_stats()
+
+        return {
+            "status": "success",
+            "matches": matches,
+            "total_matches": stats.get("total_matches", 0),
+            "pagination": {"limit": limit, "offset": offset},
+        }
+    except Exception as e:
+        logger.error(f"Failed to get match history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/history/{match_id}")
+async def get_match_details(match_id: int):
+    """
+    Get detailed information about a specific match.
+
+    Includes all player statistics and round data.
+    """
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        details = db.get_match_details(match_id)
+
+        if not details:
+            raise HTTPException(status_code=404, detail="Match not found")
+
+        return {"status": "success", **details}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get match details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/profile/{steam_id}")
+async def get_player_profile(steam_id: str):
+    """
+    Get a player's career profile and statistics.
+
+    Aggregates performance across all analyzed matches.
+    """
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        profile = db.get_player_profile(steam_id)
+
+        if not profile:
+            raise HTTPException(status_code=404, detail="Player profile not found")
+
+        return {"status": "success", "profile": profile}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get player profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/profile/{steam_id}/matches")
+async def get_player_matches(steam_id: str, limit: int = Query(default=20, ge=1, le=50)):
+    """Get a player's recent match history."""
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        matches = db.get_player_match_history(steam_id, limit=limit)
+
+        return {"status": "success", "matches": matches, "count": len(matches)}
+    except Exception as e:
+        logger.error(f"Failed to get player matches: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/profile/{steam_id}/insights")
+async def get_player_insights(steam_id: str):
+    """
+    Get comprehensive insights about a player's performance.
+
+    Includes:
+    - Performance trends (improving/declining)
+    - Career milestones achieved
+    - Strengths and weaknesses
+    - Recommended focus areas
+    """
+    try:
+        from opensight.profiles import get_player_insights
+
+        insights = get_player_insights(steam_id)
+
+        if not insights:
+            raise HTTPException(
+                status_code=404, detail="Not enough data for insights (need 3+ matches)"
+            )
+
+        return {"status": "success", "insights": insights}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get player insights: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/leaderboard")
+async def get_leaderboard(
+    metric: str = Query(default="avg_rating"),
+    min_matches: int = Query(default=5, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """
+    Get player leaderboard by metric.
+
+    Available metrics:
+    - avg_rating: Average HLTV rating
+    - avg_adr: Average damage per round
+    - avg_kast: Average KAST percentage
+    - total_kills: Total career kills
+    - total_matches: Total matches played
+    """
+    try:
+        from opensight.database import get_db
+
+        valid_metrics = ["avg_rating", "avg_adr", "avg_kast", "total_kills", "total_matches"]
+        if metric not in valid_metrics:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid metric. Choose from: {valid_metrics}"
+            )
+
+        db = get_db()
+        leaderboard = db.get_leaderboard(metric=metric, min_matches=min_matches, limit=limit)
+
+        return {
+            "status": "success",
+            "metric": metric,
+            "min_matches": min_matches,
+            "leaderboard": leaderboard,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get leaderboard: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/players/search")
+async def search_players(q: str = Query(..., min_length=2), limit: int = Query(default=10, ge=1, le=50)):
+    """Search for players by name."""
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        results = db.search_players(q, limit=limit)
+
+        return {"status": "success", "query": q, "results": results}
+    except Exception as e:
+        logger.error(f"Failed to search players: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats")
+async def get_global_stats():
+    """
+    Get global statistics across all analyzed matches.
+
+    Returns total matches, players, rounds, and map distribution.
+    """
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        stats = db.get_global_stats()
+
+        return {"status": "success", "stats": stats}
+    except Exception as e:
+        logger.error(f"Failed to get global stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Development Server
+# =============================================================================
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "opensight.api:app",
+        host="0.0.0.0",
+        port=7860,
+        reload=True,
+        log_level="info",
+    )

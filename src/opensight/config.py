@@ -19,7 +19,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # Configuration Dataclasses
 # ============================================================================
+
 
 @dataclass
 class BackendConfig:
@@ -52,17 +53,33 @@ class BackendConfig:
 class ParserConfig:
     """Configuration for demo parsing."""
 
-    tick_fields: list[str] = field(default_factory=lambda: [
-        "tick", "steamid", "X", "Y", "Z", "pitch", "yaw",
-        "health", "armor_value", "team_num", "active_weapon_name"
-    ])
-    parse_events: list[str] = field(default_factory=lambda: [
-        "player_death", "player_hurt", "weapon_fire",
-        "round_start", "round_end"
-    ])
+    tick_fields: list[str] = field(
+        default_factory=lambda: [
+            "tick",
+            "steamid",
+            "X",
+            "Y",
+            "Z",
+            "pitch",
+            "yaw",
+            "health",
+            "armor_value",
+            "team_num",
+            "active_weapon_name",
+        ]
+    )
+    parse_events: list[str] = field(
+        default_factory=lambda: [
+            "player_death",
+            "player_hurt",
+            "weapon_fire",
+            "round_start",
+            "round_end",
+        ]
+    )
     fallback_to_minimal: bool = True
     cache_parsed_demos: bool = True
-    cache_directory: Optional[str] = None
+    cache_directory: str | None = None
 
     # Use Polars for DataFrame storage in DemoData (otherwise pandas)
     use_polars: bool = False
@@ -107,7 +124,7 @@ class WatcherConfig:
     debounce_seconds: float = 2.0
     recursive: bool = False
     auto_analyze: bool = True
-    custom_replays_folder: Optional[str] = None
+    custom_replays_folder: str | None = None
 
 
 @dataclass
@@ -127,7 +144,7 @@ class LoggingConfig:
 
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    file: Optional[str] = None
+    file: str | None = None
     file_max_bytes: int = 10 * 1024 * 1024  # 10MB
     file_backup_count: int = 5
 
@@ -150,6 +167,7 @@ class OpenSightConfig:
 # ============================================================================
 # Configuration Loading
 # ============================================================================
+
 
 def get_default_config_paths() -> list[Path]:
     """Get the default paths to search for configuration files."""
@@ -178,7 +196,8 @@ def load_yaml_config(path: Path) -> dict[str, Any]:
     """Load configuration from a YAML file."""
     try:
         import yaml
-        with open(path, "r") as f:
+
+        with open(path) as f:
             return yaml.safe_load(f) or {}
     except ImportError:
         logger.warning("PyYAML not installed, cannot load YAML config")
@@ -202,7 +221,7 @@ def load_toml_config(path: Path) -> dict[str, Any]:
 
 def load_json_config(path: Path) -> dict[str, Any]:
     """Load configuration from a JSON file."""
-    with open(path, "r") as f:
+    with open(path) as f:
         return json.load(f)
 
 
@@ -316,10 +335,7 @@ def dict_to_config(data: dict[str, Any]) -> OpenSightConfig:
     return config
 
 
-def load_config(
-    config_file: Optional[Path] = None,
-    include_env: bool = True
-) -> OpenSightConfig:
+def load_config(config_file: Path | None = None, include_env: bool = True) -> OpenSightConfig:
     """
     Load configuration from all sources.
 
@@ -355,6 +371,7 @@ def load_config(
 # Configuration Saving
 # ============================================================================
 
+
 def save_config(config: OpenSightConfig, path: Path) -> None:
     """
     Save configuration to a file.
@@ -369,6 +386,7 @@ def save_config(config: OpenSightConfig, path: Path) -> None:
     if suffix in (".yaml", ".yml"):
         try:
             import yaml
+
             with open(path, "w") as f:
                 yaml.dump(data, f, default_flow_style=False, sort_keys=False)
         except ImportError:
@@ -377,6 +395,7 @@ def save_config(config: OpenSightConfig, path: Path) -> None:
     elif suffix == ".toml":
         try:
             import toml
+
             with open(path, "w") as f:
                 toml.dump(data, f)
         except ImportError:
@@ -395,6 +414,7 @@ def save_config(config: OpenSightConfig, path: Path) -> None:
 def config_to_dict(config: OpenSightConfig) -> dict[str, Any]:
     """Convert OpenSightConfig to a dictionary."""
     from dataclasses import asdict
+
     return asdict(config)
 
 
@@ -402,7 +422,7 @@ def config_to_dict(config: OpenSightConfig) -> dict[str, Any]:
 # Global Configuration
 # ============================================================================
 
-_global_config: Optional[OpenSightConfig] = None
+_global_config: OpenSightConfig | None = None
 
 
 def get_config() -> OpenSightConfig:

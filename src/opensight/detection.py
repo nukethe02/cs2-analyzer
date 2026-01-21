@@ -5,21 +5,19 @@ Automatically detects the source (Valve, FACEIT, ESEA, etc.) and game mode
 (Competitive, Premier, Wingman, etc.) from demo file metadata.
 """
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
 import logging
+from dataclasses import dataclass
 
 from opensight.constants import (
-    DemoSource,
-    GameMode,
-    DemoType,
-    CS2_TICK_RATE,
-    TICK_RATES,
-    SOURCE_IDENTIFIERS,
-    FILENAME_PATTERNS,
     COMPETITIVE_MAPS,
+    CS2_TICK_RATE,
+    FILENAME_PATTERNS,
+    SOURCE_IDENTIFIERS,
+    TICK_RATES,
     WINGMAN_MAPS,
+    DemoSource,
+    DemoType,
+    GameMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,21 +26,22 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DemoMetadata:
     """Metadata about a parsed demo file."""
-    source: DemoSource          # Detected platform
-    game_mode: GameMode         # Detected game mode
-    demo_type: DemoType         # GOTV or POV
-    tick_rate: int              # Always 64 for CS2
-    map_name: str               # e.g., "de_mirage"
-    server_name: str            # Server identifier
-    client_name: str            # Recording client
-    duration_seconds: float     # Match length
-    total_rounds: int           # Rounds played
-    player_count: int           # Players detected
-    is_complete: bool           # Did match complete normally?
+
+    source: DemoSource  # Detected platform
+    game_mode: GameMode  # Detected game mode
+    demo_type: DemoType  # GOTV or POV
+    tick_rate: int  # Always 64 for CS2
+    map_name: str  # e.g., "de_mirage"
+    server_name: str  # Server identifier
+    client_name: str  # Recording client
+    duration_seconds: float  # Match length
+    total_rounds: int  # Rounds played
+    player_count: int  # Players detected
+    is_complete: bool  # Did match complete normally?
     team1_score: int
     team2_score: int
-    match_id: Optional[str] = None
-    share_code: Optional[str] = None
+    match_id: str | None = None
+    share_code: str | None = None
 
 
 def detect_source_from_server_name(server_name: str) -> DemoSource:
@@ -82,10 +81,7 @@ def detect_source_from_filename(filename: str) -> DemoSource:
 
 
 def detect_game_mode(
-    player_count: int,
-    total_rounds: int,
-    map_name: str,
-    server_name: str = ""
+    player_count: int, total_rounds: int, map_name: str, server_name: str = ""
 ) -> GameMode:
     """
     Detect game mode from match characteristics.
@@ -156,7 +152,7 @@ def detect_demo_metadata(
     total_rounds: int,
     duration_seconds: float,
     team_scores: tuple[int, int] = (0, 0),
-    filename: str = ""
+    filename: str = "",
 ) -> DemoMetadata:
     """
     Detect all metadata about a demo file.
@@ -186,7 +182,7 @@ def detect_demo_metadata(
         player_count=player_count,
         total_rounds=total_rounds,
         map_name=map_name,
-        server_name=server_name
+        server_name=server_name,
     )
 
     # Detect demo type
@@ -197,9 +193,13 @@ def detect_demo_metadata(
 
     # Check if match completed normally
     is_complete = (
-        total_rounds >= 12 and  # At least half a match
-        (team_scores[0] >= 13 or team_scores[1] >= 13 or  # Someone won
-         team_scores[0] == 12 and team_scores[1] == 12)   # Or went to OT
+        total_rounds >= 12  # At least half a match
+        and (
+            team_scores[0] >= 13
+            or team_scores[1] >= 13  # Someone won
+            or team_scores[0] == 12
+            and team_scores[1] == 12
+        )  # Or went to OT
     )
 
     return DemoMetadata(
