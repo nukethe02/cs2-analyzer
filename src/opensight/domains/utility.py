@@ -14,7 +14,7 @@ from enum import Enum
 
 import pandas as pd
 
-from opensight.parser import DemoData, safe_int
+from opensight.core.parser import DemoData, safe_int
 
 logger = logging.getLogger(__name__)
 

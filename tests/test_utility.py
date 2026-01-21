@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from opensight.utility import (
+from opensight.domains.utility import (
     UtilityAnalyzer,
     GrenadeType,
     GrenadeDamageEvent,
@@ -14,7 +14,7 @@ from opensight.utility import (
     GRENADE_COSTS,
     GRENADE_WEAPONS,
 )
-from opensight.parser import DemoData
+from opensight.core.parser import DemoData
 
 
 class TestGrenadeTypeMapping:

@@ -32,7 +32,7 @@ import pandas as pd
 if TYPE_CHECKING:
     pass
 
-from opensight.constants import CS2_TICK_RATE
+from opensight.core.constants import CS2_TICK_RATE
 
 logger = logging.getLogger(__name__)
 

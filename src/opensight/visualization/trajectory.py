@@ -19,7 +19,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 
-from opensight.parser import DemoData
+from opensight.core.parser import DemoData
 
 logger = logging.getLogger(__name__)
 

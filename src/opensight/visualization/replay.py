@@ -282,21 +282,19 @@ class ReplayGenerator:
 
     def _index_player_ticks(self):
         """Index player tick data by round number."""
-        if not hasattr(self.data, "player_ticks") or not self.data.player_ticks:
+        if not hasattr(self.data, 'ticks_df') or self.data.ticks_df is None or self.data.ticks_df.empty:
             logger.warning("No tick-level player data available for replay")
             return
 
-        for tick_data in self.data.player_ticks:
-            round_num = tick_data.round_num
+        for _, tick_data in self.data.ticks_df.iterrows():
+            round_num = tick_data.get('round_num', tick_data.get('round', 0))
             self._player_ticks_by_round[round_num].append(tick_data)
 
         # Sort by tick
         for round_num in self._player_ticks_by_round:
-            self._player_ticks_by_round[round_num].sort(key=lambda t: t.tick)
+            self._player_ticks_by_round[round_num].sort(key=lambda t: t.get('tick', 0))
 
-        logger.info(
-            f"Indexed {len(self.data.player_ticks)} player ticks across {len(self._player_ticks_by_round)} rounds"
-        )
+        logger.info(f"Indexed {len(self.data.ticks_df)} player ticks across {len(self._player_ticks_by_round)} rounds")
 
     def _index_kills(self):
         """Index kills by round number."""
@@ -374,7 +372,7 @@ class ReplayGenerator:
             start_tick=round_info.start_tick,
             end_tick=round_info.end_tick,
             winner=round_info.winner or "Unknown",
-            win_reason=round_info.win_reason or "unknown",
+            win_reason=round_info.reason or "unknown",
             ct_score=round_info.ct_score,
             t_score=round_info.t_score,
         )

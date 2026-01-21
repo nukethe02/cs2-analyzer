@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from opensight.parser import (
+from opensight.core.parser import (
     DemoData,
     DemoParser,
     KillEvent,
@@ -242,7 +242,7 @@ class TestDemoParser:
         demo_file.write_bytes(b"FAKE_DEMO_DATA")
 
         # Patch the lazy availability check function
-        with patch("opensight.parser._check_awpy_available", return_value=False):
+        with patch("opensight.core.parser._check_awpy_available", return_value=False):
             parser = DemoParser(demo_file)
             with pytest.raises(ImportError, match="awpy is required"):
                 parser.parse()
@@ -274,7 +274,7 @@ class TestDemoParser:
         mock_awpy = MagicMock(Demo=mock_demo_class)
 
         # Patch awpy import
-        with patch("opensight.parser._check_awpy_available", return_value=True):
+        with patch("opensight.core.parser._check_awpy_available", return_value=True):
             with patch.dict("sys.modules", {"awpy": mock_awpy}):
                 parser = DemoParser(demo_file)
                 result1 = parser.parse()
@@ -316,7 +316,7 @@ class TestParseDemoFunction:
         mock_awpy = MagicMock(Demo=mock_demo_class)
 
         # Patch awpy import
-        with patch("opensight.parser._check_awpy_available", return_value=True):
+        with patch("opensight.core.parser._check_awpy_available", return_value=True):
             with patch.dict("sys.modules", {"awpy": mock_awpy}):
                 result = parse_demo(demo_file)
                 assert result.map_name == "de_mirage"
@@ -327,7 +327,7 @@ class TestOptimizations:
 
     def test_parse_mode_enum(self):
         """Test ParseMode enum values (legacy)."""
-        from opensight.parser import ParseMode
+        from opensight.core.parser import ParseMode
 
         assert ParseMode.MINIMAL.value == "minimal"
         assert ParseMode.STANDARD.value == "standard"
@@ -335,14 +335,14 @@ class TestOptimizations:
 
     def test_parser_backend_enum(self):
         """Test ParserBackend enum values (legacy - only AWPY and AUTO)."""
-        from opensight.parser import ParserBackend
+        from opensight.core.parser import ParserBackend
 
         assert ParserBackend.AWPY.value == "awpy"
         assert ParserBackend.AUTO.value == "auto"
 
     def test_optimize_dataframe_dtypes_empty(self):
         """Test dtype optimization on empty DataFrame (legacy no-op)."""
-        from opensight.parser import optimize_dataframe_dtypes
+        from opensight.core.parser import optimize_dataframe_dtypes
 
         df = pd.DataFrame()
         result = optimize_dataframe_dtypes(df)
@@ -350,7 +350,7 @@ class TestOptimizations:
 
     def test_optimize_dataframe_dtypes_passthrough(self):
         """Test optimize_dataframe_dtypes returns DataFrame unchanged (awpy handles this)."""
-        from opensight.parser import optimize_dataframe_dtypes
+        from opensight.core.parser import optimize_dataframe_dtypes
 
         df = pd.DataFrame({
             "tick": np.array([100, 200, 300], dtype=np.int64),

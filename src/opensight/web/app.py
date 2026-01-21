@@ -96,7 +96,7 @@ def register_routes(app: Flask) -> None:
             share_code = request.form.get("share_code", "").strip()
             if share_code:
                 try:
-                    from opensight.sharecode import decode_sharecode
+                    from opensight.integrations.sharecode import decode_sharecode
 
                     info = decode_sharecode(share_code)
                     result = {
@@ -141,8 +141,8 @@ def register_routes(app: Flask) -> None:
             file.save(str(filepath))
 
             # Analyze the demo
-            from opensight.metrics import calculate_comprehensive_metrics
-            from opensight.parser import DemoParser
+            from opensight.analysis.metrics import calculate_comprehensive_metrics
+            from opensight.core.parser import DemoParser
 
             parser = DemoParser(filepath)
             demo_data = parser.parse()
@@ -215,7 +215,7 @@ def register_routes(app: Flask) -> None:
             return jsonify({"error": "No share code provided"}), 400
 
         try:
-            from opensight.sharecode import decode_sharecode
+            from opensight.integrations.sharecode import decode_sharecode
 
             info = decode_sharecode(data["share_code"])
             return jsonify(
@@ -259,8 +259,8 @@ def handle_demo_upload():
         file.save(str(filepath))
 
         # Analyze
-        from opensight.metrics import calculate_comprehensive_metrics
-        from opensight.parser import DemoParser
+        from opensight.analysis.metrics import calculate_comprehensive_metrics
+        from opensight.core.parser import DemoParser
 
         parser = DemoParser(filepath)
         demo_data = parser.parse()

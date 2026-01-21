@@ -459,8 +459,8 @@ class CachedAnalyzer:
 
         # Run analysis
         logger.info(f"Analyzing {demo_path.name}")
-        from opensight.analytics import DemoAnalyzer
-        from opensight.parser import DemoParser
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.core.parser import DemoParser
 
         parser = DemoParser(demo_path)
         demo_data = parser.parse()
@@ -520,7 +520,7 @@ def get_cache_stats() -> dict:
     return cache.get_stats().to_dict()
 
 
-def clear_cache():
+def clear_cache() -> None:
     """Clear all cached data."""
     cache = DemoCache()
     cache.clear()
