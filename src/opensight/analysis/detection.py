@@ -8,7 +8,7 @@ Automatically detects the source (Valve, FACEIT, ESEA, etc.) and game mode
 import logging
 from dataclasses import dataclass
 
-from opensight.constants import (
+from opensight.core.constants import (
     COMPETITIVE_MAPS,
     CS2_TICK_RATE,
     FILENAME_PATTERNS,

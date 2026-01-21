@@ -9,7 +9,7 @@ import queue
 import tempfile
 import os
 
-from opensight.watcher import (
+from opensight.infra.watcher import (
     get_default_replays_folder,
     DemoFileEvent,
     DemoFileHandler,
@@ -203,7 +203,7 @@ class TestReplayWatcher:
         watcher = ReplayWatcher(watch_folder=watch_folder, recursive=True)
         assert watcher.recursive is True
 
-    @patch('opensight.watcher.get_default_replays_folder')
+    @patch('opensight.infra.watcher.get_default_replays_folder')
     def test_init_uses_default_folder(self, mock_get_default):
         """Test that default folder is used when not specified."""
         mock_get_default.return_value = Path("/default/replays")
@@ -427,7 +427,7 @@ class TestWatchReplaysFunction:
 
         watcher.stop()
 
-    @patch('opensight.watcher.get_default_replays_folder')
+    @patch('opensight.infra.watcher.get_default_replays_folder')
     def test_watch_replays_uses_default_folder(self, mock_get_default, tmp_path):
         """Test that default folder is used when not specified."""
         default_folder = tmp_path / "default_replays"

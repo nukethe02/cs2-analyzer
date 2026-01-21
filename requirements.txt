@@ -47,6 +47,11 @@ sqlalchemy>=2.0.0
 # beautifulsoup4>=4.12.0
 # httpx>=0.25.0
 
+# Optional: Discord bot integration (install separately if needed)
+# pip install discord.py aiohttp
+# discord.py>=2.3.0
+# aiohttp>=3.9.0
+
 # Development dependencies (install with: pip install -e ".[dev]")
 # pytest>=7.4.0
 # pytest-cov>=4.1.0

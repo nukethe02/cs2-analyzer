@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
-from opensight.database import DatabaseManager, PlayerMatch, PlayerProfile, Match, get_db
+from opensight.infra.database import DatabaseManager, PlayerMatch, PlayerProfile, Match, get_db
 
 logger = logging.getLogger(__name__)
 

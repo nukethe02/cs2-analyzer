@@ -11,7 +11,7 @@ Key features:
 - Efficient serialization to Parquet/Feather
 
 Usage:
-    from opensight.polars_ops import PolarsAnalyzer, convert_demo_data_to_polars
+    from opensight.infra.polars_ops import PolarsAnalyzer, convert_demo_data_to_polars
 
     # Convert existing DemoData to use Polars DataFrames
     demo_data = convert_demo_data_to_polars(demo_data)
@@ -43,7 +43,7 @@ except ImportError:
 import pandas as pd
 
 if TYPE_CHECKING:
-    from opensight.parser import DemoData
+    from opensight.core.parser import DemoData
 
 
 def is_polars_dataframe(df: Any) -> bool:
@@ -714,7 +714,7 @@ def compare_performance(demo_data: DemoData, iterations: int = 5) -> dict[str, f
 
     # Pandas timing
     pandas_data = convert_demo_data_to_pandas(demo_data)
-    from opensight.analytics import DemoAnalyzer as PandasAnalyzer
+    from opensight.analysis.analytics import DemoAnalyzer as PandasAnalyzer
 
     start = time.perf_counter()
     for _ in range(iterations):
