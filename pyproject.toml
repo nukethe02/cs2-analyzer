@@ -26,15 +26,23 @@ classifiers = [
 ]
 
 dependencies = [
+    # Core parsing
     "demoparser2>=0.9.0",
     "awpy>=2.0.0",
-    "watchdog>=3.0.0",
+    # Data processing
     "numpy>=1.24.0",
     "pandas>=2.0.0",
+    "polars>=0.20.0",
+    # CLI
     "rich>=13.0.0",
     "typer>=0.9.0",
-    "flask>=3.0.0",
-    "werkzeug>=3.0.0",
+    "watchdog>=3.0.0",
+    # Web API (FastAPI)
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "python-multipart>=0.0.6",
+    "pydantic>=2.0.0",
+    "websockets>=11.0.0",
 ]
 
 [project.optional-dependencies]
@@ -73,6 +81,7 @@ all = [
 
 [project.scripts]
 opensight = "opensight.cli:main"
+opensight-web = "opensight.server:main"
 
 [project.urls]
 Homepage = "https://github.com/nukethe02/cs2-analyzer"
