@@ -73,6 +73,12 @@
                     </svg>
                     <span>Compare</span>
                 </button>
+                <button id="nav-weapons" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+                    </svg>
+                    <span>Weapons</span>
+                </button>
             </div>
 
             <!-- Footer -->
@@ -238,6 +244,43 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Weapons Tab -->
+                <div id="tab-weapons" class="tab-content">
+                    <div class="bg-slate-800 rounded-xl p-6">
+                        <!-- Player Selection -->
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Select Player</label>
+                            <select id="weapons-player-select" class="w-full max-w-md px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                                <!-- Options populated by JS -->
+                            </select>
+                        </div>
+
+                        <!-- Weapons Table -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="bg-slate-700/50 text-left text-sm text-slate-300">
+                                        <th class="px-6 py-3 font-semibold">Weapon</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Kills</th>
+                                        <th class="px-6 py-3 font-semibold text-center">HS%</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Damage</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Shots</th>
+                                        <th class="px-6 py-3 font-semibold text-center">Accuracy</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="weapons-table" class="divide-y divide-slate-700">
+                                    <!-- Weapon rows populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- No Data Message -->
+                        <div id="weapons-no-data" class="hidden text-center py-8 text-slate-400">
+                            <p>No weapon data available for this player</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -267,14 +310,16 @@
         const navBtns = {
             overview: document.getElementById('nav-overview'),
             advanced: document.getElementById('nav-advanced'),
-            compare: document.getElementById('nav-compare')
+            compare: document.getElementById('nav-compare'),
+            weapons: document.getElementById('nav-weapons')
         };
 
         // Tab contents
         const tabContents = {
             overview: document.getElementById('tab-overview'),
             advanced: document.getElementById('tab-advanced'),
-            compare: document.getElementById('tab-compare')
+            compare: document.getElementById('tab-compare'),
+            weapons: document.getElementById('tab-weapons')
         };
 
         // =============================================================================
@@ -471,6 +516,7 @@
             renderOverview();
             renderAdvanced();
             populatePlayerSelects();
+            populateWeaponsSelect();
         }
 
         newAnalysisBtn.addEventListener('click', () => {
@@ -844,6 +890,171 @@
                     </div>
                 </div>
             `;
+        }
+
+        // =============================================================================
+        // Render Weapons Tab
+        // =============================================================================
+        function populateWeaponsSelect() {
+            const players = Object.values(currentMatchData.players || {});
+            const select = document.getElementById('weapons-player-select');
+
+            const options = players.map((p, i) =>
+                `<option value="${i}">${escapeHtml(p.name || 'Unknown')} (${p.team || '?'})</option>`
+            ).join('');
+
+            select.innerHTML = options;
+
+            // Add change listener
+            select.addEventListener('change', renderWeapons);
+
+            // Initial render
+            renderWeapons();
+        }
+
+        function getWeaponIcon(weapon) {
+            // Map common weapon names to display names
+            const weaponNames = {
+                'ak47': 'AK-47',
+                'm4a1': 'M4A1-S',
+                'm4a4': 'M4A4',
+                'm4a1_silencer': 'M4A1-S',
+                'awp': 'AWP',
+                'deagle': 'Desert Eagle',
+                'usp_silencer': 'USP-S',
+                'glock': 'Glock-18',
+                'p250': 'P250',
+                'fiveseven': 'Five-SeveN',
+                'tec9': 'Tec-9',
+                'cz75a': 'CZ75-Auto',
+                'galil': 'Galil AR',
+                'famas': 'FAMAS',
+                'sg556': 'SG 553',
+                'aug': 'AUG',
+                'ssg08': 'SSG 08',
+                'scar20': 'SCAR-20',
+                'g3sg1': 'G3SG1',
+                'nova': 'Nova',
+                'xm1014': 'XM1014',
+                'sawedoff': 'Sawed-Off',
+                'mag7': 'MAG-7',
+                'mac10': 'MAC-10',
+                'mp9': 'MP9',
+                'mp7': 'MP7',
+                'ump45': 'UMP-45',
+                'bizon': 'PP-Bizon',
+                'p90': 'P90',
+                'mp5sd': 'MP5-SD',
+                'negev': 'Negev',
+                'm249': 'm249',
+                'knife': 'Knife',
+                'knife_t': 'Knife',
+                'knife_default_ct': 'Knife',
+                'knife_default_t': 'Knife',
+                'hegrenade': 'HE Grenade',
+                'molotov': 'Molotov',
+                'incgrenade': 'Incendiary',
+                'inferno': 'Fire',
+            };
+            return weaponNames[weapon?.toLowerCase()] || weapon || 'Unknown';
+        }
+
+        function getWeaponCategory(weapon) {
+            const rifles = ['ak47', 'm4a1', 'm4a4', 'm4a1_silencer', 'galil', 'famas', 'sg556', 'aug'];
+            const snipers = ['awp', 'ssg08', 'scar20', 'g3sg1'];
+            const pistols = ['deagle', 'usp_silencer', 'glock', 'p250', 'fiveseven', 'tec9', 'cz75a', 'p2000', 'hkp2000'];
+            const smgs = ['mac10', 'mp9', 'mp7', 'ump45', 'bizon', 'p90', 'mp5sd'];
+            const shotguns = ['nova', 'xm1014', 'sawedoff', 'mag7'];
+            const heavy = ['negev', 'm249'];
+            const utility = ['hegrenade', 'molotov', 'incgrenade', 'inferno'];
+            const melee = ['knife', 'knife_t', 'knife_default_ct', 'knife_default_t'];
+
+            const w = weapon?.toLowerCase();
+            if (rifles.includes(w)) return 'rifle';
+            if (snipers.includes(w)) return 'sniper';
+            if (pistols.includes(w)) return 'pistol';
+            if (smgs.includes(w)) return 'smg';
+            if (shotguns.includes(w)) return 'shotgun';
+            if (heavy.includes(w)) return 'heavy';
+            if (utility.includes(w)) return 'utility';
+            if (melee.includes(w)) return 'melee';
+            return 'other';
+        }
+
+        function getCategoryBadge(category) {
+            const badges = {
+                'rifle': 'bg-blue-500/20 text-blue-400',
+                'sniper': 'bg-purple-500/20 text-purple-400',
+                'pistol': 'bg-green-500/20 text-green-400',
+                'smg': 'bg-yellow-500/20 text-yellow-400',
+                'shotgun': 'bg-orange-500/20 text-orange-400',
+                'heavy': 'bg-red-500/20 text-red-400',
+                'utility': 'bg-cyan-500/20 text-cyan-400',
+                'melee': 'bg-slate-500/20 text-slate-400',
+                'other': 'bg-slate-500/20 text-slate-400',
+            };
+            return badges[category] || badges['other'];
+        }
+
+        function renderWeapons() {
+            const players = Object.values(currentMatchData.players || {});
+            const select = document.getElementById('weapons-player-select');
+            const tableBody = document.getElementById('weapons-table');
+            const noDataDiv = document.getElementById('weapons-no-data');
+
+            if (players.length === 0) {
+                tableBody.innerHTML = '';
+                noDataDiv.classList.remove('hidden');
+                return;
+            }
+
+            const player = players[select.selectedIndex];
+            const weapons = player.weapons || [];
+
+            if (weapons.length === 0) {
+                tableBody.innerHTML = '';
+                noDataDiv.classList.remove('hidden');
+                return;
+            }
+
+            noDataDiv.classList.add('hidden');
+
+            tableBody.innerHTML = weapons.map((w, i) => {
+                const category = getWeaponCategory(w.weapon);
+                const categoryBadge = getCategoryBadge(category);
+                const rowBg = i % 2 === 0 ? 'bg-slate-800' : 'bg-slate-800/50';
+
+                // Accuracy color coding
+                let accuracyClass = 'text-slate-400';
+                if (w.accuracy > 0) {
+                    if (w.accuracy >= 30) accuracyClass = 'text-green-400';
+                    else if (w.accuracy >= 20) accuracyClass = 'text-yellow-400';
+                    else accuracyClass = 'text-red-400';
+                }
+
+                // HS% color coding
+                let hsClass = 'text-slate-400';
+                if (w.headshot_pct > 0) {
+                    if (w.headshot_pct >= 50) hsClass = 'text-green-400';
+                    else if (w.headshot_pct >= 30) hsClass = 'text-yellow-400';
+                }
+
+                return `
+                    <tr class="${rowBg} hover:bg-slate-700/50 transition-colors">
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <span class="px-2 py-1 text-xs font-semibold rounded ${categoryBadge}">${category}</span>
+                                <span class="font-medium text-white">${escapeHtml(getWeaponIcon(w.weapon))}</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-center font-mono-num text-white font-semibold">${w.kills || 0}</td>
+                        <td class="px-6 py-4 text-center font-mono-num ${hsClass}">${w.headshot_pct ? formatNumber(w.headshot_pct, 0) + '%' : 'N/A'}</td>
+                        <td class="px-6 py-4 text-center font-mono-num">${w.damage || 0}</td>
+                        <td class="px-6 py-4 text-center font-mono-num text-slate-400">${w.shots_fired || 0}</td>
+                        <td class="px-6 py-4 text-center font-mono-num ${accuracyClass}">${w.accuracy ? formatNumber(w.accuracy, 1) + '%' : 'N/A'}</td>
+                    </tr>
+                `;
+            }).join('');
         }
     </script>
 </body>
