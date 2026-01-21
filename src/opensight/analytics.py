@@ -65,24 +65,7 @@ except ImportError:
     logger.debug("Combat module not available")
 
 
-def safe_float(value: Any, default: float = 0.0) -> float:
-    """Safely convert a value to float, returning default on failure.
-
-    Args:
-        value: The value to convert.
-        default: The default value to return if conversion fails.
-
-    Returns:
-        The converted float value, or the default if conversion fails.
-    """
-    if value is None:
-        return default
-    try:
-        if pd.isna(value):
-            return default
-        return float(value)
-    except (ValueError, TypeError):
-        return default
+# Note: safe_int, safe_str, safe_float are imported from opensight.parser
 
 
 def compute_kill_positions(match_data) -> list[dict]:

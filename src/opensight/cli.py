@@ -11,6 +11,7 @@ IMPORTANT: This module uses lazy imports to ensure that lightweight commands
 like 'info' and 'decode' don't load heavy dependencies (demoparser2, pandas, numpy).
 """
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -404,108 +405,22 @@ def _display_economy_metrics(data, steam_id: Optional[int], metrics_funcs: dict)
 
     table = Table(title="Economy Metrics")
     table.add_column("Player", style="cyan")
-    table.add_column("Avg Equip", justify="right")
-    table.add_column("Full Buys", justify="right")
-    table.add_column("Eco Rounds", justify="right")
-    table.add_column("Damage/$", justify="right")
+    table.add_column("Money Spent", justify="right")
+    table.add_column("Efficiency", justify="right")
+    table.add_column("Eco Kills", justify="right")
+    table.add_column("Force Kills", justify="right")
+    table.add_column("Full Buy Kills", justify="right")
+    table.add_column("Favorite Weapon", justify="right")
 
-    for sid, econ in sorted(econ_results.items(), key=lambda x: x[1].avg_equipment_value, reverse=True):
-        dmg_per_dollar = f"{econ.damage_per_dollar:.2f}" if hasattr(econ, 'damage_per_dollar') and econ.damage_per_dollar else "N/A"
+    for sid, econ in sorted(econ_results.items(), key=lambda x: x[1].weapon_efficiency, reverse=True):
         table.add_row(
             econ.player_name,
-            f"${econ.avg_equipment_value:,.0f}" if hasattr(econ, 'avg_equipment_value') else "N/A",
-            str(getattr(econ, 'full_buy_rounds', 0)),
-            str(getattr(econ, 'eco_rounds', 0)),
-            dmg_per_dollar,
-        )
-
-    console.print(table)
-    console.print()
-
-
-def _display_utility_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
-    """Display utility metrics table."""
-    calculate_utility_metrics = metrics_funcs['calculate_utility_metrics']
-    utility_results = calculate_utility_metrics(data, steam_id)
-
-    if not utility_results:
-        console.print("[yellow]No utility metrics available[/yellow]")
-        return
-
-    table = Table(title="Utility Metrics")
-    table.add_column("Player", style="cyan")
-    table.add_column("Flashes", justify="right")
-    table.add_column("Smokes", justify="right")
-    table.add_column("HE", justify="right")
-    table.add_column("Mollys", justify="right")
-    table.add_column("Flash Assists", justify="right")
-
-    for sid, util in sorted(utility_results.items(), key=lambda x: x[1].total_thrown, reverse=True):
-        table.add_row(
-            util.player_name,
-            str(getattr(util, 'flashes_thrown', 0)),
-            str(getattr(util, 'smokes_thrown', 0)),
-            str(getattr(util, 'he_thrown', 0)),
-            str(getattr(util, 'molotovs_thrown', 0)),
-            str(getattr(util, 'flash_assists', 0)),
-        )
-
-    console.print(table)
-    console.print()
-
-
-def _display_trade_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
-    """Display trade metrics table."""
-    calculate_trade_metrics = metrics_funcs['calculate_trade_metrics']
-    trade_results = calculate_trade_metrics(data, steam_id)
-
-    if not trade_results:
-        console.print("[yellow]No trade metrics available[/yellow]")
-        return
-
-    table = Table(title="Trade Metrics")
-    table.add_column("Player", style="cyan")
-    table.add_column("Kills Traded", justify="right")
-    table.add_column("Deaths Traded", justify="right")
-    table.add_column("Trade Attempts", justify="right")
-    table.add_column("Trade Rate", justify="right")
-
-    for sid, trade in sorted(trade_results.items(), key=lambda x: x[1].trade_rate, reverse=True):
-        table.add_row(
-            trade.player_name,
-            str(trade.kills_traded),
-            str(trade.deaths_traded),
-            str(trade.trade_attempts),
-            f"{trade.trade_rate:.1f}%",
-        )
-
-    console.print(table)
-    console.print()
-
-
-def _display_opening_metrics(data, steam_id: Optional[int], metrics_funcs: dict) -> None:
-    """Display opening duel metrics table."""
-    calculate_opening_metrics = metrics_funcs['calculate_opening_metrics']
-    opening_results = calculate_opening_metrics(data, steam_id)
-
-    if not opening_results:
-        console.print("[yellow]No opening duel metrics available[/yellow]")
-        return
-
-    table = Table(title="Opening Duels")
-    table.add_column("Player", style="cyan")
-    table.add_column("Wins", justify="right")
-    table.add_column("Losses", justify="right")
-    table.add_column("Attempts", justify="right")
-    table.add_column("Win Rate", justify="right")
-
-    for sid, opening in sorted(opening_results.items(), key=lambda x: x[1].win_rate, reverse=True):
-        table.add_row(
-            opening.player_name,
-            str(opening.wins),
-            str(opening.losses),
-            str(opening.attempts),
-            f"{opening.win_rate:.1f}%",
+            f"${econ.total_money_spent:,}",
+            f"{econ.weapon_efficiency:.2f}",
+            str(econ.eco_round_kills),
+            str(econ.force_buy_kills),
+            str(econ.full_buy_kills),
+            econ.favorite_weapon,
         )
 
     console.print(table)
