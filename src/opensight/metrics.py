@@ -15,6 +15,7 @@ comparable to professional analytics platforms.
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 
 import numpy as np
 import pandas as pd
