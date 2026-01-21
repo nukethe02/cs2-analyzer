@@ -538,7 +538,9 @@ class DemoParser:
         tick_rate = 64
         max_tick = 0
         if not kills_df.empty and "tick" in kills_df.columns:
-            max_tick = max(max_tick, int(kills_df["tick"].max()))
+            tick_max = kills_df["tick"].max()
+            if pd.notna(tick_max):
+                max_tick = max(max_tick, int(tick_max))
         duration_seconds = max_tick / tick_rate
 
         # Determine round count
@@ -548,7 +550,9 @@ class DemoParser:
         elif not kills_df.empty:
             round_col = self._find_column(kills_df, ["total_rounds_played", "round", "round_num"])
             if round_col:
-                num_rounds = int(kills_df[round_col].max())
+                round_max = kills_df[round_col].max()
+                if pd.notna(round_max):
+                    num_rounds = int(round_max)
 
         # Extract player info and calculate stats
         player_names, player_teams = self._extract_players(kills_df, damages_df)
@@ -725,6 +729,8 @@ class DemoParser:
                     return "T"
                 return team_val
             elif isinstance(team_val, (int, float)):
+                if pd.isna(team_val):
+                    return "Unknown"
                 return "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
             return "Unknown"
 
@@ -900,7 +906,7 @@ class DemoParser:
                 att_side_val = row.get(att_team)
                 if isinstance(att_side_val, str):
                     att_side = "CT" if "CT" in att_side_val.upper() else "T" if "T" in att_side_val.upper() else att_side_val
-                elif isinstance(att_side_val, (int, float)):
+                elif isinstance(att_side_val, (int, float)) and pd.notna(att_side_val):
                     att_side = "CT" if int(att_side_val) == 3 else "T" if int(att_side_val) == 2 else "Unknown"
 
             vic_side = "Unknown"
@@ -908,7 +914,7 @@ class DemoParser:
                 vic_side_val = row.get(vic_team)
                 if isinstance(vic_side_val, str):
                     vic_side = "CT" if "CT" in vic_side_val.upper() else "T" if "T" in vic_side_val.upper() else vic_side_val
-                elif isinstance(vic_side_val, (int, float)):
+                elif isinstance(vic_side_val, (int, float)) and pd.notna(vic_side_val):
                     vic_side = "CT" if int(vic_side_val) == 3 else "T" if int(vic_side_val) == 2 else "Unknown"
 
             kill = KillEvent(
