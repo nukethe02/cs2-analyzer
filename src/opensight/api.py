@@ -47,6 +47,26 @@ class PlayerCompareRequest(BaseModel):
     player_b: str
 
 
+class FeedbackRequest(BaseModel):
+    """Request body for feedback submission."""
+
+    demo_hash: str
+    player_steam_id: str
+    rating: int
+    metric_name: str
+    comment: str | None = None
+    correction_value: float | None = None
+
+
+class CoachingFeedbackRequest(BaseModel):
+    """Request body for coaching feedback submission."""
+
+    demo_hash: str
+    insight_id: str
+    was_helpful: bool
+    correction: str | None = None
+
+
 # Security constants
 MAX_FILE_SIZE_MB = 500
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
@@ -1102,51 +1122,6 @@ async def submit_feedback(request: FeedbackRequest):
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
-
-@app.post("/feedback/coaching")
-async def submit_coaching_feedback(request: CoachingFeedbackRequest):
-    """Submit feedback on coaching insights."""
-    try:
-        from datetime import datetime
-        from opensight.feedback import FeedbackDatabase, CoachingFeedback
-        db = FeedbackDatabase()
-        feedback = CoachingFeedback(
-            id=None,
-            demo_hash=request.demo_hash,
-            player_steam_id="",  # Not provided in request
-            insight_category="coaching",
-            insight_message=request.insight_id,
-            was_helpful=request.was_helpful,
-            user_correction=request.correction,
-            created_at=datetime.now(),
-        )
-        entry_id = db.add_coaching_feedback(feedback)
-        return {"status": "ok", "feedback_id": entry_id}
-    except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
-
-@app.post("/feedback")
-async def submit_feedback(request: FeedbackRequest):
-    """Submit feedback on analysis accuracy."""
-    try:
-        from datetime import datetime
-        from opensight.feedback import FeedbackDatabase, FeedbackEntry
-        db = FeedbackDatabase()
-        feedback = FeedbackEntry(
-            id=None,
-            demo_hash=request.demo_hash,
-            user_id=request.player_steam_id,
-            rating=request.rating,
-            category=request.metric_name,
-            comment=request.comment or "",
-            analysis_version=__version__,
-            created_at=datetime.now(),
-            metadata={"correction_value": request.correction_value} if request.correction_value else {},
-        )
-        entry_id = db.add_feedback(feedback)
-        return {"status": "ok", "feedback_id": entry_id}
-    except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
 @app.post("/feedback/coaching")
 async def submit_coaching_feedback(request: CoachingFeedbackRequest):
