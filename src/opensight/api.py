@@ -2173,3 +2173,254 @@ async def export_collab_session(session_id: str, format: str = "json"):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Video Analysis Endpoints
+# ============================================================================
+
+# Video analysis constants
+MAX_VIDEO_SIZE_MB = 1000  # Maximum video file size in MB
+MAX_VIDEO_SIZE_BYTES = MAX_VIDEO_SIZE_MB * 1024 * 1024
+ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".avi", ".mkv", ".mov", ".webm", ".flv")
+
+
+class VideoAnalysisRequest(BaseModel):
+    """Request model for video analysis options."""
+    detect_crosshair: bool = True
+    detect_actions: bool = True
+    detect_mistakes: bool = True
+    generate_coaching: bool = True
+    sample_rate: int = Field(default=2, ge=1, le=10, description="Analyze every Nth frame")
+
+
+@app.post("/video/analyze")
+async def analyze_gameplay_video(
+    file: UploadFile = File(...),
+    detect_crosshair: bool = Query(default=True, description="Enable crosshair tracking"),
+    detect_actions: bool = Query(default=True, description="Enable action detection"),
+    detect_mistakes: bool = Query(default=True, description="Enable mistake detection"),
+    generate_coaching: bool = Query(default=True, description="Generate coaching feedback"),
+    sample_rate: int = Query(default=2, ge=1, le=10, description="Analyze every Nth frame"),
+):
+    """
+    Analyze a CS2 gameplay video for performance metrics and coaching feedback.
+
+    This endpoint uses computer vision and ML algorithms to:
+    - Track crosshair position and stability
+    - Detect gameplay actions (shooting, movement)
+    - Identify common mistakes (bad crosshair placement, running while shooting)
+    - Generate personalized coaching tips
+
+    Accepts common video formats: MP4, AVI, MKV, MOV, WebM, FLV
+    Maximum file size: 1GB
+
+    Returns performance metrics, detected mistakes, and coaching tips.
+    """
+    # Validate file extension
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    filename_lower = file.filename.lower()
+    if not any(filename_lower.endswith(ext) for ext in ALLOWED_VIDEO_EXTENSIONS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File must be a video file ({', '.join(ALLOWED_VIDEO_EXTENSIONS)}). Got: {file.filename}"
+        )
+
+    # Verify video analysis module is available
+    try:
+        from opensight.video_analyzer import VideoAnalyzer
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Video analysis not available. Missing dependency: {str(e)}. "
+                   f"Install with: pip install opencv-python-headless"
+        )
+
+    tmp_path = None
+    try:
+        # Read and validate file
+        content = await file.read()
+        file_size_bytes = len(content)
+        file_size_mb = file_size_bytes / (1024 * 1024)
+
+        if file_size_bytes > MAX_VIDEO_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_VIDEO_SIZE_MB}MB"
+            )
+
+        if file_size_bytes == 0:
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+        # Save to temp file
+        suffix = Path(file.filename).suffix
+        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
+        logger.info(f"Starting video analysis: {file.filename} ({file_size_mb:.1f} MB)")
+
+        # Analyze video
+        analyzer = VideoAnalyzer(tmp_path)
+        results = analyzer.analyze(
+            detect_crosshair=detect_crosshair,
+            detect_actions=detect_actions,
+            detect_mistakes=detect_mistakes,
+            generate_coaching=generate_coaching,
+            sample_rate=sample_rate,
+        )
+
+        # Build response
+        response = {
+            "video_info": {
+                "filename": file.filename,
+                "duration_seconds": round(results.duration_seconds, 2),
+                "total_frames": results.total_frames,
+                "fps": round(results.fps, 2),
+                "resolution": {"width": results.resolution[0], "height": results.resolution[1]},
+                "frames_analyzed": results.frames_analyzed,
+                "sample_rate": results.sample_rate,
+                "analysis_time_seconds": round(results.analysis_time_seconds, 2),
+            },
+            "performance_metrics": {
+                "crosshair_stability": results.performance_metrics.crosshair_stability,
+                "crosshair_placement_score": results.performance_metrics.crosshair_placement_score,
+                "average_crosshair_height": results.performance_metrics.average_crosshair_height,
+                "crosshair_movement_smoothness": results.performance_metrics.crosshair_movement_smoothness,
+                "shots_detected": results.performance_metrics.shots_detected,
+                "movement_efficiency": results.performance_metrics.movement_efficiency,
+                "aim_score": results.performance_metrics.aim_score,
+                "movement_score": results.performance_metrics.movement_score,
+                "overall_score": results.performance_metrics.overall_score,
+                "estimated_skill_level": results.performance_metrics.estimated_skill_level.value,
+            },
+            "detected_actions": [
+                {
+                    "action_type": action.action_type.value,
+                    "start_frame": action.start_frame,
+                    "end_frame": action.end_frame,
+                    "start_time_ms": round(action.start_time_ms, 1),
+                    "end_time_ms": round(action.end_time_ms, 1),
+                    "duration_ms": round(action.end_time_ms - action.start_time_ms, 1),
+                    "confidence": round(action.confidence, 2),
+                }
+                for action in results.detected_actions[:100]  # Limit to 100 actions
+            ],
+            "detected_mistakes": [
+                {
+                    "mistake_type": mistake.mistake_type.value,
+                    "frame_num": mistake.frame_num,
+                    "timestamp_ms": round(mistake.timestamp_ms, 1),
+                    "severity": mistake.severity,
+                    "description": mistake.description,
+                    "suggestion": mistake.suggestion,
+                    "confidence": round(mistake.confidence, 2),
+                }
+                for mistake in results.detected_mistakes[:50]  # Limit to 50 mistakes
+            ],
+            "coaching_tips": [
+                {
+                    "category": tip.category,
+                    "priority": tip.priority,
+                    "title": tip.title,
+                    "description": tip.description,
+                    "drill_suggestion": tip.drill_suggestion,
+                    "related_mistakes": [m.value for m in tip.related_mistakes],
+                }
+                for tip in results.coaching_tips
+            ],
+            "summary": {
+                "total_actions": len(results.detected_actions),
+                "total_mistakes": len(results.detected_mistakes),
+                "coaching_tips_count": len(results.coaching_tips),
+                "skill_assessment": _get_skill_assessment(results.performance_metrics.overall_score),
+            }
+        }
+
+        logger.info(f"Video analysis complete: {file.filename} - Score: {results.performance_metrics.overall_score}")
+
+        return JSONResponse(content=response)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Video analysis failed: {file.filename}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+    finally:
+        # Clean up temp file
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+
+def _get_skill_assessment(score: float) -> str:
+    """Get a human-readable skill assessment based on score."""
+    if score >= 80:
+        return "Excellent - Your mechanics are at a professional level"
+    elif score >= 65:
+        return "Very Good - Strong fundamentals with room for refinement"
+    elif score >= 50:
+        return "Good - Solid base, focus on the coaching tips to improve"
+    elif score >= 35:
+        return "Average - Work on crosshair placement and movement"
+    else:
+        return "Needs Improvement - Focus on basic mechanics"
+
+
+@app.get("/video/info")
+async def get_video_info_endpoint(path: str = Query(..., description="Path to video file")):
+    """
+    Get information about a video file without full analysis.
+
+    Useful for validating video files before analysis.
+    """
+    try:
+        from opensight.video_analyzer import get_video_info
+
+        info = get_video_info(path)
+        return {
+            "path": info["path"],
+            "width": info["width"],
+            "height": info["height"],
+            "fps": round(info["fps"], 2),
+            "total_frames": info["total_frames"],
+            "duration_seconds": round(info["duration_seconds"], 2),
+        }
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Video file not found")
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Video analysis not available: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/video/supported-formats")
+async def get_supported_video_formats():
+    """Get list of supported video formats and analysis capabilities."""
+    return {
+        "supported_formats": list(ALLOWED_VIDEO_EXTENSIONS),
+        "max_file_size_mb": MAX_VIDEO_SIZE_MB,
+        "capabilities": {
+            "crosshair_tracking": "Tracks crosshair position across frames using color and edge detection",
+            "action_detection": "Detects shooting, movement, and other gameplay actions",
+            "mistake_detection": "Identifies common mistakes like bad crosshair placement",
+            "coaching_feedback": "Generates personalized coaching tips based on analysis",
+        },
+        "performance_metrics": {
+            "crosshair_stability": "How stable your crosshair is (0-100)",
+            "crosshair_placement_score": "How often crosshair is at head level (0-100)",
+            "aim_score": "Overall aim performance (0-100)",
+            "movement_score": "Movement efficiency (0-100)",
+            "overall_score": "Combined performance score (0-100)",
+        },
+        "skill_levels": ["beginner", "intermediate", "advanced", "expert", "professional"],
+    }
