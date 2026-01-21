@@ -1095,14 +1095,55 @@ async def compare_players_endpoint(
 #     """Compare two players using cached job results."""
 #     pass  # Requires job_store and JobStatus to be implemented
 
+@app.post("/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    """Submit feedback on analysis accuracy."""
+    try:
+        from datetime import datetime
+        from opensight.feedback import FeedbackDatabase, FeedbackEntry
+        db = FeedbackDatabase()
+        feedback = FeedbackEntry(
+            id=None,
+            demo_hash=request.demo_hash,
+            user_id=request.player_steam_id,
+            rating=request.rating,
+            category=request.metric_name,
+            comment=request.comment or "",
+            analysis_version=__version__,
+            created_at=datetime.now(),
+            metadata={"correction_value": request.correction_value} if request.correction_value else {},
+        )
+        entry_id = db.add_feedback(feedback)
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
 # Legacy code preserved for reference when job infrastructure is added:
 def _compare_players_from_job_disabled(job_id: str, request: PlayerCompareRequest):
     """
     Compare two players using data from a completed analysis job.
 
-    This is more efficient than re-analyzing the demo if you've already
-    run /analyze - it uses the cached job results.
+@app.post("/feedback/coaching")
+async def submit_coaching_feedback(request: CoachingFeedbackRequest):
+    """Submit feedback on coaching insights."""
+    try:
+        from datetime import datetime
+        from opensight.feedback import FeedbackDatabase, CoachingFeedback
+        db = FeedbackDatabase()
+        feedback = CoachingFeedback(
+            id=None,
+            demo_hash=request.demo_hash,
+            player_steam_id="",  # Not provided in request
+            insight_category="coaching",
+            insight_message=request.insight_id,
+            was_helpful=request.was_helpful,
+            user_correction=request.correction,
+            created_at=datetime.now(),
+        )
+        entry_id = db.add_coaching_feedback(feedback)
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
     Args:
         job_id: The job ID from a completed /analyze request

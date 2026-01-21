@@ -131,7 +131,7 @@ def _analyze_single_demo(task: DemoAnalysisTask) -> DemoAnalysisResult:
 
         # Check for tick-level data option
         include_ticks = task.options.get("include_ticks", False)
-        demo_data = parser.parse(include_player_ticks=include_ticks)
+        demo_data = parser.parse(include_ticks=include_ticks)
 
         # Run analysis
         analyzer = DemoAnalyzer(demo_data)

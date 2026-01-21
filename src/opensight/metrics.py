@@ -25,6 +25,31 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# Helper Functions
+# ============================================================================
+
+def _find_column(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+    """Find the first matching column name from options."""
+    if df is None:
+        return None
+    for col in options:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _get_round_ticks(demo_data: DemoData) -> tuple[list[int], list[int]]:
+    """Extract round start and end ticks from rounds."""
+    starts = []
+    ends = []
+    if hasattr(demo_data, 'rounds') and demo_data.rounds:
+        for r in demo_data.rounds:
+            starts.append(getattr(r, 'start_tick', 0))
+            ends.append(getattr(r, 'end_tick', 0))
+    return starts, ends
+
+
+# ============================================================================
 # Constants and Enums
 # ============================================================================
 
@@ -363,12 +388,18 @@ def calculate_ttd(demo_data: DemoData, steam_id: int | None = None) -> dict[int,
         logger.warning("No damage events found in demo")
         return results
 
+    # Find attacker column name
+    att_col = _find_column(damage_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
+    if att_col is None:
+        logger.warning("No attacker column found in damage data")
+        return results
+
     # Filter to specific player if requested
     if steam_id is not None:
-        damage_df = damage_df[damage_df["attacker_id"] == steam_id]
+        damage_df = damage_df[damage_df[att_col] == steam_id]
 
     # Group by attacker
-    for attacker_id, attacker_damage in damage_df.groupby("attacker_id"):
+    for attacker_id, attacker_damage in damage_df.groupby(att_col):
         if attacker_id == 0:
             continue  # Skip world damage
 
@@ -751,45 +782,70 @@ def calculate_economy_metrics(
     """
     results: dict[int, EconomyMetrics] = {}
 
-    kills_df = demo_data.kill_events
-    damage_df = demo_data.damage_events
-    shots_df = demo_data.shots_fired
+    # Get DataFrames with proper attribute names
+    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
+    damage_df = demo_data.damages_df if hasattr(demo_data, 'damages_df') else pd.DataFrame()
+    shots_df = demo_data.weapon_fires_df if hasattr(demo_data, 'weapon_fires_df') else pd.DataFrame()
+
+    if kills_df is None:
+        kills_df = pd.DataFrame()
+    if damage_df is None:
+        damage_df = pd.DataFrame()
+    if shots_df is None:
+        shots_df = pd.DataFrame()
+
+    # Find column names
+    kill_att_col = _find_column(kills_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
+    dmg_att_col = _find_column(damage_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
+    dmg_col = _find_column(damage_df, ["dmg_health", "damage", "dmg"])
+    shots_steamid_col = _find_column(shots_df, ["player_steamid", "steamid", "steam_id"])
 
     player_ids = set(demo_data.player_names.keys())
     if steam_id is not None:
         player_ids = {steam_id} if steam_id in player_ids else set()
 
+    # Get round count
+    round_starts, _ = _get_round_ticks(demo_data)
+    num_rounds = max(len(round_starts), demo_data.num_rounds, 1)
+
     for player_id in player_ids:
         # Track weapon usage and kills
-        player_kills = kills_df[kills_df["attacker_id"] == player_id]
         weapon_kills: dict[str, int] = {}
+        player_kills = pd.DataFrame()
 
-        for _, kill in player_kills.iterrows():
-            weapon = kill.get("weapon", "unknown")
-            weapon_clean = weapon.lower().replace("weapon_", "")
-            weapon_kills[weapon_clean] = weapon_kills.get(weapon_clean, 0) + 1
+        if not kills_df.empty and kill_att_col:
+            player_kills = kills_df[kills_df[kill_att_col] == player_id]
+            for _, kill in player_kills.iterrows():
+                weapon = kill.get("weapon", "unknown")
+                if pd.isna(weapon):
+                    weapon = "unknown"
+                weapon_clean = str(weapon).lower().replace("weapon_", "")
+                weapon_kills[weapon_clean] = weapon_kills.get(weapon_clean, 0) + 1
 
         # Calculate total value of enemies killed
-        total_value_killed = 0
-        for _, kill in player_kills.iterrows():
-            kill.get("victim_id", 0)
-            # Estimate victim loadout value (simplified)
-            total_value_killed += 2000  # Average loadout estimate
+        total_value_killed = len(player_kills) * 2000  # Average loadout estimate
 
         # Calculate money spent (based on weapons used)
         money_spent = 0
         weapons_used = set()
-        if not shots_df.empty and "weapon" in shots_df.columns:
-            player_shots = shots_df[shots_df["steam_id"] == player_id]
+        if not shots_df.empty and "weapon" in shots_df.columns and shots_steamid_col:
+            player_shots = shots_df[shots_df[shots_steamid_col] == player_id]
             for weapon in player_shots["weapon"].unique():
-                weapons_used.add(weapon.lower().replace("weapon_", ""))
+                if pd.notna(weapon):
+                    weapons_used.add(str(weapon).lower().replace("weapon_", ""))
 
         for weapon in weapons_used:
             money_spent += get_weapon_price(weapon)
 
         # Calculate damage efficiency
-        player_damage = damage_df[damage_df["attacker_id"] == player_id]
-        total_damage = player_damage["damage"].sum() if not player_damage.empty else 0
+        total_damage = 0
+        if not damage_df.empty and dmg_att_col and dmg_col:
+            player_damage = damage_df[damage_df[dmg_att_col] == player_id]
+            if not player_damage.empty:
+                try:
+                    total_damage = int(player_damage[dmg_col].sum())
+                except (ValueError, TypeError):
+                    total_damage = 0
         weapon_efficiency = total_damage / max(money_spent, 1)
 
         # Find favorite weapon
@@ -809,7 +865,7 @@ def calculate_economy_metrics(
             total_money_spent=money_spent,
             total_value_killed=total_value_killed,
             weapon_efficiency=float(weapon_efficiency),
-            avg_loadout_value=float(money_spent / max(len(demo_data.round_starts), 1)),
+            avg_loadout_value=float(money_spent / num_rounds),
             eco_round_kills=eco_kills,
             force_buy_kills=force_kills,
             full_buy_kills=full_buy_kills,
@@ -879,9 +935,23 @@ def calculate_utility_metrics(
     """
     results: dict[int, UtilityMetrics] = {}
 
-    damage_df = demo_data.damage_events
-    kills_df = demo_data.kill_events
-    shots_df = demo_data.shots_fired
+    # Get DataFrames with proper attribute names
+    damage_df = demo_data.damages_df if hasattr(demo_data, 'damages_df') else pd.DataFrame()
+    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
+    shots_df = demo_data.weapon_fires_df if hasattr(demo_data, 'weapon_fires_df') else pd.DataFrame()
+
+    if damage_df is None:
+        damage_df = pd.DataFrame()
+    if kills_df is None:
+        kills_df = pd.DataFrame()
+    if shots_df is None:
+        shots_df = pd.DataFrame()
+
+    # Find column names
+    dmg_att_col = _find_column(damage_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
+    dmg_col = _find_column(damage_df, ["dmg_health", "damage", "dmg"])
+    kill_att_col = _find_column(kills_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
+    shots_steamid_col = _find_column(shots_df, ["player_steamid", "steamid", "steam_id"])
 
     player_ids = set(demo_data.player_names.keys())
     if steam_id is not None:
@@ -898,10 +968,10 @@ def calculate_utility_metrics(
             "decoy": 0,
         }
 
-        if not shots_df.empty and "weapon" in shots_df.columns:
-            player_shots = shots_df[shots_df["steam_id"] == player_id]
+        if not shots_df.empty and "weapon" in shots_df.columns and shots_steamid_col:
+            player_shots = shots_df[shots_df[shots_steamid_col] == player_id]
             for _, shot in player_shots.iterrows():
-                weapon = shot["weapon"].lower().replace("weapon_", "")
+                weapon = str(shot.get("weapon", "")).lower().replace("weapon_", "")
                 if weapon in grenades_thrown:
                     grenades_thrown[weapon] += 1
 
@@ -909,28 +979,32 @@ def calculate_utility_metrics(
         utility_damage = 0.0
         molotov_damage = 0.0
 
-        if not damage_df.empty and "weapon" in damage_df.columns:
-            player_damage = damage_df[damage_df["attacker_id"] == player_id]
+        if not damage_df.empty and "weapon" in damage_df.columns and dmg_att_col and dmg_col:
+            player_damage = damage_df[damage_df[dmg_att_col] == player_id]
             for _, dmg in player_damage.iterrows():
-                weapon = dmg.get("weapon", "").lower().replace("weapon_", "")
-                damage = dmg.get("damage", 0)
+                weapon = str(dmg.get("weapon", "")).lower().replace("weapon_", "")
+                try:
+                    damage_val = float(dmg.get(dmg_col, 0) or 0)
+                except (ValueError, TypeError):
+                    damage_val = 0
                 if weapon == "hegrenade":
-                    utility_damage += damage
+                    utility_damage += damage_val
                 elif weapon in ("molotov", "incgrenade", "inferno"):
-                    utility_damage += damage
-                    molotov_damage += damage
+                    utility_damage += damage_val
+                    molotov_damage += damage_val
 
         total_grenades = sum(grenades_thrown.values())
 
         # Calculate smoke kills (kills where weapon is knife or pistol shortly after smoke)
         smoke_kills = 0
-        player_kills = kills_df[kills_df["attacker_id"] == player_id]
-        # Simplified: assume some kills through smoke based on weapon type
-        for _, kill in player_kills.iterrows():
-            weapon = kill.get("weapon", "").lower()
-            # AWP through smoke is common
-            if "awp" in weapon:
-                smoke_kills += 1  # Rough estimate
+        if not kills_df.empty and kill_att_col:
+            player_kills = kills_df[kills_df[kill_att_col] == player_id]
+            # Simplified: assume some kills through smoke based on weapon type
+            for _, kill in player_kills.iterrows():
+                weapon = str(kill.get("weapon", "")).lower()
+                # AWP through smoke is common
+                if "awp" in weapon:
+                    smoke_kills += 1  # Rough estimate
 
         results[int(player_id)] = UtilityMetrics(
             steam_id=int(player_id),
@@ -1052,24 +1126,40 @@ def calculate_positioning_metrics(
     """
     results: dict[int, PositioningMetrics] = {}
 
-    positions = demo_data.player_positions
-    kills_df = demo_data.kill_events
+    # Get position data from ticks_df
+    positions = demo_data.ticks_df if hasattr(demo_data, 'ticks_df') else pd.DataFrame()
+    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
 
-    if positions.empty:
+    if positions is None or positions.empty:
+        return results
+    if kills_df is None:
+        kills_df = pd.DataFrame()
+
+    # Find column names
+    steamid_col = _find_column(positions, ["steamid", "steam_id", "player_steamid"])
+    x_col = "X" if "X" in positions.columns else "x"
+    y_col = "Y" if "Y" in positions.columns else "y"
+    z_col = "Z" if "Z" in positions.columns else "z"
+
+    kill_att_col = _find_column(kills_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
+    kill_vic_col = _find_column(kills_df, ["user_steamid", "victim_steamid", "victim_id"])
+
+    if steamid_col is None:
         return results
 
-    player_ids = positions["steam_id"].unique()
+    player_ids = positions[steamid_col].unique()
     if steam_id is not None:
         player_ids = [steam_id] if steam_id in player_ids else []
 
     map_name = demo_data.map_name
+    round_starts, _ = _get_round_ticks(demo_data)
 
     for player_id in player_ids:
         if player_id == 0:
             continue
 
-        player_pos = positions[positions["steam_id"] == player_id]
-        player_team = demo_data.teams.get(int(player_id), "Unknown")
+        player_pos = positions[positions[steamid_col] == player_id]
+        player_team = demo_data.player_teams.get(int(player_id), "Unknown")
 
         # Track area coverage
         area_times: dict[str, int] = {}
@@ -1078,7 +1168,7 @@ def calculate_positioning_metrics(
         total_ticks = len(player_pos)
 
         for _, row in player_pos.iterrows():
-            area = get_area_at_position(row["x"], row["y"], map_name)
+            area = get_area_at_position(row[x_col], row[y_col], map_name)
             if area:
                 area_times[area] = area_times.get(area, 0) + 1
                 if prev_area and area != prev_area:
@@ -1102,76 +1192,77 @@ def calculate_positioning_metrics(
 
         for tick in player_pos["tick"].unique()[:100]:  # Sample for efficiency
             tick_positions = positions[positions["tick"] == tick]
-            player_at_tick = tick_positions[tick_positions["steam_id"] == player_id]
+            player_at_tick = tick_positions[tick_positions[steamid_col] == player_id]
             teammates = tick_positions[
-                (tick_positions["steam_id"] != player_id)
-                & (
-                    tick_positions["steam_id"].apply(
-                        lambda x: demo_data.teams.get(int(x), "") == player_team
-                    )
-                )
+                (tick_positions[steamid_col] != player_id) &
+                (tick_positions[steamid_col].apply(
+                    lambda x: demo_data.player_teams.get(int(x), "") == player_team
+                ))
             ]
 
             if not player_at_tick.empty and not teammates.empty:
-                player_xyz = np.array(
-                    [
-                        player_at_tick.iloc[0]["x"],
-                        player_at_tick.iloc[0]["y"],
-                        player_at_tick.iloc[0]["z"],
-                    ]
-                )
+                player_xyz = np.array([
+                    player_at_tick.iloc[0][x_col],
+                    player_at_tick.iloc[0][y_col],
+                    player_at_tick.iloc[0][z_col]
+                ])
                 for _, mate in teammates.iterrows():
-                    mate_xyz = np.array([mate["x"], mate["y"], mate["z"]])
+                    mate_xyz = np.array([mate[x_col], mate[y_col], mate[z_col]])
                     teammate_distances.append(np.linalg.norm(player_xyz - mate_xyz))
 
         if teammate_distances:
-            avg_teammate_distance = np.mean(teammate_distances)
+            avg_teammate_distance = float(np.mean(teammate_distances))
 
         # Count deaths from behind
         deaths_from_behind = 0
-        player_deaths = kills_df[kills_df["victim_id"] == player_id]
+        if not kills_df.empty and kill_vic_col and kill_att_col:
+            player_deaths = kills_df[kills_df[kill_vic_col] == player_id]
 
-        for _, death in player_deaths.iterrows():
-            death_tick = death["tick"]
-            attacker_id = death["attacker_id"]
+            for _, death in player_deaths.iterrows():
+                death_tick = death.get("tick", 0)
+                attacker_id = death.get(kill_att_col, 0)
 
-            # Get positions at death tick
-            victim_pos = player_pos[player_pos["tick"] == death_tick]
-            attacker_pos = positions[
-                (positions["tick"] == death_tick) & (positions["steam_id"] == attacker_id)
-            ]
+                # Get positions at death tick
+                victim_pos = player_pos[player_pos["tick"] == death_tick]
+                attacker_pos = positions[
+                    (positions["tick"] == death_tick) &
+                    (positions[steamid_col] == attacker_id)
+                ]
 
-            if not victim_pos.empty and not attacker_pos.empty:
-                victim_row = victim_pos.iloc[0]
-                attacker_row = attacker_pos.iloc[0]
+                if not victim_pos.empty and not attacker_pos.empty:
+                    victim_row = victim_pos.iloc[0]
+                    attacker_row = attacker_pos.iloc[0]
 
-                if "yaw" in victim_row:
-                    # Calculate angle to attacker
-                    victim_xyz = np.array([victim_row["x"], victim_row["y"]])
-                    attacker_xyz = np.array([attacker_row["x"], attacker_row["y"]])
-                    direction = attacker_xyz - victim_xyz
-                    attacker_angle = np.degrees(np.arctan2(direction[1], direction[0]))
+                    if "yaw" in victim_row:
+                        # Calculate angle to attacker
+                        victim_xy = np.array([victim_row[x_col], victim_row[y_col]])
+                        attacker_xy = np.array([attacker_row[x_col], attacker_row[y_col]])
+                        direction = attacker_xy - victim_xy
+                        attacker_angle = np.degrees(np.arctan2(direction[1], direction[0]))
 
-                    view_angle = victim_row["yaw"]
-                    angle_diff = abs(attacker_angle - view_angle)
-                    angle_diff = min(angle_diff, 360 - angle_diff)
+                        view_angle = victim_row["yaw"]
+                        angle_diff = abs(attacker_angle - view_angle)
+                        angle_diff = min(angle_diff, 360 - angle_diff)
 
-                    if angle_diff > 90:  # Attacker behind
-                        deaths_from_behind += 1
+                        if angle_diff > 90:  # Attacker behind
+                            deaths_from_behind += 1
 
         # Calculate first contact rate
         first_contacts = 0
-        for round_start in demo_data.round_starts[:10]:  # Sample rounds
+        sample_rounds = round_starts[:10] if round_starts else []
+        for round_start in sample_rounds:
             round_end = round_start + (15 * demo_data.tick_rate)  # First 15 seconds
-            round_kills = kills_df[
-                (kills_df["tick"] >= round_start) & (kills_df["tick"] <= round_end)
-            ]
-            if not round_kills.empty:
-                first_kill = round_kills.iloc[0]
-                if first_kill["attacker_id"] == player_id or first_kill["victim_id"] == player_id:
-                    first_contacts += 1
+            if not kills_df.empty and kill_att_col and kill_vic_col:
+                round_kills = kills_df[
+                    (kills_df["tick"] >= round_start) &
+                    (kills_df["tick"] <= round_end)
+                ]
+                if not round_kills.empty:
+                    first_kill = round_kills.iloc[0]
+                    if first_kill.get(kill_att_col) == player_id or first_kill.get(kill_vic_col) == player_id:
+                        first_contacts += 1
 
-        first_contact_rate = (first_contacts / max(len(demo_data.round_starts[:10]), 1)) * 100
+        first_contact_rate = (first_contacts / max(len(sample_rounds), 1)) * 100
 
         results[int(player_id)] = PositioningMetrics(
             steam_id=int(player_id),
@@ -1208,8 +1299,15 @@ def calculate_trade_metrics(
     """
     results: dict[int, TradeMetrics] = {}
 
-    kills_df = demo_data.kill_events
-    if kills_df.empty:
+    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
+    if kills_df is None or kills_df.empty:
+        return results
+
+    # Find column names
+    att_col = _find_column(kills_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
+    vic_col = _find_column(kills_df, ["user_steamid", "victim_steamid", "victim_id"])
+
+    if not att_col or not vic_col:
         return results
 
     kills_sorted = kills_df.sort_values("tick")
@@ -1220,50 +1318,50 @@ def calculate_trade_metrics(
         player_ids = {steam_id} if steam_id in player_ids else set()
 
     for player_id in player_ids:
-        player_team = demo_data.teams.get(int(player_id), "Unknown")
+        player_team = demo_data.player_teams.get(int(player_id), "Unknown")
         trades_completed = 0
         deaths_traded = 0
         trade_times: list[float] = []
 
         # Check each kill by this player
-        player_kills = kills_sorted[kills_sorted["attacker_id"] == player_id]
+        player_kills = kills_sorted[kills_sorted[att_col] == player_id]
 
         for _, kill in player_kills.iterrows():
             kill_tick = kill["tick"]
-            victim_id = kill["victim_id"]
+            victim_id = kill[vic_col]
 
             # Look for recent teammate deaths by this victim
             recent_deaths = kills_sorted[
-                (kills_sorted["attacker_id"] == victim_id)
-                & (kills_sorted["tick"] >= kill_tick - trade_window_ticks)
-                & (kills_sorted["tick"] < kill_tick)
+                (kills_sorted[att_col] == victim_id) &
+                (kills_sorted["tick"] >= kill_tick - trade_window_ticks) &
+                (kills_sorted["tick"] < kill_tick)
             ]
 
             for _, death in recent_deaths.iterrows():
-                dead_teammate = death["victim_id"]
-                if demo_data.teams.get(int(dead_teammate), "") == player_team:
+                dead_teammate = death[vic_col]
+                if demo_data.player_teams.get(int(dead_teammate), "") == player_team:
                     trades_completed += 1
                     trade_time = (kill_tick - death["tick"]) / demo_data.tick_rate * 1000
                     trade_times.append(trade_time)
                     break
 
         # Check if player's deaths were traded
-        player_deaths = kills_sorted[kills_sorted["victim_id"] == player_id]
+        player_deaths = kills_sorted[kills_sorted[vic_col] == player_id]
 
         for _, death in player_deaths.iterrows():
             death_tick = death["tick"]
-            killer_id = death["attacker_id"]
+            killer_id = death[att_col]
 
             # Look for teammate killing the killer shortly after
             trades = kills_sorted[
-                (kills_sorted["victim_id"] == killer_id)
-                & (kills_sorted["tick"] > death_tick)
-                & (kills_sorted["tick"] <= death_tick + trade_window_ticks)
+                (kills_sorted[vic_col] == killer_id) &
+                (kills_sorted["tick"] > death_tick) &
+                (kills_sorted["tick"] <= death_tick + trade_window_ticks)
             ]
 
             for _, trade in trades.iterrows():
-                trader_id = trade["attacker_id"]
-                if demo_data.teams.get(int(trader_id), "") == player_team:
+                trader_id = trade[att_col]
+                if demo_data.player_teams.get(int(trader_id), "") == player_team:
                     deaths_traded += 1
                     break
 
@@ -1300,8 +1398,17 @@ def calculate_opening_metrics(
     """
     results: dict[int, OpeningDuelMetrics] = {}
 
-    kills_df = demo_data.kill_events
-    if kills_df.empty or not demo_data.round_starts:
+    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
+    round_starts, round_ends = _get_round_ticks(demo_data)
+
+    if kills_df is None or kills_df.empty or not round_starts:
+        return results
+
+    # Find column names
+    att_col = _find_column(kills_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
+    vic_col = _find_column(kills_df, ["user_steamid", "victim_steamid", "victim_id"])
+
+    if not att_col or not vic_col:
         return results
 
     opening_window_ticks = int(opening_window_seconds * demo_data.tick_rate)
@@ -1316,12 +1423,8 @@ def calculate_opening_metrics(
     }
 
     # Analyze each round
-    for i, round_start in enumerate(demo_data.round_starts):
-        round_end = (
-            demo_data.round_ends[i]
-            if i < len(demo_data.round_ends)
-            else round_start + opening_window_ticks
-        )
+    for i, round_start in enumerate(round_starts):
+        round_end = round_ends[i] if i < len(round_ends) else round_start + opening_window_ticks
 
         # Get first kill of the round
         round_kills = kills_df[
@@ -1333,16 +1436,18 @@ def calculate_opening_metrics(
             continue
 
         first_kill = round_kills.iloc[0]
-        attacker = first_kill["attacker_id"]
-        victim = first_kill["victim_id"]
+        attacker = first_kill[att_col]
+        victim = first_kill[vic_col]
         weapon = first_kill.get("weapon", "unknown")
+        if pd.isna(weapon):
+            weapon = "unknown"
         kill_time = (first_kill["tick"] - round_start) / demo_data.tick_rate * 1000
 
         if attacker in player_stats:
             player_stats[attacker]["kills"] += 1
             player_stats[attacker]["attempts"] += 1
             player_stats[attacker]["times"].append(kill_time)
-            player_stats[attacker]["weapons"].append(weapon)
+            player_stats[attacker]["weapons"].append(str(weapon))
 
         if victim in player_stats:
             player_stats[victim]["deaths"] += 1
@@ -1358,7 +1463,7 @@ def calculate_opening_metrics(
         # Find most common opening weapon
         weapon_counts: dict[str, int] = {}
         for w in stats["weapons"]:
-            w_clean = w.lower().replace("weapon_", "")
+            w_clean = str(w).lower().replace("weapon_", "")
             weapon_counts[w_clean] = weapon_counts.get(w_clean, 0) + 1
         opening_weapon = (
             max(weapon_counts.keys(), key=lambda w: weapon_counts[w])
@@ -1465,7 +1570,7 @@ def calculate_comprehensive_metrics(
         results[int(player_id)] = ComprehensivePlayerMetrics(
             steam_id=int(player_id),
             player_name=demo_data.player_names.get(int(player_id), "Unknown"),
-            team=demo_data.teams.get(int(player_id), "Unknown"),
+            team=demo_data.player_teams.get(int(player_id), "Unknown"),
             engagement=engagement.get(int(player_id)),
             economy=economy.get(int(player_id)),
             utility=utility.get(int(player_id)),
