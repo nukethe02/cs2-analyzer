@@ -439,6 +439,28 @@ class DemoParser:
         "has_defuser",
     ]
 
+    # Memory-efficient dtypes for DataFrame columns
+    OPTIMIZED_DTYPES = {
+        "tick": "int32",
+        "round": "int16",
+        "round_num": "int16",
+        "total_rounds_played": "int16",
+        "dmg_health": "int16",
+        "dmg_armor": "int16",
+        "damage": "int16",
+        "health": "int16",
+        "armor": "int16",
+        "health_remaining": "int16",
+        "armor_remaining": "int16",
+        "headshot": "bool",
+        "is_alive": "bool",
+        "is_scoped": "bool",
+        "flash_assist": "bool",
+    }
+
+    # Chunk size for processing large tick data
+    TICK_CHUNK_SIZE = 500000
+
     def __init__(self, demo_path: str | Path):
         """
         Initialize the demo parser.
@@ -449,6 +471,10 @@ class DemoParser:
         self.demo_path = Path(demo_path)
         if not self.demo_path.exists():
             raise FileNotFoundError(f"Demo file not found: {demo_path}")
+        self._data: Optional[DemoData] = None
+        self._parser: Optional[Demoparser2] = None
+        # Cache for column lookups
+        self._column_cache: dict[str, Optional[str]] = {}
 
         self._data: MatchData | None = None
         self._demo: Any | None = None  # awpy Demo object
@@ -529,6 +555,81 @@ class DemoParser:
             f"{len(rounds_df)} rounds, {len(grenades_df)} grenades, "
             f"{len(bomb_df)} bomb events, {len(shots_df)} shots"
         )
+        if kills_df.empty:
+            # Fallback without player props
+            kills_df = self._parse_event_safe(parser, "player_death")
+        logger.info(f"Parsed {len(kills_df)} kills. Columns: {list(kills_df.columns)[:15]}...")
+
+        # Parse damages with hitgroup data
+        damages_df = self._parse_event_safe(parser, "player_hurt")
+        logger.info(f"Parsed {len(damages_df)} damage events")
+
+        # Parse round events
+        round_end_df = self._parse_event_safe(parser, "round_end")
+        round_start_df = self._parse_event_safe(parser, "round_start")
+        round_freeze_df = self._parse_event_safe(parser, "round_freeze_end")
+        logger.info(f"Parsed {len(round_end_df)} round_end, {len(round_start_df)} round_start events")
+
+        # ===========================================
+        # EXTENDED EVENTS - For comprehensive analysis
+        # ===========================================
+        weapon_fires_df = pd.DataFrame()
+        blinds_df = pd.DataFrame()
+        grenades_thrown_df = pd.DataFrame()
+        flash_det_df = pd.DataFrame()
+        he_det_df = pd.DataFrame()
+        smoke_det_df = pd.DataFrame()
+        molly_det_df = pd.DataFrame()
+        inferno_start_df = pd.DataFrame()
+        inferno_end_df = pd.DataFrame()
+        bomb_planted_df = pd.DataFrame()
+        bomb_defused_df = pd.DataFrame()
+        bomb_exploded_df = pd.DataFrame()
+
+        if comprehensive:
+            # Weapon fire events (for accuracy tracking)
+            weapon_fires_df = self._parse_event_safe(
+                parser, "weapon_fire",
+                player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z", "is_scoped"]
+            )
+            if weapon_fires_df.empty:
+                weapon_fires_df = self._parse_event_safe(parser, "weapon_fire")
+            logger.info(f"Parsed {len(weapon_fires_df)} weapon_fire events (for accuracy)")
+
+            # Player blind events (flash effectiveness)
+            blinds_df = self._parse_event_safe(parser, "player_blind")
+            logger.info(f"Parsed {len(blinds_df)} player_blind events")
+
+            # Grenade events
+            grenades_thrown_df = self._parse_event_safe(parser, "grenade_thrown")
+            flash_det_df = self._parse_event_safe(parser, "flashbang_detonate")
+            he_det_df = self._parse_event_safe(parser, "hegrenade_detonate")
+            smoke_det_df = self._parse_event_safe(parser, "smokegrenade_detonate")
+            molly_det_df = self._parse_event_safe(parser, "molotov_detonate")
+            inferno_start_df = self._parse_event_safe(parser, "inferno_startburn")
+            inferno_end_df = self._parse_event_safe(parser, "inferno_expire")
+            logger.info(f"Parsed grenades: {len(grenades_thrown_df)} thrown, {len(flash_det_df)} flash, {len(he_det_df)} HE, {len(smoke_det_df)} smoke, {len(molly_det_df)} molly")
+
+            # Bomb events
+            bomb_planted_df = self._parse_event_safe(parser, "bomb_planted")
+            bomb_defused_df = self._parse_event_safe(parser, "bomb_defused")
+            bomb_exploded_df = self._parse_event_safe(parser, "bomb_exploded")
+            logger.info(f"Parsed bomb events: {len(bomb_planted_df)} plants, {len(bomb_defused_df)} defuses, {len(bomb_exploded_df)} explosions")
+
+        # ===========================================
+        # TICK DATA - Optional detailed tracking
+        # ===========================================
+        ticks_df = None
+        if include_ticks:
+            ticks_df = self._process_tick_data_chunked(parser, self.PLAYER_PROPS)
+            if ticks_df is not None:
+                logger.info(f"Parsed {len(ticks_df)} tick entries (memory optimized)")
+
+        # Optimize dtypes for memory efficiency
+        kills_df = self._optimize_dtypes(kills_df)
+        damages_df = self._optimize_dtypes(damages_df)
+        weapon_fires_df = self._optimize_dtypes(weapon_fires_df) if comprehensive else weapon_fires_df
+        blinds_df = self._optimize_dtypes(blinds_df) if comprehensive else blinds_df
 
         if not kills_df.empty:
             logger.debug(f"Kill columns: {list(kills_df.columns)}")
@@ -547,22 +648,43 @@ class DemoParser:
         # Build typed event lists
         kills = self._build_kills(kills_df)
         damages = self._build_damages(damages_df)
-        game_rounds = self._build_rounds(rounds_df)
-        grenades = self._build_grenades(grenades_df)
-        bomb_events = self._build_bomb_events(bomb_df)
-        weapon_fires = self._build_weapon_fires(shots_df)
+        rounds = self._build_rounds(round_end_df, round_start_df, round_freeze_df)
 
-        # Build smokes and infernos from awpy's dedicated DataFrames
-        smokes_df = demo.smokes.to_pandas() if demo.smokes is not None else pd.DataFrame()
-        infernos_df = demo.infernos.to_pandas() if demo.infernos is not None else pd.DataFrame()
-        smokes = self._build_smokes_from_df(smokes_df)
-        infernos = self._build_infernos_from_df(infernos_df)
+        # Build structured events - EXTENDED
+        weapon_fires = self._build_weapon_fires(weapon_fires_df) if comprehensive else []
+        blinds = self._build_blinds(blinds_df, player_teams) if comprehensive else []
+        grenades = self._build_grenades(grenades_thrown_df, flash_det_df, he_det_df, smoke_det_df, molly_det_df) if comprehensive else []
+        bomb_events = self._build_bomb_events(bomb_planted_df, bomb_defused_df, bomb_exploded_df) if comprehensive else []
 
-        # Extract player info
-        player_names, player_teams = self._extract_players(kills_df, damages_df)
-        player_stats = self._calculate_stats(
-            kills_df, damages_df, player_names, player_teams, num_rounds
-        )
+        # Merge grenade DataFrames efficiently (only include non-empty ones)
+        grenades_df = pd.DataFrame()
+        if comprehensive:
+            grenade_frames = []
+            if not grenades_thrown_df.empty:
+                grenade_frames.append(grenades_thrown_df.assign(event_type='thrown'))
+            if not flash_det_df.empty:
+                grenade_frames.append(flash_det_df.assign(event_type='detonate', grenade_type='flashbang'))
+            if not he_det_df.empty:
+                grenade_frames.append(he_det_df.assign(event_type='detonate', grenade_type='hegrenade'))
+            if not smoke_det_df.empty:
+                grenade_frames.append(smoke_det_df.assign(event_type='detonate', grenade_type='smokegrenade'))
+            if not molly_det_df.empty:
+                grenade_frames.append(molly_det_df.assign(event_type='detonate', grenade_type='molotov'))
+            if grenade_frames:
+                grenades_df = pd.concat(grenade_frames, ignore_index=True)
+
+        # Merge bomb DataFrames efficiently
+        bomb_events_df = pd.DataFrame()
+        if comprehensive:
+            bomb_frames = []
+            if not bomb_planted_df.empty:
+                bomb_frames.append(bomb_planted_df.assign(event_type='planted'))
+            if not bomb_defused_df.empty:
+                bomb_frames.append(bomb_defused_df.assign(event_type='defused'))
+            if not bomb_exploded_df.empty:
+                bomb_frames.append(bomb_exploded_df.assign(event_type='exploded'))
+            if bomb_frames:
+                bomb_events_df = pd.concat(bomb_frames, ignore_index=True)
 
         # Calculate final scores
         final_ct = sum(1 for r in game_rounds if r.winner == "CT")
@@ -610,350 +732,123 @@ class DemoParser:
         )
         return self._data
 
-    def _normalize_side(self, value: Any) -> str:
-        """Normalize team/side values to 'CT' or 'T'."""
-        if value is None:
-            return "Unknown"
-        if isinstance(value, str):
-            upper = value.upper()
-            if "CT" in upper or "COUNTER" in upper:
-                return "CT"
-            elif "T" in upper and "CT" not in upper:
-                return "T"
-            return value
-        elif isinstance(value, (int, float)):
-            # CS2 team numbers: 2 = T, 3 = CT
-            val = int(value)
-            if val == 3:
-                return "CT"
-            elif val == 2:
-                return "T"
-        return "Unknown"
+    def _find_column(self, df: pd.DataFrame, options: list[str], cache_key: str = None) -> Optional[str]:
+        """Find first matching column from options with caching."""
+        # Use cache if available
+        if cache_key and cache_key in self._column_cache:
+            return self._column_cache[cache_key]
 
-    def _build_kills(self, df: pd.DataFrame) -> list[KillEvent]:
-        """Build KillEvent list from awpy kills DataFrame."""
-        kills = []
+        for col in options:
+            if col in df.columns:
+                if cache_key:
+                    self._column_cache[cache_key] = col
+                return col
+
+        if cache_key:
+            self._column_cache[cache_key] = None
+        return None
+
+    def _optimize_dtypes(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Optimize DataFrame memory usage by downcasting dtypes."""
         if df.empty:
-            return kills
+            return df
 
-        for _, row in df.iterrows():
-            try:
-                # Extract attacker/victim sides with fallback column names
-                att_side = row.get("attacker_side", row.get("attacker_team"))
-                vic_side = row.get("victim_side", row.get("victim_team"))
-                ass_side = row.get("assister_side")
+        for col, dtype in self.OPTIMIZED_DTYPES.items():
+            if col in df.columns:
+                try:
+                    if dtype == "bool":
+                        df[col] = df[col].astype(bool)
+                    else:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').astype(dtype)
+                except (ValueError, TypeError):
+                    pass  # Keep original dtype if conversion fails
 
-                # Extract assister info if present
-                ass_steamid = row.get("assister_steamid")
-                ass_name = row.get("assister_name")
+        return df
 
-                kill = KillEvent(
-                    tick=safe_int(row.get("tick")),
-                    round_num=safe_int(row.get("round_num", row.get("round", 0))),
-                    attacker_steamid=safe_int(row.get("attacker_steamid")),
-                    attacker_name=safe_str(row.get("attacker_name", row.get("attacker", ""))),
-                    attacker_side=self._normalize_side(att_side),
-                    victim_steamid=safe_int(row.get("victim_steamid", row.get("user_steamid"))),
-                    victim_name=safe_str(row.get("victim_name", row.get("user_name", ""))),
-                    victim_side=self._normalize_side(vic_side),
-                    weapon=safe_str(row.get("weapon", "")),
-                    headshot=safe_bool(row.get("headshot")),
-                    penetrated=safe_bool(row.get("penetrated")),
-                    noscope=safe_bool(row.get("noscope")),
-                    thrusmoke=safe_bool(row.get("thrusmoke")),
-                    attackerblind=safe_bool(row.get("attackerblind")),
-                    assister_steamid=safe_int(ass_steamid) if ass_steamid else None,
-                    assister_name=safe_str(ass_name) if ass_name else None,
-                    assister_side=self._normalize_side(ass_side) if ass_side else None,
-                    flash_assist=safe_bool(row.get("flash_assist")),
-                    # Position data (may not always be present)
-                    attacker_x=safe_float(row.get("attacker_X")) if "attacker_X" in row else None,
-                    attacker_y=safe_float(row.get("attacker_Y")) if "attacker_Y" in row else None,
-                    attacker_z=safe_float(row.get("attacker_Z")) if "attacker_Z" in row else None,
-                    victim_x=safe_float(row.get("victim_X")) if "victim_X" in row else None,
-                    victim_y=safe_float(row.get("victim_Y")) if "victim_Y" in row else None,
-                    victim_z=safe_float(row.get("victim_Z")) if "victim_Z" in row else None,
-                )
-                kills.append(kill)
-            except Exception as e:
-                logger.debug(f"Error parsing kill event: {e}")
-                continue
+    def _process_tick_data_chunked(self, parser: 'Demoparser2', props: list[str]) -> Optional[pd.DataFrame]:
+        """Process tick data in chunks for memory efficiency."""
+        try:
+            ticks_df = parser.parse_ticks(props)
+            if ticks_df is None or ticks_df.empty:
+                return None
 
-        return kills
+            # If data is large, process in chunks and optimize dtypes
+            if len(ticks_df) > self.TICK_CHUNK_SIZE:
+                logger.info(f"Processing {len(ticks_df)} ticks in chunks for memory efficiency")
+                chunks = []
+                for start in range(0, len(ticks_df), self.TICK_CHUNK_SIZE):
+                    chunk = ticks_df.iloc[start:start + self.TICK_CHUNK_SIZE].copy()
+                    chunk = self._optimize_dtypes(chunk)
+                    chunks.append(chunk)
+                ticks_df = pd.concat(chunks, ignore_index=True)
+            else:
+                ticks_df = self._optimize_dtypes(ticks_df)
 
-    def _build_damages(self, df: pd.DataFrame) -> list[DamageEvent]:
-        """Build DamageEvent list from awpy damages DataFrame."""
-        damages = []
-        if df.empty:
-            return damages
+            return ticks_df
+        except Exception as e:
+            logger.warning(f"Failed to parse ticks: {e}")
+            return None
 
-        for _, row in df.iterrows():
-            try:
-                # Extract attacker/victim sides with fallback column names
-                att_side = row.get("attacker_side", row.get("attacker_team"))
-                vic_side = row.get("victim_side", row.get("victim_team"))
-
-                # Extract damage with multiple fallback column names
-                dmg = row.get("damage", row.get("health_damage", row.get("dmg_health", 0)))
-
-                damage = DamageEvent(
-                    tick=safe_int(row.get("tick")),
-                    round_num=safe_int(row.get("round_num", row.get("round", 0))),
-                    attacker_steamid=safe_int(row.get("attacker_steamid")),
-                    attacker_name=safe_str(row.get("attacker_name", row.get("attacker", ""))),
-                    attacker_side=self._normalize_side(att_side),
-                    victim_steamid=safe_int(row.get("victim_steamid", row.get("user_steamid"))),
-                    victim_name=safe_str(row.get("victim_name", row.get("user_name", ""))),
-                    victim_side=self._normalize_side(vic_side),
-                    damage=safe_int(dmg),
-                    damage_armor=safe_int(row.get("armor_damage", row.get("dmg_armor", 0))),
-                    health_remaining=safe_int(row.get("health", 0)),
-                    armor_remaining=safe_int(row.get("armor", 0)),
-                    weapon=safe_str(row.get("weapon", "")),
-                    hitgroup=safe_str(row.get("hitgroup", "generic")),
-                )
-                damages.append(damage)
-            except Exception as e:
-                logger.debug(f"Error parsing damage event: {e}")
-                continue
-
-        return damages
-
-    def _build_rounds(self, df: pd.DataFrame) -> list[RoundInfo]:
-        """Build RoundInfo list from awpy rounds DataFrame."""
-        rounds = []
-        if df.empty:
-            return rounds
-
-        for idx, row in df.iterrows():
-            try:
-                # Determine winner
-                winner = self._normalize_side(row.get("winner"))
-                reason = safe_str(row.get("reason", ""))
-
-                # Infer winner from reason if not explicitly set
-                if winner == "Unknown" and reason:
-                    reason_lower = reason.lower()
-                    ct_reasons = ["bomb_defused", "ct_win", "target_saved", "ct_killed"]
-                    t_reasons = ["target_bombed", "t_win", "bomb_exploded", "terrorists_win"]
-                    if any(r in reason_lower for r in ct_reasons):
-                        winner = "CT"
-                    elif any(r in reason_lower for r in t_reasons):
-                        winner = "T"
-
-                # Handle bomb plant info
-                bomb_plant_tick = safe_int(row.get("bomb_plant")) if row.get("bomb_plant") else None
-                bomb_site_raw = safe_str(row.get("bomb_site", ""))
-                bomb_site = ""
-                if bomb_site_raw:
-                    if "a" in bomb_site_raw.lower():
-                        bomb_site = "A"
-                    elif "b" in bomb_site_raw.lower():
-                        bomb_site = "B"
-
-                round_info = RoundInfo(
-                    round_num=safe_int(row.get("round_num", idx + 1)),
-                    start_tick=safe_int(row.get("start", 0)),
-                    end_tick=safe_int(row.get("end", row.get("official_end", 0))),
-                    freeze_end_tick=safe_int(row.get("freeze_end", 0)),
-                    winner=winner,
-                    reason=reason,
-                    bomb_plant_tick=bomb_plant_tick,
-                    bomb_site=bomb_site,
-                )
-                rounds.append(round_info)
-            except Exception as e:
-                logger.debug(f"Error parsing round info: {e}")
-                continue
-
-        # Calculate cumulative scores
-        ct_score = 0
-        t_score = 0
-        for r in rounds:
-            if r.winner == "CT":
-                ct_score += 1
-            elif r.winner == "T":
-                t_score += 1
-            r.ct_score = ct_score
-            r.t_score = t_score
-
-        return rounds
-
-    def _build_grenades(self, df: pd.DataFrame) -> list[GrenadeEvent]:
-        """Build GrenadeEvent list from awpy grenades DataFrame."""
-        grenades = []
-        if df.empty:
-            return grenades
-
-        for _, row in df.iterrows():
-            try:
-                grenade = GrenadeEvent(
-                    tick=safe_int(row.get("tick")),
-                    round_num=safe_int(row.get("round_num", 0)),
-                    player_steamid=safe_int(row.get("thrower_steamid", row.get("steamid"))),
-                    player_name=safe_str(row.get("thrower", row.get("thrower_name", ""))),
-                    player_side=self._normalize_side(row.get("thrower_side")),
-                    grenade_type=safe_str(row.get("grenade_type", "")),
-                    x=safe_float(row.get("X")) if "X" in row else None,
-                    y=safe_float(row.get("Y")) if "Y" in row else None,
-                    z=safe_float(row.get("Z")) if "Z" in row else None,
-                    entity_id=safe_int(row.get("entity_id")) if row.get("entity_id") else None,
-                )
-                grenades.append(grenade)
-            except Exception as e:
-                logger.debug(f"Error parsing grenade event: {e}")
-                continue
-
-        return grenades
-
-    def _build_bomb_events(self, df: pd.DataFrame) -> list[BombEvent]:
-        """Build BombEvent list from awpy bomb DataFrame."""
-        bomb_events = []
-        if df.empty:
-            return bomb_events
-
-        for _, row in df.iterrows():
-            try:
-                # Normalize status to event_type
-                status = safe_str(row.get("status", row.get("event_type", "")))
-
-                # Handle bombsite
-                bombsite = safe_str(row.get("bombsite", row.get("site", "")))
-                site = ""
-                if bombsite:
-                    if "a" in bombsite.lower():
-                        site = "A"
-                    elif "b" in bombsite.lower():
-                        site = "B"
-
-                bomb_event = BombEvent(
-                    tick=safe_int(row.get("tick")),
-                    round_num=safe_int(row.get("round_num", 0)),
-                    player_steamid=safe_int(row.get("steamid", row.get("player_steamid"))),
-                    player_name=safe_str(row.get("name", row.get("player_name", ""))),
-                    event_type=status,
-                    site=site,
-                    x=safe_float(row.get("X")) if "X" in row else None,
-                    y=safe_float(row.get("Y")) if "Y" in row else None,
-                    z=safe_float(row.get("Z")) if "Z" in row else None,
-                )
-                bomb_events.append(bomb_event)
-            except Exception as e:
-                logger.debug(f"Error parsing bomb event: {e}")
-                continue
-
-        return bomb_events
-
-    def _build_weapon_fires(self, df: pd.DataFrame) -> list[WeaponFireEvent]:
-        """Build WeaponFireEvent list from awpy shots DataFrame."""
-        fires = []
-        if df.empty:
-            return fires
-
-        for _, row in df.iterrows():
-            try:
-                fire = WeaponFireEvent(
-                    tick=safe_int(row.get("tick")),
-                    round_num=safe_int(row.get("round_num", 0)),
-                    player_steamid=safe_int(row.get("steamid", row.get("player_steamid"))),
-                    player_name=safe_str(row.get("name", row.get("player_name", ""))),
-                    player_side=self._normalize_side(row.get("side", row.get("team"))),
-                    weapon=safe_str(row.get("weapon", "")),
-                    player_x=safe_float(row.get("X")) if "X" in row else None,
-                    player_y=safe_float(row.get("Y")) if "Y" in row else None,
-                    player_z=safe_float(row.get("Z")) if "Z" in row else None,
-                    is_silenced=safe_bool(row.get("silenced", row.get("is_silenced"))),
-                )
-                fires.append(fire)
-            except Exception as e:
-                logger.debug(f"Error parsing weapon fire event: {e}")
-                continue
-
-        return fires
-
-    def _build_smokes_from_df(self, df: pd.DataFrame) -> list[SmokeEvent]:
-        """Build SmokeEvent list from awpy smokes DataFrame."""
-        smokes = []
-        if df.empty:
-            return smokes
-
-        for _, row in df.iterrows():
-            try:
-                smoke = SmokeEvent(
-                    start_tick=safe_int(row.get("start_tick")),
-                    end_tick=safe_int(row.get("end_tick")),
-                    round_num=safe_int(row.get("round_num", 0)),
-                    thrower_steamid=safe_int(row.get("thrower_steamid")),
-                    thrower_name=safe_str(row.get("thrower_name", "")),
-                    thrower_side=self._normalize_side(row.get("thrower_side")),
-                    x=safe_float(row.get("X")),
-                    y=safe_float(row.get("Y")),
-                    z=safe_float(row.get("Z")),
-                    entity_id=safe_int(row.get("entity_id")) if row.get("entity_id") else None,
-                )
-                smokes.append(smoke)
-            except Exception as e:
-                logger.debug(f"Error parsing smoke event: {e}")
-                continue
-
-        return smokes
-
-    def _build_infernos_from_df(self, df: pd.DataFrame) -> list[InfernoEvent]:
-        """Build InfernoEvent list from awpy infernos DataFrame."""
-        infernos = []
-        if df.empty:
-            return infernos
-
-        for _, row in df.iterrows():
-            try:
-                inferno = InfernoEvent(
-                    start_tick=safe_int(row.get("start_tick")),
-                    end_tick=safe_int(row.get("end_tick")),
-                    round_num=safe_int(row.get("round_num", 0)),
-                    thrower_steamid=safe_int(row.get("thrower_steamid")),
-                    thrower_name=safe_str(row.get("thrower_name", "")),
-                    thrower_side=self._normalize_side(row.get("thrower_side")),
-                    x=safe_float(row.get("X")),
-                    y=safe_float(row.get("Y")),
-                    z=safe_float(row.get("Z")),
-                    entity_id=safe_int(row.get("entity_id")) if row.get("entity_id") else None,
-                )
-                infernos.append(inferno)
-            except Exception as e:
-                logger.debug(f"Error parsing inferno event: {e}")
-                continue
-
-        return infernos
-
-    def _extract_players(
-        self, kills_df: pd.DataFrame, damages_df: pd.DataFrame
-    ) -> tuple[dict[int, str], dict[int, str]]:
-        """Extract player names and teams from DataFrames."""
+    def _extract_players(self, kills_df: pd.DataFrame, damages_df: pd.DataFrame) -> tuple[dict[int, str], dict[int, str]]:
+        """Extract player names and teams from DataFrames using vectorized operations."""
         names: dict[int, str] = {}
         teams: dict[int, str] = {}
 
-        def extract_from_df(df: pd.DataFrame, id_col: str, name_col: str, side_col: str):
-            if df.empty or id_col not in df.columns:
+        # Column name variations
+        att_id_cols = ["attacker_steamid", "attacker_steam_id"]
+        att_name_cols = ["attacker_name"]
+        att_team_cols = ["attacker_team_name", "attacker_side", "attacker_team"]
+        vic_id_cols = ["user_steamid", "victim_steamid", "victim_steam_id"]
+        vic_name_cols = ["user_name", "victim_name"]
+        vic_team_cols = ["user_team_name", "victim_side", "victim_team"]
+
+        def parse_team(team_val) -> str:
+            """Parse team value to CT/T/Unknown."""
+            if pd.isna(team_val):
+                return "Unknown"
+            if isinstance(team_val, str):
+                team_upper = team_val.upper()
+                if "CT" in team_upper:
+                    return "CT"
+                elif "T" in team_upper:
+                    return "T"
+                return team_val
+            elif isinstance(team_val, (int, float)):
+                return "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
+            return "Unknown"
+
+        def extract_from_df_vectorized(df, id_cols, name_cols, team_cols):
+            """Extract player info using vectorized operations."""
+            if df is None or df.empty:
                 return
-            for _, row in df.drop_duplicates(subset=[id_col]).iterrows():
-                sid = safe_int(row.get(id_col))
+
+            id_col = self._find_column(df, id_cols)
+            name_col = self._find_column(df, name_cols)
+            team_col = self._find_column(df, team_cols)
+
+            if not id_col or not name_col:
+                return
+
+            # Get unique player records efficiently
+            unique_df = df[[id_col, name_col] + ([team_col] if team_col else [])].drop_duplicates(subset=[id_col])
+
+            # Filter out invalid steamids
+            unique_df = unique_df[unique_df[id_col].notna() & (unique_df[id_col] != 0)]
+
+            # Vectorized extraction
+            for _, row in unique_df.iterrows():
+                sid = safe_int(row[id_col])
                 if sid and sid not in names:
-                    if name_col in df.columns:
-                        names[sid] = safe_str(row.get(name_col))
-                    if side_col in df.columns:
-                        teams[sid] = self._normalize_side(row.get(side_col))
+                    names[sid] = safe_str(row[name_col])
+                    if team_col:
+                        teams[sid] = parse_team(row[team_col])
 
         # Extract from kills (attackers and victims)
-        for prefix in ["attacker", "victim"]:
-            id_col = f"{prefix}_steamid"
-            name_col = f"{prefix}_name"
-            side_col = f"{prefix}_side"
-            extract_from_df(kills_df, id_col, name_col, side_col)
-
-        # Also check alternative column names
-        extract_from_df(kills_df, "user_steamid", "user_name", "user_side")
-        extract_from_df(damages_df, "attacker_steamid", "attacker_name", "attacker_side")
-        extract_from_df(damages_df, "victim_steamid", "victim_name", "victim_side")
+        extract_from_df_vectorized(kills_df, att_id_cols, att_name_cols, att_team_cols)
+        extract_from_df_vectorized(kills_df, vic_id_cols, vic_name_cols, vic_team_cols)
+        # Extract from damages
+        extract_from_df_vectorized(damages_df, att_id_cols, att_name_cols, att_team_cols)
+        extract_from_df_vectorized(damages_df, vic_id_cols, vic_name_cols, vic_team_cols)
 
         return names, teams
 
@@ -965,47 +860,83 @@ class DemoParser:
         player_teams: dict[int, str],
         num_rounds: int,
     ) -> dict[int, dict]:
-        """Calculate basic player statistics."""
+        """Calculate player statistics using vectorized operations."""
         stats: dict[int, dict] = {}
         num_rounds = max(num_rounds, 1)
 
+        # Early return if no kills data
+        if kills_df.empty and (damages_df is None or damages_df.empty):
+            for steam_id, name in player_names.items():
+                stats[steam_id] = {
+                    "name": name,
+                    "team": player_teams.get(steam_id, "Unknown"),
+                    "kills": 0, "deaths": 0, "assists": 0, "headshots": 0,
+                    "hs_percent": 0.0, "total_damage": 0, "adr": 0.0,
+                    "kd_ratio": 0.0, "weapon_kills": {},
+                }
+            return stats
+
+        # Find columns with caching
+        att_col = self._find_column(kills_df, ["attacker_steamid", "attacker_steam_id"], "kills_att_id")
+        vic_col = self._find_column(kills_df, ["user_steamid", "victim_steamid", "victim_steam_id"], "kills_vic_id")
+        hs_col = self._find_column(kills_df, ["headshot"], "kills_hs")
+        weapon_col = self._find_column(kills_df, ["weapon"], "kills_weapon")
+        assist_col = self._find_column(kills_df, ["assister_steamid", "assister_steam_id"], "kills_assist")
+        dmg_att_col = self._find_column(damages_df, ["attacker_steamid", "attacker_steam_id"], "dmg_att_id") if not damages_df.empty else None
+        dmg_col = self._find_column(damages_df, ["dmg_health", "damage", "dmg"], "dmg_val") if not damages_df.empty else None
+
+        # Pre-compute aggregated stats using groupby for efficiency
+        kills_by_player = {}
+        deaths_by_player = {}
+        assists_by_player = {}
+        headshots_by_player = {}
+        damage_by_player = {}
+        weapon_kills_by_player = {}
+
+        if not kills_df.empty:
+            if att_col:
+                # Convert to numeric for groupby
+                kills_df_numeric = kills_df.copy()
+                kills_df_numeric[att_col] = pd.to_numeric(kills_df_numeric[att_col], errors='coerce')
+
+                # Count kills per player
+                kills_by_player = kills_df_numeric.groupby(att_col).size().to_dict()
+
+                # Count headshots per player
+                if hs_col:
+                    headshots_by_player = kills_df_numeric.groupby(att_col)[hs_col].sum().to_dict()
+
+                # Weapon kills per player
+                if weapon_col:
+                    for steam_id in player_names.keys():
+                        player_kills_df = kills_df_numeric[kills_df_numeric[att_col] == float(steam_id)]
+                        if not player_kills_df.empty:
+                            weapon_kills_by_player[steam_id] = player_kills_df[weapon_col].value_counts().to_dict()
+
+            if vic_col:
+                kills_df_numeric = kills_df.copy()
+                kills_df_numeric[vic_col] = pd.to_numeric(kills_df_numeric[vic_col], errors='coerce')
+                deaths_by_player = kills_df_numeric.groupby(vic_col).size().to_dict()
+
+            if assist_col and assist_col in kills_df.columns:
+                kills_df_numeric = kills_df.copy()
+                kills_df_numeric[assist_col] = pd.to_numeric(kills_df_numeric[assist_col], errors='coerce')
+                assists_by_player = kills_df_numeric.groupby(assist_col).size().to_dict()
+
+        if not damages_df.empty and dmg_att_col and dmg_col:
+            damages_numeric = damages_df.copy()
+            damages_numeric[dmg_att_col] = pd.to_numeric(damages_numeric[dmg_att_col], errors='coerce')
+            damage_by_player = damages_numeric.groupby(dmg_att_col)[dmg_col].sum().to_dict()
+
+        # Build stats dict from pre-computed values
         for steam_id, name in player_names.items():
-            kills = 0
-            deaths = 0
-            assists = 0
-            headshots = 0
-            total_damage = 0
-            weapon_kills: dict[str, int] = {}
-
-            # Count kills
-            if not kills_df.empty and "attacker_steamid" in kills_df.columns:
-                player_kills = kills_df[kills_df["attacker_steamid"] == steam_id]
-                kills = len(player_kills)
-                if "headshot" in kills_df.columns and kills > 0:
-                    headshots = int(player_kills["headshot"].sum())
-                if "weapon" in kills_df.columns and kills > 0:
-                    weapon_kills = player_kills["weapon"].value_counts().to_dict()
-
-            # Count deaths - check for victim_steamid or user_steamid columns
-            has_victim = "victim_steamid" in kills_df.columns
-            victim_col = "victim_steamid" if has_victim else "user_steamid"
-            if not kills_df.empty and victim_col in kills_df.columns:
-                deaths = len(kills_df[kills_df[victim_col] == steam_id])
-
-            # Count assists
-            if not kills_df.empty and "assister_steamid" in kills_df.columns:
-                assists = len(kills_df[kills_df["assister_steamid"] == steam_id])
-
-            # Calculate total damage
-            dmg_col = None
-            for col in ["damage", "health_damage", "dmg_health"]:
-                if col in damages_df.columns:
-                    dmg_col = col
-                    break
-
-            if not damages_df.empty and dmg_col and "attacker_steamid" in damages_df.columns:
-                player_dmg = damages_df[damages_df["attacker_steamid"] == steam_id]
-                total_damage = int(player_dmg[dmg_col].sum())
+            steam_id_float = float(steam_id)
+            kills = int(kills_by_player.get(steam_id_float, 0))
+            deaths = int(deaths_by_player.get(steam_id_float, 0))
+            assists = int(assists_by_player.get(steam_id_float, 0))
+            headshots = int(headshots_by_player.get(steam_id_float, 0))
+            total_damage = int(damage_by_player.get(steam_id_float, 0))
+            weapon_kills = weapon_kills_by_player.get(steam_id, {})
 
             stats[steam_id] = {
                 "name": name,

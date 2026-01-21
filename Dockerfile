@@ -57,6 +57,16 @@ RUN pip install --no-cache-dir \
 # Retry demoparser2 if first attempt failed
 RUN pip show demoparser2 > /dev/null 2>&1 || pip install --no-cache-dir demoparser2>=0.9.0 || echo "demoparser2 unavailable"
 
+# =============================================================================
+# CRITICAL: Verify essential packages are installed (fail build if missing)
+# =============================================================================
+RUN echo "Verifying critical packages..." && \
+    pip show awpy || (echo "CRITICAL: awpy not installed!" && exit 1) && \
+    pip show fastapi || (echo "CRITICAL: fastapi not installed!" && exit 1) && \
+    pip show uvicorn || (echo "CRITICAL: uvicorn not installed!" && exit 1) && \
+    pip show pandas || (echo "CRITICAL: pandas not installed!" && exit 1) && \
+    echo "✅ All critical packages verified"
+
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime Stage
 # Minimal image with only runtime dependencies

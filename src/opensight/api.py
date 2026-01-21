@@ -29,6 +29,7 @@ from typing import Any
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 __version__ = "0.4.0"
@@ -195,6 +196,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files directory
+# Path is relative to where uvicorn runs (from /app in Docker, or project root locally)
+STATIC_DIR = Path(__file__).parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.on_event("startup")
+async def validate_imports():
+    """Validate critical imports at startup to catch errors early."""
+    errors = []
+    try:
+        from opensight.analytics import DemoAnalyzer
+    except ImportError as e:
+        errors.append(f"analytics.DemoAnalyzer: {e}")
+
+    try:
+        from opensight.parser import DemoParser
+    except ImportError as e:
+        errors.append(f"parser.DemoParser: {e}")
+
+    if errors:
+        logger.error(f"Critical import errors at startup: {errors}")
+        # Don't raise - allow app to start but log the errors
+    else:
+        logger.info("✅ All critical imports validated successfully")
 
 
 # =============================================================================
@@ -743,6 +771,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the main web interface with drop-zone."""
+    # Prefer the feature-rich static index.html if available
+    static_index = STATIC_DIR / "index.html"
+    if static_index.exists():
+        return HTMLResponse(content=static_index.read_text(), status_code=200)
+    # Fallback to embedded template
     return HTMLResponse(content=HTML_TEMPLATE, status_code=200)
 
 
@@ -1046,30 +1079,101 @@ async def compare_players_endpoint(
         logger.exception("Compare endpoint failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-    finally:
-        # Clean up temp file
-        if tmp_path and tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
+@app.post("/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    """Submit feedback on analysis accuracy."""
+    try:
+        from datetime import datetime
+        from opensight.feedback import FeedbackDatabase, FeedbackEntry
+        db = FeedbackDatabase()
+        feedback = FeedbackEntry(
+            id=None,
+            demo_hash=request.demo_hash,
+            user_id=request.player_steam_id,
+            rating=request.rating,
+            category=request.metric_name,
+            comment=request.comment or "",
+            analysis_version=__version__,
+            created_at=datetime.now(),
+            metadata={"correction_value": request.correction_value} if request.correction_value else {},
+        )
+        entry_id = db.add_feedback(feedback)
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
 
-# NOTE: /compare/{job_id} endpoint disabled - requires job_store infrastructure
-# which is not currently implemented. Use POST /compare with file upload instead.
-# @app.post("/compare/{job_id}")
-# async def compare_players_from_job(job_id: str, request: PlayerCompareRequest):
-#     """Compare two players using cached job results."""
-#     pass  # Requires job_store and JobStatus to be implemented
+@app.post("/feedback/coaching")
+async def submit_coaching_feedback(request: CoachingFeedbackRequest):
+    """Submit feedback on coaching insights."""
+    try:
+        from datetime import datetime
+        from opensight.feedback import FeedbackDatabase, CoachingFeedback
+        db = FeedbackDatabase()
+        feedback = CoachingFeedback(
+            id=None,
+            demo_hash=request.demo_hash,
+            player_steam_id="",  # Not provided in request
+            insight_category="coaching",
+            insight_message=request.insight_id,
+            was_helpful=request.was_helpful,
+            user_correction=request.correction,
+            created_at=datetime.now(),
+        )
+        entry_id = db.add_coaching_feedback(feedback)
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
+@app.post("/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    """Submit feedback on analysis accuracy."""
+    try:
+        from datetime import datetime
+        from opensight.feedback import FeedbackDatabase, FeedbackEntry
+        db = FeedbackDatabase()
+        feedback = FeedbackEntry(
+            id=None,
+            demo_hash=request.demo_hash,
+            user_id=request.player_steam_id,
+            rating=request.rating,
+            category=request.metric_name,
+            comment=request.comment or "",
+            analysis_version=__version__,
+            created_at=datetime.now(),
+            metadata={"correction_value": request.correction_value} if request.correction_value else {},
+        )
+        entry_id = db.add_feedback(feedback)
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
 # Legacy code preserved for reference when job infrastructure is added:
 def _compare_players_from_job_disabled(job_id: str, request: PlayerCompareRequest):
     """
     Compare two players using data from a completed analysis job.
 
-    This is more efficient than re-analyzing the demo if you've already
-    run /analyze - it uses the cached job results.
+@app.post("/feedback/coaching")
+async def submit_coaching_feedback(request: CoachingFeedbackRequest):
+    """Submit feedback on coaching insights."""
+    try:
+        from datetime import datetime
+        from opensight.feedback import FeedbackDatabase, CoachingFeedback
+        db = FeedbackDatabase()
+        feedback = CoachingFeedback(
+            id=None,
+            demo_hash=request.demo_hash,
+            player_steam_id="",  # Not provided in request
+            insight_category="coaching",
+            insight_message=request.insight_id,
+            was_helpful=request.was_helpful,
+            user_correction=request.correction,
+            created_at=datetime.now(),
+        )
+        entry_id = db.add_coaching_feedback(feedback)
+        return {"status": "ok", "feedback_id": entry_id}
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
 
     Args:
         job_id: The job ID from a completed /analyze request
@@ -1508,3 +1612,229 @@ async def about():
             "cp_median_error_deg": "Crosshair Placement - aim accuracy",
         },
     }
+
+
+# =============================================================================
+# Match History and Player Profile Endpoints (FREE - SQLite database)
+# =============================================================================
+
+
+@app.get("/history")
+async def get_match_history(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    map_name: str | None = Query(default=None),
+    steam_id: str | None = Query(default=None),
+):
+    """
+    Get match history with optional filters.
+
+    All data stored locally in SQLite (FREE, no cloud services).
+
+    Args:
+        limit: Maximum matches to return (1-100)
+        offset: Pagination offset
+        map_name: Filter by map name
+        steam_id: Filter by player Steam ID
+    """
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        matches = db.get_match_history(
+            limit=limit, offset=offset, map_name=map_name, steam_id=steam_id
+        )
+        stats = db.get_global_stats()
+
+        return {
+            "status": "success",
+            "matches": matches,
+            "total_matches": stats.get("total_matches", 0),
+            "pagination": {"limit": limit, "offset": offset},
+        }
+    except Exception as e:
+        logger.error(f"Failed to get match history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/history/{match_id}")
+async def get_match_details(match_id: int):
+    """
+    Get detailed information about a specific match.
+
+    Includes all player statistics and round data.
+    """
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        details = db.get_match_details(match_id)
+
+        if not details:
+            raise HTTPException(status_code=404, detail="Match not found")
+
+        return {"status": "success", **details}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get match details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/profile/{steam_id}")
+async def get_player_profile(steam_id: str):
+    """
+    Get a player's career profile and statistics.
+
+    Aggregates performance across all analyzed matches.
+    """
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        profile = db.get_player_profile(steam_id)
+
+        if not profile:
+            raise HTTPException(status_code=404, detail="Player profile not found")
+
+        return {"status": "success", "profile": profile}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get player profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/profile/{steam_id}/matches")
+async def get_player_matches(steam_id: str, limit: int = Query(default=20, ge=1, le=50)):
+    """Get a player's recent match history."""
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        matches = db.get_player_match_history(steam_id, limit=limit)
+
+        return {"status": "success", "matches": matches, "count": len(matches)}
+    except Exception as e:
+        logger.error(f"Failed to get player matches: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/profile/{steam_id}/insights")
+async def get_player_insights(steam_id: str):
+    """
+    Get comprehensive insights about a player's performance.
+
+    Includes:
+    - Performance trends (improving/declining)
+    - Career milestones achieved
+    - Strengths and weaknesses
+    - Recommended focus areas
+    """
+    try:
+        from opensight.profiles import get_player_insights
+
+        insights = get_player_insights(steam_id)
+
+        if not insights:
+            raise HTTPException(
+                status_code=404, detail="Not enough data for insights (need 3+ matches)"
+            )
+
+        return {"status": "success", "insights": insights}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get player insights: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/leaderboard")
+async def get_leaderboard(
+    metric: str = Query(default="avg_rating"),
+    min_matches: int = Query(default=5, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """
+    Get player leaderboard by metric.
+
+    Available metrics:
+    - avg_rating: Average HLTV rating
+    - avg_adr: Average damage per round
+    - avg_kast: Average KAST percentage
+    - total_kills: Total career kills
+    - total_matches: Total matches played
+    """
+    try:
+        from opensight.database import get_db
+
+        valid_metrics = ["avg_rating", "avg_adr", "avg_kast", "total_kills", "total_matches"]
+        if metric not in valid_metrics:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid metric. Choose from: {valid_metrics}"
+            )
+
+        db = get_db()
+        leaderboard = db.get_leaderboard(metric=metric, min_matches=min_matches, limit=limit)
+
+        return {
+            "status": "success",
+            "metric": metric,
+            "min_matches": min_matches,
+            "leaderboard": leaderboard,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get leaderboard: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/players/search")
+async def search_players(q: str = Query(..., min_length=2), limit: int = Query(default=10, ge=1, le=50)):
+    """Search for players by name."""
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        results = db.search_players(q, limit=limit)
+
+        return {"status": "success", "query": q, "results": results}
+    except Exception as e:
+        logger.error(f"Failed to search players: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats")
+async def get_global_stats():
+    """
+    Get global statistics across all analyzed matches.
+
+    Returns total matches, players, rounds, and map distribution.
+    """
+    try:
+        from opensight.database import get_db
+
+        db = get_db()
+        stats = db.get_global_stats()
+
+        return {"status": "success", "stats": stats}
+    except Exception as e:
+        logger.error(f"Failed to get global stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Development Server
+# =============================================================================
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "opensight.api:app",
+        host="0.0.0.0",
+        port=7860,
+        reload=True,
+        log_level="info",
+    )

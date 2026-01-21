@@ -50,16 +50,7 @@ def _decode_base57(code: str) -> bytes:
 
     The share code encodes 144 bits (18 bytes) of match data.
     """
-    # Normalize the code - share codes are case-sensitive in the original alphabet
-    normalized = code.replace("-", "")
-    if normalized.startswith("CSGO"):
-        normalized = normalized[4:]
-
-    # Need to work with original case for proper decoding
-    _strip_prefix(code).replace("-", "")
-
-    # For proper decoding, we need the original case
-    # Re-extract from original code
+    # Extract the code characters, preserving original case for proper decoding
     original = code.strip()
     if original.upper().startswith("CSGO-"):
         original = original[5:]

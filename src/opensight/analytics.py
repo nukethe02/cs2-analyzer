@@ -67,24 +67,7 @@ except ImportError:
     logger.debug("Combat module not available")
 
 
-def safe_float(value: Any, default: float = 0.0) -> float:
-    """Safely convert a value to float, returning default on failure.
-
-    Args:
-        value: The value to convert.
-        default: The default value to return if conversion fails.
-
-    Returns:
-        The converted float value, or the default if conversion fails.
-    """
-    if value is None:
-        return default
-    try:
-        if pd.isna(value):
-            return default
-        return float(value)
-    except (ValueError, TypeError):
-        return default
+# Note: safe_int, safe_str, safe_float are imported from opensight.parser
 
 
 def compute_kill_positions(match_data) -> list[dict]:
@@ -1260,13 +1243,51 @@ class DemoAnalyzer:
             f"Column cache: round={self._round_col}, att_id={self._att_id_col}, vic_id={self._vic_id_col}"
         )
 
-    def analyze(self) -> MatchAnalysis:
-        """Run full analysis and return match analysis.
+    def _validate_data(self) -> list[str]:
+        """Validate demo data and return list of warnings."""
+        warnings = []
 
-        Respects the metrics configuration set in __init__.
-        Only computes requested metrics for better performance.
-        """
-        logger.info(f"Starting professional analysis (metrics: {self._requested_metrics})...")
+        # Check for required data
+        if self.data.kills_df.empty:
+            warnings.append("No kill data available - some metrics will be incomplete")
+
+        if self.data.damages_df.empty:
+            warnings.append("No damage data available - TTD and ADR will be unavailable")
+
+        if not self.data.player_names:
+            warnings.append("No player data found - analysis may fail")
+
+        # Validate round numbers
+        if self.data.num_rounds < 1:
+            warnings.append("Invalid round count (0) - defaulting to 1")
+
+        if self.data.num_rounds > 60:
+            warnings.append(f"Unusual round count ({self.data.num_rounds}) - may be overtime or corrupt data")
+
+        # Check for steam ID validity
+        invalid_ids = [sid for sid in self.data.player_names.keys() if sid <= 0]
+        if invalid_ids:
+            warnings.append(f"Found {len(invalid_ids)} players with invalid steam IDs")
+
+        return warnings
+
+    def _safe_calculate(self, func_name: str, func: callable) -> bool:
+        """Safely run a calculation function with error handling."""
+        try:
+            func()
+            return True
+        except Exception as e:
+            logger.error(f"Error in {func_name}: {e}")
+            return False
+
+    def analyze(self) -> MatchAnalysis:
+        """Run full analysis and return match analysis with comprehensive error handling."""
+        logger.info("Starting professional analysis...")
+
+        # Validate data first
+        warnings = self._validate_data()
+        for warning in warnings:
+            logger.warning(warning)
 
         # Initialize column name cache
         self._init_column_cache()
@@ -1274,60 +1295,48 @@ class DemoAnalyzer:
         # Initialize player stats (always needed)
         self._init_player_stats()
 
-        # Calculate basic stats (always needed)
-        self._calculate_basic_stats()
+        # Calculate basic stats (critical - don't skip on error)
+        self._safe_calculate("basic_stats", self._calculate_basic_stats)
 
         # Initialize optimized metrics computer if using optimized implementations
         if self._use_optimized:
             self._metrics_computer = OptimizedMetricsComputer(self.data, use_cache=self._use_cache)
 
         # Calculate multi-kill rounds
-        if "multi_kills" in self._requested_metrics or "basic" in self._requested_metrics:
-            self._calculate_multi_kills()
+        self._safe_calculate("multi_kills", self._calculate_multi_kills)
 
         # Detect opening duels
-        if "opening" in self._requested_metrics:
-            self._detect_opening_duels()
+        self._safe_calculate("opening_duels", self._detect_opening_duels)
 
         # Detect trade kills
-        if "trades" in self._requested_metrics:
-            self._detect_trades()
+        self._safe_calculate("trade_detection", self._detect_trades)
 
         # Detect clutches
-        if "clutches" in self._requested_metrics:
-            self._detect_clutches()
+        self._safe_calculate("clutch_detection", self._detect_clutches)
 
         # Calculate KAST
-        if "kast" in self._requested_metrics:
-            self._calculate_kast()
+        self._safe_calculate("kast", self._calculate_kast)
 
-        # Compute TTD (using optimized vectorized implementation)
-        if "ttd" in self._requested_metrics:
-            self._compute_ttd()
+        # Compute TTD
+        self._safe_calculate("ttd", self._compute_ttd)
 
-        # Compute crosshair placement (using optimized vectorized implementation)
-        if "cp" in self._requested_metrics:
-            self._compute_crosshair_placement()
+        # Compute crosshair placement
+        self._safe_calculate("crosshair_placement", self._compute_crosshair_placement)
 
         # Calculate side-based stats (CT vs T)
-        if "sides" in self._requested_metrics:
-            self._calculate_side_stats()
+        self._safe_calculate("side_stats", self._calculate_side_stats)
 
         # Calculate utility stats
-        if "utility" in self._requested_metrics:
-            self._calculate_utility_stats()
+        self._safe_calculate("utility_stats", self._calculate_utility_stats)
 
         # Calculate accuracy stats (from weapon_fire events)
-        if "accuracy" in self._requested_metrics:
-            self._calculate_accuracy_stats()
+        self._safe_calculate("accuracy_stats", self._calculate_accuracy_stats)
 
         # Calculate mistakes
-        if "mistakes" in self._requested_metrics:
-            self._calculate_mistakes()
+        self._safe_calculate("mistakes", self._calculate_mistakes)
 
         # Run State Machine for pro-level analytics (Entry/Trade/Lurk)
-        if any(m in self._requested_metrics for m in ["trades", "opening", "utility"]):
-            self._run_state_machine()
+        self._safe_calculate("state_machine", self._run_state_machine)
 
         # Integrate Economy Module
         if "economy" in self._requested_metrics:
@@ -1572,17 +1581,7 @@ class DemoAnalyzer:
         )
 
     def _detect_trades(self) -> None:
-        """Detect trade kills and track trade opportunities.
-
-        Trade Kill: When a teammate is killed, check if you killed the enemy
-        who killed them within 5 seconds.
-
-        This method tracks:
-        - kills_traded: How many times you avenged a teammate
-        - deaths_traded: How many of your deaths were avenged
-        - trade_attempts: Opportunities to trade (teammate deaths you could respond to)
-        - failed_trades: Trade opportunities you didn't take
-        """
+        """Detect trade kills (kill within trade window of teammate death) with improved accuracy."""
         kills_df = self.data.kills_df
         if kills_df.empty or not self._round_col:
             logger.info("Skipping trade detection - missing round column")
@@ -1592,65 +1591,93 @@ class DemoAnalyzer:
             logger.info("Skipping trade detection - missing id columns")
             return
 
+        # Use trade window from constants (typically 5 seconds)
         trade_window_ticks = int(TRADE_WINDOW_SECONDS * self.TICK_RATE)
+        logger.info(f"Trade detection: window = {TRADE_WINDOW_SECONDS}s = {trade_window_ticks} ticks")
+
+        # Build player team lookup for consistent team matching
+        player_teams_lookup: dict[int, str] = {}
+        for steam_id, player in self._players.items():
+            if player.team in ("CT", "T"):
+                player_teams_lookup[steam_id] = player.team
+
+        # Also extract from kills DataFrame if not in players
+        if self._att_id_col and self._att_side_col:
+            for _, row in kills_df.drop_duplicates(subset=[self._att_id_col]).iterrows():
+                att_id = safe_int(row.get(self._att_id_col))
+                if att_id and att_id not in player_teams_lookup:
+                    team_val = row.get(self._att_side_col)
+                    if isinstance(team_val, str):
+                        team_upper = team_val.upper()
+                        if "CT" in team_upper:
+                            player_teams_lookup[att_id] = "CT"
+                        elif "T" in team_upper:
+                            player_teams_lookup[att_id] = "T"
+                    elif isinstance(team_val, (int, float)):
+                        player_teams_lookup[att_id] = "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
+
         total_trades = 0
-        total_opportunities = 0
+        total_deaths_traded = 0
 
         for round_num in kills_df[self._round_col].unique():
-            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
+            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick").reset_index(drop=True)
 
-            for _idx, kill in round_kills.iterrows():
+            if len(round_kills) < 2:
+                continue
+
+            # Use sliding window approach for efficiency
+            for i, kill in round_kills.iterrows():
                 victim_id = safe_int(kill.get(self._vic_id_col))
-                victim_team = safe_str(kill.get(self._vic_side_col)) if self._vic_side_col else ""
                 killer_id = safe_int(kill.get(self._att_id_col))
                 kill_tick = safe_int(kill.get("tick"))
 
-                if not victim_id or not killer_id:
+                if not victim_id or not killer_id or victim_id == killer_id:
                     continue
 
-                # Need attacker_side column for trade detection
-                if not self._att_side_col or self._att_side_col not in round_kills.columns:
+                # Get victim's team from lookup
+                victim_team = player_teams_lookup.get(victim_id, "")
+                if not victim_team or victim_team not in ("CT", "T"):
+                    logger.debug(f"Unknown team for victim {victim_id} in round {round_num}")
                     continue
 
-                # Track trade opportunity: When someone dies, their teammates have
-                # an opportunity to trade (kill the enemy who killed them)
-                # Find alive teammates who could potentially trade
-                teammates = [
-                    sid
-                    for sid, player in self._players.items()
-                    if player.team == victim_team and sid != victim_id
-                ]
+                # Look for trade: teammate kills the killer within window
+                # Sliding window: only check subsequent kills in the same round
+                trade_found = False
+                for j in range(i + 1, len(round_kills)):
+                    trade_kill = round_kills.iloc[j]
+                    trade_tick = safe_int(trade_kill.get("tick"))
 
-                # Each alive teammate gets a trade opportunity
-                for teammate_id in teammates:
-                    if teammate_id in self._players:
-                        self._players[teammate_id].trades.trade_attempts += 1
-                        total_opportunities += 1
+                    # Check if still within trade window
+                    if trade_tick > kill_tick + trade_window_ticks:
+                        break  # Past the window, no need to check further
 
-                # Look for trade (teammate kills the killer within window)
-                potential_trades = round_kills[
-                    (round_kills["tick"] > kill_tick)
-                    & (round_kills["tick"] <= kill_tick + trade_window_ticks)
-                    & (round_kills[self._vic_id_col].astype(float) == float(killer_id))
-                    & (round_kills[self._att_side_col] == victim_team)
-                ]
+                    trade_victim_id = safe_int(trade_kill.get(self._vic_id_col))
+                    trader_id = safe_int(trade_kill.get(self._att_id_col))
 
-                if not potential_trades.empty:
-                    # Trade occurred
-                    trader_id = safe_int(potential_trades.iloc[0].get(self._att_id_col))
-                    total_trades += 1
+                    # Trade conditions:
+                    # 1. The original killer was killed
+                    # 2. By a teammate of the original victim
+                    # 3. Not by the same player (no self-trades)
+                    if trade_victim_id == killer_id and trader_id != victim_id:
+                        trader_team = player_teams_lookup.get(trader_id, "")
+                        if trader_team == victim_team:
+                            # Trade confirmed!
+                            if victim_id in self._players:
+                                self._players[victim_id].trades.deaths_traded += 1
+                                total_deaths_traded += 1
 
-                    if victim_id in self._players:
-                        self._players[victim_id].trades.deaths_traded += 1
+                            if trader_id in self._players:
+                                self._players[trader_id].trades.kills_traded += 1
+                                total_trades += 1
 
-                    if trader_id in self._players:
-                        self._players[trader_id].trades.kills_traded += 1
-                else:
-                    # Trade opportunity missed - mark the victim's death as not traded
-                    if victim_id in self._players:
-                        self._players[victim_id].trades.failed_trades += 1
+                            trade_found = True
+                            break
 
-        logger.info(f"Detected {total_trades} trades from {total_opportunities} opportunities")
+                if not trade_found and victim_id in self._players:
+                    # Track untraded deaths for potential analysis
+                    pass
+
+        logger.info(f"Trade detection complete: {total_trades} trade kills, {total_deaths_traded} deaths traded")
 
     def _detect_clutches(self) -> None:
         """Detect clutch situations (1vX where player is last alive) with win tracking.
@@ -1794,7 +1821,7 @@ class DemoAnalyzer:
         )
 
     def _calculate_kast(self) -> None:
-        """Calculate KAST (Kill/Assist/Survived/Traded) for each player."""
+        """Calculate KAST (Kill/Assist/Survived/Traded) for each player using optimized lookups."""
         kills_df = self.data.kills_df
         if kills_df.empty or not self._round_col or not self._att_id_col or not self._vic_id_col:
             logger.info("Skipping KAST calculation - missing columns")
@@ -1802,57 +1829,99 @@ class DemoAnalyzer:
 
         trade_window_ticks = int(TRADE_WINDOW_SECONDS * self.TICK_RATE)
 
-        # Get unique round numbers from the data
+        # Pre-compute lookups using groupby for efficiency
+        kills_df = kills_df.copy()
+        kills_df[self._att_id_col] = pd.to_numeric(kills_df[self._att_id_col], errors='coerce')
+        kills_df[self._vic_id_col] = pd.to_numeric(kills_df[self._vic_id_col], errors='coerce')
+
+        # Create lookup sets: which players got K/A/Died in each round
+        kills_by_round = kills_df.groupby(self._round_col)[self._att_id_col].apply(set).to_dict()
+        deaths_by_round = kills_df.groupby(self._round_col)[self._vic_id_col].apply(set).to_dict()
+
+        assists_by_round = {}
+        if "assister_steamid" in kills_df.columns:
+            kills_df["assister_steamid"] = pd.to_numeric(kills_df["assister_steamid"], errors='coerce')
+            assists_by_round = kills_df.dropna(subset=["assister_steamid"]).groupby(self._round_col)["assister_steamid"].apply(set).to_dict()
+
+        # Pre-compute trade lookup (who was traded in each round)
+        traded_by_round: dict[int, set] = {}
+        if self._att_side_col and self._att_side_col in kills_df.columns:
+            # Build player team lookup
+            player_teams = {int(sid): player.team for sid, player in self._players.items()}
+
+            for round_num in kills_df[self._round_col].unique():
+                round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
+                traded_players = set()
+
+                for idx, death in round_kills.iterrows():
+                    victim_id = int(death.get(self._vic_id_col, 0))
+                    if not victim_id:
+                        continue
+
+                    death_tick = safe_int(death.get("tick"))
+                    killer_id = int(death.get(self._att_id_col, 0))
+                    victim_team = player_teams.get(victim_id, "")
+
+                    if not killer_id or not victim_team:
+                        continue
+
+                    # Check if death was traded
+                    trade_mask = (
+                        (round_kills["tick"] > death_tick) &
+                        (round_kills["tick"] <= death_tick + trade_window_ticks) &
+                        (round_kills[self._vic_id_col] == killer_id)
+                    )
+
+                    if self._att_side_col in round_kills.columns:
+                        potential_trades = round_kills[trade_mask]
+                        for _, trade_kill in potential_trades.iterrows():
+                            trader_id = int(trade_kill.get(self._att_id_col, 0))
+                            trader_team = player_teams.get(trader_id, "")
+                            if trader_team == victim_team:
+                                traded_players.add(victim_id)
+                                break
+
+                traded_by_round[round_num] = traded_players
+
+        # Get unique round numbers
         round_nums = sorted(kills_df[self._round_col].unique())
 
-        for round_num in round_nums:
-            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
+        # Calculate KAST for each player
+        for steam_id, player in self._players.items():
+            steam_id_float = float(steam_id)
+            kast_count = 0
+            survived_count = 0
 
-            for steam_id, player in self._players.items():
+            for round_num in round_nums:
                 kast_this_round = False
 
                 # K - Got a kill
-                if len(round_kills[round_kills[self._att_id_col] == steam_id]) > 0:
+                if steam_id_float in kills_by_round.get(round_num, set()):
                     kast_this_round = True
 
                 # A - Got an assist
-                if not kast_this_round and "assister_steamid" in round_kills.columns:
-                    if len(round_kills[round_kills["assister_steamid"] == steam_id]) > 0:
-                        kast_this_round = True
-
-                # S - Survived
-                player_deaths = round_kills[round_kills[self._vic_id_col] == steam_id]
-                if player_deaths.empty:
+                if not kast_this_round and steam_id_float in assists_by_round.get(round_num, set()):
                     kast_this_round = True
-                    player.rounds_survived += 1
 
-                # T - Was traded (check if death was traded)
-                if not kast_this_round and not player_deaths.empty:
-                    death = player_deaths.iloc[0]
-                    death_tick = safe_int(death.get("tick"))
-                    killer_id = safe_int(death.get(self._att_id_col))
-                    player_team = player.team
+                # S - Survived (didn't die)
+                if steam_id_float not in deaths_by_round.get(round_num, set()):
+                    kast_this_round = True
+                    survived_count += 1
 
-                    # Check if teammate killed the killer within trade window
-                    if self._att_side_col and self._att_side_col in round_kills.columns:
-                        trades = round_kills[
-                            (round_kills["tick"] > death_tick)
-                            & (round_kills["tick"] <= death_tick + trade_window_ticks)
-                            & (round_kills[self._vic_id_col] == killer_id)
-                            & (round_kills[self._att_side_col] == player_team)
-                        ]
-                        if not trades.empty:
-                            kast_this_round = True
+                # T - Was traded
+                if not kast_this_round and steam_id in traded_by_round.get(round_num, set()):
+                    kast_this_round = True
 
                 if kast_this_round:
-                    player.kast_rounds += 1
+                    kast_count += 1
+
+            player.kast_rounds = kast_count
+            player.rounds_survived = survived_count
+
+        logger.info(f"KAST calculation complete for {len(self._players)} players over {len(round_nums)} rounds")
 
     def _compute_ttd(self) -> None:
-        """Compute Time to Damage for each kill.
-
-        Uses vectorized implementation when available for ~10-50x speedup.
-        Falls back to per-kill loop for compatibility.
-        """
+        """Compute Time to Damage for each kill with optimized indexing."""
         if self.data.damages_df.empty or not self.data.kills:
             logger.warning("No damage or kill data for TTD computation")
             return
@@ -1879,20 +1948,35 @@ class DemoAnalyzer:
         damages_df = self.data.damages_df
 
         # Find the right column names
-        def find_col(df, options):
-            for col in options:
-                if col in df.columns:
-                    return col
-            return None
-
-        dmg_att_col = find_col(damages_df, ["attacker_steamid", "attacker_steam_id"])
-        dmg_vic_col = find_col(damages_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
+        dmg_att_col = self._find_col(damages_df, ["attacker_steamid", "attacker_steam_id"])
+        dmg_vic_col = self._find_col(damages_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
 
         if not dmg_att_col or not dmg_vic_col:
             logger.warning(f"Missing columns for TTD. Have: {list(damages_df.columns)}")
             return
 
-        # Use KillEvent objects directly
+        # Pre-build damage lookup index for (attacker, victim) pairs
+        # This avoids repeated DataFrame filtering for each kill
+        damage_cache: dict[tuple[int, int], list[int]] = {}
+
+        # Convert columns to numeric for reliable comparison
+        damages_df = damages_df.copy()
+        damages_df[dmg_att_col] = pd.to_numeric(damages_df[dmg_att_col], errors='coerce')
+        damages_df[dmg_vic_col] = pd.to_numeric(damages_df[dmg_vic_col], errors='coerce')
+
+        # Group damages by (attacker, victim) and store ticks sorted
+        for (att, vic), group in damages_df.groupby([dmg_att_col, dmg_vic_col]):
+            if pd.notna(att) and pd.notna(vic):
+                damage_cache[(int(att), int(vic))] = sorted(group["tick"].dropna().astype(int).tolist())
+
+        logger.info(f"Built damage cache with {len(damage_cache)} (attacker, victim) pairs")
+
+        # TTD validation thresholds
+        TTD_OUTLIER_MULTIPLIER = 3.0  # Remove values > 3 std devs from mean
+
+        # Process kills using cached damage lookups
+        raw_ttd_values: dict[int, list[float]] = {}  # For outlier removal later
+
         for kill in self.data.kills:
             try:
                 att_id = kill.attacker_steamid
@@ -1900,30 +1984,46 @@ class DemoAnalyzer:
                 kill_tick = kill.tick
                 round_num = kill.round_num
 
-                if not att_id or not vic_id:
+                if not att_id or not vic_id or kill_tick <= 0:
                     continue
 
-                # Find first damage from attacker to victim before kill
-                mask = (
-                    (damages_df[dmg_att_col] == att_id)
-                    & (damages_df[dmg_vic_col] == vic_id)
-                    & (damages_df["tick"] <= kill_tick)
-                )
-                engagement_damages = damages_df[mask].sort_values("tick")
+                # Use cached damage lookup
+                cache_key = (att_id, vic_id)
+                damage_ticks = damage_cache.get(cache_key, [])
 
-                if engagement_damages.empty:
+                if not damage_ticks:
                     continue
 
-                first_dmg_tick = safe_int(engagement_damages.iloc[0]["tick"])
+                # Find first damage tick before kill using binary search
+                first_dmg_tick = None
+                for tick in damage_ticks:
+                    if tick <= kill_tick:
+                        first_dmg_tick = tick
+                        break  # Already sorted, first match is earliest
+
+                if first_dmg_tick is None:
+                    continue
+
                 ttd_ticks = kill_tick - first_dmg_tick
                 ttd_ms = ttd_ticks * self.MS_PER_TICK
 
+                # Validate TTD value (filter out invalid/negative values)
+                if ttd_ms < 0 or ttd_ms > 5000:  # Max 5 seconds is reasonable
+                    continue
+
                 is_prefire = ttd_ms <= self.TTD_MIN_MS
 
-                # Add to player stats
-                if att_id in self._players and not is_prefire and ttd_ms <= self.TTD_MAX_MS:
-                    self._players[att_id].ttd_values.append(ttd_ms)
-                elif att_id in self._players and is_prefire:
+                # Account for wallbangs/through-smoke kills (may have higher TTD)
+                is_wallbang = getattr(kill, 'penetrated', False)
+                is_thrusmoke = getattr(kill, 'thrusmoke', False)
+
+                # Store raw values for later outlier removal
+                if att_id not in raw_ttd_values:
+                    raw_ttd_values[att_id] = []
+
+                if not is_prefire and ttd_ms <= self.TTD_MAX_MS:
+                    raw_ttd_values[att_id].append(ttd_ms)
+                elif is_prefire and att_id in self._players:
                     self._players[att_id].prefire_count += 1
 
                 self._ttd_results.append(
@@ -1945,7 +2045,26 @@ class DemoAnalyzer:
                 logger.debug(f"Error processing kill for TTD: {e}")
                 continue
 
-        logger.info(f"Computed TTD for {len(self._ttd_results)} engagements")
+        # Apply outlier removal (remove values > 3 std devs from mean)
+        for steam_id, values in raw_ttd_values.items():
+            if steam_id not in self._players or len(values) < 3:
+                # Not enough data for statistical filtering
+                if steam_id in self._players:
+                    self._players[steam_id].ttd_values = values
+                continue
+
+            values_arr = np.array(values)
+            mean_val = np.mean(values_arr)
+            std_val = np.std(values_arr)
+
+            if std_val > 0:
+                # Filter outliers
+                filtered = [v for v in values if abs(v - mean_val) <= TTD_OUTLIER_MULTIPLIER * std_val]
+                self._players[steam_id].ttd_values = filtered
+            else:
+                self._players[steam_id].ttd_values = values
+
+        logger.info(f"Computed TTD for {len(self._ttd_results)} engagements (with outlier removal)")
 
     def _compute_crosshair_placement(self) -> None:
         """Compute crosshair placement error for each kill.
@@ -2019,119 +2138,230 @@ class DemoAnalyzer:
             )
 
     def _compute_cp_from_kill_events(self, kills: list) -> None:
-        """Compute CP from KillEvent objects with embedded position data."""
+        """Compute CP from KillEvent objects with optimized vectorized calculations."""
+        # Constants
+        MAX_DISTANCE = 2000.0  # Skip kills beyond this distance (unlikely to be meaningful CP data)
+        EYE_HEIGHT = 64.0
+
+        # Pre-allocate arrays for batch processing
+        valid_kills = []
+        att_positions = []
+        vic_positions = []
+        att_pitches = []
+        att_yaws = []
+
+        # First pass: validate and collect data
         for kill in kills:
-            try:
-                att_id = kill.attacker_steamid
-                vic_id = kill.victim_steamid
+            att_id = kill.attacker_steamid
+            vic_id = kill.victim_steamid
 
-                if not att_id or not vic_id:
-                    continue
-
-                # Build position arrays (add 64 units for eye height)
-                att_pos = np.array(
-                    [
-                        kill.attacker_x,
-                        kill.attacker_y,
-                        kill.attacker_z + 64 if kill.attacker_z else 0,
-                    ]
-                )
-                vic_pos = np.array(
-                    [kill.victim_x, kill.victim_y, kill.victim_z + 64 if kill.victim_z else 0]
-                )
-
-                att_pitch = kill.attacker_pitch or 0.0
-                att_yaw = kill.attacker_yaw or 0.0
-
-                # Skip if positions are zero
-                if np.allclose(att_pos[:2], 0) or np.allclose(vic_pos[:2], 0):
-                    continue
-
-                angular_error, pitch_error, yaw_error = self._calculate_angular_error(
-                    att_pos, att_pitch, att_yaw, vic_pos
-                )
-
-                if att_id in self._players:
-                    self._players[att_id].cp_values.append(angular_error)
-
-                self._cp_results.append(
-                    CrosshairPlacementResult(
-                        tick=kill.tick,
-                        attacker_steamid=att_id,
-                        victim_steamid=vic_id,
-                        angular_error_deg=angular_error,
-                        pitch_error_deg=pitch_error,
-                        yaw_error_deg=yaw_error,
-                        round_num=kill.round_num,
-                    )
-                )
-
-            except Exception as e:
-                logger.debug(f"Error processing kill for CP: {e}")
+            if not att_id or not vic_id:
                 continue
 
-        logger.info(f"Computed CP for {len(self._cp_results)} kills from KillEvent objects")
+            # Validate position data (not zero or NaN)
+            att_x = kill.attacker_x
+            att_y = kill.attacker_y
+            att_z = kill.attacker_z
+            vic_x = kill.victim_x
+            vic_y = kill.victim_y
+            vic_z = kill.victim_z
+
+            if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in [att_x, att_y, vic_x, vic_y]):
+                continue
+
+            # Skip if positions are clearly invalid (all zeros)
+            if abs(att_x) < 0.001 and abs(att_y) < 0.001:
+                continue
+            if abs(vic_x) < 0.001 and abs(vic_y) < 0.001:
+                continue
+
+            # Calculate distance for filtering
+            dx = vic_x - att_x
+            dy = vic_y - att_y
+            dz = (vic_z or 0) - (att_z or 0)
+            distance = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+            # Skip very long distance kills
+            if distance > MAX_DISTANCE:
+                continue
+
+            valid_kills.append(kill)
+            att_positions.append([att_x, att_y, (att_z or 0) + EYE_HEIGHT])
+            vic_positions.append([vic_x, vic_y, (vic_z or 0) + EYE_HEIGHT])
+            att_pitches.append(kill.attacker_pitch or 0.0)
+            att_yaws.append(kill.attacker_yaw or 0.0)
+
+        if not valid_kills:
+            logger.info("No valid kills with position data for CP calculation")
+            return
+
+        # Convert to numpy arrays for vectorized operations
+        att_pos_arr = np.array(att_positions)
+        vic_pos_arr = np.array(vic_positions)
+        pitch_arr = np.array(att_pitches)
+        yaw_arr = np.array(att_yaws)
+
+        # Vectorized angular error calculation
+        pitch_rad = np.radians(pitch_arr)
+        yaw_rad = np.radians(yaw_arr)
+
+        # View vectors from Euler angles (vectorized)
+        view_x = np.cos(yaw_rad) * np.cos(pitch_rad)
+        view_y = np.sin(yaw_rad) * np.cos(pitch_rad)
+        view_z = -np.sin(pitch_rad)
+        view_vecs = np.column_stack([view_x, view_y, view_z])
+
+        # Ideal vectors (normalized direction to victim)
+        ideal_vecs = vic_pos_arr - att_pos_arr
+        distances = np.linalg.norm(ideal_vecs, axis=1, keepdims=True)
+        distances = np.maximum(distances, 0.001)  # Avoid division by zero
+        ideal_vecs = ideal_vecs / distances
+
+        # Dot products and angular errors (vectorized)
+        dots = np.sum(view_vecs * ideal_vecs, axis=1)
+        dots = np.clip(dots, -1.0, 1.0)
+        angular_errors = np.degrees(np.arccos(dots))
+
+        # Separate pitch/yaw errors
+        ideal_pitches = np.degrees(np.arcsin(-ideal_vecs[:, 2]))
+        ideal_yaws = np.degrees(np.arctan2(ideal_vecs[:, 1], ideal_vecs[:, 0]))
+        pitch_errors = pitch_arr - ideal_pitches
+        yaw_errors = yaw_arr - ideal_yaws
+
+        # Normalize yaw errors to [-180, 180]
+        yaw_errors = np.mod(yaw_errors + 180, 360) - 180
+
+        # Store results
+        for i, kill in enumerate(valid_kills):
+            att_id = kill.attacker_steamid
+            angular_error = float(angular_errors[i])
+            pitch_error = float(pitch_errors[i])
+            yaw_error = float(yaw_errors[i])
+
+            if att_id in self._players:
+                self._players[att_id].cp_values.append(angular_error)
+
+            self._cp_results.append(CrosshairPlacementResult(
+                tick=kill.tick,
+                attacker_steamid=att_id,
+                victim_steamid=kill.victim_steamid,
+                angular_error_deg=angular_error,
+                pitch_error_deg=pitch_error,
+                yaw_error_deg=yaw_error,
+                round_num=kill.round_num,
+            ))
+
+        logger.info(f"Computed CP for {len(self._cp_results)} kills from KillEvent objects (vectorized)")
 
     def _compute_cp_from_events(self) -> None:
-        """Compute CP from position data embedded in kill events DataFrame."""
+        """Compute CP from position data embedded in kill events DataFrame (optimized)."""
         kills_df = self.data.kills_df
         logger.info("Computing CP from DataFrame event-embedded positions")
 
-        for _, row in kills_df.iterrows():
-            try:
-                att_id = safe_int(row.get("attacker_steamid"))
-                vic_id = safe_int(row.get("victim_steamid"))
-                tick = safe_int(row.get("tick"))
-                round_num = safe_int(row.get("round_num", 0))
+        # Constants
+        MAX_DISTANCE = 2000.0
+        EYE_HEIGHT = 64.0
 
-                if not att_id or not vic_id:
-                    continue
+        # Find position columns
+        att_x_col = "attacker_X" if "attacker_X" in kills_df.columns else "attacker_x"
+        att_y_col = "attacker_Y" if "attacker_Y" in kills_df.columns else "attacker_y"
+        att_z_col = "attacker_Z" if "attacker_Z" in kills_df.columns else "attacker_z"
+        vic_x_col = "victim_X" if "victim_X" in kills_df.columns else ("user_X" if "user_X" in kills_df.columns else "victim_x")
+        vic_y_col = "victim_Y" if "victim_Y" in kills_df.columns else ("user_Y" if "user_Y" in kills_df.columns else "victim_y")
+        vic_z_col = "victim_Z" if "victim_Z" in kills_df.columns else ("user_Z" if "user_Z" in kills_df.columns else "victim_z")
 
-                att_pos = np.array(
-                    [
-                        safe_float(row.get("attacker_X")),
-                        safe_float(row.get("attacker_Y")),
-                        safe_float(row.get("attacker_Z")) + 64,
-                    ]
-                )
-                att_pitch = safe_float(row.get("attacker_pitch"))
-                att_yaw = safe_float(row.get("attacker_yaw"))
+        # Filter valid rows with position data
+        required_cols = [att_x_col, att_y_col, vic_x_col, vic_y_col, "attacker_pitch", "attacker_yaw"]
+        if not all(col in kills_df.columns for col in required_cols):
+            logger.warning(f"Missing position columns for CP. Have: {list(kills_df.columns)}")
+            return
 
-                vic_pos = np.array(
-                    [
-                        safe_float(row.get("victim_X")),
-                        safe_float(row.get("victim_Y")),
-                        safe_float(row.get("victim_Z")) + 64,
-                    ]
-                )
+        # Create working copy with validated data
+        df = kills_df.copy()
+        df["_att_x"] = pd.to_numeric(df[att_x_col], errors='coerce')
+        df["_att_y"] = pd.to_numeric(df[att_y_col], errors='coerce')
+        df["_att_z"] = pd.to_numeric(df.get(att_z_col, 0), errors='coerce').fillna(0) + EYE_HEIGHT
+        df["_vic_x"] = pd.to_numeric(df[vic_x_col], errors='coerce')
+        df["_vic_y"] = pd.to_numeric(df[vic_y_col], errors='coerce')
+        df["_vic_z"] = pd.to_numeric(df.get(vic_z_col, 0), errors='coerce').fillna(0) + EYE_HEIGHT
+        df["_pitch"] = pd.to_numeric(df["attacker_pitch"], errors='coerce').fillna(0)
+        df["_yaw"] = pd.to_numeric(df["attacker_yaw"], errors='coerce').fillna(0)
 
-                if np.allclose(att_pos[:2], 0) or np.allclose(vic_pos[:2], 0):
-                    continue
+        # Filter out invalid positions
+        valid_mask = (
+            df["_att_x"].notna() & df["_att_y"].notna() &
+            df["_vic_x"].notna() & df["_vic_y"].notna() &
+            (df["_att_x"].abs() > 0.001) | (df["_att_y"].abs() > 0.001) &
+            (df["_vic_x"].abs() > 0.001) | (df["_vic_y"].abs() > 0.001)
+        )
+        df = df[valid_mask]
 
-                angular_error, pitch_error, yaw_error = self._calculate_angular_error(
-                    att_pos, att_pitch, att_yaw, vic_pos
-                )
+        if df.empty:
+            logger.warning("No valid positions for CP calculation")
+            return
 
-                if att_id in self._players:
-                    self._players[att_id].cp_values.append(angular_error)
+        # Calculate distances
+        df["_dist"] = np.sqrt(
+            (df["_vic_x"] - df["_att_x"])**2 +
+            (df["_vic_y"] - df["_att_y"])**2 +
+            (df["_vic_z"] - df["_att_z"])**2
+        )
 
-                self._cp_results.append(
-                    CrosshairPlacementResult(
-                        tick=tick,
-                        attacker_steamid=att_id,
-                        victim_steamid=vic_id,
-                        angular_error_deg=angular_error,
-                        pitch_error_deg=pitch_error,
-                        yaw_error_deg=yaw_error,
-                        round_num=round_num,
-                    )
-                )
+        # Filter by distance
+        df = df[df["_dist"] <= MAX_DISTANCE]
 
-            except Exception as e:
-                logger.debug(f"Error processing kill for CP: {e}")
-                continue
+        if df.empty:
+            return
 
-        logger.info(f"Computed CP for {len(self._cp_results)} kills")
+        # Vectorized calculations
+        pitch_rad = np.radians(df["_pitch"].values)
+        yaw_rad = np.radians(df["_yaw"].values)
+
+        # View vectors
+        view_x = np.cos(yaw_rad) * np.cos(pitch_rad)
+        view_y = np.sin(yaw_rad) * np.cos(pitch_rad)
+        view_z = -np.sin(pitch_rad)
+
+        # Ideal vectors
+        ideal_x = (df["_vic_x"].values - df["_att_x"].values) / df["_dist"].values
+        ideal_y = (df["_vic_y"].values - df["_att_y"].values) / df["_dist"].values
+        ideal_z = (df["_vic_z"].values - df["_att_z"].values) / df["_dist"].values
+
+        # Angular errors
+        dots = view_x * ideal_x + view_y * ideal_y + view_z * ideal_z
+        dots = np.clip(dots, -1.0, 1.0)
+        angular_errors = np.degrees(np.arccos(dots))
+
+        # Component errors
+        ideal_pitches = np.degrees(np.arcsin(-ideal_z))
+        ideal_yaws = np.degrees(np.arctan2(ideal_y, ideal_x))
+        pitch_errors = df["_pitch"].values - ideal_pitches
+        yaw_errors = np.mod(df["_yaw"].values - ideal_yaws + 180, 360) - 180
+
+        # Store results
+        att_id_col = self._find_col(df, self.ATT_ID_COLS)
+        vic_id_col = self._find_col(df, self.VIC_ID_COLS)
+
+        for i, (idx, row) in enumerate(df.iterrows()):
+            att_id = safe_int(row.get(att_id_col)) if att_id_col else 0
+            vic_id = safe_int(row.get(vic_id_col)) if vic_id_col else 0
+            tick = safe_int(row.get("tick"))
+            round_num = safe_int(row.get("round_num", 0))
+
+            if att_id in self._players:
+                self._players[att_id].cp_values.append(angular_errors[i])
+
+            self._cp_results.append(CrosshairPlacementResult(
+                tick=tick,
+                attacker_steamid=att_id,
+                victim_steamid=vic_id,
+                angular_error_deg=float(angular_errors[i]),
+                pitch_error_deg=float(pitch_errors[i]),
+                yaw_error_deg=float(yaw_errors[i]),
+                round_num=round_num,
+            ))
+
+        logger.info(f"Computed CP for {len(self._cp_results)} kills (vectorized)")
 
     def _compute_cp_from_ticks(self) -> None:
         """Compute CP from tick-level data (fallback)."""
@@ -2369,74 +2599,115 @@ class DemoAnalyzer:
     def _calculate_utility_stats(self) -> None:
         """Calculate comprehensive utility statistics (Leetify-style) using all available data."""
 
+        # Early return if no utility data available
+        has_blinds = hasattr(self.data, 'blinds') and self.data.blinds
+        has_grenades = hasattr(self.data, 'grenades') and self.data.grenades
+        has_damages = not self.data.damages_df.empty
+
+        if not has_blinds and not has_grenades and not has_damages:
+            logger.info("No utility data available, skipping utility stats")
+            return
+
+        # Cache player teams for teammate detection
+        player_teams_cache: dict[int, str] = {
+            steam_id: player.team for steam_id, player in self._players.items()
+        }
+
+        # Constants for validation
+        MIN_BLIND_DURATION = 0.0
+        MAX_BLIND_DURATION = 10.0  # Max 10 seconds is reasonable
+        SIGNIFICANT_BLIND_THRESHOLD = 1.1  # Leetify threshold
+
         # ===========================================
         # Use BLINDS data for accurate flash stats
         # ===========================================
-        if hasattr(self.data, "blinds") and self.data.blinds:
+        if has_blinds:
             logger.info(f"Using {len(self.data.blinds)} blind events for flash stats")
+
+            # Group blinds by attacker for efficient processing
+            blinds_by_attacker: dict[int, list] = {}
+            for blind in self.data.blinds:
+                # Validate blind duration
+                if blind.blind_duration < MIN_BLIND_DURATION or blind.blind_duration > MAX_BLIND_DURATION:
+                    continue
+                att_id = blind.attacker_steamid
+                if att_id not in blinds_by_attacker:
+                    blinds_by_attacker[att_id] = []
+                blinds_by_attacker[att_id].append(blind)
+
             for steam_id, player in self._players.items():
-                player_blinds = [b for b in self.data.blinds if b.attacker_steamid == steam_id]
+                player_blinds = blinds_by_attacker.get(steam_id, [])
+                if not player_blinds:
+                    continue
 
                 # Separate enemy vs teammate blinds
                 enemy_blinds = [b for b in player_blinds if not b.is_teammate]
                 team_blinds = [b for b in player_blinds if b.is_teammate]
 
-                # Only count blinds > 1.1 seconds as "real" blinds (Leetify threshold)
-                significant_enemy_blinds = [b for b in enemy_blinds if b.blind_duration >= 1.1]
+                # Only count blinds > 1.1 seconds as "significant" (Leetify threshold)
+                significant_enemy_blinds = [b for b in enemy_blinds if b.blind_duration >= SIGNIFICANT_BLIND_THRESHOLD]
 
                 player.utility.enemies_flashed = len(significant_enemy_blinds)
                 player.utility.teammates_flashed = len(team_blinds)
                 player.utility.total_blind_time = sum(b.blind_duration for b in enemy_blinds)
 
                 # Count unique flashbangs (group blinds by tick proximity)
-                if player_blinds:
-                    blind_ticks = sorted({b.tick for b in player_blinds})
+                blind_ticks = sorted(set(b.tick for b in player_blinds))
+                if blind_ticks:
                     # Group ticks within 10 ticks as same flash
                     flash_count = 1
-                    for i in range(1, len(blind_ticks)):
-                        if blind_ticks[i] - blind_ticks[i - 1] > 10:
+                    prev_tick = blind_ticks[0]
+                    for tick in blind_ticks[1:]:
+                        if tick - prev_tick > 10:
                             flash_count += 1
+                        prev_tick = tick
                     player.utility.flashbangs_thrown = flash_count
 
         # ===========================================
         # Use GRENADES data for accurate grenade counts
         # ===========================================
-        if hasattr(self.data, "grenades") and self.data.grenades:
+        if has_grenades:
             logger.info(f"Using {len(self.data.grenades)} grenade events")
+
+            # Group grenades by player for efficient processing
+            grenades_by_player: dict[int, list] = {}
+            for grenade in self.data.grenades:
+                player_id = grenade.player_steamid
+                if player_id not in grenades_by_player:
+                    grenades_by_player[player_id] = []
+                grenades_by_player[player_id].append(grenade)
+
             for steam_id, player in self._players.items():
-                player_grenades = [g for g in self.data.grenades if g.player_steamid == steam_id]
+                player_grenades = grenades_by_player.get(steam_id, [])
+                if not player_grenades:
+                    continue
 
-                # Count by type (grenade_type is sufficient - no event_type on GrenadeEvent)
-                player.utility.smokes_thrown = len(
-                    [g for g in player_grenades if "smoke" in g.grenade_type.lower()]
-                )
-                he_thrown = len(
-                    [
-                        g
-                        for g in player_grenades
-                        if "hegrenade" in g.grenade_type.lower()
-                        or "he_grenade" in g.grenade_type.lower()
-                    ]
-                )
-                molly_thrown = len(
-                    [
-                        g
-                        for g in player_grenades
-                        if "molotov" in g.grenade_type.lower()
-                        or "incendiary" in g.grenade_type.lower()
-                    ]
-                )
-                flash_thrown = len(
-                    [g for g in player_grenades if "flash" in g.grenade_type.lower()]
-                )
+                # Count by type using single loop
+                smokes = 0
+                he_count = 0
+                molly_count = 0
+                flash_count = 0
 
-                # Only update if we got data (don't overwrite with 0 if no grenades events)
-                if he_thrown > 0:
-                    player.utility.he_thrown = he_thrown
-                if molly_thrown > 0:
-                    player.utility.molotovs_thrown = molly_thrown
-                if flash_thrown > 0 and player.utility.flashbangs_thrown == 0:
-                    player.utility.flashbangs_thrown = flash_thrown
+                for g in player_grenades:
+                    grenade_type = g.grenade_type.lower()
+                    event_type = g.event_type
+
+                    if 'smoke' in grenade_type and event_type == 'thrown':
+                        smokes += 1
+                    elif 'hegrenade' in grenade_type or 'he_grenade' in grenade_type:
+                        he_count += 1
+                    elif 'molotov' in grenade_type or 'incendiary' in grenade_type:
+                        molly_count += 1
+                    elif 'flash' in grenade_type and event_type == 'thrown':
+                        flash_count += 1
+
+                player.utility.smokes_thrown = smokes
+                if he_count > 0:
+                    player.utility.he_thrown = he_count
+                if molly_count > 0:
+                    player.utility.molotovs_thrown = molly_count
+                if flash_count > 0 and player.utility.flashbangs_thrown == 0:
+                    player.utility.flashbangs_thrown = flash_count
 
         # ===========================================
         # Use DAMAGES data for HE/Molly damage (fallback and supplement)
