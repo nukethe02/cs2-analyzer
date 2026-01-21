@@ -718,5 +718,366 @@ def export_analysis(
     elif format in ("html", "htm"):
         export_to_html(demo_data, metrics, output_path)
 
+    elif format == "pdf":
+        export_to_pdf(demo_data, metrics, output_path)
+
     else:
         raise ValueError(f"Unsupported export format: {format}")
+
+
+# ============================================================================
+# PDF Export (FREE - uses built-in HTML conversion or optional reportlab)
+# ============================================================================
+
+
+def export_to_pdf(
+    demo_data: DemoData,
+    metrics: dict[int, ComprehensivePlayerMetrics],
+    output_path: Path | None = None,
+) -> bytes:
+    """
+    Export analysis results to PDF format.
+
+    Uses a pure-Python approach that works without external dependencies.
+    If reportlab is available, uses it for better formatting.
+    Otherwise, generates an HTML file with print-friendly styles.
+
+    ALL FUNCTIONALITY IS FREE - no paid services required.
+
+    Args:
+        demo_data: Parsed demo data
+        metrics: Player metrics dictionary
+        output_path: Optional path to write PDF
+
+    Returns:
+        PDF bytes if reportlab available, HTML bytes otherwise
+    """
+    try:
+        # Try to use reportlab (free, optional)
+        return _export_pdf_reportlab(demo_data, metrics, output_path)
+    except ImportError:
+        # Fallback to print-friendly HTML
+        logger.warning(
+            "reportlab not installed. Generating print-friendly HTML instead. "
+            "Install with: pip install reportlab"
+        )
+        html = _generate_pdf_html(demo_data, metrics)
+        if output_path:
+            # Save as HTML with .pdf extension note
+            html_path = output_path.with_suffix(".html")
+            html_path.write_text(html)
+            logger.info(f"Exported print-friendly HTML to: {html_path}")
+        return html.encode()
+
+
+def _export_pdf_reportlab(
+    demo_data: DemoData,
+    metrics: dict[int, ComprehensivePlayerMetrics],
+    output_path: Path | None = None,
+) -> bytes:
+    """Generate PDF using reportlab (free library)."""
+    from io import BytesIO
+
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        PageBreak,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=0.5 * inch,
+        leftMargin=0.5 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "Title",
+        parent=styles["Title"],
+        fontSize=24,
+        spaceAfter=20,
+        textColor=colors.HexColor("#1a1a2e"),
+    )
+    heading_style = ParagraphStyle(
+        "Heading",
+        parent=styles["Heading1"],
+        fontSize=14,
+        spaceAfter=10,
+        textColor=colors.HexColor("#4a5568"),
+    )
+    normal_style = styles["Normal"]
+
+    elements = []
+
+    # Title
+    elements.append(Paragraph("OpenSight Match Analysis Report", title_style))
+    elements.append(Spacer(1, 0.2 * inch))
+
+    # Match Info
+    elements.append(Paragraph("Match Information", heading_style))
+    match_info = [
+        ["Map", demo_data.map_name],
+        ["Duration", f"{demo_data.duration_seconds / 60:.1f} minutes"],
+        ["Tick Rate", str(demo_data.tick_rate)],
+        ["Total Rounds", str(len(demo_data.round_starts))],
+        ["Players", str(len(demo_data.player_names))],
+    ]
+    match_table = Table(match_info, colWidths=[2 * inch, 3 * inch])
+    match_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f7fafc")),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#2d3748")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+            ]
+        )
+    )
+    elements.append(match_table)
+    elements.append(Spacer(1, 0.3 * inch))
+
+    # Player Statistics
+    elements.append(Paragraph("Player Statistics", heading_style))
+
+    # Sort players by rating
+    sorted_players = sorted(
+        metrics.items(),
+        key=lambda x: x[1].overall_rating(),
+        reverse=True,
+    )
+
+    # Build player table
+    headers = ["Player", "Team", "K", "D", "A", "HS%", "ADR", "KAST", "Rating"]
+    player_data = [headers]
+
+    for steam_id, pm in sorted_players:
+        player_name = demo_data.player_names.get(steam_id, "Unknown")[:20]
+        team = demo_data.player_teams.get(steam_id, "")
+        row = [
+            player_name,
+            team,
+            str(pm.engagement.total_kills),
+            str(pm.engagement.total_deaths),
+            str(pm.engagement.assists),
+            f"{pm.engagement.headshot_percentage:.1f}%",
+            f"{pm.engagement.damage_per_round:.1f}",
+            f"{pm.engagement.kast_percentage:.1f}%",
+            f"{pm.overall_rating():.2f}",
+        ]
+        player_data.append(row)
+
+    player_table = Table(player_data, repeatRows=1)
+    player_table.setStyle(
+        TableStyle(
+            [
+                # Header
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                # Body
+                ("FONTSIZE", (0, 1), (-1, -1), 9),
+                ("ALIGN", (2, 0), (-1, -1), "CENTER"),
+                # Alternating rows
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7fafc")]),
+                # Borders
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    elements.append(player_table)
+    elements.append(Spacer(1, 0.3 * inch))
+
+    # Footer
+    footer_text = f"Generated by OpenSight | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    elements.append(Paragraph(footer_text, normal_style))
+
+    # Build PDF
+    doc.build(elements)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+
+    if output_path:
+        output_path.write_bytes(pdf_bytes)
+        logger.info(f"Exported PDF to: {output_path}")
+
+    return pdf_bytes
+
+
+def _generate_pdf_html(
+    demo_data: DemoData,
+    metrics: dict[int, ComprehensivePlayerMetrics],
+) -> str:
+    """Generate print-friendly HTML as PDF fallback."""
+    # Sort players by rating
+    sorted_players = sorted(
+        metrics.items(),
+        key=lambda x: x[1].overall_rating(),
+        reverse=True,
+    )
+
+    player_rows = ""
+    for steam_id, pm in sorted_players:
+        name = demo_data.player_names.get(steam_id, "Unknown")
+        team = demo_data.player_teams.get(steam_id, "")
+        kd = pm.engagement.total_kills / max(pm.engagement.total_deaths, 1)
+        rating = pm.overall_rating()
+
+        player_rows += f"""
+        <tr>
+            <td>{name}</td>
+            <td>{team}</td>
+            <td>{pm.engagement.total_kills}</td>
+            <td>{pm.engagement.total_deaths}</td>
+            <td>{kd:.2f}</td>
+            <td>{pm.engagement.headshot_percentage:.1f}%</td>
+            <td>{pm.engagement.damage_per_round:.1f}</td>
+            <td class="rating">{rating:.2f}</td>
+        </tr>
+        """
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>OpenSight Match Report</title>
+    <style>
+        @media print {{
+            body {{ margin: 0; padding: 20px; }}
+            .no-print {{ display: none; }}
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: white;
+            color: #1a1a2e;
+            padding: 40px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }}
+        h1 {{
+            color: #1a1a2e;
+            border-bottom: 3px solid #ffd700;
+            padding-bottom: 10px;
+        }}
+        h2 {{
+            color: #4a5568;
+            margin-top: 30px;
+        }}
+        .info-grid {{
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            margin: 20px 0;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }}
+        .info-item {{ text-align: center; }}
+        .info-item .value {{ font-size: 1.5em; font-weight: bold; color: #1a1a2e; }}
+        .info-item .label {{ color: #718096; font-size: 0.9em; }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }}
+        th {{
+            background: #1a1a2e;
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+        }}
+        td {{
+            padding: 10px 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }}
+        tr:nth-child(even) {{ background: #f7fafc; }}
+        .rating {{ font-weight: bold; }}
+        .footer {{
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            color: #718096;
+            font-size: 0.9em;
+        }}
+        .print-btn {{
+            background: #ffd700;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 1em;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }}
+    </style>
+</head>
+<body>
+    <button class="print-btn no-print" onclick="window.print()">Print / Save as PDF</button>
+
+    <h1>OpenSight Match Analysis Report</h1>
+
+    <h2>Match Information</h2>
+    <div class="info-grid">
+        <div class="info-item">
+            <div class="value">{demo_data.map_name}</div>
+            <div class="label">Map</div>
+        </div>
+        <div class="info-item">
+            <div class="value">{demo_data.duration_seconds / 60:.1f}m</div>
+            <div class="label">Duration</div>
+        </div>
+        <div class="info-item">
+            <div class="value">{demo_data.tick_rate}</div>
+            <div class="label">Tick Rate</div>
+        </div>
+        <div class="info-item">
+            <div class="value">{len(demo_data.round_starts)}</div>
+            <div class="label">Rounds</div>
+        </div>
+        <div class="info-item">
+            <div class="value">{len(demo_data.player_names)}</div>
+            <div class="label">Players</div>
+        </div>
+    </div>
+
+    <h2>Player Statistics</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Player</th>
+                <th>Team</th>
+                <th>K</th>
+                <th>D</th>
+                <th>K/D</th>
+                <th>HS%</th>
+                <th>ADR</th>
+                <th>Rating</th>
+            </tr>
+        </thead>
+        <tbody>
+            {player_rows}
+        </tbody>
+    </table>
+
+    <div class="footer">
+        Generated by OpenSight | {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}<br>
+        <span class="no-print">Use browser's Print function (Ctrl+P) to save as PDF</span>
+    </div>
+</body>
+</html>
+"""

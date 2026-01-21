@@ -44,6 +44,8 @@ dependencies = [
     # Flask (Render.com deployment)
     "flask>=3.0.0",
     "werkzeug>=3.0.0",
+    # Database (FREE - SQLite with SQLAlchemy)
+    "sqlalchemy>=2.0.0",
 ]
 
 [project.optional-dependencies]
