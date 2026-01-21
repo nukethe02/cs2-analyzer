@@ -84,6 +84,7 @@ all = [
 
 [project.scripts]
 opensight = "opensight.cli:main"
+opensight-web = "opensight.server:main"
 
 [project.urls]
 Homepage = "https://github.com/nukethe02/cs2-analyzer"
