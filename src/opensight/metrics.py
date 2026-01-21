@@ -40,11 +40,11 @@ def _find_column(df: pd.DataFrame, options: list[str]) -> Optional[str]:
 
 
 def _get_round_ticks(demo_data: DemoData) -> tuple[list[int], list[int]]:
-    """Extract round start and end ticks from game_rounds."""
+    """Extract round start and end ticks from rounds."""
     starts = []
     ends = []
-    if hasattr(demo_data, 'game_rounds') and demo_data.game_rounds:
-        for r in demo_data.game_rounds:
+    if hasattr(demo_data, 'rounds') and demo_data.rounds:
+        for r in demo_data.rounds:
             starts.append(getattr(r, 'start_tick', 0))
             ends.append(getattr(r, 'end_tick', 0))
     return starts, ends

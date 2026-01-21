@@ -328,7 +328,7 @@ def export_to_excel(
         # Calculate duration_ticks from duration_seconds and tick_rate
         duration_ticks = int(demo_data.duration_seconds * demo_data.tick_rate)
         # Get round count from game_rounds or num_rounds
-        round_count = len(demo_data.game_rounds) if hasattr(demo_data, 'game_rounds') and demo_data.game_rounds else demo_data.num_rounds
+        round_count = len(demo_data.rounds) if hasattr(demo_data, 'game_rounds') and demo_data.rounds else demo_data.num_rounds
         demo_info = pd.DataFrame([{
             "Map": demo_data.map_name,
             "Duration (seconds)": demo_data.duration_seconds,
@@ -478,7 +478,7 @@ def export_to_html(
         title = f"OpenSight Analysis - {demo_data.map_name}"
 
     # Get round count
-    round_count = len(demo_data.game_rounds) if hasattr(demo_data, 'game_rounds') and demo_data.game_rounds else demo_data.num_rounds
+    round_count = len(demo_data.rounds) if hasattr(demo_data, 'game_rounds') and demo_data.rounds else demo_data.num_rounds
 
     # Sort players by rating
     sorted_players = sorted(
@@ -686,7 +686,7 @@ def export_analysis(
 
     if format == "json":
         # Get round count
-        json_round_count = len(demo_data.game_rounds) if hasattr(demo_data, 'game_rounds') and demo_data.game_rounds else demo_data.num_rounds
+        json_round_count = len(demo_data.rounds) if hasattr(demo_data, 'game_rounds') and demo_data.rounds else demo_data.num_rounds
         data = {
             "demo_info": {
                 "file": str(demo_data.file_path),

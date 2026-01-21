@@ -8,6 +8,7 @@ Provides commands for:
 - Generating reports
 """
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -284,58 +285,32 @@ def _display_economy_metrics(data: DemoData, steam_id: Optional[int]) -> None:
     """Display economy metrics table."""
     econ_results = calculate_economy_metrics(data, steam_id)
 
-    metrics = calculate_engagement_metrics(data, steam_id)
-    ttd = calculate_ttd(data, steam_id)
-    cp = calculate_crosshair_placement(data, steam_id)
+    if not econ_results:
+        console.print("[yellow]No economy metrics available[/yellow]")
+        return
 
-    results = {
-        "demo_info": {
-            "file": str(data.file_path),
-            "map": data.map_name,
-            "duration_seconds": data.duration_seconds,
-            "tick_rate": data.tick_rate,
-        },
-        "players": {},
-    }
+    table = Table(title="Economy Metrics")
+    table.add_column("Player", style="cyan")
+    table.add_column("Money Spent", justify="right")
+    table.add_column("Efficiency", justify="right")
+    table.add_column("Eco Kills", justify="right")
+    table.add_column("Force Kills", justify="right")
+    table.add_column("Full Buy Kills", justify="right")
+    table.add_column("Favorite Weapon", justify="right")
 
-    for sid in data.player_names:
-        player_data = {
-            "name": data.player_names[sid],
-            "team": data.player_teams.get(sid, 0),
-        }
+    for sid, econ in sorted(econ_results.items(), key=lambda x: x[1].weapon_efficiency, reverse=True):
+        table.add_row(
+            econ.player_name,
+            f"${econ.total_money_spent:,}",
+            f"{econ.weapon_efficiency:.2f}",
+            str(econ.eco_round_kills),
+            str(econ.force_buy_kills),
+            str(econ.full_buy_kills),
+            econ.favorite_weapon,
+        )
 
-        if sid in metrics:
-            m = metrics[sid]
-            player_data["engagement"] = {
-                "kills": m.total_kills,
-                "deaths": m.total_deaths,
-                "headshot_percentage": m.headshot_percentage,
-                "damage_per_round": m.damage_per_round,
-            }
-
-        if sid in ttd:
-            t = ttd[sid]
-            player_data["ttd"] = {
-                "engagement_count": t.engagement_count,
-                "mean_ms": t.mean_ttd_ms,
-                "median_ms": t.median_ttd_ms,
-                "min_ms": t.min_ttd_ms,
-                "max_ms": t.max_ttd_ms,
-            }
-
-        if sid in cp:
-            c = cp[sid]
-            player_data["crosshair_placement"] = {
-                "sample_count": c.sample_count,
-                "mean_angle_deg": c.mean_angle_deg,
-                "median_angle_deg": c.median_angle_deg,
-                "score": c.placement_score,
-            }
-
-        results["players"][str(sid)] = player_data
-
-    with open(output, "w") as f:
-        json.dump(results, f, indent=2)
+    console.print(table)
+    console.print()
 
 
 @app.command()
