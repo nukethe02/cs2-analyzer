@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from opensight.combat import (
+from opensight.domains.combat import (
     CombatAnalyzer,
     TradeKill,
     OpeningDuel,
@@ -16,7 +16,7 @@ from opensight.combat import (
     analyze_combat,
     TRADE_WINDOW_MS,
 )
-from opensight.parser import DemoData
+from opensight.core.parser import DemoData
 
 
 class TestTradeKillDetection:

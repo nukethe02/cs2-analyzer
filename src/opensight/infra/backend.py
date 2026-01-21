@@ -10,7 +10,7 @@ tick data (multi-gigabyte demos) through:
 - Parallel execution
 
 Usage:
-    from opensight.backend import get_backend, DataFrameBackend
+    from opensight.infra.backend import get_backend, DataFrameBackend
 
     # Get the current backend (respects configuration)
     backend = get_backend()

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from opensight.metrics import (
+from opensight.analysis.metrics import (
     calculate_angle_between_vectors,
     angles_to_direction,
 )

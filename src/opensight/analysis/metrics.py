@@ -20,7 +20,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from opensight.parser import DemoData
+from opensight.core.parser import DemoData
 
 logger = logging.getLogger(__name__)
 

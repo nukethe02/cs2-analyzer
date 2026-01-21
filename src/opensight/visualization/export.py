@@ -23,7 +23,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
-from opensight.metrics import (
+from opensight.analysis.metrics import (
     ComprehensivePlayerMetrics,
     CrosshairPlacementResult,
     EconomyMetrics,
@@ -34,7 +34,7 @@ from opensight.metrics import (
     TTDResult,
     UtilityMetrics,
 )
-from opensight.parser import DemoData
+from opensight.core.parser import DemoData
 
 logger = logging.getLogger(__name__)
 

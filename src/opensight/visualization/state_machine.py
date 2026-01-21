@@ -35,8 +35,8 @@ try:
 except ImportError:
     POLARS_AVAILABLE = False
 
-from opensight.constants import CS2_TICK_RATE
-from opensight.parser import BlindEvent, DemoData, KillEvent
+from opensight.core.constants import CS2_TICK_RATE
+from opensight.core.parser import BlindEvent, DemoData, KillEvent
 
 logger = logging.getLogger(__name__)
 
@@ -882,7 +882,7 @@ def analyze_state(demo_data: DemoData) -> StateAnalysisResult:
     Convenience function to run State Machine analysis.
 
     Usage:
-        from opensight.state_machine import analyze_state
+        from opensight.visualization.state_machine import analyze_state
         result = analyze_state(demo_data)
     """
     machine = StateMachine(demo_data)

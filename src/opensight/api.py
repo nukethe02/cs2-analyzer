@@ -98,7 +98,7 @@ async def health():
 async def decode_share_code(request: ShareCodeRequest):
     """Decode a CS2 share code to extract match metadata."""
     try:
-        from opensight.sharecode import decode_sharecode
+        from opensight.integrations.sharecode import decode_sharecode
         info = decode_sharecode(request.code)
         return {
             "match_id": info.match_id,
@@ -136,8 +136,8 @@ async def analyze_demo(file: UploadFile = File(...)):
         )
 
     try:
-        from opensight.parser import DemoParser
-        from opensight.analytics import DemoAnalyzer
+        from opensight.core.parser import DemoParser
+        from opensight.analysis.analytics import DemoAnalyzer
     except ImportError as e:
         raise HTTPException(
             status_code=503,
@@ -497,7 +497,7 @@ async def about():
 async def list_maps():
     """List all available maps with radar support."""
     try:
-        from opensight.radar import MAP_DATA
+        from opensight.visualization.radar import MAP_DATA
         return {
             "maps": [
                 {
@@ -516,7 +516,7 @@ async def list_maps():
 async def get_map_info(map_name: str):
     """Get map metadata and radar information."""
     try:
-        from opensight.radar import get_map_metadata, RadarImageManager
+        from opensight.visualization.radar import get_map_metadata, RadarImageManager
 
         metadata = get_map_metadata(map_name)
         if not metadata:
@@ -543,7 +543,7 @@ async def get_map_info(map_name: str):
 async def transform_coordinates(request: RadarRequest):
     """Transform game coordinates to radar pixel coordinates."""
     try:
-        from opensight.radar import CoordinateTransformer
+        from opensight.visualization.radar import CoordinateTransformer
 
         transformer = CoordinateTransformer(request.map_name)
         results = []
@@ -575,7 +575,7 @@ async def transform_coordinates(request: RadarRequest):
 async def get_hltv_rankings(top_n: int = Query(default=10, le=30)):
     """Get current world team rankings (cached data)."""
     try:
-        from opensight.hltv import HLTVClient
+        from opensight.integrations.hltv import HLTVClient
         client = HLTVClient()
         return {"rankings": client.get_world_rankings(top_n)}
     except ImportError as e:
@@ -586,7 +586,7 @@ async def get_hltv_rankings(top_n: int = Query(default=10, le=30)):
 async def get_hltv_map_stats(map_name: str):
     """Get map statistics from HLTV data."""
     try:
-        from opensight.hltv import get_map_statistics
+        from opensight.integrations.hltv import get_map_statistics
         stats = get_map_statistics(map_name)
         if not stats:
             raise HTTPException(status_code=404, detail=f"No stats for map: {map_name}")
@@ -599,7 +599,7 @@ async def get_hltv_map_stats(map_name: str):
 async def search_hltv_player(nickname: str = Query(..., min_length=2)):
     """Search for a player by nickname."""
     try:
-        from opensight.hltv import HLTVClient
+        from opensight.integrations.hltv import HLTVClient
         client = HLTVClient()
         return {"results": client.search_player(nickname)}
     except ImportError as e:
@@ -610,7 +610,7 @@ async def search_hltv_player(nickname: str = Query(..., min_length=2)):
 async def enrich_analysis(analysis_data: dict = Body(...)):
     """Enrich analysis data with HLTV information."""
     try:
-        from opensight.hltv import enrich_match_analysis
+        from opensight.integrations.hltv import enrich_match_analysis
         return enrich_match_analysis(analysis_data)
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}")
@@ -624,7 +624,7 @@ async def enrich_analysis(analysis_data: dict = Body(...)):
 async def get_cache_stats():
     """Get cache statistics."""
     try:
-        from opensight.cache import get_cache_stats
+        from opensight.infra.cache import get_cache_stats
         return get_cache_stats()
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"Cache module not available: {e}")
@@ -634,7 +634,7 @@ async def get_cache_stats():
 async def clear_cache():
     """Clear all cached analysis data."""
     try:
-        from opensight.cache import clear_cache
+        from opensight.infra.cache import clear_cache
         clear_cache()
         return {"status": "ok", "message": "Cache cleared"}
     except ImportError as e:
@@ -650,7 +650,7 @@ async def submit_feedback(request: FeedbackRequest):
     """Submit feedback on analysis accuracy."""
     try:
         from datetime import datetime
-        from opensight.feedback import FeedbackDatabase, FeedbackEntry
+        from opensight.integrations.feedback import FeedbackDatabase, FeedbackEntry
         db = FeedbackDatabase()
         feedback = FeedbackEntry(
             id=None,
@@ -674,7 +674,7 @@ async def submit_coaching_feedback(request: CoachingFeedbackRequest):
     """Submit feedback on coaching insights."""
     try:
         from datetime import datetime
-        from opensight.feedback import FeedbackDatabase, CoachingFeedback
+        from opensight.integrations.feedback import FeedbackDatabase, CoachingFeedback
         db = FeedbackDatabase()
         feedback = CoachingFeedback(
             id=None,
@@ -696,7 +696,7 @@ async def submit_coaching_feedback(request: CoachingFeedbackRequest):
 async def get_feedback_stats():
     """Get feedback statistics for model improvement."""
     try:
-        from opensight.feedback import FeedbackDatabase
+        from opensight.integrations.feedback import FeedbackDatabase
         db = FeedbackDatabase()
         return db.get_stats()
     except ImportError as e:
@@ -711,7 +711,7 @@ async def get_feedback_stats():
 async def get_parallel_status():
     """Get parallel processing capabilities."""
     try:
-        from opensight.parallel import get_system_info, DEFAULT_WORKERS, MAX_WORKERS
+        from opensight.infra.parallel import get_system_info, DEFAULT_WORKERS, MAX_WORKERS
         import multiprocessing
 
         return {
@@ -755,9 +755,9 @@ async def generate_replay_data(
         )
 
     try:
-        from opensight.parser import DemoParser
-        from opensight.replay import ReplayGenerator
-        from opensight.radar import CoordinateTransformer
+        from opensight.core.parser import DemoParser
+        from opensight.visualization.replay import ReplayGenerator
+        from opensight.visualization.radar import CoordinateTransformer
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"Replay module not available: {e}")
 
