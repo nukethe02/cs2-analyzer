@@ -123,8 +123,8 @@ def _analyze_single_demo(task: DemoAnalysisTask) -> DemoAnalysisResult:
 
     try:
         # Import here to avoid pickle issues with multiprocessing
-        from opensight.analytics import DemoAnalyzer
-        from opensight.parser import DemoParser
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.core.parser import DemoParser
 
         # Parse the demo
         parser = DemoParser(task.demo_path)

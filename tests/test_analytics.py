@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from opensight.analytics import (
+from opensight.analysis.analytics import (
     DemoAnalyzer,
     TTDResult,
     CrosshairPlacementResult,
@@ -15,7 +15,7 @@ from opensight.analytics import (
     safe_float,
     analyze_demo,
 )
-from opensight.parser import DemoData, KillEvent, DamageEvent
+from opensight.core.parser import DemoData, KillEvent, DamageEvent
 
 
 class TestSafeFloat:
@@ -290,7 +290,7 @@ class TestAnalyzeDemoFunction:
 
     def test_analyze_demo_creates_analyzer(self):
         """analyze_demo creates analyzer and runs analysis."""
-        from opensight.analytics import MatchAnalysis
+        from opensight.analysis.analytics import MatchAnalysis
 
         mock_data = MagicMock()
         mock_data.file_path = Path("/tmp/test.dem")
@@ -315,7 +315,7 @@ class TestOpeningDuelStats:
 
     def test_opening_duel_stats_creation(self):
         """OpeningDuelStats can be created with default values."""
-        from opensight.analytics import OpeningDuelStats
+        from opensight.analysis.analytics import OpeningDuelStats
         stats = OpeningDuelStats()
         assert stats.wins == 0
         assert stats.losses == 0
@@ -326,33 +326,33 @@ class TestOpeningDuelStats:
 
     def test_opening_duel_win_rate(self):
         """Win rate calculated correctly."""
-        from opensight.analytics import OpeningDuelStats
+        from opensight.analysis.analytics import OpeningDuelStats
         stats = OpeningDuelStats(wins=3, losses=2, attempts=5)
         assert stats.win_rate == 60.0
 
     def test_opening_duel_win_rate_zero_attempts(self):
         """Win rate is 0 when no attempts."""
-        from opensight.analytics import OpeningDuelStats
+        from opensight.analysis.analytics import OpeningDuelStats
         stats = OpeningDuelStats()
         assert stats.win_rate == 0.0
 
     def test_entry_ttd_median(self):
         """Entry TTD median calculated correctly."""
-        from opensight.analytics import OpeningDuelStats
+        from opensight.analysis.analytics import OpeningDuelStats
         stats = OpeningDuelStats()
         stats.entry_ttd_values = [200.0, 300.0, 400.0]
         assert stats.entry_ttd_median_ms == 300.0
 
     def test_entry_ttd_mean(self):
         """Entry TTD mean calculated correctly."""
-        from opensight.analytics import OpeningDuelStats
+        from opensight.analysis.analytics import OpeningDuelStats
         stats = OpeningDuelStats()
         stats.entry_ttd_values = [200.0, 300.0, 400.0]
         assert stats.entry_ttd_mean_ms == 300.0
 
     def test_entry_ttd_none_when_empty(self):
         """Entry TTD is None when no values."""
-        from opensight.analytics import OpeningDuelStats
+        from opensight.analysis.analytics import OpeningDuelStats
         stats = OpeningDuelStats()
         assert stats.entry_ttd_median_ms is None
         assert stats.entry_ttd_mean_ms is None
@@ -363,7 +363,7 @@ class TestTradeStats:
 
     def test_trade_stats_creation(self):
         """TradeStats can be created with default values."""
-        from opensight.analytics import TradeStats
+        from opensight.analysis.analytics import TradeStats
         stats = TradeStats()
         assert stats.kills_traded == 0
         assert stats.deaths_traded == 0
@@ -372,19 +372,19 @@ class TestTradeStats:
 
     def test_trade_rate_calculation(self):
         """Trade Kill % calculated correctly."""
-        from opensight.analytics import TradeStats
+        from opensight.analysis.analytics import TradeStats
         stats = TradeStats(kills_traded=3, trade_attempts=10)
         assert stats.trade_rate == 30.0
 
     def test_trade_rate_zero_attempts(self):
         """Trade rate is 0 when no attempts."""
-        from opensight.analytics import TradeStats
+        from opensight.analysis.analytics import TradeStats
         stats = TradeStats()
         assert stats.trade_rate == 0.0
 
     def test_deaths_traded_rate(self):
         """Deaths traded rate calculated correctly."""
-        from opensight.analytics import TradeStats
+        from opensight.analysis.analytics import TradeStats
         stats = TradeStats(deaths_traded=2, failed_trades=3)
         assert stats.deaths_traded_rate == 40.0
 
@@ -394,7 +394,7 @@ class TestClutchStats:
 
     def test_clutch_stats_creation(self):
         """ClutchStats can be created with default values."""
-        from opensight.analytics import ClutchStats
+        from opensight.analysis.analytics import ClutchStats
         stats = ClutchStats()
         assert stats.total_situations == 0
         assert stats.total_wins == 0
@@ -403,31 +403,31 @@ class TestClutchStats:
 
     def test_clutch_win_rate(self):
         """Overall clutch win rate calculated correctly."""
-        from opensight.analytics import ClutchStats
+        from opensight.analysis.analytics import ClutchStats
         stats = ClutchStats(total_situations=5, total_wins=2)
         assert stats.win_rate == 40.0
 
     def test_clutch_win_rate_zero_situations(self):
         """Win rate is 0 when no situations."""
-        from opensight.analytics import ClutchStats
+        from opensight.analysis.analytics import ClutchStats
         stats = ClutchStats()
         assert stats.win_rate == 0.0
 
     def test_v1_win_rate(self):
         """1v1 clutch win rate calculated correctly."""
-        from opensight.analytics import ClutchStats
+        from opensight.analysis.analytics import ClutchStats
         stats = ClutchStats(v1_attempts=4, v1_wins=3)
         assert stats.v1_win_rate == 75.0
 
     def test_v2_win_rate(self):
         """1v2 clutch win rate calculated correctly."""
-        from opensight.analytics import ClutchStats
+        from opensight.analysis.analytics import ClutchStats
         stats = ClutchStats(v2_attempts=3, v2_wins=1)
         assert stats.v2_win_rate == pytest.approx(33.3, abs=0.1)
 
     def test_all_clutch_win_rates(self):
         """All clutch win rate properties work correctly."""
-        from opensight.analytics import ClutchStats
+        from opensight.analysis.analytics import ClutchStats
         stats = ClutchStats(
             v1_attempts=2, v1_wins=1,
             v2_attempts=2, v2_wins=1,
@@ -447,7 +447,7 @@ class TestPlayerMatchStatsNewProperties:
 
     def test_entry_kills_per_round(self):
         """Entry kills per round calculated correctly."""
-        from opensight.analytics import PlayerMatchStats, OpeningDuelStats
+        from opensight.analysis.analytics import PlayerMatchStats, OpeningDuelStats
         player = PlayerMatchStats(
             steam_id=12345,
             name="Player1",
@@ -464,7 +464,7 @@ class TestPlayerMatchStatsNewProperties:
 
     def test_entry_ttd_property(self):
         """Entry TTD property returns median from opening_duels."""
-        from opensight.analytics import PlayerMatchStats, OpeningDuelStats
+        from opensight.analysis.analytics import PlayerMatchStats, OpeningDuelStats
         player = PlayerMatchStats(
             steam_id=12345,
             name="Player1",
@@ -481,7 +481,7 @@ class TestPlayerMatchStatsNewProperties:
 
     def test_trade_kill_rate_property(self):
         """Trade kill rate property returns trade_rate from trades."""
-        from opensight.analytics import PlayerMatchStats, TradeStats
+        from opensight.analysis.analytics import PlayerMatchStats, TradeStats
         player = PlayerMatchStats(
             steam_id=12345,
             name="Player1",
@@ -498,7 +498,7 @@ class TestPlayerMatchStatsNewProperties:
 
     def test_clutch_win_rate_property(self):
         """Clutch win rate property returns win_rate from clutches."""
-        from opensight.analytics import PlayerMatchStats, ClutchStats
+        from opensight.analysis.analytics import PlayerMatchStats, ClutchStats
         player = PlayerMatchStats(
             steam_id=12345,
             name="Player1",
@@ -515,7 +515,7 @@ class TestPlayerMatchStatsNewProperties:
 
     def test_clutch_1v1_rate_property(self):
         """Clutch 1v1 rate property works correctly."""
-        from opensight.analytics import PlayerMatchStats, ClutchStats
+        from opensight.analysis.analytics import PlayerMatchStats, ClutchStats
         player = PlayerMatchStats(
             steam_id=12345,
             name="Player1",
@@ -532,7 +532,7 @@ class TestPlayerMatchStatsNewProperties:
 
     def test_clutch_1v2_rate_property(self):
         """Clutch 1v2 rate property works correctly."""
-        from opensight.analytics import PlayerMatchStats, ClutchStats
+        from opensight.analysis.analytics import PlayerMatchStats, ClutchStats
         player = PlayerMatchStats(
             steam_id=12345,
             name="Player1",

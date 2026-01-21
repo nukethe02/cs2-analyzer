@@ -42,7 +42,7 @@ class TestBackendAbstraction:
 
     def test_pandas_backend_available(self):
         """Test that pandas backend is always available."""
-        from opensight.backend import PandasBackend, is_pandas_available
+        from opensight.infra.backend import PandasBackend, is_pandas_available
 
         assert is_pandas_available()
         backend = PandasBackend()
@@ -50,14 +50,14 @@ class TestBackendAbstraction:
 
     def test_polars_backend_check(self):
         """Test Polars availability check."""
-        from opensight.backend import is_polars_available
+        from opensight.infra.backend import is_polars_available
 
         # Should match our local check
         assert is_polars_available() == POLARS_AVAILABLE
 
     def test_pandas_backend_from_dict(self):
         """Test creating DataFrame from dict using pandas backend."""
-        from opensight.backend import PandasBackend
+        from opensight.infra.backend import PandasBackend
 
         backend = PandasBackend()
         data = {"a": [1, 2, 3], "b": ["x", "y", "z"]}
@@ -69,7 +69,7 @@ class TestBackendAbstraction:
 
     def test_pandas_backend_filter(self):
         """Test filtering using pandas backend."""
-        from opensight.backend import PandasBackend
+        from opensight.infra.backend import PandasBackend
 
         backend = PandasBackend()
         data = {"value": [1, 5, 10, 15, 20], "name": ["a", "b", "c", "d", "e"]}
@@ -89,7 +89,7 @@ class TestBackendAbstraction:
 
     def test_pandas_backend_groupby(self):
         """Test groupby aggregation using pandas backend."""
-        from opensight.backend import PandasBackend
+        from opensight.infra.backend import PandasBackend
 
         backend = PandasBackend()
         data = {
@@ -103,7 +103,7 @@ class TestBackendAbstraction:
 
     def test_pandas_backend_sort(self):
         """Test sorting using pandas backend."""
-        from opensight.backend import PandasBackend
+        from opensight.infra.backend import PandasBackend
 
         backend = PandasBackend()
         data = {"tick": [300, 100, 200]}
@@ -117,7 +117,7 @@ class TestBackendAbstraction:
 
     def test_pandas_backend_concat(self):
         """Test concatenation using pandas backend."""
-        from opensight.backend import PandasBackend
+        from opensight.infra.backend import PandasBackend
 
         backend = PandasBackend()
         df1 = backend.from_dict({"a": [1, 2]})
@@ -130,7 +130,7 @@ class TestBackendAbstraction:
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
     def test_polars_backend_from_dict(self):
         """Test creating DataFrame from dict using Polars backend."""
-        from opensight.backend import PolarsBackend
+        from opensight.infra.backend import PolarsBackend
 
         backend = PolarsBackend()
         data = {"a": [1, 2, 3], "b": ["x", "y", "z"]}
@@ -143,7 +143,7 @@ class TestBackendAbstraction:
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
     def test_polars_backend_filter(self):
         """Test filtering using Polars backend."""
-        from opensight.backend import PolarsBackend
+        from opensight.infra.backend import PolarsBackend
 
         backend = PolarsBackend()
         data = {"value": [1, 5, 10, 15, 20], "name": ["a", "b", "c", "d", "e"]}
@@ -160,7 +160,7 @@ class TestBackendAbstraction:
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
     def test_polars_backend_groupby(self):
         """Test groupby aggregation using Polars backend."""
-        from opensight.backend import PolarsBackend
+        from opensight.infra.backend import PolarsBackend
 
         backend = PolarsBackend()
         data = {
@@ -178,7 +178,7 @@ class TestBackendConversion:
 
     def test_pandas_to_pandas(self):
         """Test pandas DataFrame stays as pandas."""
-        from opensight.backend import convert_dataframe
+        from opensight.infra.backend import convert_dataframe
 
         df = pd.DataFrame({"a": [1, 2, 3]})
         result = convert_dataframe(df, "pandas")
@@ -189,7 +189,7 @@ class TestBackendConversion:
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
     def test_pandas_to_polars(self):
         """Test converting pandas to Polars."""
-        from opensight.backend import convert_dataframe
+        from opensight.infra.backend import convert_dataframe
 
         df = pd.DataFrame({"a": [1, 2, 3]})
         result = convert_dataframe(df, "polars")
@@ -201,7 +201,7 @@ class TestBackendConversion:
     @pytest.mark.skipif(not PYARROW_AVAILABLE, reason="PyArrow not installed (needed for polars->pandas)")
     def test_polars_to_pandas(self):
         """Test converting Polars to pandas."""
-        from opensight.backend import convert_dataframe
+        from opensight.infra.backend import convert_dataframe
 
         df = pl.DataFrame({"a": [1, 2, 3]})
         result = convert_dataframe(df, "pandas")
@@ -215,7 +215,7 @@ class TestGetBackend:
 
     def test_get_backend_default(self):
         """Test default backend selection."""
-        from opensight.backend import get_backend
+        from opensight.infra.backend import get_backend
 
         backend = get_backend()
         # Default should be pandas unless configured otherwise
@@ -224,7 +224,7 @@ class TestGetBackend:
 
     def test_get_backend_force_pandas(self):
         """Test forcing pandas backend."""
-        from opensight.backend import get_backend
+        from opensight.infra.backend import get_backend
 
         backend = get_backend(use_polars=False)
         assert backend.name == "pandas"
@@ -232,7 +232,7 @@ class TestGetBackend:
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
     def test_get_backend_force_polars(self):
         """Test forcing Polars backend."""
-        from opensight.backend import get_backend
+        from opensight.infra.backend import get_backend
 
         backend = get_backend(use_polars=True)
         assert backend.name == "polars"
@@ -248,7 +248,7 @@ class TestSerialization:
     @pytest.mark.skipif(not PYARROW_AVAILABLE, reason="PyArrow not installed")
     def test_save_load_parquet_pandas(self):
         """Test saving/loading Parquet with pandas."""
-        from opensight.backend import save_dataframe, load_dataframe
+        from opensight.infra.backend import save_dataframe, load_dataframe
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.parquet"
@@ -265,7 +265,7 @@ class TestSerialization:
     @pytest.mark.skipif(not PYARROW_AVAILABLE, reason="PyArrow not installed")
     def test_save_load_feather_pandas(self):
         """Test saving/loading Feather with pandas."""
-        from opensight.backend import save_dataframe, load_dataframe
+        from opensight.infra.backend import save_dataframe, load_dataframe
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.feather"
@@ -281,7 +281,7 @@ class TestSerialization:
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
     def test_save_load_parquet_polars(self):
         """Test saving/loading Parquet with Polars."""
-        from opensight.backend import save_dataframe, load_dataframe
+        from opensight.infra.backend import save_dataframe, load_dataframe
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.parquet"
@@ -297,7 +297,7 @@ class TestSerialization:
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
     def test_lazy_load_parquet(self):
         """Test lazy loading Parquet with Polars."""
-        from opensight.backend import save_dataframe, load_dataframe
+        from opensight.infra.backend import save_dataframe, load_dataframe
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.parquet"
@@ -327,7 +327,7 @@ class TestPolarsOps:
 
     def test_filter_by_steamid(self):
         """Test steamid filtering with type coercion."""
-        from opensight.polars_ops import PolarsOps
+        from opensight.infra.polars_ops import PolarsOps
 
         df = pl.DataFrame({
             "attacker_steamid": [123, 456, 123, 789],
@@ -339,7 +339,7 @@ class TestPolarsOps:
 
     def test_group_kills_by_round(self):
         """Test multi-kill detection."""
-        from opensight.polars_ops import PolarsOps
+        from opensight.infra.polars_ops import PolarsOps
 
         df = pl.DataFrame({
             "attacker_steamid": [1, 1, 1, 2, 2],
@@ -357,7 +357,7 @@ class TestPolarsOps:
 
     def test_compute_damage_stats(self):
         """Test damage aggregation."""
-        from opensight.polars_ops import PolarsOps
+        from opensight.infra.polars_ops import PolarsOps
 
         df = pl.DataFrame({
             "attacker_steamid": [1, 1, 2, 2],
@@ -371,7 +371,7 @@ class TestPolarsOps:
 
     def test_find_first_kill_per_round(self):
         """Test opening duel detection."""
-        from opensight.polars_ops import PolarsOps
+        from opensight.infra.polars_ops import PolarsOps
 
         df = pl.DataFrame({
             "round_num": [1, 1, 1, 2, 2],
@@ -426,7 +426,7 @@ class TestPolarsAnalyzer:
 
     def test_polars_analyzer_init(self, mock_demo_data):
         """Test PolarsAnalyzer initialization."""
-        from opensight.polars_ops import PolarsAnalyzer
+        from opensight.infra.polars_ops import PolarsAnalyzer
 
         analyzer = PolarsAnalyzer(mock_demo_data)
         assert analyzer._kills_df is not None
@@ -434,7 +434,7 @@ class TestPolarsAnalyzer:
 
     def test_compute_player_stats(self, mock_demo_data):
         """Test basic player stats computation."""
-        from opensight.polars_ops import PolarsAnalyzer
+        from opensight.infra.polars_ops import PolarsAnalyzer
 
         analyzer = PolarsAnalyzer(mock_demo_data)
         stats = analyzer.compute_player_stats()
@@ -447,7 +447,7 @@ class TestPolarsAnalyzer:
 
     def test_compute_opening_duels(self, mock_demo_data):
         """Test opening duel detection."""
-        from opensight.polars_ops import PolarsAnalyzer
+        from opensight.infra.polars_ops import PolarsAnalyzer
 
         analyzer = PolarsAnalyzer(mock_demo_data)
         duels = analyzer.compute_opening_duels()
@@ -465,7 +465,7 @@ class TestBackendConfig:
 
     def test_backend_config_defaults(self):
         """Test default backend configuration."""
-        from opensight.backend import BackendConfig
+        from opensight.infra.backend import BackendConfig
 
         config = BackendConfig()
         assert config.use_polars == False
@@ -475,7 +475,7 @@ class TestBackendConfig:
 
     def test_set_backend_config(self):
         """Test setting global backend config."""
-        from opensight.backend import (
+        from opensight.infra.backend import (
             BackendConfig, set_backend_config, get_backend_config
         )
 
@@ -491,7 +491,7 @@ class TestBackendConfig:
 
     def test_config_dataclass_in_opensight_config(self):
         """Test BackendConfig is included in OpenSightConfig."""
-        from opensight.config import OpenSightConfig
+        from opensight.core.config import OpenSightConfig
 
         config = OpenSightConfig()
         assert hasattr(config, "backend")
@@ -539,7 +539,7 @@ class TestPerformance:
     @pytest.mark.skip(reason="Performance test - run manually")
     def test_benchmark_backends(self):
         """Benchmark pandas vs polars performance."""
-        from opensight.backend import benchmark_backends
+        from opensight.infra.backend import benchmark_backends
 
         results = benchmark_backends(df_size=100000)
 

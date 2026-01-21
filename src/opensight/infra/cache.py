@@ -459,8 +459,8 @@ class CachedAnalyzer:
 
         # Run analysis
         logger.info(f"Analyzing {demo_path.name}")
-        from opensight.analytics import DemoAnalyzer
-        from opensight.parser import DemoParser
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.core.parser import DemoParser
 
         parser = DemoParser(demo_path)
         demo_data = parser.parse()

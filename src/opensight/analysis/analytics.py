@@ -21,19 +21,19 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from opensight.constants import (
+from opensight.core.constants import (
     CS2_TICK_RATE,
     HLTV_RATING_COEFFICIENTS,
     IMPACT_COEFFICIENTS,
     TRADE_WINDOW_SECONDS,
 )
-from opensight.parser import DemoData, safe_float, safe_int, safe_str
+from opensight.core.parser import DemoData, safe_float, safe_int, safe_str
 
 logger = logging.getLogger(__name__)
 
 # Import optimized metrics computation
 try:
-    from opensight.metrics_optimized import (
+    from opensight.analysis.metrics_optimized import (
         MetricType,
         OptimizedMetricsComputer,
         compute_cp_from_dataframe_vectorized,
@@ -51,7 +51,7 @@ except ImportError:
 
 # Import economy and combat modules for integration
 try:
-    from opensight.economy import BuyType, EconomyAnalyzer, EconomyStats, PlayerEconomyProfile
+    from opensight.domains.economy import BuyType, EconomyAnalyzer, EconomyStats, PlayerEconomyProfile
 
     HAS_ECONOMY = True
 except ImportError:
@@ -59,7 +59,7 @@ except ImportError:
     logger.debug("Economy module not available")
 
 try:
-    from opensight.combat import CombatAnalysisResult, CombatAnalyzer, PlayerCombatStats
+    from opensight.domains.combat import CombatAnalysisResult, CombatAnalyzer, PlayerCombatStats
 
     HAS_COMBAT = True
 except ImportError:
@@ -67,7 +67,7 @@ except ImportError:
     logger.debug("Combat module not available")
 
 
-# Note: safe_int, safe_str, safe_float are imported from opensight.parser
+# Note: safe_int, safe_str, safe_float are imported from opensight.core.parser
 
 
 def compute_kill_positions(match_data) -> list[dict]:
@@ -2861,7 +2861,7 @@ class DemoAnalyzer:
         - Utility ADR (HE + Molotov damage per round)
         """
         try:
-            from opensight.state_machine import StateMachine
+            from opensight.visualization.state_machine import StateMachine
         except ImportError as e:
             logger.warning(f"State Machine not available: {e}")
             return
@@ -3129,7 +3129,7 @@ class DemoAnalyzer:
             - grenade_positions: List of dicts with position and metadata
             - team_stats: Dict with team-level utility statistics
         """
-        from opensight.trajectory import GRENADE_COLORS, GRENADE_CSS_CLASSES
+        from opensight.visualization.trajectory import GRENADE_COLORS, GRENADE_CSS_CLASSES
 
         grenade_positions = []
         team_stats = {
@@ -3386,8 +3386,8 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
         Dictionary mapping steam_id (as string) to UtilityMetrics for each player
 
     Example:
-        >>> from opensight.parser import parse_demo
-        >>> from opensight.analytics import compute_utility_metrics
+        >>> from opensight.core.parser import parse_demo
+        >>> from opensight.analysis.analytics import compute_utility_metrics
         >>> data = parse_demo("match.dem")
         >>> utility_stats = compute_utility_metrics(data)
         >>> for steam_id, metrics in utility_stats.items():
@@ -4400,8 +4400,8 @@ def calculate_economy_history(match_data: DemoData) -> list[dict]:
         ]
 
     Example:
-        >>> from opensight.parser import DemoParser
-        >>> from opensight.analytics import calculate_economy_history
+        >>> from opensight.core.parser import DemoParser
+        >>> from opensight.analysis.analytics import calculate_economy_history
         >>> parser = DemoParser("match.dem")
         >>> data = parser.parse()
         >>> economy = calculate_economy_history(data)
@@ -4409,7 +4409,7 @@ def calculate_economy_history(match_data: DemoData) -> list[dict]:
         ...     print(f"Round {round_data['round']}: T=${round_data['team_t_val']}, CT=${round_data['team_ct_val']}")
     """
     try:
-        from opensight.economy import EconomyAnalyzer
+        from opensight.domains.economy import EconomyAnalyzer
     except ImportError:
         logger.warning("Economy module not available, returning empty history")
         return []

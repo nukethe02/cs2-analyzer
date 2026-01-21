@@ -37,14 +37,14 @@ from opensight import __version__
 
 def _import_parser():
     """Lazy import for DemoParser (loads demoparser2, pandas, numpy)."""
-    from opensight.parser import DemoData, DemoParser
+    from opensight.core.parser import DemoData, DemoParser
 
     return DemoParser, DemoData
 
 
 def _import_metrics():
     """Lazy import for metrics functions (loads analytics)."""
-    from opensight.metrics import (
+    from opensight.analysis.metrics import (
         calculate_comprehensive_metrics,
         calculate_crosshair_placement,
         calculate_economy_metrics,
@@ -69,14 +69,14 @@ def _import_metrics():
 
 def _import_watcher():
     """Lazy import for watcher (loads watchdog)."""
-    from opensight.watcher import DemoFileEvent, ReplayWatcher, get_default_replays_folder
+    from opensight.infra.watcher import DemoFileEvent, ReplayWatcher, get_default_replays_folder
 
     return ReplayWatcher, DemoFileEvent, get_default_replays_folder
 
 
 def _import_export():
     """Lazy import for export functions."""
-    from opensight.export import export_analysis
+    from opensight.visualization.export import export_analysis
 
     return export_analysis
 
@@ -434,7 +434,7 @@ def decode(
     This command uses zero heavy dependencies - just pure math.
     """
     # Import sharecode module directly - it has no heavy dependencies
-    from opensight.sharecode import decode_sharecode
+    from opensight.integrations.sharecode import decode_sharecode
 
     try:
         info = decode_sharecode(share_code)
