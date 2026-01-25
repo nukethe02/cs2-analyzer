@@ -167,12 +167,12 @@ async def root() -> HTMLResponse:
         return HTMLResponse(
             content=html_file.read_text(),
             status_code=200,
-            headers={"cache-control": "public, max-age=3600"},
+            headers={"cache-control": "no-cache, no-store, must-revalidate"},
         )
     return HTMLResponse(
         content="<h1>OpenSight</h1><p>Web interface not found.</p>",
         status_code=200,
-        headers={"cache-control": "public, max-age=3600"},
+        headers={"cache-control": "no-cache"},
     )
 
 
