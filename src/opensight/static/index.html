@@ -218,6 +218,7 @@
             background: radial-gradient(circle at 50% 50%, var(--accent-glow), transparent 70%);
             opacity: 0;
             transition: opacity 0.3s;
+            pointer-events: none; /* Ensure pseudo-element doesn't block clicks */
         }
 
         .upload-zone:hover, .upload-zone.dragover {
@@ -1302,7 +1303,7 @@
                     <span class="format-tag">.dem.gz</span>
                     <span class="format-tag">up to 500MB</span>
                 </div>
-                <input type="file" id="demo-file" accept=".dem,.dem.gz">
+                <input type="file" id="demo-file" accept=".dem,.dem.gz,application/octet-stream,application/gzip">
             </div>
         </section>
 
@@ -1349,23 +1350,41 @@
 
         let analysisData = null;
 
-        // Click to upload
-        uploadZone.addEventListener('click', () => fileInput.click());
+        // Debug: check if elements exist
+        console.log('Upload zone:', uploadZone);
+        console.log('File input:', fileInput);
+
+        // Click to upload - with better error handling
+        uploadZone.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Upload zone clicked');
+            if (fileInput) {
+                fileInput.value = ''; // Reset to allow re-selecting same file
+                fileInput.click();
+            } else {
+                console.error('File input element not found');
+            }
+        });
 
         // Drag and drop
         uploadZone.addEventListener('dragover', (e) => {
             e.preventDefault();
+            e.stopPropagation();
             uploadZone.classList.add('dragover');
         });
 
-        uploadZone.addEventListener('dragleave', () => {
+        uploadZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
             uploadZone.classList.remove('dragover');
         });
 
         uploadZone.addEventListener('drop', (e) => {
             e.preventDefault();
+            e.stopPropagation();
             uploadZone.classList.remove('dragover');
             const file = e.dataTransfer.files[0];
+            console.log('File dropped:', file?.name);
             if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
                 analyzeFile(file);
             } else {
@@ -1376,6 +1395,7 @@
         // File input change
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
+            console.log('File selected:', file?.name);
             if (file) analyzeFile(file);
         });
 
