@@ -169,13 +169,15 @@ class Annotation:
             },
             "content": {"text": self.text, "data": self.data},
             "target": {"player": self.target_player, "position": self.position},
-            "drawing": {
-                "points": self.drawing_points,
-                "color": self.drawing_color,
-                "thickness": self.drawing_thickness,
-            }
-            if self.annotation_type == AnnotationType.DRAWING
-            else None,
+            "drawing": (
+                {
+                    "points": self.drawing_points,
+                    "color": self.drawing_color,
+                    "thickness": self.drawing_thickness,
+                }
+                if self.annotation_type == AnnotationType.DRAWING
+                else None
+            ),
             "metadata": {
                 "is_private": self.is_private,
                 "tags": self.tags,

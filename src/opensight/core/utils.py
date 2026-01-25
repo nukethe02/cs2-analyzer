@@ -8,16 +8,17 @@ This module provides:
 - Common utility functions
 """
 
-from functools import wraps
-from typing import Any, Callable, Optional, TypeVar
+import gc
 import logging
 import time
-import gc
+from collections.abc import Callable
+from functools import wraps
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
 # Type variable for generic decorators
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def timed(func: F) -> F:
@@ -29,6 +30,7 @@ def timed(func: F) -> F:
         def my_function():
             ...
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.perf_counter()
@@ -36,6 +38,7 @@ def timed(func: F) -> F:
         elapsed = time.perf_counter() - start_time
         logger.info(f"{func.__name__} completed in {elapsed:.3f}s")
         return result
+
     return wrapper  # type: ignore
 
 
@@ -52,6 +55,7 @@ def memory_efficient(clear_gc: bool = True):
         def process_large_data():
             ...
     """
+
     def decorator(func: F) -> F:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -59,7 +63,9 @@ def memory_efficient(clear_gc: bool = True):
             if clear_gc:
                 gc.collect()
             return result
+
         return wrapper  # type: ignore
+
     return decorator
 
 
@@ -75,7 +81,7 @@ class PerformanceMonitor:
     def __init__(self, operation_name: str, log_level: int = logging.INFO):
         self.operation_name = operation_name
         self.log_level = log_level
-        self.start_time: Optional[float] = None
+        self.start_time: float | None = None
 
     def __enter__(self):
         self.start_time = time.perf_counter()

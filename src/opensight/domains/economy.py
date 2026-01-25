@@ -362,7 +362,7 @@ class EconomyAnalyzer:
 
         # Determine pistol rounds from DemoData.rounds if available
         pistol_rounds = {1, 16}  # Default: first round and after halftime
-        if hasattr(self.data, 'rounds') and self.data.rounds:
+        if hasattr(self.data, "rounds") and self.data.rounds:
             pistol_rounds = {1}  # Round 1 is always pistol
             # MR15 format: round 16 is second half pistol
             # MR12 format: round 13 is second half pistol
@@ -374,9 +374,9 @@ class EconomyAnalyzer:
 
         # Pre-calculate grenade usage per player per round if available
         grenade_counts: dict[tuple[int, int], int] = {}  # (steam_id, round_num) -> count
-        if hasattr(self.data, 'grenades') and self.data.grenades:
+        if hasattr(self.data, "grenades") and self.data.grenades:
             for grenade in self.data.grenades:
-                if grenade.event_type == 'thrown':
+                if grenade.event_type == "thrown":
                     key = (grenade.player_steamid, grenade.round_num)
                     grenade_counts[key] = grenade_counts.get(key, 0) + 1
 
@@ -413,13 +413,16 @@ class EconomyAnalyzer:
 
                         # Estimate equipment value from weapons used
                         max_weapon_cost = max(
-                            (estimate_weapon_cost(w) for w in weapons if w),
-                            default=0
+                            (estimate_weapon_cost(w) for w in weapons if w), default=0
                         )
 
                         # Estimate armor from damage data or weapon cost
-                        has_armor = player_has_armor.get((steam_id, round_num_int), max_weapon_cost >= 1800)
-                        has_helmet = has_armor and max_weapon_cost >= 1500  # More likely helmet with better weapons
+                        has_armor = player_has_armor.get(
+                            (steam_id, round_num_int), max_weapon_cost >= 1800
+                        )
+                        has_helmet = (
+                            has_armor and max_weapon_cost >= 1500
+                        )  # More likely helmet with better weapons
 
                         # Rough estimate: weapon + armor
                         equipment_estimate = max_weapon_cost
@@ -430,7 +433,9 @@ class EconomyAnalyzer:
 
                         # Add grenade cost estimation
                         grenade_count = grenade_counts.get((steam_id, round_num_int), 0)
-                        grenade_cost = min(grenade_count * 300, 1200)  # Estimate ~300 per grenade, max 4
+                        grenade_cost = min(
+                            grenade_count * 300, 1200
+                        )  # Estimate ~300 per grenade, max 4
                         equipment_estimate += grenade_cost
 
                         # Validate equipment value (0-10000 range)
@@ -458,8 +463,7 @@ class EconomyAnalyzer:
                     # No round info - create single summary
                     weapons = player_kills[weapon_col].unique()
                     max_weapon_cost = max(
-                        (estimate_weapon_cost(w) for w in weapons if w),
-                        default=0
+                        (estimate_weapon_cost(w) for w in weapons if w), default=0
                     )
 
                     equipment_estimate = max_weapon_cost

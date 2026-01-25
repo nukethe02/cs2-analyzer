@@ -1,20 +1,19 @@
 """Tests for the utility analysis module."""
 
 from pathlib import Path
+
 import pandas as pd
 import pytest
 
+from opensight.core.parser import DemoData
 from opensight.domains.utility import (
-    UtilityAnalyzer,
-    GrenadeType,
-    GrenadeDamageEvent,
-    PlayerUtilityStats,
-    UtilityAnalysisResult,
-    analyze_utility,
     GRENADE_COSTS,
     GRENADE_WEAPONS,
+    GrenadeType,
+    UtilityAnalysisResult,
+    UtilityAnalyzer,
+    analyze_utility,
 )
-from opensight.core.parser import DemoData
 
 
 class TestGrenadeTypeMapping:
@@ -72,14 +71,16 @@ class TestUtilityAnalyzer:
     @pytest.fixture
     def demo_with_utility(self):
         """Create demo data with utility damage."""
-        damages_df = pd.DataFrame({
-            "tick": [1000, 1100, 2000, 2100, 2200],
-            "attacker_steamid": [12345, 12345, 67890, 12345, 12345],
-            "user_steamid": [67890, 67890, 12345, 67890, 11111],
-            "dmg_health": [50, 30, 25, 40, 10],
-            "weapon": ["hegrenade", "hegrenade", "molotov", "hegrenade", "hegrenade"],
-            "total_rounds_played": [1, 1, 1, 2, 2],
-        })
+        damages_df = pd.DataFrame(
+            {
+                "tick": [1000, 1100, 2000, 2100, 2200],
+                "attacker_steamid": [12345, 12345, 67890, 12345, 12345],
+                "user_steamid": [67890, 67890, 12345, 67890, 11111],
+                "dmg_health": [50, 30, 25, 40, 10],
+                "weapon": ["hegrenade", "hegrenade", "molotov", "hegrenade", "hegrenade"],
+                "total_rounds_played": [1, 1, 1, 2, 2],
+            }
+        )
 
         return DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -108,23 +109,27 @@ class TestUtilityAnalyzer:
         analyzer = UtilityAnalyzer(demo_with_utility)
         result = analyzer.analyze()
 
-        he_events = [e for e in result.grenade_damage_events
-                    if e.grenade_type == GrenadeType.HE_GRENADE]
-        molotov_events = [e for e in result.grenade_damage_events
-                        if e.grenade_type == GrenadeType.MOLOTOV]
+        he_events = [
+            e for e in result.grenade_damage_events if e.grenade_type == GrenadeType.HE_GRENADE
+        ]
+        molotov_events = [
+            e for e in result.grenade_damage_events if e.grenade_type == GrenadeType.MOLOTOV
+        ]
 
         assert len(he_events) == 4
         assert len(molotov_events) == 1
 
     def test_ignores_non_grenade_damage(self):
         """Non-grenade damage is ignored."""
-        damages_df = pd.DataFrame({
-            "tick": [1000, 2000],
-            "attacker_steamid": [12345, 12345],
-            "user_steamid": [67890, 67890],
-            "dmg_health": [27, 100],
-            "weapon": ["ak47", "awp"],
-        })
+        damages_df = pd.DataFrame(
+            {
+                "tick": [1000, 2000],
+                "attacker_steamid": [12345, 12345],
+                "user_steamid": [67890, 67890],
+                "dmg_health": [27, 100],
+                "weapon": ["ak47", "awp"],
+            }
+        )
 
         demo = DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -152,13 +157,15 @@ class TestTeamDamageDetection:
 
     def test_detects_team_damage(self):
         """Team damage is flagged."""
-        damages_df = pd.DataFrame({
-            "tick": [1000],
-            "attacker_steamid": [12345],
-            "user_steamid": [11111],  # Same team as attacker
-            "dmg_health": [50],
-            "weapon": ["hegrenade"],
-        })
+        damages_df = pd.DataFrame(
+            {
+                "tick": [1000],
+                "attacker_steamid": [12345],
+                "user_steamid": [11111],  # Same team as attacker
+                "dmg_health": [50],
+                "weapon": ["hegrenade"],
+            }
+        )
 
         demo = DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -183,13 +190,15 @@ class TestTeamDamageDetection:
 
     def test_enemy_damage_not_flagged_as_team(self):
         """Enemy damage is not flagged as team damage."""
-        damages_df = pd.DataFrame({
-            "tick": [1000],
-            "attacker_steamid": [12345],
-            "user_steamid": [67890],
-            "dmg_health": [50],
-            "weapon": ["hegrenade"],
-        })
+        damages_df = pd.DataFrame(
+            {
+                "tick": [1000],
+                "attacker_steamid": [12345],
+                "user_steamid": [67890],
+                "dmg_health": [50],
+                "weapon": ["hegrenade"],
+            }
+        )
 
         demo = DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -218,14 +227,16 @@ class TestPlayerUtilityStats:
     @pytest.fixture
     def demo_with_player_utility(self):
         """Create demo data with utility for specific player."""
-        damages_df = pd.DataFrame({
-            "tick": [1000, 1100, 2000],
-            "attacker_steamid": [12345, 12345, 12345],
-            "user_steamid": [67890, 67890, 67890],
-            "dmg_health": [50, 30, 40],
-            "weapon": ["hegrenade", "hegrenade", "hegrenade"],
-            "total_rounds_played": [1, 1, 2],
-        })
+        damages_df = pd.DataFrame(
+            {
+                "tick": [1000, 1100, 2000],
+                "attacker_steamid": [12345, 12345, 12345],
+                "user_steamid": [67890, 67890, 67890],
+                "dmg_health": [50, 30, 40],
+                "weapon": ["hegrenade", "hegrenade", "hegrenade"],
+                "total_rounds_played": [1, 1, 2],
+            }
+        )
 
         return DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -264,13 +275,15 @@ class TestTeamUtilityStats:
 
     def test_team_damage_calculated(self):
         """Team utility damage totals are calculated."""
-        damages_df = pd.DataFrame({
-            "tick": [1000, 2000],
-            "attacker_steamid": [12345, 67890],
-            "user_steamid": [67890, 12345],
-            "dmg_health": [50, 30],
-            "weapon": ["hegrenade", "molotov"],
-        })
+        damages_df = pd.DataFrame(
+            {
+                "tick": [1000, 2000],
+                "attacker_steamid": [12345, 67890],
+                "user_steamid": [67890, 12345],
+                "dmg_health": [50, 30],
+                "weapon": ["hegrenade", "molotov"],
+            }
+        )
 
         demo = DemoData(
             file_path=Path("/tmp/test.dem"),

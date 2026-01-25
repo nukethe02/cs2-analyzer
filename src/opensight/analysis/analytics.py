@@ -51,7 +51,12 @@ except ImportError:
 
 # Import economy and combat modules for integration
 try:
-    from opensight.domains.economy import BuyType, EconomyAnalyzer, EconomyStats, PlayerEconomyProfile
+    from opensight.domains.economy import (
+        BuyType,
+        EconomyAnalyzer,
+        EconomyStats,
+        PlayerEconomyProfile,
+    )
 
     HAS_ECONOMY = True
 except ImportError:
@@ -1262,7 +1267,9 @@ class DemoAnalyzer:
             warnings.append("Invalid round count (0) - defaulting to 1")
 
         if self.data.num_rounds > 60:
-            warnings.append(f"Unusual round count ({self.data.num_rounds}) - may be overtime or corrupt data")
+            warnings.append(
+                f"Unusual round count ({self.data.num_rounds}) - may be overtime or corrupt data"
+            )
 
         # Check for steam ID validity
         invalid_ids = [sid for sid in self.data.player_names.keys() if sid <= 0]
@@ -1593,7 +1600,9 @@ class DemoAnalyzer:
 
         # Use trade window from constants (typically 5 seconds)
         trade_window_ticks = int(TRADE_WINDOW_SECONDS * self.TICK_RATE)
-        logger.info(f"Trade detection: window = {TRADE_WINDOW_SECONDS}s = {trade_window_ticks} ticks")
+        logger.info(
+            f"Trade detection: window = {TRADE_WINDOW_SECONDS}s = {trade_window_ticks} ticks"
+        )
 
         # Build player team lookup for consistent team matching
         player_teams_lookup: dict[int, str] = {}
@@ -1614,13 +1623,19 @@ class DemoAnalyzer:
                         elif "T" in team_upper:
                             player_teams_lookup[att_id] = "T"
                     elif isinstance(team_val, (int, float)) and pd.notna(team_val):
-                        player_teams_lookup[att_id] = "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
+                        player_teams_lookup[att_id] = (
+                            "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
+                        )
 
         total_trades = 0
         total_deaths_traded = 0
 
         for round_num in kills_df[self._round_col].unique():
-            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick").reset_index(drop=True)
+            round_kills = (
+                kills_df[kills_df[self._round_col] == round_num]
+                .sort_values("tick")
+                .reset_index(drop=True)
+            )
 
             if len(round_kills) < 2:
                 continue
@@ -1677,7 +1692,9 @@ class DemoAnalyzer:
                     # Track untraded deaths for potential analysis
                     pass
 
-        logger.info(f"Trade detection complete: {total_trades} trade kills, {total_deaths_traded} deaths traded")
+        logger.info(
+            f"Trade detection complete: {total_trades} trade kills, {total_deaths_traded} deaths traded"
+        )
 
     def _detect_clutches(self) -> None:
         """Detect clutch situations (1vX where player is last alive) with win tracking.
@@ -1831,8 +1848,8 @@ class DemoAnalyzer:
 
         # Pre-compute lookups using groupby for efficiency
         kills_df = kills_df.copy()
-        kills_df[self._att_id_col] = pd.to_numeric(kills_df[self._att_id_col], errors='coerce')
-        kills_df[self._vic_id_col] = pd.to_numeric(kills_df[self._vic_id_col], errors='coerce')
+        kills_df[self._att_id_col] = pd.to_numeric(kills_df[self._att_id_col], errors="coerce")
+        kills_df[self._vic_id_col] = pd.to_numeric(kills_df[self._vic_id_col], errors="coerce")
 
         # Create lookup sets: which players got K/A/Died in each round
         kills_by_round = kills_df.groupby(self._round_col)[self._att_id_col].apply(set).to_dict()
@@ -1840,8 +1857,15 @@ class DemoAnalyzer:
 
         assists_by_round = {}
         if "assister_steamid" in kills_df.columns:
-            kills_df["assister_steamid"] = pd.to_numeric(kills_df["assister_steamid"], errors='coerce')
-            assists_by_round = kills_df.dropna(subset=["assister_steamid"]).groupby(self._round_col)["assister_steamid"].apply(set).to_dict()
+            kills_df["assister_steamid"] = pd.to_numeric(
+                kills_df["assister_steamid"], errors="coerce"
+            )
+            assists_by_round = (
+                kills_df.dropna(subset=["assister_steamid"])
+                .groupby(self._round_col)["assister_steamid"]
+                .apply(set)
+                .to_dict()
+            )
 
         # Pre-compute trade lookup (who was traded in each round)
         traded_by_round: dict[int, set] = {}
@@ -1867,9 +1891,9 @@ class DemoAnalyzer:
 
                     # Check if death was traded
                     trade_mask = (
-                        (round_kills["tick"] > death_tick) &
-                        (round_kills["tick"] <= death_tick + trade_window_ticks) &
-                        (round_kills[self._vic_id_col] == killer_id)
+                        (round_kills["tick"] > death_tick)
+                        & (round_kills["tick"] <= death_tick + trade_window_ticks)
+                        & (round_kills[self._vic_id_col] == killer_id)
                     )
 
                     if self._att_side_col in round_kills.columns:
@@ -1918,7 +1942,9 @@ class DemoAnalyzer:
             player.kast_rounds = kast_count
             player.rounds_survived = survived_count
 
-        logger.info(f"KAST calculation complete for {len(self._players)} players over {len(round_nums)} rounds")
+        logger.info(
+            f"KAST calculation complete for {len(self._players)} players over {len(round_nums)} rounds"
+        )
 
     def _compute_ttd(self) -> None:
         """Compute Time to Damage for each kill with optimized indexing."""
@@ -1949,7 +1975,9 @@ class DemoAnalyzer:
 
         # Find the right column names
         dmg_att_col = self._find_col(damages_df, ["attacker_steamid", "attacker_steam_id"])
-        dmg_vic_col = self._find_col(damages_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
+        dmg_vic_col = self._find_col(
+            damages_df, ["user_steamid", "victim_steamid", "victim_steam_id"]
+        )
 
         if not dmg_att_col or not dmg_vic_col:
             logger.warning(f"Missing columns for TTD. Have: {list(damages_df.columns)}")
@@ -1961,13 +1989,15 @@ class DemoAnalyzer:
 
         # Convert columns to numeric for reliable comparison
         damages_df = damages_df.copy()
-        damages_df[dmg_att_col] = pd.to_numeric(damages_df[dmg_att_col], errors='coerce')
-        damages_df[dmg_vic_col] = pd.to_numeric(damages_df[dmg_vic_col], errors='coerce')
+        damages_df[dmg_att_col] = pd.to_numeric(damages_df[dmg_att_col], errors="coerce")
+        damages_df[dmg_vic_col] = pd.to_numeric(damages_df[dmg_vic_col], errors="coerce")
 
         # Group damages by (attacker, victim) and store ticks sorted
         for (att, vic), group in damages_df.groupby([dmg_att_col, dmg_vic_col]):
             if pd.notna(att) and pd.notna(vic):
-                damage_cache[(int(att), int(vic))] = sorted(group["tick"].dropna().astype(int).tolist())
+                damage_cache[(int(att), int(vic))] = sorted(
+                    group["tick"].dropna().astype(int).tolist()
+                )
 
         logger.info(f"Built damage cache with {len(damage_cache)} (attacker, victim) pairs")
 
@@ -2014,8 +2044,8 @@ class DemoAnalyzer:
                 is_prefire = ttd_ms <= self.TTD_MIN_MS
 
                 # Account for wallbangs/through-smoke kills (may have higher TTD)
-                is_wallbang = getattr(kill, 'penetrated', False)
-                is_thrusmoke = getattr(kill, 'thrusmoke', False)
+                is_wallbang = getattr(kill, "penetrated", False)
+                is_thrusmoke = getattr(kill, "thrusmoke", False)
 
                 # Store raw values for later outlier removal
                 if att_id not in raw_ttd_values:
@@ -2059,7 +2089,9 @@ class DemoAnalyzer:
 
             if std_val > 0:
                 # Filter outliers
-                filtered = [v for v in values if abs(v - mean_val) <= TTD_OUTLIER_MULTIPLIER * std_val]
+                filtered = [
+                    v for v in values if abs(v - mean_val) <= TTD_OUTLIER_MULTIPLIER * std_val
+                ]
                 self._players[steam_id].ttd_values = filtered
             else:
                 self._players[steam_id].ttd_values = values
@@ -2166,7 +2198,10 @@ class DemoAnalyzer:
             vic_y = kill.victim_y
             vic_z = kill.victim_z
 
-            if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in [att_x, att_y, vic_x, vic_y]):
+            if any(
+                v is None or (isinstance(v, float) and np.isnan(v))
+                for v in [att_x, att_y, vic_x, vic_y]
+            ):
                 continue
 
             # Skip if positions are clearly invalid (all zeros)
@@ -2179,7 +2214,7 @@ class DemoAnalyzer:
             dx = vic_x - att_x
             dy = vic_y - att_y
             dz = (vic_z or 0) - (att_z or 0)
-            distance = math.sqrt(dx*dx + dy*dy + dz*dz)
+            distance = math.sqrt(dx * dx + dy * dy + dz * dz)
 
             # Skip very long distance kills
             if distance > MAX_DISTANCE:
@@ -2241,17 +2276,21 @@ class DemoAnalyzer:
             if att_id in self._players:
                 self._players[att_id].cp_values.append(angular_error)
 
-            self._cp_results.append(CrosshairPlacementResult(
-                tick=kill.tick,
-                attacker_steamid=att_id,
-                victim_steamid=kill.victim_steamid,
-                angular_error_deg=angular_error,
-                pitch_error_deg=pitch_error,
-                yaw_error_deg=yaw_error,
-                round_num=kill.round_num,
-            ))
+            self._cp_results.append(
+                CrosshairPlacementResult(
+                    tick=kill.tick,
+                    attacker_steamid=att_id,
+                    victim_steamid=kill.victim_steamid,
+                    angular_error_deg=angular_error,
+                    pitch_error_deg=pitch_error,
+                    yaw_error_deg=yaw_error,
+                    round_num=kill.round_num,
+                )
+            )
 
-        logger.info(f"Computed CP for {len(self._cp_results)} kills from KillEvent objects (vectorized)")
+        logger.info(
+            f"Computed CP for {len(self._cp_results)} kills from KillEvent objects (vectorized)"
+        )
 
     def _compute_cp_from_events(self) -> None:
         """Compute CP from position data embedded in kill events DataFrame (optimized)."""
@@ -2266,33 +2305,55 @@ class DemoAnalyzer:
         att_x_col = "attacker_X" if "attacker_X" in kills_df.columns else "attacker_x"
         att_y_col = "attacker_Y" if "attacker_Y" in kills_df.columns else "attacker_y"
         att_z_col = "attacker_Z" if "attacker_Z" in kills_df.columns else "attacker_z"
-        vic_x_col = "victim_X" if "victim_X" in kills_df.columns else ("user_X" if "user_X" in kills_df.columns else "victim_x")
-        vic_y_col = "victim_Y" if "victim_Y" in kills_df.columns else ("user_Y" if "user_Y" in kills_df.columns else "victim_y")
-        vic_z_col = "victim_Z" if "victim_Z" in kills_df.columns else ("user_Z" if "user_Z" in kills_df.columns else "victim_z")
+        vic_x_col = (
+            "victim_X"
+            if "victim_X" in kills_df.columns
+            else ("user_X" if "user_X" in kills_df.columns else "victim_x")
+        )
+        vic_y_col = (
+            "victim_Y"
+            if "victim_Y" in kills_df.columns
+            else ("user_Y" if "user_Y" in kills_df.columns else "victim_y")
+        )
+        vic_z_col = (
+            "victim_Z"
+            if "victim_Z" in kills_df.columns
+            else ("user_Z" if "user_Z" in kills_df.columns else "victim_z")
+        )
 
         # Filter valid rows with position data
-        required_cols = [att_x_col, att_y_col, vic_x_col, vic_y_col, "attacker_pitch", "attacker_yaw"]
+        required_cols = [
+            att_x_col,
+            att_y_col,
+            vic_x_col,
+            vic_y_col,
+            "attacker_pitch",
+            "attacker_yaw",
+        ]
         if not all(col in kills_df.columns for col in required_cols):
             logger.warning(f"Missing position columns for CP. Have: {list(kills_df.columns)}")
             return
 
         # Create working copy with validated data
         df = kills_df.copy()
-        df["_att_x"] = pd.to_numeric(df[att_x_col], errors='coerce')
-        df["_att_y"] = pd.to_numeric(df[att_y_col], errors='coerce')
-        df["_att_z"] = pd.to_numeric(df.get(att_z_col, 0), errors='coerce').fillna(0) + EYE_HEIGHT
-        df["_vic_x"] = pd.to_numeric(df[vic_x_col], errors='coerce')
-        df["_vic_y"] = pd.to_numeric(df[vic_y_col], errors='coerce')
-        df["_vic_z"] = pd.to_numeric(df.get(vic_z_col, 0), errors='coerce').fillna(0) + EYE_HEIGHT
-        df["_pitch"] = pd.to_numeric(df["attacker_pitch"], errors='coerce').fillna(0)
-        df["_yaw"] = pd.to_numeric(df["attacker_yaw"], errors='coerce').fillna(0)
+        df["_att_x"] = pd.to_numeric(df[att_x_col], errors="coerce")
+        df["_att_y"] = pd.to_numeric(df[att_y_col], errors="coerce")
+        df["_att_z"] = pd.to_numeric(df.get(att_z_col, 0), errors="coerce").fillna(0) + EYE_HEIGHT
+        df["_vic_x"] = pd.to_numeric(df[vic_x_col], errors="coerce")
+        df["_vic_y"] = pd.to_numeric(df[vic_y_col], errors="coerce")
+        df["_vic_z"] = pd.to_numeric(df.get(vic_z_col, 0), errors="coerce").fillna(0) + EYE_HEIGHT
+        df["_pitch"] = pd.to_numeric(df["attacker_pitch"], errors="coerce").fillna(0)
+        df["_yaw"] = pd.to_numeric(df["attacker_yaw"], errors="coerce").fillna(0)
 
         # Filter out invalid positions
         valid_mask = (
-            df["_att_x"].notna() & df["_att_y"].notna() &
-            df["_vic_x"].notna() & df["_vic_y"].notna() &
-            (df["_att_x"].abs() > 0.001) | (df["_att_y"].abs() > 0.001) &
-            (df["_vic_x"].abs() > 0.001) | (df["_vic_y"].abs() > 0.001)
+            df["_att_x"].notna()
+            & df["_att_y"].notna()
+            & df["_vic_x"].notna()
+            & df["_vic_y"].notna()
+            & (df["_att_x"].abs() > 0.001)
+            | (df["_att_y"].abs() > 0.001) & (df["_vic_x"].abs() > 0.001)
+            | (df["_vic_y"].abs() > 0.001)
         )
         df = df[valid_mask]
 
@@ -2302,9 +2363,9 @@ class DemoAnalyzer:
 
         # Calculate distances
         df["_dist"] = np.sqrt(
-            (df["_vic_x"] - df["_att_x"])**2 +
-            (df["_vic_y"] - df["_att_y"])**2 +
-            (df["_vic_z"] - df["_att_z"])**2
+            (df["_vic_x"] - df["_att_x"]) ** 2
+            + (df["_vic_y"] - df["_att_y"]) ** 2
+            + (df["_vic_z"] - df["_att_z"]) ** 2
         )
 
         # Filter by distance
@@ -2351,15 +2412,17 @@ class DemoAnalyzer:
             if att_id in self._players:
                 self._players[att_id].cp_values.append(angular_errors[i])
 
-            self._cp_results.append(CrosshairPlacementResult(
-                tick=tick,
-                attacker_steamid=att_id,
-                victim_steamid=vic_id,
-                angular_error_deg=float(angular_errors[i]),
-                pitch_error_deg=float(pitch_errors[i]),
-                yaw_error_deg=float(yaw_errors[i]),
-                round_num=round_num,
-            ))
+            self._cp_results.append(
+                CrosshairPlacementResult(
+                    tick=tick,
+                    attacker_steamid=att_id,
+                    victim_steamid=vic_id,
+                    angular_error_deg=float(angular_errors[i]),
+                    pitch_error_deg=float(pitch_errors[i]),
+                    yaw_error_deg=float(yaw_errors[i]),
+                    round_num=round_num,
+                )
+            )
 
         logger.info(f"Computed CP for {len(self._cp_results)} kills (vectorized)")
 
@@ -2600,8 +2663,8 @@ class DemoAnalyzer:
         """Calculate comprehensive utility statistics (Leetify-style) using all available data."""
 
         # Early return if no utility data available
-        has_blinds = hasattr(self.data, 'blinds') and self.data.blinds
-        has_grenades = hasattr(self.data, 'grenades') and self.data.grenades
+        has_blinds = hasattr(self.data, "blinds") and self.data.blinds
+        has_grenades = hasattr(self.data, "grenades") and self.data.grenades
         has_damages = not self.data.damages_df.empty
 
         if not has_blinds and not has_grenades and not has_damages:
@@ -2628,7 +2691,10 @@ class DemoAnalyzer:
             blinds_by_attacker: dict[int, list] = {}
             for blind in self.data.blinds:
                 # Validate blind duration
-                if blind.blind_duration < MIN_BLIND_DURATION or blind.blind_duration > MAX_BLIND_DURATION:
+                if (
+                    blind.blind_duration < MIN_BLIND_DURATION
+                    or blind.blind_duration > MAX_BLIND_DURATION
+                ):
                     continue
                 att_id = blind.attacker_steamid
                 if att_id not in blinds_by_attacker:
@@ -2645,7 +2711,9 @@ class DemoAnalyzer:
                 team_blinds = [b for b in player_blinds if b.is_teammate]
 
                 # Only count blinds > 1.1 seconds as "significant" (Leetify threshold)
-                significant_enemy_blinds = [b for b in enemy_blinds if b.blind_duration >= SIGNIFICANT_BLIND_THRESHOLD]
+                significant_enemy_blinds = [
+                    b for b in enemy_blinds if b.blind_duration >= SIGNIFICANT_BLIND_THRESHOLD
+                ]
 
                 player.utility.enemies_flashed = len(significant_enemy_blinds)
                 player.utility.teammates_flashed = len(team_blinds)
@@ -2692,13 +2760,13 @@ class DemoAnalyzer:
                     grenade_type = g.grenade_type.lower()
                     event_type = g.event_type
 
-                    if 'smoke' in grenade_type and event_type == 'thrown':
+                    if "smoke" in grenade_type and event_type == "thrown":
                         smokes += 1
-                    elif 'hegrenade' in grenade_type or 'he_grenade' in grenade_type:
+                    elif "hegrenade" in grenade_type or "he_grenade" in grenade_type:
                         he_count += 1
-                    elif 'molotov' in grenade_type or 'incendiary' in grenade_type:
+                    elif "molotov" in grenade_type or "incendiary" in grenade_type:
                         molly_count += 1
-                    elif 'flash' in grenade_type and event_type == 'thrown':
+                    elif "flash" in grenade_type and event_type == "thrown":
                         flash_count += 1
 
                 player.utility.smokes_thrown = smokes

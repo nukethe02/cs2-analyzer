@@ -282,19 +282,25 @@ class ReplayGenerator:
 
     def _index_player_ticks(self):
         """Index player tick data by round number."""
-        if not hasattr(self.data, 'ticks_df') or self.data.ticks_df is None or self.data.ticks_df.empty:
+        if (
+            not hasattr(self.data, "ticks_df")
+            or self.data.ticks_df is None
+            or self.data.ticks_df.empty
+        ):
             logger.warning("No tick-level player data available for replay")
             return
 
         for _, tick_data in self.data.ticks_df.iterrows():
-            round_num = tick_data.get('round_num', tick_data.get('round', 0))
+            round_num = tick_data.get("round_num", tick_data.get("round", 0))
             self._player_ticks_by_round[round_num].append(tick_data)
 
         # Sort by tick
         for round_num in self._player_ticks_by_round:
-            self._player_ticks_by_round[round_num].sort(key=lambda t: t.get('tick', 0))
+            self._player_ticks_by_round[round_num].sort(key=lambda t: t.get("tick", 0))
 
-        logger.info(f"Indexed {len(self.data.ticks_df)} player ticks across {len(self._player_ticks_by_round)} rounds")
+        logger.info(
+            f"Indexed {len(self.data.ticks_df)} player ticks across {len(self._player_ticks_by_round)} rounds"
+        )
 
     def _index_kills(self):
         """Index kills by round number."""

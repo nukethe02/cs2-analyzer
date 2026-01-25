@@ -11,7 +11,6 @@ IMPORTANT: This module uses lazy imports to ensure that lightweight commands
 like 'info' and 'decode' don't load heavy dependencies (demoparser2, pandas, numpy).
 """
 
-import json
 import logging
 import time
 from pathlib import Path
@@ -404,7 +403,9 @@ def _display_economy_metrics(data, steam_id: int | None, metrics_funcs: dict) ->
     table.add_column("Full Buy Kills", justify="right")
     table.add_column("Favorite Weapon", justify="right")
 
-    for sid, econ in sorted(econ_results.items(), key=lambda x: x[1].weapon_efficiency, reverse=True):
+    for sid, econ in sorted(
+        econ_results.items(), key=lambda x: x[1].weapon_efficiency, reverse=True
+    ):
         table.add_row(
             econ.player_name,
             f"${econ.total_money_spent:,}",

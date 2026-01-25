@@ -1,15 +1,11 @@
 """Tests for the FastAPI web API."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
 import io
-import time
-import pytest
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from opensight.api import app, job_store, sharecode_cache, JobStatus
-
+from opensight.api import app, job_store, sharecode_cache
 
 client = TestClient(app)
 
@@ -50,15 +46,8 @@ class TestDecodeEndpoint:
         """Decode endpoint returns match info for valid code."""
         # Use a mock to avoid needing a real sharecode
         with patch("opensight.sharecode.decode_sharecode") as mock_decode:
-            mock_decode.return_value = MagicMock(
-                match_id=12345,
-                outcome_id=67890,
-                token=11111
-            )
-            response = client.post(
-                "/decode",
-                json={"code": "CSGO-test-code-here-xxxx-xxxxx"}
-            )
+            mock_decode.return_value = MagicMock(match_id=12345, outcome_id=67890, token=11111)
+            response = client.post("/decode", json={"code": "CSGO-test-code-here-xxxx-xxxxx"})
             assert response.status_code == 200
             data = response.json()
             assert data["match_id"] == 12345
@@ -69,10 +58,7 @@ class TestDecodeEndpoint:
         """Decode endpoint returns 400 for invalid code."""
         with patch("opensight.sharecode.decode_sharecode") as mock_decode:
             mock_decode.side_effect = ValueError("Invalid sharecode")
-            response = client.post(
-                "/decode",
-                json={"code": "invalid"}
-            )
+            response = client.post("/decode", json={"code": "invalid"})
             assert response.status_code == 400
             assert "Invalid sharecode" in response.json()["detail"]
 
@@ -254,10 +240,7 @@ class TestGZipCompression:
     def test_gzip_enabled_for_large_response(self):
         """GZip compression is applied for large responses."""
         # Request about endpoint which returns sizeable JSON
-        response = client.get(
-            "/about",
-            headers={"Accept-Encoding": "gzip"}
-        )
+        response = client.get("/about", headers={"Accept-Encoding": "gzip"})
         assert response.status_code == 200
         # The middleware handles decompression, so we just verify it works
         data = response.json()

@@ -1,23 +1,22 @@
 """Tests for the economy analysis module."""
 
 from pathlib import Path
+
 import pandas as pd
 import pytest
 
+from opensight.core.parser import DemoData
 from opensight.domains.economy import (
     BuyType,
+    EconomyAnalyzer,
+    EconomyStats,
+    PlayerRoundEconomy,
+    TeamRoundEconomy,
+    analyze_economy,
     classify_buy_type,
     classify_team_buy,
     estimate_weapon_cost,
-    EconomyAnalyzer,
-    PlayerRoundEconomy,
-    TeamRoundEconomy,
-    EconomyStats,
-    PlayerEconomyProfile,
-    analyze_economy,
-    WEAPON_COSTS,
 )
-from opensight.core.parser import DemoData
 
 
 class TestBuyTypeClassification:
@@ -161,22 +160,26 @@ class TestEconomyAnalyzer:
     @pytest.fixture
     def sample_demo_data(self):
         """Create sample demo data for testing."""
-        kills_df = pd.DataFrame({
-            "tick": [1000, 2000, 3000, 4000],
-            "attacker_steamid": [12345, 67890, 12345, 12345],
-            "user_steamid": [67890, 12345, 67890, 67890],
-            "weapon": ["ak47", "awp", "m4a1_silencer", "deagle"],
-            "headshot": [True, False, True, False],
-            "total_rounds_played": [1, 1, 5, 10],
-        })
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 2000, 3000, 4000],
+                "attacker_steamid": [12345, 67890, 12345, 12345],
+                "user_steamid": [67890, 12345, 67890, 67890],
+                "weapon": ["ak47", "awp", "m4a1_silencer", "deagle"],
+                "headshot": [True, False, True, False],
+                "total_rounds_played": [1, 1, 5, 10],
+            }
+        )
 
-        damages_df = pd.DataFrame({
-            "tick": [900, 1000, 1900, 2000],
-            "attacker_steamid": [12345, 12345, 67890, 67890],
-            "user_steamid": [67890, 67890, 12345, 12345],
-            "dmg_health": [27, 73, 100, 8],
-            "weapon": ["ak47", "ak47", "awp", "awp"],
-        })
+        damages_df = pd.DataFrame(
+            {
+                "tick": [900, 1000, 1900, 2000],
+                "attacker_steamid": [12345, 12345, 67890, 67890],
+                "user_steamid": [67890, 67890, 12345, 12345],
+                "dmg_health": [27, 73, 100, 8],
+                "weapon": ["ak47", "ak47", "awp", "awp"],
+            }
+        )
 
         return DemoData(
             file_path=Path("/tmp/test.dem"),

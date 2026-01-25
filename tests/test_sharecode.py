@@ -1,12 +1,13 @@
 """Tests for the sharecode module."""
 
 import pytest
+
 from opensight.integrations.sharecode import (
+    SHARECODE_ALPHABET,
+    ShareCodeInfo,
     decode_sharecode,
     encode_sharecode,
     validate_sharecode,
-    ShareCodeInfo,
-    SHARECODE_ALPHABET,
 )
 
 

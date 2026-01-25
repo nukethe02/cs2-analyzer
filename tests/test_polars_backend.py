@@ -9,25 +9,25 @@ Tests cover:
 - Polars-optimized analytics
 """
 
-import pytest
 import tempfile
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
 
 import pandas as pd
-import numpy as np
+import pytest
 
 # Check if polars is available
 try:
     import polars as pl
+
     POLARS_AVAILABLE = True
 except ImportError:
     POLARS_AVAILABLE = False
 
 # Check if pyarrow is available (needed for pandas parquet/feather)
 try:
-    import pyarrow
+    import pyarrow as _  # noqa: F401
+
     PYARROW_AVAILABLE = True
 except ImportError:
     PYARROW_AVAILABLE = False
@@ -36,6 +36,7 @@ except ImportError:
 # ============================================================================
 # Test Backend Module
 # ============================================================================
+
 
 class TestBackendAbstraction:
     """Test the DataFrame backend abstraction layer."""
@@ -111,7 +112,7 @@ class TestBackendAbstraction:
 
         sorted_df = backend.sort(df, ["tick"])
         # Check first row is lowest tick
-        for idx, row in backend.iterrows(sorted_df):
+        for _idx, row in backend.iterrows(sorted_df):
             assert row["tick"] == 100
             break
 
@@ -198,7 +199,9 @@ class TestBackendConversion:
         assert len(result) == 3
 
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
-    @pytest.mark.skipif(not PYARROW_AVAILABLE, reason="PyArrow not installed (needed for polars->pandas)")
+    @pytest.mark.skipif(
+        not PYARROW_AVAILABLE, reason="PyArrow not installed (needed for polars->pandas)"
+    )
     def test_polars_to_pandas(self):
         """Test converting Polars to pandas."""
         from opensight.infra.backend import convert_dataframe
@@ -242,13 +245,14 @@ class TestGetBackend:
 # Test Serialization
 # ============================================================================
 
+
 class TestSerialization:
     """Test DataFrame serialization (Parquet, Feather)."""
 
     @pytest.mark.skipif(not PYARROW_AVAILABLE, reason="PyArrow not installed")
     def test_save_load_parquet_pandas(self):
         """Test saving/loading Parquet with pandas."""
-        from opensight.infra.backend import save_dataframe, load_dataframe
+        from opensight.infra.backend import load_dataframe, save_dataframe
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.parquet"
@@ -265,7 +269,7 @@ class TestSerialization:
     @pytest.mark.skipif(not PYARROW_AVAILABLE, reason="PyArrow not installed")
     def test_save_load_feather_pandas(self):
         """Test saving/loading Feather with pandas."""
-        from opensight.infra.backend import save_dataframe, load_dataframe
+        from opensight.infra.backend import load_dataframe, save_dataframe
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.feather"
@@ -281,7 +285,7 @@ class TestSerialization:
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
     def test_save_load_parquet_polars(self):
         """Test saving/loading Parquet with Polars."""
-        from opensight.infra.backend import save_dataframe, load_dataframe
+        from opensight.infra.backend import load_dataframe, save_dataframe
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.parquet"
@@ -297,14 +301,16 @@ class TestSerialization:
     @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
     def test_lazy_load_parquet(self):
         """Test lazy loading Parquet with Polars."""
-        from opensight.infra.backend import save_dataframe, load_dataframe
+        from opensight.infra.backend import load_dataframe, save_dataframe
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.parquet"
-            df = pl.DataFrame({
-                "tick": list(range(1000)),
-                "value": [i * 0.5 for i in range(1000)],
-            })
+            df = pl.DataFrame(
+                {
+                    "tick": list(range(1000)),
+                    "value": [i * 0.5 for i in range(1000)],
+                }
+            )
 
             save_dataframe(df, path, format="parquet")
 
@@ -321,6 +327,7 @@ class TestSerialization:
 # Test Polars Operations
 # ============================================================================
 
+
 @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
 class TestPolarsOps:
     """Test Polars-optimized operations."""
@@ -329,10 +336,12 @@ class TestPolarsOps:
         """Test steamid filtering with type coercion."""
         from opensight.infra.polars_ops import PolarsOps
 
-        df = pl.DataFrame({
-            "attacker_steamid": [123, 456, 123, 789],
-            "damage": [50, 100, 75, 25],
-        })
+        df = pl.DataFrame(
+            {
+                "attacker_steamid": [123, 456, 123, 789],
+                "damage": [50, 100, 75, 25],
+            }
+        )
 
         filtered = PolarsOps.filter_by_steamid(df, "attacker_steamid", 123)
         assert len(filtered) == 2
@@ -341,28 +350,30 @@ class TestPolarsOps:
         """Test multi-kill detection."""
         from opensight.infra.polars_ops import PolarsOps
 
-        df = pl.DataFrame({
-            "attacker_steamid": [1, 1, 1, 2, 2],
-            "round_num": [1, 1, 1, 1, 2],
-            "tick": [100, 200, 300, 400, 500],
-        })
+        df = pl.DataFrame(
+            {
+                "attacker_steamid": [1, 1, 1, 2, 2],
+                "round_num": [1, 1, 1, 1, 2],
+                "tick": [100, 200, 300, 400, 500],
+            }
+        )
 
         result = PolarsOps.group_kills_by_round(df, "attacker_steamid", "round_num")
 
         # Player 1 has 3 kills in round 1
-        p1_r1 = result.filter(
-            (pl.col("attacker_steamid") == 1) & (pl.col("round_num") == 1)
-        )
+        p1_r1 = result.filter((pl.col("attacker_steamid") == 1) & (pl.col("round_num") == 1))
         assert p1_r1["kill_count"][0] == 3
 
     def test_compute_damage_stats(self):
         """Test damage aggregation."""
         from opensight.infra.polars_ops import PolarsOps
 
-        df = pl.DataFrame({
-            "attacker_steamid": [1, 1, 2, 2],
-            "dmg_health": [100, 50, 75, 25],
-        })
+        df = pl.DataFrame(
+            {
+                "attacker_steamid": [1, 1, 2, 2],
+                "dmg_health": [100, 50, 75, 25],
+            }
+        )
 
         result = PolarsOps.compute_damage_stats(df, "attacker_steamid", "dmg_health")
 
@@ -373,11 +384,13 @@ class TestPolarsOps:
         """Test opening duel detection."""
         from opensight.infra.polars_ops import PolarsOps
 
-        df = pl.DataFrame({
-            "round_num": [1, 1, 1, 2, 2],
-            "tick": [200, 100, 300, 150, 250],
-            "attacker": ["a", "b", "c", "d", "e"],
-        })
+        df = pl.DataFrame(
+            {
+                "round_num": [1, 1, 1, 2, 2],
+                "tick": [200, 100, 300, 150, 250],
+                "attacker": ["a", "b", "c", "d", "e"],
+            }
+        )
 
         result = PolarsOps.find_first_kill_per_round(df, "round_num")
 
@@ -391,6 +404,7 @@ class TestPolarsOps:
 # Test Polars Analyzer
 # ============================================================================
 
+
 @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
 class TestPolarsAnalyzer:
     """Test the Polars-optimized analyzer."""
@@ -398,28 +412,33 @@ class TestPolarsAnalyzer:
     @pytest.fixture
     def mock_demo_data(self):
         """Create mock DemoData for testing."""
+
         # Create a minimal mock DemoData
         @dataclass
         class MockDemoData:
             kills_df: pd.DataFrame = field(default_factory=pd.DataFrame)
             damages_df: pd.DataFrame = field(default_factory=pd.DataFrame)
-            ticks_df: Optional[pd.DataFrame] = None
+            ticks_df: pd.DataFrame | None = None
             player_names: dict = field(default_factory=dict)
 
         data = MockDemoData()
-        data.kills_df = pd.DataFrame({
-            "attacker_steamid": [1, 1, 2, 2, 1],
-            "victim_steamid": [2, 3, 1, 3, 2],
-            "round_num": [1, 1, 1, 2, 2],
-            "tick": [100, 200, 300, 400, 500],
-            "headshot": [True, False, True, False, True],
-        })
-        data.damages_df = pd.DataFrame({
-            "attacker_steamid": [1, 1, 2, 2, 1],
-            "victim_steamid": [2, 3, 1, 3, 2],
-            "dmg_health": [50, 100, 75, 25, 50],
-            "tick": [90, 190, 290, 390, 490],
-        })
+        data.kills_df = pd.DataFrame(
+            {
+                "attacker_steamid": [1, 1, 2, 2, 1],
+                "victim_steamid": [2, 3, 1, 3, 2],
+                "round_num": [1, 1, 1, 2, 2],
+                "tick": [100, 200, 300, 400, 500],
+                "headshot": [True, False, True, False, True],
+            }
+        )
+        data.damages_df = pd.DataFrame(
+            {
+                "attacker_steamid": [1, 1, 2, 2, 1],
+                "victim_steamid": [2, 3, 1, 3, 2],
+                "dmg_health": [50, 100, 75, 25, 50],
+                "tick": [90, 190, 290, 390, 490],
+            }
+        )
         data.player_names = {1: "Player1", 2: "Player2", 3: "Player3"}
 
         return data
@@ -460,6 +479,7 @@ class TestPolarsAnalyzer:
 # Test Configuration
 # ============================================================================
 
+
 class TestBackendConfig:
     """Test backend configuration."""
 
@@ -468,22 +488,20 @@ class TestBackendConfig:
         from opensight.infra.backend import BackendConfig
 
         config = BackendConfig()
-        assert config.use_polars == False
-        assert config.lazy_mode == True
+        assert not config.use_polars
+        assert config.lazy_mode
         assert config.cache_format == "parquet"
         assert config.compression == "zstd"
 
     def test_set_backend_config(self):
         """Test setting global backend config."""
-        from opensight.infra.backend import (
-            BackendConfig, set_backend_config, get_backend_config
-        )
+        from opensight.infra.backend import BackendConfig, get_backend_config, set_backend_config
 
         config = BackendConfig(use_polars=True, cache_format="feather")
         set_backend_config(config)
 
         retrieved = get_backend_config()
-        assert retrieved.use_polars == True
+        assert retrieved.use_polars
         assert retrieved.cache_format == "feather"
 
         # Reset to defaults
@@ -495,12 +513,13 @@ class TestBackendConfig:
 
         config = OpenSightConfig()
         assert hasattr(config, "backend")
-        assert config.backend.use_polars == False
+        assert not config.backend.use_polars
 
 
 # ============================================================================
 # Test Lazy Imports
 # ============================================================================
+
 
 class TestLazyImports:
     """Test that backend is lazily imported."""
@@ -514,7 +533,7 @@ class TestLazyImports:
 
     def test_lazy_import_save_load(self):
         """Test serialization functions are accessible."""
-        from opensight import save_dataframe, load_dataframe
+        from opensight import load_dataframe, save_dataframe
 
         assert callable(save_dataframe)
         assert callable(load_dataframe)
@@ -532,6 +551,7 @@ class TestLazyImports:
 # Test Performance (Optional - for local benchmarking)
 # ============================================================================
 
+
 @pytest.mark.skipif(not POLARS_AVAILABLE, reason="Polars not installed")
 class TestPerformance:
     """Performance comparison tests (may be slow, skip in CI)."""
@@ -543,7 +563,7 @@ class TestPerformance:
 
         results = benchmark_backends(df_size=100000)
 
-        print(f"\nBenchmark results:")
+        print("\nBenchmark results:")
         print(f"  Pandas: {results.get('pandas_ops_time', 'N/A'):.4f}s")
         print(f"  Polars: {results.get('polars_ops_time', 'N/A'):.4f}s")
         print(f"  Speedup: {results.get('speedup', 'N/A'):.2f}x")

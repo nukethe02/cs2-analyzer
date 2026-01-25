@@ -5,11 +5,11 @@ Provides integration with FACEIT's public API to retrieve
 match history, player statistics, and ELO information.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Any
-from datetime import datetime
 import logging
 import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ RATE_LIMIT_WINDOW = 60  # seconds
 @dataclass
 class FACEITPlayer:
     """FACEIT player profile information."""
+
     player_id: str
     nickname: str
     country: str = ""
@@ -36,30 +37,31 @@ class FACEITPlayer:
     win_rate: float = 0.0
     avg_kd: float = 0.0
     avg_hs_pct: float = 0.0
-    recent_results: List[str] = field(default_factory=list)  # W/L strings
+    recent_results: list[str] = field(default_factory=list)  # W/L strings
 
 
 @dataclass
 class FACEITMatch:
     """FACEIT match information."""
+
     match_id: str
     game: str = "cs2"
     region: str = ""
     competition_type: str = ""  # "5v5", "Wingman", etc.
     map_name: str = ""
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     status: str = ""  # "finished", "ongoing", "cancelled"
-    demo_url: Optional[str] = None
+    demo_url: str | None = None
 
     # Teams
     team1_name: str = ""
     team1_score: int = 0
-    team1_players: List[str] = field(default_factory=list)
+    team1_players: list[str] = field(default_factory=list)
 
     team2_name: str = ""
     team2_score: int = 0
-    team2_players: List[str] = field(default_factory=list)
+    team2_players: list[str] = field(default_factory=list)
 
     winner: str = ""  # "team1" or "team2"
 
@@ -67,6 +69,7 @@ class FACEITMatch:
 @dataclass
 class FACEITMatchStats:
     """Player statistics from a FACEIT match."""
+
     match_id: str
     player_id: str
     nickname: str
@@ -106,7 +109,7 @@ class FACEITClient:
         ...     print(f"{match.map_name}: {match.team1_score}-{match.team2_score}")
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         """
         Initialize the FACEIT client.
 
@@ -115,6 +118,7 @@ class FACEITClient:
                      FACEIT_API_KEY environment variable.
         """
         import os
+
         self.api_key = api_key or os.environ.get("FACEIT_API_KEY")
 
         if not self.api_key:
@@ -123,7 +127,7 @@ class FACEITClient:
                 "variable or pass api_key parameter."
             )
 
-        self._request_times: List[float] = []
+        self._request_times: list[float] = []
         self._session = None
 
     def _get_session(self):
@@ -131,12 +135,12 @@ class FACEITClient:
         if self._session is None:
             try:
                 import requests
+
                 self._session = requests.Session()
                 if self.api_key:
-                    self._session.headers.update({
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Accept": "application/json"
-                    })
+                    self._session.headers.update(
+                        {"Authorization": f"Bearer {self.api_key}", "Accept": "application/json"}
+                    )
             except ImportError:
                 raise ImportError(
                     "requests library required for FACEIT API. "
@@ -148,10 +152,7 @@ class FACEITClient:
         """Check and enforce rate limiting."""
         now = time.time()
         # Remove old requests from window
-        self._request_times = [
-            t for t in self._request_times
-            if now - t < RATE_LIMIT_WINDOW
-        ]
+        self._request_times = [t for t in self._request_times if now - t < RATE_LIMIT_WINDOW]
 
         if len(self._request_times) >= RATE_LIMIT_REQUESTS:
             # Wait until oldest request is outside window
@@ -162,7 +163,7 @@ class FACEITClient:
 
         self._request_times.append(time.time())
 
-    def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+    def _make_request(self, endpoint: str, params: dict | None = None) -> dict | None:
         """Make a request to the FACEIT API."""
         if not self.api_key:
             logger.error("FACEIT API key required")
@@ -181,7 +182,7 @@ class FACEITClient:
             logger.error(f"FACEIT API request failed: {e}")
             return None
 
-    def get_player_by_nickname(self, nickname: str) -> Optional[FACEITPlayer]:
+    def get_player_by_nickname(self, nickname: str) -> FACEITPlayer | None:
         """
         Get player profile by FACEIT nickname.
 
@@ -197,7 +198,7 @@ class FACEITClient:
 
         return self._parse_player(data)
 
-    def get_player_by_steam_id(self, steam_id: str) -> Optional[FACEITPlayer]:
+    def get_player_by_steam_id(self, steam_id: str) -> FACEITPlayer | None:
         """
         Get player profile by Steam ID.
 
@@ -207,16 +208,13 @@ class FACEITClient:
         Returns:
             FACEITPlayer profile or None if not found
         """
-        data = self._make_request(
-            "/players",
-            params={"game": "cs2", "game_player_id": steam_id}
-        )
+        data = self._make_request("/players", params={"game": "cs2", "game_player_id": steam_id})
         if not data:
             return None
 
         return self._parse_player(data)
 
-    def get_player_stats(self, player_id: str) -> Optional[Dict[str, Any]]:
+    def get_player_stats(self, player_id: str) -> dict[str, Any] | None:
         """
         Get player statistics for CS2.
 
@@ -233,11 +231,8 @@ class FACEITClient:
         return data
 
     def get_player_matches(
-        self,
-        player_id: str,
-        limit: int = 20,
-        offset: int = 0
-    ) -> List[FACEITMatch]:
+        self, player_id: str, limit: int = 20, offset: int = 0
+    ) -> list[FACEITMatch]:
         """
         Get player's match history.
 
@@ -251,7 +246,7 @@ class FACEITClient:
         """
         data = self._make_request(
             f"/players/{player_id}/history",
-            params={"game": "cs2", "limit": min(limit, 100), "offset": offset}
+            params={"game": "cs2", "limit": min(limit, 100), "offset": offset},
         )
         if not data or "items" not in data:
             return []
@@ -264,7 +259,7 @@ class FACEITClient:
 
         return matches
 
-    def get_match_details(self, match_id: str) -> Optional[FACEITMatch]:
+    def get_match_details(self, match_id: str) -> FACEITMatch | None:
         """
         Get detailed information about a specific match.
 
@@ -280,7 +275,7 @@ class FACEITClient:
 
         return self._parse_match(data)
 
-    def get_match_stats(self, match_id: str) -> List[FACEITMatchStats]:
+    def get_match_stats(self, match_id: str) -> list[FACEITMatchStats]:
         """
         Get player statistics from a specific match.
 
@@ -304,7 +299,7 @@ class FACEITClient:
 
         return stats
 
-    def get_match_demo_url(self, match_id: str) -> Optional[str]:
+    def get_match_demo_url(self, match_id: str) -> str | None:
         """
         Get the demo download URL for a match.
 
@@ -320,7 +315,7 @@ class FACEITClient:
 
         return data.get("demo_url")
 
-    def _parse_player(self, data: Dict) -> FACEITPlayer:
+    def _parse_player(self, data: dict) -> FACEITPlayer:
         """Parse player data from API response."""
         games = data.get("games", {})
         cs2_data = games.get("cs2", {})
@@ -332,10 +327,10 @@ class FACEITClient:
             avatar=data.get("avatar", ""),
             steam_id=data.get("steam_id_64", ""),
             faceit_elo=cs2_data.get("faceit_elo", 0),
-            skill_level=cs2_data.get("skill_level", 0)
+            skill_level=cs2_data.get("skill_level", 0),
         )
 
-    def _parse_match(self, data: Dict) -> Optional[FACEITMatch]:
+    def _parse_match(self, data: dict) -> FACEITMatch | None:
         """Parse match data from API response."""
         try:
             # Parse timestamps
@@ -378,13 +373,13 @@ class FACEITClient:
                 team2_name=team2.get("name", "Team 2"),
                 team2_score=score.get("faction2", 0),
                 team2_players=self._extract_players(team2),
-                winner=winner
+                winner=winner,
             )
         except Exception as e:
             logger.error(f"Error parsing match data: {e}")
             return None
 
-    def _extract_map(self, data: Dict) -> str:
+    def _extract_map(self, data: dict) -> str:
         """Extract map name from match data."""
         voting = data.get("voting", {})
         map_data = voting.get("map", {})
@@ -394,17 +389,14 @@ class FACEITClient:
                 return pick[0] if isinstance(pick, list) else pick
         return data.get("map", {}).get("name", "")
 
-    def _extract_players(self, team_data: Dict) -> List[str]:
+    def _extract_players(self, team_data: dict) -> list[str]:
         """Extract player nicknames from team data."""
         roster = team_data.get("roster", [])
         return [p.get("nickname", "") for p in roster]
 
     def _parse_match_stats(
-        self,
-        match_id: str,
-        player_data: Dict,
-        team: str
-    ) -> Optional[FACEITMatchStats]:
+        self, match_id: str, player_data: dict, team: str
+    ) -> FACEITMatchStats | None:
         """Parse player match statistics."""
         try:
             stats = player_data.get("player_stats", {})
@@ -424,14 +416,14 @@ class FACEITClient:
                 mvps=int(stats.get("MVPs", 0)),
                 triple_kills=int(stats.get("Triple Kills", 0)),
                 quad_kills=int(stats.get("Quadro Kills", 0)),
-                aces=int(stats.get("Penta Kills", 0))
+                aces=int(stats.get("Penta Kills", 0)),
             )
         except Exception as e:
             logger.error(f"Error parsing match stats: {e}")
             return None
 
 
-def get_faceit_player(nickname: str, api_key: Optional[str] = None) -> Optional[FACEITPlayer]:
+def get_faceit_player(nickname: str, api_key: str | None = None) -> FACEITPlayer | None:
     """
     Convenience function to get a FACEIT player by nickname.
 
@@ -447,10 +439,8 @@ def get_faceit_player(nickname: str, api_key: Optional[str] = None) -> Optional[
 
 
 def get_faceit_match_history(
-    nickname: str,
-    limit: int = 20,
-    api_key: Optional[str] = None
-) -> List[FACEITMatch]:
+    nickname: str, limit: int = 20, api_key: str | None = None
+) -> list[FACEITMatch]:
     """
     Convenience function to get a player's FACEIT match history.
 
