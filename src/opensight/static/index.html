@@ -183,11 +183,72 @@
 
         .mvp-banner span { color: var(--accent); font-weight: 600; }
 
-        /* Players Grid */
-        .players-grid {
+        /* Teams Container - 5v5 Layout */
+        .teams-container {
             display: grid;
-            gap: 16px;
-            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            grid-template-columns: 1fr auto 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .team-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .team-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .team-header.ct {
+            background: var(--ct-bg);
+            color: var(--ct-color);
+            border: 1px solid rgba(74, 144, 217, 0.3);
+        }
+
+        .team-header.t {
+            background: var(--t-bg);
+            color: var(--t-color);
+            border: 1px solid rgba(222, 155, 53, 0.3);
+        }
+
+        .team-header .team-score {
+            margin-left: auto;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .vs-divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            padding-top: 60px;
+        }
+
+        /* Players Grid - now inside team sections */
+        .players-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        @media (max-width: 1200px) {
+            .teams-container {
+                grid-template-columns: 1fr;
+            }
+            .vs-divider {
+                padding: 16px 0;
+            }
         }
 
         .player-card {
@@ -725,21 +786,85 @@
             return '';
         }
 
+        // Map name formatting - converts de_nuke to Nuke, etc.
+        const MAP_NAMES = {
+            'de_dust2': 'Dust II',
+            'de_mirage': 'Mirage',
+            'de_inferno': 'Inferno',
+            'de_nuke': 'Nuke',
+            'de_overpass': 'Overpass',
+            'de_ancient': 'Ancient',
+            'de_anubis': 'Anubis',
+            'de_vertigo': 'Vertigo',
+            'de_train': 'Train',
+            'de_cache': 'Cache',
+            'de_cbble': 'Cobblestone',
+            'cs_office': 'Office',
+            'cs_italy': 'Italy'
+        };
+
+        function formatMapName(mapName) {
+            if (!mapName) return 'Unknown Map';
+            const lower = mapName.toLowerCase();
+            if (MAP_NAMES[lower]) return MAP_NAMES[lower];
+            // Fallback: remove de_ or cs_ prefix and capitalize
+            return mapName.replace(/^(de_|cs_)/i, '').replace(/^\w/, c => c.toUpperCase());
+        }
+
+        // Parse team value to proper CT/T string
+        function parseTeam(team) {
+            if (!team) return 'Unknown';
+            if (typeof team === 'number') {
+                if (team === 3) return 'CT';
+                if (team === 2) return 'T';
+                return 'Unknown';
+            }
+            const str = String(team).toUpperCase();
+            if (str === 'CT' || str.includes('COUNTER')) return 'CT';
+            if (str === 'T' || str === 'TERRORIST') return 'T';
+            if (str === 'UNKNOWN' || str === '?') return 'Unknown';
+            return str;
+        }
+
+        // Parse score and handle potential knife round
+        function parseScore(scoreStr, totalRounds) {
+            if (!scoreStr) return { ct: 0, t: 0, knife: false };
+            const parts = scoreStr.split(' - ').map(s => parseInt(s.trim()) || 0);
+            let ct = parts[0] || 0;
+            let t = parts[1] || 0;
+            let knife = false;
+
+            // If total score > 24 (max regular rounds) or > total rounds, likely includes knife
+            const totalScore = ct + t;
+            if (totalScore > 24 || (totalRounds && totalScore > totalRounds)) {
+                // Assume the extra round is a knife round - subtract 1 from winner
+                if (ct > t) ct--;
+                else if (t > ct) t--;
+                else ct--; // Arbitrary if tied
+                knife = true;
+            }
+            return { ct, t, knife };
+        }
+
         // Render results
         function renderResults(data) {
             const info = data.demo_info || {};
             const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
 
+            // Parse score with knife round detection
+            const score = parseScore(info.score, info.rounds);
+            const displayRounds = score.ct + score.t;
+
             let html = `
                 <div class="match-header">
-                    <div class="map-name">${esc(info.map) || 'Unknown Map'}</div>
+                    <div class="map-name">${formatMapName(info.map)}</div>
                     <div class="match-meta">
-                        ${info.rounds || 0} rounds &bull; ${Math.round(info.duration_minutes || 0)} min &bull; ${info.total_kills || 0} kills
+                        ${displayRounds} rounds${score.knife ? ' (+knife)' : ''} &bull; ${Math.round(info.duration_minutes || 0)} min &bull; ${info.total_kills || 0} kills
                     </div>
                     <div class="score-display">
-                        <span class="score-ct">${info.score?.split(' - ')[0] || '0'}</span>
+                        <span class="score-ct">${score.ct}</span>
                         <span>-</span>
-                        <span class="score-t">${info.score?.split(' - ')[1] || '0'}</span>
+                        <span class="score-t">${score.t}</span>
                     </div>
                     ${data.mvp ? `
                         <div class="mvp-banner">
@@ -770,7 +895,7 @@
                 </div>
 
                 <div class="tab-content" id="tab-heatmap">
-                    ${renderHeatmap(data.heatmap_data || {}, info.map || 'unknown')}
+                    ${renderHeatmap(data.heatmap_data || {}, formatMapName(info.map))}
                 </div>
 
                 <div class="tab-content" id="tab-coaching">
@@ -778,7 +903,7 @@
                 </div>
 
                 <div class="tab-content" id="tab-replay">
-                    ${renderReplayViewer(players, info.map || 'unknown')}
+                    ${renderReplayViewer(players, formatMapName(info.map))}
                 </div>
             `;
 
@@ -806,81 +931,143 @@
             });
         }
 
-        // Render Overview Tab
+        // Render Overview Tab - 5v5 Layout
         function renderOverview(players) {
-            let html = '<div class="players-grid">';
+            // Parse teams and sort by rating
+            const playersWithTeam = players.map(p => ({
+                ...p,
+                parsedTeam: parseTeam(p.team)
+            }));
 
-            for (const player of players) {
-                const s = player.stats || {};
-                const r = player.rating || {};
-                const adv = player.advanced || {};
-                const util = player.utility || {};
-                const teamClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
-                const ratingClass = getRatingClass(r.hltv_rating);
+            // Separate by team
+            const ctPlayers = playersWithTeam
+                .filter(p => p.parsedTeam === 'CT')
+                .sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0));
 
-                html += `
-                    <div class="player-card">
-                        <div class="player-header">
-                            <span class="player-name">${esc(player.name) || 'Unknown'}</span>
-                            <span class="player-team ${teamClass}">${esc(player.team) || '?'}</span>
-                            <span class="rating-badge">${(r.hltv_rating || 0).toFixed(2)}</span>
-                        </div>
-                        <div class="stats-grid">
-                            <div class="stat highlight">
-                                <div class="stat-value">${s.kills || 0}</div>
-                                <div class="stat-label">Kills</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.deaths || 0}</div>
-                                <div class="stat-label">Deaths</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.assists || 0}</div>
-                                <div class="stat-label">Assists</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.kd_ratio || '-'}</div>
-                                <div class="stat-label">K/D</div>
-                            </div>
-                            <div class="stat highlight">
-                                <div class="stat-value">${s.adr || 0}</div>
-                                <div class="stat-label">ADR</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.headshot_pct || 0}%</div>
-                                <div class="stat-label">HS%</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value ${r.kast_percentage >= 70 ? 'good' : r.kast_percentage < 50 ? 'bad' : ''}">${r.kast_percentage || 0}%</div>
-                                <div class="stat-label">KAST</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value ${r.aim_rating >= 60 ? 'good' : r.aim_rating < 40 ? 'bad' : ''}">${r.aim_rating || 0}</div>
-                                <div class="stat-label">Aim</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</div>
-                                <div class="stat-label">TTD</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</div>
-                                <div class="stat-label">CP</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${util.flashbangs_thrown || 0}</div>
-                                <div class="stat-label">Flashes</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value ${r.utility_rating >= 60 ? 'good' : r.utility_rating < 30 ? 'bad' : ''}">${r.utility_rating || 0}</div>
-                                <div class="stat-label">Util</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
+            const tPlayers = playersWithTeam
+                .filter(p => p.parsedTeam === 'T')
+                .sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0));
+
+            // Players with unknown team go to smaller side or CT by default
+            const unknownPlayers = playersWithTeam
+                .filter(p => p.parsedTeam === 'Unknown')
+                .sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0));
+
+            // Distribute unknown players to balance teams (5 each)
+            for (const p of unknownPlayers) {
+                if (ctPlayers.length < 5) {
+                    p.parsedTeam = 'CT';
+                    ctPlayers.push(p);
+                } else if (tPlayers.length < 5) {
+                    p.parsedTeam = 'T';
+                    tPlayers.push(p);
+                } else {
+                    // Extra players go to CT side
+                    ctPlayers.push(p);
+                }
             }
 
-            html += '</div>';
+            // Calculate team totals
+            const ctKills = ctPlayers.reduce((sum, p) => sum + (p.stats?.kills || 0), 0);
+            const tKills = tPlayers.reduce((sum, p) => sum + (p.stats?.kills || 0), 0);
+
+            let html = `
+                <div class="teams-container">
+                    <div class="team-section">
+                        <div class="team-header ct">
+                            <span>Counter-Terrorists</span>
+                            <span class="team-score">${ctKills} kills</span>
+                        </div>
+                        <div class="players-grid">
+                            ${ctPlayers.map(p => renderPlayerCard(p, 'CT')).join('')}
+                        </div>
+                    </div>
+
+                    <div class="vs-divider">VS</div>
+
+                    <div class="team-section">
+                        <div class="team-header t">
+                            <span>Terrorists</span>
+                            <span class="team-score">${tKills} kills</span>
+                        </div>
+                        <div class="players-grid">
+                            ${tPlayers.map(p => renderPlayerCard(p, 'T')).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+
             return html;
+        }
+
+        // Render individual player card
+        function renderPlayerCard(player, teamSide) {
+            const s = player.stats || {};
+            const r = player.rating || {};
+            const adv = player.advanced || {};
+            const util = player.utility || {};
+            const teamClass = teamSide === 'CT' ? 'team-ct' : 'team-t';
+            const ratingClass = getRatingClass(r.hltv_rating);
+
+            return `
+                <div class="player-card">
+                    <div class="player-header">
+                        <span class="player-name">${esc(player.name) || 'Unknown'}</span>
+                        <span class="player-team ${teamClass}">${teamSide}</span>
+                        <span class="rating-badge">${(r.hltv_rating || 0).toFixed(2)}</span>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat highlight">
+                            <div class="stat-value">${s.kills || 0}</div>
+                            <div class="stat-label">Kills</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value">${s.deaths || 0}</div>
+                            <div class="stat-label">Deaths</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value">${s.assists || 0}</div>
+                            <div class="stat-label">Assists</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value">${s.kd_ratio || '-'}</div>
+                            <div class="stat-label">K/D</div>
+                        </div>
+                        <div class="stat highlight">
+                            <div class="stat-value">${s.adr || 0}</div>
+                            <div class="stat-label">ADR</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value">${s.headshot_pct || 0}%</div>
+                            <div class="stat-label">HS%</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value ${r.kast_percentage >= 70 ? 'good' : r.kast_percentage < 50 ? 'bad' : ''}">${r.kast_percentage || 0}%</div>
+                            <div class="stat-label">KAST</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value ${r.aim_rating >= 60 ? 'good' : r.aim_rating < 40 ? 'bad' : ''}">${r.aim_rating || 0}</div>
+                            <div class="stat-label">Aim</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</div>
+                            <div class="stat-label">TTD</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</div>
+                            <div class="stat-label">CP</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value">${util.flashbangs_thrown || 0}</div>
+                            <div class="stat-label">Flashes</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value ${r.utility_rating >= 60 ? 'good' : r.utility_rating < 30 ? 'bad' : ''}">${r.utility_rating || 0}</div>
+                            <div class="stat-label">Util</div>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
 
         // Render Timeline Tab
@@ -1228,8 +1415,24 @@
 
             if (!ctContainer || !tContainer) return;
 
-            const ctPlayers = players.filter(p => p.team === 'CT');
-            const tPlayers = players.filter(p => p.team === 'T');
+            // Parse teams properly
+            const playersWithTeam = players.map(p => ({
+                ...p,
+                parsedTeam: parseTeam(p.team)
+            }));
+
+            const ctPlayers = playersWithTeam.filter(p => p.parsedTeam === 'CT');
+            const tPlayers = playersWithTeam.filter(p => p.parsedTeam === 'T');
+
+            // Distribute unknowns
+            const unknowns = playersWithTeam.filter(p => p.parsedTeam === 'Unknown');
+            unknowns.forEach((p, i) => {
+                if (ctPlayers.length <= tPlayers.length) {
+                    ctPlayers.push(p);
+                } else {
+                    tPlayers.push(p);
+                }
+            });
 
             ctContainer.innerHTML = ctPlayers.map((p, i) => `
                 <div class="replay-player-item" data-player="${esc(p.name)}" onclick="selectReplayPlayer('${esc(p.name)}')">
