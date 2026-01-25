@@ -275,17 +275,18 @@ class TestDemoParser:
         mock_demo_class = MagicMock(return_value=mock_demo_instance)
         mock_awpy = MagicMock(Demo=mock_demo_class)
 
-        # Patch awpy import
-        with patch("opensight.core.parser._check_awpy_available", return_value=True):
-            with patch.dict("sys.modules", {"awpy": mock_awpy}):
-                parser = DemoParser(demo_file)
-                result1 = parser.parse()
-                result2 = parser.parse()
+        # Patch awpy import and disable demoparser2 so awpy is used
+        with patch("opensight.core.parser.DEMOPARSER2_AVAILABLE", False):
+            with patch("opensight.core.parser._check_awpy_available", return_value=True):
+                with patch.dict("sys.modules", {"awpy": mock_awpy}):
+                    parser = DemoParser(demo_file)
+                    result1 = parser.parse()
+                    result2 = parser.parse()
 
-                # Should be same object (cached)
-                assert result1 is result2
-                # Demo constructor should only be called once
-                assert mock_demo_class.call_count == 1
+                    # Should be same object (cached)
+                    assert result1 is result2
+                    # Demo constructor should only be called once
+                    assert mock_demo_class.call_count == 1
 
 
 class TestParseDemoFunction:
@@ -317,11 +318,12 @@ class TestParseDemoFunction:
         mock_demo_class = MagicMock(return_value=mock_demo_instance)
         mock_awpy = MagicMock(Demo=mock_demo_class)
 
-        # Patch awpy import
-        with patch("opensight.core.parser._check_awpy_available", return_value=True):
-            with patch.dict("sys.modules", {"awpy": mock_awpy}):
-                result = parse_demo(demo_file)
-                assert result.map_name == "de_mirage"
+        # Patch awpy import and disable demoparser2 so awpy is used
+        with patch("opensight.core.parser.DEMOPARSER2_AVAILABLE", False):
+            with patch("opensight.core.parser._check_awpy_available", return_value=True):
+                with patch.dict("sys.modules", {"awpy": mock_awpy}):
+                    result = parse_demo(demo_file)
+                    assert result.map_name == "de_mirage"
 
 
 class TestOptimizations:

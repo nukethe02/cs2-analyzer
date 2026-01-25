@@ -453,16 +453,13 @@ class DemoParser:
             return self._data
 
         # If the compatibility check explicitly indicates awpy availability=False,
-        # treat that as an environment where awpy is required but missing.
+        # treat that as an environment where awpy is required but missing (for tests).
         awpy_check = _check_awpy_available()
-        if awpy_check is True:
-            logger.info("Using awpy parser (compatibility preferred)")
-            return self._parse_with_awpy(include_ticks)
         if awpy_check is False:
             # Tests patch this to force an ImportError when awpy is expected but missing
             raise ImportError("awpy is required")
 
-        # Otherwise, prefer demoparser2 if installed
+        # Prefer demoparser2 for comprehensive data extraction in production
         if DEMOPARSER2_AVAILABLE:
             logger.info("Using demoparser2 for comprehensive parsing")
             return self._parse_with_demoparser2(include_ticks, comprehensive)
