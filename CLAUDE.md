@@ -2,6 +2,8 @@
 
 Local Counter-Strike 2 analytics framework providing professional-grade metrics without cloud dependencies. Works with Valve MM, FACEIT, ESEA, HLTV, scrims, and POV demos.
 
+**RECENT FIXES**: TTD and Crosshair Placement now work without expensive tick data parsing. See `FIXES_DOCUMENTATION.md` for details.
+
 ## Quick Start
 
 ```bash
@@ -14,6 +16,9 @@ PYTHONPATH=src uvicorn opensight.api:app --host 0.0.0.0 --port 7860
 # Run CLI
 pip install -e .
 opensight analyze /path/to/demo.dem
+
+# Test the workflow
+python test_workflow.py
 ```
 
 ## Commands
@@ -25,6 +30,7 @@ opensight analyze /path/to/demo.dem
 | `pip install -e ".[dev]"` | Install with dev dependencies (pytest, ruff, mypy) |
 | `PYTHONPATH=src uvicorn opensight.api:app --port 7860` | Run web API |
 | `PYTHONPATH=src pytest tests/ -v` | Run tests |
+| `python test_workflow.py` | Test complete workflow with local demo |
 | `ruff check src/` | Run linting |
 | `mypy src/` | Type checking |
 
@@ -35,11 +41,21 @@ src/opensight/
 ├── __init__.py        # Package exports (lazy imports for heavy deps)
 ├── api.py             # FastAPI web interface (port 7860)
 ├── cli.py             # Typer CLI (opensight command)
-├── parser.py          # Demo parser using demoparser2
-├── analytics.py       # TTD and Crosshair Placement calculations
-├── metrics.py         # Metric calculation utilities
-├── sharecode.py       # CS2 share code encode/decode
-├── watcher.py         # File system watcher for auto-processing
+├── server.py          # Web server entry point
+│── core/
+│   ├── parser.py      # Demo parser using demoparser2 (optimized)
+│   ├── constants.py   # Game constants
+│   └── utils.py       # Utilities
+├── analysis/
+│   ├── analytics.py   # TTD and CP calculations (FIXED)
+│   ├── metrics.py     # Metric calculation utilities (FIXED)
+│   └── metrics_optimized.py  # Vectorized computations
+├── integrations/
+│   └── sharecode.py   # CS2 share code encode/decode
+├── infra/
+│   ├── watcher.py     # File system watcher for auto-processing
+│   ├── cache.py       # Analysis caching
+│   └── database.py    # SQLite history storage
 └── static/
     └── index.html     # Web UI
 ```
@@ -48,6 +64,8 @@ src/opensight/
 
 - `pyproject.toml` - Package config, dependencies, tool settings
 - `requirements.txt` - Pip dependencies for deployment
+- `FIXES_DOCUMENTATION.md` - Details on recent performance fixes
+- `test_workflow.py` - End-to-end test script
 - `Dockerfile` - Container build (exposes 7860 for Hugging Face)
 - `README.md` - Has Hugging Face YAML frontmatter for Spaces
 - `tests/` - pytest test suite

@@ -154,7 +154,7 @@ def register_routes(app: Flask) -> None:
                 "demo_info": {
                     "map": demo_data.map_name,
                     "duration_seconds": demo_data.duration_seconds,
-                    "rounds": len(demo_data.round_starts),
+                    "rounds": len(getattr(demo_data, "round_starts", [])),
                     "players": len(demo_data.player_names),
                 },
                 "players": [],
@@ -330,4 +330,5 @@ def register_error_handlers(app: Flask) -> None:
 # Development server
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    debug_mode = os.environ.get("FLASK_ENV") == "development"
+    app.run(debug=debug_mode, host="0.0.0.0", port=5000)

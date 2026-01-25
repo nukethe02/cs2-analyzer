@@ -169,20 +169,29 @@ async def analyze_demo(file: UploadFile = File(...)):
             tmp.write(content)
             tmp_path = Path(tmp.name)
 
-        # Parse the demo
-        parser = DemoParser(tmp_path)
-        data = parser.parse()
+        try:
+            # Parse the demo
+            parser = DemoParser(tmp_path)
+            data = parser.parse()
 
-        # Run advanced analytics
-        analyzer = DemoAnalyzer(data)
-        analysis = analyzer.analyze()
+            # Run advanced analytics
+            analyzer = DemoAnalyzer(data)
+            analysis = analyzer.analyze()
+        finally:
+            # Ensure temp file is cleaned up even if parsing fails
+            if tmp_path and tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+            tmp_path = None
 
         # Build response
         result = {
             "demo_info": {
                 "map": analysis.map_name,
                 "duration_seconds": round(data.duration_seconds, 1),
-                "duration_minutes": round(data.duration_seconds / 60, 1),
+                "duration_minutes": round(data.duration_seconds / 60, 1) if data.duration_seconds else 0,
                 "tick_rate": data.tick_rate,
                 "rounds": analysis.total_rounds,
                 "score": f"{analysis.team1_score} - {analysis.team2_score}",

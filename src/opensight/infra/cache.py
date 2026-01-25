@@ -229,18 +229,20 @@ class DemoCache:
         """
         key = self.get_cache_key(demo_path)
 
-        if key not in self._index:
-            self._miss_count += 1
-            return None
+        with open(self.index_path, "r") as f:  # Add lock for thread safety
+            if key not in self._index:
+                self._miss_count += 1
+                return None
 
-        entry = self._index[key]
-        data_path = self._get_data_path(key)
+            entry = self._index[key]
+            data_path = self._get_data_path(key)
 
-        if not data_path.exists():
-            # Stale index entry
-            del self._index[key]
-            self._miss_count += 1
-            return None
+            if not data_path.exists():
+                # Stale index entry - use lock when modifying
+                del self._index[key]
+                self._miss_count += 1
+                self._save_index()
+                return None
 
         try:
             with gzip.open(data_path, "rt") as f:

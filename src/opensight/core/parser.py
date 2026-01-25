@@ -880,72 +880,91 @@ class DemoParser:
         # Find columns
         att_id = self._find_column(kills_df, ["attacker_steamid", "attacker_steam_id"])
         att_name = self._find_column(kills_df, ["attacker_name"])
-        att_team = self._find_column(kills_df, ["attacker_team_name", "attacker_side"])
-        vic_id = self._find_column(kills_df, ["user_steamid", "victim_steamid"])
+        att_team = self._find_column(kills_df, ["attacker_team_name", "attacker_side", "attacker_team"])
+        vic_id = self._find_column(kills_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
         vic_name = self._find_column(kills_df, ["user_name", "victim_name"])
-        vic_team = self._find_column(kills_df, ["user_team_name", "victim_side"])
+        vic_team = self._find_column(kills_df, ["user_team_name", "victim_side", "victim_team"])
         round_col = self._find_column(kills_df, ["total_rounds_played", "round", "round_num"])
 
-        # Position columns (from player props)
-        att_x = self._find_column(kills_df, ["attacker_X", "attacker_x"])
-        att_y = self._find_column(kills_df, ["attacker_Y", "attacker_y"])
-        att_z = self._find_column(kills_df, ["attacker_Z", "attacker_z"])
-        att_pitch = self._find_column(kills_df, ["attacker_pitch"])
-        att_yaw = self._find_column(kills_df, ["attacker_yaw"])
+        # Attacker position columns (demoparser2 prefixes with attacker_ or player_)
+        att_x = self._find_column(kills_df, ["attacker_X", "attacker_x", "X", "x"])
+        att_y = self._find_column(kills_df, ["attacker_Y", "attacker_y", "Y", "y"])
+        att_z = self._find_column(kills_df, ["attacker_Z", "attacker_z", "Z", "z"])
+        att_pitch = self._find_column(kills_df, ["attacker_pitch", "pitch"])
+        att_yaw = self._find_column(kills_df, ["attacker_yaw", "yaw"])
+        
+        # Victim position columns - may be prefixed with user_ or victim_
         vic_x = self._find_column(kills_df, ["user_X", "victim_X", "user_x", "victim_x"])
         vic_y = self._find_column(kills_df, ["user_Y", "victim_Y", "user_y", "victim_y"])
         vic_z = self._find_column(kills_df, ["user_Z", "victim_Z", "user_z", "victim_z"])
 
-        logger.info(f"Position columns found - attacker: X={att_x}, Y={att_y}, Z={att_z}, pitch={att_pitch}, yaw={att_yaw}")
-        logger.info(f"Position columns found - victim: X={vic_x}, Y={vic_y}, Z={vic_z}")
+        logger.debug(f"Position columns found - attacker: X={att_x}, Y={att_y}, Z={att_z}, pitch={att_pitch}, yaw={att_yaw}")
+        logger.debug(f"Position columns found - victim: X={vic_x}, Y={vic_y}, Z={vic_z}")
 
         for _, row in kills_df.iterrows():
-            # Get team values
-            att_side = "Unknown"
-            if att_team:
-                att_side_val = row.get(att_team)
-                if isinstance(att_side_val, str):
-                    att_side = "CT" if "CT" in att_side_val.upper() else "T" if "T" in att_side_val.upper() else att_side_val
-                elif isinstance(att_side_val, (int, float)) and pd.notna(att_side_val):
-                    att_side = "CT" if int(att_side_val) == 3 else "T" if int(att_side_val) == 2 else "Unknown"
+            try:
+                # Get team values
+                att_side = "Unknown"
+                if att_team:
+                    att_side_val = row.get(att_team)
+                    if isinstance(att_side_val, str):
+                        att_side = "CT" if "CT" in att_side_val.upper() else "T" if "T" in att_side_val.upper() else att_side_val
+                    elif isinstance(att_side_val, (int, float)) and pd.notna(att_side_val):
+                        att_side = "CT" if int(att_side_val) == 3 else "T" if int(att_side_val) == 2 else "Unknown"
 
-            vic_side = "Unknown"
-            if vic_team:
-                vic_side_val = row.get(vic_team)
-                if isinstance(vic_side_val, str):
-                    vic_side = "CT" if "CT" in vic_side_val.upper() else "T" if "T" in vic_side_val.upper() else vic_side_val
-                elif isinstance(vic_side_val, (int, float)) and pd.notna(vic_side_val):
-                    vic_side = "CT" if int(vic_side_val) == 3 else "T" if int(vic_side_val) == 2 else "Unknown"
+                vic_side = "Unknown"
+                if vic_team:
+                    vic_side_val = row.get(vic_team)
+                    if isinstance(vic_side_val, str):
+                        vic_side = "CT" if "CT" in vic_side_val.upper() else "T" if "T" in vic_side_val.upper() else vic_side_val
+                    elif isinstance(vic_side_val, (int, float)) and pd.notna(vic_side_val):
+                        vic_side = "CT" if int(vic_side_val) == 3 else "T" if int(vic_side_val) == 2 else "Unknown"
 
-            kill = KillEvent(
-                tick=safe_int(row.get("tick")),
-                round_num=safe_int(row.get(round_col)) if round_col else 0,
-                attacker_steamid=safe_int(row.get(att_id)) if att_id else 0,
-                attacker_name=safe_str(row.get(att_name)) if att_name else "",
-                attacker_side=att_side,
-                victim_steamid=safe_int(row.get(vic_id)) if vic_id else 0,
-                victim_name=safe_str(row.get(vic_name)) if vic_name else "",
-                victim_side=vic_side,
-                weapon=safe_str(row.get("weapon", "")),
-                headshot=safe_bool(row.get("headshot")),
-                assister_steamid=safe_int(row.get("assister_steamid")) if row.get("assister_steamid") else None,
-                assister_name=safe_str(row.get("assister_name")) if row.get("assister_name") else None,
-                flash_assist=safe_bool(row.get("flash_assist")),
-                # Position data
-                attacker_x=safe_float(row.get(att_x)) if att_x and row.get(att_x) is not None else None,
-                attacker_y=safe_float(row.get(att_y)) if att_y and row.get(att_y) is not None else None,
-                attacker_z=safe_float(row.get(att_z)) if att_z and row.get(att_z) is not None else None,
-                attacker_pitch=safe_float(row.get(att_pitch)) if att_pitch and row.get(att_pitch) is not None else None,
-                attacker_yaw=safe_float(row.get(att_yaw)) if att_yaw and row.get(att_yaw) is not None else None,
-                victim_x=safe_float(row.get(vic_x)) if vic_x and row.get(vic_x) is not None else None,
-                victim_y=safe_float(row.get(vic_y)) if vic_y and row.get(vic_y) is not None else None,
-                victim_z=safe_float(row.get(vic_z)) if vic_z and row.get(vic_z) is not None else None,
-            )
-            kills.append(kill)
+                # Extract position data with safe fallback
+                attacker_x = safe_float(row.get(att_x)) if att_x and pd.notna(row.get(att_x)) else None
+                attacker_y = safe_float(row.get(att_y)) if att_y and pd.notna(row.get(att_y)) else None
+                attacker_z = safe_float(row.get(att_z)) if att_z and pd.notna(row.get(att_z)) else None
+                attacker_pitch = safe_float(row.get(att_pitch)) if att_pitch and pd.notna(row.get(att_pitch)) else None
+                attacker_yaw = safe_float(row.get(att_yaw)) if att_yaw and pd.notna(row.get(att_yaw)) else None
+                
+                victim_x = safe_float(row.get(vic_x)) if vic_x and pd.notna(row.get(vic_x)) else None
+                victim_y = safe_float(row.get(vic_y)) if vic_y and pd.notna(row.get(vic_y)) else None
+                victim_z = safe_float(row.get(vic_z)) if vic_z and pd.notna(row.get(vic_z)) else None
+
+                kill = KillEvent(
+                    tick=safe_int(row.get("tick")),
+                    round_num=safe_int(row.get(round_col)) if round_col else 0,
+                    attacker_steamid=safe_int(row.get(att_id)) if att_id else 0,
+                    attacker_name=safe_str(row.get(att_name)) if att_name else "",
+                    attacker_side=att_side,
+                    victim_steamid=safe_int(row.get(vic_id)) if vic_id else 0,
+                    victim_name=safe_str(row.get(vic_name)) if vic_name else "",
+                    victim_side=vic_side,
+                    weapon=safe_str(row.get("weapon", "")),
+                    headshot=safe_bool(row.get("headshot")),
+                    assister_steamid=safe_int(row.get("assister_steamid")) if row.get("assister_steamid") else None,
+                    assister_name=safe_str(row.get("assister_name")) if row.get("assister_name") else None,
+                    flash_assist=safe_bool(row.get("flash_assist")),
+                    # Position data
+                    attacker_x=attacker_x,
+                    attacker_y=attacker_y,
+                    attacker_z=attacker_z,
+                    attacker_pitch=attacker_pitch,
+                    attacker_yaw=attacker_yaw,
+                    victim_x=victim_x,
+                    victim_y=victim_y,
+                    victim_z=victim_z,
+                )
+                kills.append(kill)
+            except Exception as e:
+                logger.debug(f"Error processing kill row: {e}")
+                continue
 
         # Log position data availability
-        kills_with_pos = sum(1 for k in kills if k.attacker_x is not None)
-        logger.info(f"Built {len(kills)} kill events, {kills_with_pos} have position data")
+        kills_with_att_pos = sum(1 for k in kills if k.attacker_x is not None)
+        kills_with_vic_pos = sum(1 for k in kills if k.victim_x is not None)
+        kills_with_angles = sum(1 for k in kills if k.attacker_pitch is not None)
+        logger.info(f"Built {len(kills)} kills: {kills_with_att_pos} attacker pos, {kills_with_vic_pos} victim pos, {kills_with_angles} angles")
 
         return kills
 
