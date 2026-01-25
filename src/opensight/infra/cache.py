@@ -510,6 +510,14 @@ class CachedAnalyzer:
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()
 
+        # Calculate RWS for all players
+        rws_data = {}
+        try:
+            from opensight.analysis.metrics import calculate_rws
+            rws_data = calculate_rws(demo_data)
+        except Exception as e:
+            logger.warning(f"RWS calculation failed: {e}")
+
         # Build comprehensive player data
         players = {}
         for sid, p in analysis.players.items():
@@ -554,6 +562,10 @@ class CachedAnalyzer:
                     "clutch_wins": getattr(p, 'clutch_wins', None) or 0,
                     "clutch_attempts": getattr(p, 'clutch_attempts', None) or 0,
                 },
+                "entry": self._get_entry_stats(p),
+                "trades": self._get_trade_stats(p),
+                "clutches": self._get_clutch_stats(p),
+                "rws": self._get_rws_for_player(sid, rws_data),
             }
 
         # Build round timeline
@@ -600,6 +612,96 @@ class CachedAnalyzer:
         self.cache.put(demo_path, result)
 
         return result
+
+    def _get_entry_stats(self, player) -> dict:
+        """Get comprehensive entry/opening duel stats like FACEIT."""
+        opening = getattr(player, 'opening_duels', None)
+        if opening:
+            attempts = getattr(opening, 'attempts', 0) or 0
+            wins = getattr(opening, 'wins', 0) or 0
+            losses = getattr(opening, 'losses', 0) or 0
+            rounds = getattr(player, 'rounds_played', 0) or 1
+            return {
+                "entry_attempts": attempts,
+                "entry_kills": wins,
+                "entry_deaths": losses,
+                "entry_diff": wins - losses,
+                "entry_attempts_pct": round(attempts / rounds * 100, 0) if rounds > 0 else 0,
+                "entry_success_pct": round(wins / attempts * 100, 0) if attempts > 0 else 0,
+            }
+        return {
+            "entry_attempts": 0,
+            "entry_kills": 0,
+            "entry_deaths": 0,
+            "entry_diff": 0,
+            "entry_attempts_pct": 0,
+            "entry_success_pct": 0,
+        }
+
+    def _get_trade_stats(self, player) -> dict:
+        """Get comprehensive trade stats like FACEIT."""
+        trades = getattr(player, 'trades', None)
+        if trades:
+            return {
+                "trade_kills": getattr(trades, 'kills_traded', 0) or 0,
+                "deaths_traded": getattr(trades, 'deaths_traded', 0) or 0,
+                "traded_entry_kills": 0,  # Would need additional tracking
+                "traded_entry_deaths": 0,  # Would need additional tracking
+            }
+        return {
+            "trade_kills": 0,
+            "deaths_traded": 0,
+            "traded_entry_kills": 0,
+            "traded_entry_deaths": 0,
+        }
+
+    def _get_clutch_stats(self, player) -> dict:
+        """Get comprehensive clutch stats like FACEIT."""
+        clutches = getattr(player, 'clutches', None)
+        if clutches:
+            total = getattr(clutches, 'total_situations', 0) or 0
+            wins = getattr(clutches, 'total_wins', 0) or 0
+            return {
+                "clutch_wins": wins,
+                "clutch_losses": total - wins,
+                "clutch_success_pct": round(wins / total * 100, 0) if total > 0 else 0,
+                "v1_wins": getattr(clutches, 'v1_wins', 0) or 0,
+                "v2_wins": getattr(clutches, 'v2_wins', 0) or 0,
+                "v3_wins": getattr(clutches, 'v3_wins', 0) or 0,
+                "v4_wins": getattr(clutches, 'v4_wins', 0) or 0,
+                "v5_wins": getattr(clutches, 'v5_wins', 0) or 0,
+            }
+        return {
+            "clutch_wins": 0,
+            "clutch_losses": 0,
+            "clutch_success_pct": 0,
+            "v1_wins": 0,
+            "v2_wins": 0,
+            "v3_wins": 0,
+            "v4_wins": 0,
+            "v5_wins": 0,
+        }
+
+    def _get_rws_for_player(self, steam_id: int, rws_data: dict) -> dict:
+        """Get RWS data for a specific player."""
+        if steam_id in rws_data:
+            rws = rws_data[steam_id]
+            return {
+                "avg_rws": round(rws.avg_rws, 2),
+                "total_rws": round(rws.total_rws, 1),
+                "rounds_won": rws.rounds_won,
+                "rounds_played": rws.rounds_played,
+                "damage_per_round": round(rws.damage_per_round, 1),
+                "objective_completions": rws.objective_completions,
+            }
+        return {
+            "avg_rws": 0.0,
+            "total_rws": 0.0,
+            "rounds_won": 0,
+            "rounds_played": 0,
+            "damage_per_round": 0.0,
+            "objective_completions": 0,
+        }
 
     def _build_round_timeline(self, demo_data, analysis) -> list[dict]:
         """Build round-by-round timeline data."""

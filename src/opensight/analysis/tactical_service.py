@@ -6,6 +6,7 @@ Generates comprehensive tactical insights for demo review:
 - Role detection
 - Team strengths/weaknesses
 - Coaching recommendations
+- RWS (Round Win Shares) calculation
 """
 
 from __future__ import annotations
@@ -16,6 +17,17 @@ from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_attr(obj: Any, attr: str, default: Any = None) -> Any:
+    """Safely get attribute from object or dict."""
+    if obj is None:
+        return default
+    # Try dictionary access first
+    if isinstance(obj, dict):
+        return obj.get(attr, default)
+    # Try attribute access
+    return getattr(obj, attr, default)
 
 
 @dataclass
@@ -78,16 +90,16 @@ class TacticalAnalysisService:
         kills = getattr(self.data, "kills", [])
 
         # Count round wins by side
-        t_wins = 0
-        ct_wins = 0
         t_kills_total = 0
         ct_kills_total = 0
 
         for kill in kills:
-            attacker_side = self._get_side(kill.get("attacker_steamid"))
-            is_t_kill = attacker_side == "T"
+            # Try attacker_side first (direct attribute), fall back to lookup
+            attacker_side = _safe_attr(kill, "attacker_side")
+            if not attacker_side:
+                attacker_side = self._get_side(_safe_attr(kill, "attacker_steamid"))
 
-            if is_t_kill:
+            if attacker_side == "T":
                 t_kills_total += 1
             else:
                 ct_kills_total += 1
@@ -123,16 +135,18 @@ class TacticalAnalysisService:
 
         # Categorize executes by utility usage and kill timing
         for kill in kills:
-            time = kill.get("time", 0)
+            # Use tick if time not available (tick / 64 = seconds approximately)
+            tick = _safe_attr(kill, "tick", 0)
+            time = _safe_attr(kill, "time", tick / 64 if tick else 0)
 
             # Simple heuristic
             if time < 15:
-                if any(g.get("grenade_type") == "flash" for g in grenades):
+                if any(_safe_attr(g, "grenade_type") == "flash" for g in grenades):
                     exec_type = "Flash Entry"
                 else:
                     exec_type = "Quick Stack"
             elif time < 35:
-                if any(g.get("grenade_type") == "smoke" for g in grenades):
+                if any(_safe_attr(g, "grenade_type") == "smoke" for g in grenades):
                     exec_type = "Smoke Exec"
                 else:
                     exec_type = "Semi Execute"
@@ -172,13 +186,14 @@ class TacticalAnalysisService:
 
         # Group kills by player
         for kill in kills:
-            steam_id = kill.get("attacker_steamid")
-            time = kill.get("time", 0)
+            steam_id = _safe_attr(kill, "attacker_steamid")
+            tick = _safe_attr(kill, "tick", 0)
+            time = _safe_attr(kill, "time", tick / 64 if tick else 0)
             player_kills[steam_id].append(time)
 
         # Analyze each player
         for steam_id, kill_times in player_kills.items():
-            player_name = player_names.get(steam_id, f"Player {steam_id}")
+            player_name = player_names.get(steam_id, f"Player {steam_id}") if isinstance(player_names, dict) else f"Player {steam_id}"
 
             # Count opening kills (first 15 seconds)
             opening_kills = sum(1 for t in kill_times if t < 15)
@@ -220,20 +235,28 @@ class TacticalAnalysisService:
 
         round_data = defaultdict(list)
         for kill in kills:
-            round_num = kill.get("round_num", 0)
+            round_num = _safe_attr(kill, "round_num", 0)
             round_data[round_num].append(kill)
 
         for round_num in sorted(round_data.keys())[:16]:  # First 16 rounds
             kills_in_round = round_data[round_num]
 
             if kills_in_round:
-                kill_times = [k.get("time", 0) for k in kills_in_round]
-                first_kill_time = min(kill_times)
+                kill_times = []
+                for k in kills_in_round:
+                    tick = _safe_attr(k, "tick", 0)
+                    time = _safe_attr(k, "time", tick / 64 if tick else 0)
+                    kill_times.append(time)
+                first_kill_time = min(kill_times) if kill_times else 0
 
                 # Determine winner
-                t_kills = sum(
-                    1 for k in kills_in_round if self._get_side(k.get("attacker_steamid")) == "T"
-                )
+                t_kills = 0
+                for k in kills_in_round:
+                    side = _safe_attr(k, "attacker_side")
+                    if not side:
+                        side = self._get_side(_safe_attr(k, "attacker_steamid"))
+                    if side == "T":
+                        t_kills += 1
                 ct_kills = len(kills_in_round) - t_kills
                 winner = "T" if t_kills > ct_kills else "CT"
 
@@ -252,7 +275,13 @@ class TacticalAnalysisService:
         """Analyze team matchup."""
         kills = getattr(self.data, "kills", [])
 
-        t_kills = sum(1 for k in kills if self._get_side(k.get("attacker_steamid")) == "T")
+        t_kills = 0
+        for k in kills:
+            side = _safe_attr(k, "attacker_side")
+            if not side:
+                side = self._get_side(_safe_attr(k, "attacker_steamid"))
+            if side == "T":
+                t_kills += 1
         ct_kills = len(kills) - t_kills
         total = t_kills + ct_kills
 

@@ -1691,6 +1691,10 @@
                                 <div class="stat-value ${r.aim_rating >= 60 ? 'good' : r.aim_rating < 40 ? 'bad' : ''}">${r.aim_rating || 0}</div>
                                 <div class="stat-label">Aim</div>
                             </div>
+                            <div class="stat highlight">
+                                <div class="stat-value" style="color: var(--accent-secondary);">${player.rws ? player.rws.avg_rws.toFixed(2) : '0.00'}</div>
+                                <div class="stat-label">RWS</div>
+                            </div>
                             <div class="stat">
                                 <div class="stat-value">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</div>
                                 <div class="stat-label">TTD</div>
@@ -1713,7 +1717,208 @@
             }
 
             html += '</div>';
+
+            // Add detailed stats tables like FACEIT
+            html += renderDetailedStatsTables(players);
+
             return html;
+        }
+
+        // Render detailed stats tables like FACEIT (Entry, Trade, Clutch)
+        function renderDetailedStatsTables(players) {
+            if (!players || players.length === 0) return '';
+
+            // Separate teams
+            const team1 = players.filter(p => p.team === 'CT' || (players.indexOf(p) < 5 && !p.team));
+            const team2 = players.filter(p => p.team === 'T' || (players.indexOf(p) >= 5 && !p.team));
+
+            // If we can't determine teams, just use first 5 vs rest
+            const teamA = team1.length > 0 ? team1 : players.slice(0, 5);
+            const teamB = team2.length > 0 ? team2 : players.slice(5);
+
+            let html = `
+                <div class="detailed-stats-section" style="margin-top: 32px;">
+                    <div class="stats-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                        <button class="stats-tab-btn active" data-stats-tab="entry" style="padding: 8px 16px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Entry Stats</button>
+                        <button class="stats-tab-btn" data-stats-tab="trade" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Trade Stats</button>
+                        <button class="stats-tab-btn" data-stats-tab="clutch" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Clutch Stats</button>
+                    </div>
+
+                    <div class="stats-tab-content" id="stats-entry" style="display: block;">
+                        ${renderEntryStatsTable(teamA, teamB)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-trade" style="display: none;">
+                        ${renderTradeStatsTable(teamA, teamB)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-clutch" style="display: none;">
+                        ${renderClutchStatsTable(teamA, teamB)}
+                    </div>
+                </div>
+            `;
+
+            // Add tab switching logic
+            setTimeout(() => {
+                document.querySelectorAll('.stats-tab-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        document.querySelectorAll('.stats-tab-btn').forEach(b => {
+                            b.classList.remove('active');
+                            b.style.background = 'var(--bg-secondary)';
+                            b.style.color = 'var(--text-muted)';
+                            b.style.border = '1px solid var(--border)';
+                        });
+                        btn.classList.add('active');
+                        btn.style.background = 'var(--accent-primary)';
+                        btn.style.color = 'white';
+                        btn.style.border = 'none';
+
+                        document.querySelectorAll('.stats-tab-content').forEach(c => c.style.display = 'none');
+                        document.getElementById('stats-' + btn.dataset.statsTab).style.display = 'block';
+                    });
+                });
+            }, 100);
+
+            return html;
+        }
+
+        // Render Entry Stats Table (like FACEIT)
+        function renderEntryStatsTable(team1, team2) {
+            const renderTeamTable = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+                return `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${teamName}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry Attempts</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry Kills</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry Deaths</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry Diff</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry %</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Success %</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${players.map(p => {
+                                    const e = p.entry || {};
+                                    const diff = (e.entry_diff || 0);
+                                    const diffColor = diff > 0 ? 'var(--success)' : diff < 0 ? 'var(--danger)' : 'var(--text-muted)';
+                                    return `
+                                        <tr style="border-bottom: 1px solid var(--border);">
+                                            <td style="padding: 12px; display: flex; align-items: center; gap: 8px;">
+                                                <div class="player-avatar-sm" style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">${(p.name || 'U')[0].toUpperCase()}</div>
+                                                ${esc(p.name)}
+                                            </td>
+                                            <td style="text-align: center; padding: 12px;">${e.entry_attempts || 0}</td>
+                                            <td style="text-align: center; padding: 12px; color: var(--success);">${e.entry_kills || 0}</td>
+                                            <td style="text-align: center; padding: 12px; color: var(--danger);">${e.entry_deaths || 0}</td>
+                                            <td style="text-align: center; padding: 12px; color: ${diffColor};">${diff >= 0 ? '+' : ''}${diff}</td>
+                                            <td style="text-align: center; padding: 12px;">${e.entry_attempts_pct || 0}%</td>
+                                            <td style="text-align: center; padding: 12px; color: ${(e.entry_success_pct || 0) >= 50 ? 'var(--success)' : 'var(--text-muted)'};">${e.entry_success_pct || 0}%</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            };
+
+            return renderTeamTable(team1, 'Team 1') + renderTeamTable(team2, 'Team 2');
+        }
+
+        // Render Trade Stats Table (like FACEIT)
+        function renderTradeStatsTable(team1, team2) {
+            const renderTeamTable = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+                return `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${teamName}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Trade Kills</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Deaths Traded</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Traded Entry Kills</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Traded Entry Deaths</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${players.map(p => {
+                                    const t = p.trades || {};
+                                    return `
+                                        <tr style="border-bottom: 1px solid var(--border);">
+                                            <td style="padding: 12px; display: flex; align-items: center; gap: 8px;">
+                                                <div class="player-avatar-sm" style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">${(p.name || 'U')[0].toUpperCase()}</div>
+                                                ${esc(p.name)}
+                                            </td>
+                                            <td style="text-align: center; padding: 12px; color: var(--success);">${t.trade_kills || 0}</td>
+                                            <td style="text-align: center; padding: 12px;">${t.deaths_traded || 0}</td>
+                                            <td style="text-align: center; padding: 12px;">${t.traded_entry_kills || 0}</td>
+                                            <td style="text-align: center; padding: 12px;">${t.traded_entry_deaths || 0}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            };
+
+            return renderTeamTable(team1, 'Team 1') + renderTeamTable(team2, 'Team 2');
+        }
+
+        // Render Clutch Stats Table (like FACEIT)
+        function renderClutchStatsTable(team1, team2) {
+            const renderTeamTable = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+                return `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${teamName}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Clutch Wins</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Clutch Losses</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Clutch %</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">1v5</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">1v4</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">1v3</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">1v2</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;">1v1</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${players.map(p => {
+                                    const c = p.clutches || {};
+                                    const successPct = c.clutch_success_pct || 0;
+                                    return `
+                                        <tr style="border-bottom: 1px solid var(--border);">
+                                            <td style="padding: 12px; display: flex; align-items: center; gap: 8px;">
+                                                <div class="player-avatar-sm" style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">${(p.name || 'U')[0].toUpperCase()}</div>
+                                                ${esc(p.name)}
+                                            </td>
+                                            <td style="text-align: center; padding: 12px; color: var(--success);">${c.clutch_wins || 0}</td>
+                                            <td style="text-align: center; padding: 12px; color: var(--danger);">${c.clutch_losses || 0}</td>
+                                            <td style="text-align: center; padding: 12px; color: ${successPct >= 50 ? 'var(--success)' : 'var(--text-muted)'};">${successPct}%</td>
+                                            <td style="text-align: center; padding: 12px;">${c.v5_wins || 0}</td>
+                                            <td style="text-align: center; padding: 12px;">${c.v4_wins || 0}</td>
+                                            <td style="text-align: center; padding: 12px;">${c.v3_wins || 0}</td>
+                                            <td style="text-align: center; padding: 12px;">${c.v2_wins || 0}</td>
+                                            <td style="text-align: center; padding: 12px;">${c.v1_wins || 0}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            };
+
+            return renderTeamTable(team1, 'Team 1') + renderTeamTable(team2, 'Team 2');
         }
 
         // Render Timeline Tab
