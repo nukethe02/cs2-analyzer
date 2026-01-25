@@ -19,6 +19,7 @@ from tempfile import NamedTemporaryFile
 from typing import Annotated, Any
 
 from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -40,6 +41,16 @@ app = FastAPI(
         "HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement"
     ),
     version=__version__,
+)
+
+# Add CORS middleware for Hugging Face Spaces compatibility
+# Allows requests from any origin (needed for HF Spaces iframe embedding)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -169,6 +180,56 @@ async def root() -> HTMLResponse:
 async def health() -> dict[str, Any]:
     """Health check endpoint."""
     return {"status": "ok", "version": __version__}
+
+
+@app.get("/readiness")
+async def readiness() -> dict[str, Any]:
+    """
+    Readiness check for container orchestration (Hugging Face Spaces).
+
+    Verifies:
+    - Disk space available (>100MB)
+    - Temp directory writable
+    - Critical dependencies importable
+    """
+    import shutil
+    import tempfile
+
+    checks = {}
+
+    # Check disk space
+    try:
+        disk = shutil.disk_usage("/tmp")
+        free_mb = disk.free / (1024 * 1024)
+        checks["disk_space"] = {"ok": free_mb > 100, "free_mb": round(free_mb, 1)}
+    except Exception as e:
+        checks["disk_space"] = {"ok": False, "error": str(e)}
+
+    # Check temp directory
+    try:
+        with tempfile.NamedTemporaryFile(delete=True) as tmp:
+            tmp.write(b"test")
+        checks["temp_dir"] = {"ok": True}
+    except Exception as e:
+        checks["temp_dir"] = {"ok": False, "error": str(e)}
+
+    # Check critical dependencies
+    try:
+        import demoparser2  # noqa: F401
+        import pandas  # noqa: F401
+        import numpy  # noqa: F401
+
+        checks["dependencies"] = {"ok": True}
+    except ImportError as e:
+        checks["dependencies"] = {"ok": False, "error": str(e)}
+
+    all_ok = all(c.get("ok", False) for c in checks.values())
+    status_code = 200 if all_ok else 503
+
+    return JSONResponse(
+        content={"ready": all_ok, "checks": checks, "version": __version__},
+        status_code=status_code,
+    )
 
 
 @app.post("/decode", response_model=ShareCodeResponse)

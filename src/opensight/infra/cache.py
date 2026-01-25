@@ -15,14 +15,48 @@ import gzip
 import hashlib
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Default cache directory
-DEFAULT_CACHE_DIR = Path.home() / ".opensight" / "cache"
+
+def _get_default_cache_dir() -> Path:
+    """Get the default cache directory, compatible with Hugging Face Spaces."""
+    # Check for explicit cache dir environment variable
+    if env_cache := os.environ.get("OPENSIGHT_CACHE_DIR"):
+        return Path(env_cache)
+
+    # Try home directory first (works locally)
+    home_cache = Path.home() / ".opensight" / "cache"
+    try:
+        home_cache.mkdir(parents=True, exist_ok=True)
+        # Test if we can write
+        test_file = home_cache / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+        return home_cache
+    except (OSError, PermissionError):
+        pass
+
+    # Fallback to /tmp for Hugging Face Spaces and other restricted environments
+    tmp_cache = Path("/tmp/opensight/cache")
+    try:
+        tmp_cache.mkdir(parents=True, exist_ok=True)
+        return tmp_cache
+    except (OSError, PermissionError):
+        pass
+
+    # Last resort: current working directory
+    cwd_cache = Path.cwd() / ".opensight_cache"
+    cwd_cache.mkdir(parents=True, exist_ok=True)
+    return cwd_cache
+
+
+# Default cache directory (HF Spaces compatible)
+DEFAULT_CACHE_DIR = _get_default_cache_dir()
 
 # Cache entry max age in days
 DEFAULT_MAX_AGE_DAYS = 30
@@ -456,7 +490,7 @@ class CachedAnalyzer:
             force: Force re-analysis even if cached
 
         Returns:
-            Analysis result dict
+            Comprehensive analysis result dict including tactical data
         """
         # Check cache first
         if not force:
@@ -467,7 +501,7 @@ class CachedAnalyzer:
 
         # Run analysis
         logger.info(f"Analyzing {demo_path.name}")
-        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.analysis.analytics import DemoAnalyzer, compute_kill_positions
         from opensight.core.parser import DemoParser
 
         parser = DemoParser(demo_path)
@@ -476,28 +510,89 @@ class CachedAnalyzer:
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()
 
-        # Convert to dict for caching
-        result = {
-            "map_name": analysis.map_name,
-            "total_rounds": analysis.total_rounds,
-            "team1_score": analysis.team1_score,
-            "team2_score": analysis.team2_score,
-            "players": {
-                str(sid): {
-                    "name": p.name,
-                    "team": p.team,
+        # Build comprehensive player data
+        players = {}
+        for sid, p in analysis.players.items():
+            players[str(sid)] = {
+                "name": p.name,
+                "team": p.team,
+                "stats": {
                     "kills": p.kills,
                     "deaths": p.deaths,
                     "assists": p.assists,
-                    "adr": p.adr,
-                    "headshot_percentage": p.headshot_percentage,
-                    "hltv_rating": p.hltv_rating,
-                    "kast_percentage": p.kast_percentage,
-                    "aim_rating": p.aim_rating,
-                    "utility_rating": p.utility_rating,
-                }
-                for sid, p in analysis.players.items()
+                    "adr": round(p.adr, 1) if p.adr else 0,
+                    "headshot_pct": round(p.headshot_percentage, 1) if p.headshot_percentage else 0,
+                    "kd_ratio": round(p.kills / max(1, p.deaths), 2),
+                },
+                "rating": {
+                    "hltv_rating": round(p.hltv_rating, 2) if p.hltv_rating else 0,
+                    "kast_percentage": round(p.kast_percentage, 1) if p.kast_percentage else 0,
+                    "aim_rating": round(p.aim_rating, 1) if p.aim_rating else 50,
+                    "utility_rating": round(p.utility_rating, 1) if p.utility_rating else 50,
+                    "impact_rating": round(getattr(p, 'impact_rating', 0), 2),
+                },
+                "advanced": {
+                    "ttd_median_ms": round(getattr(p, 'ttd_median_ms', 0), 1),
+                    "ttd_mean_ms": round(getattr(p, 'ttd_mean_ms', 0), 1),
+                    "cp_median_error_deg": round(getattr(p, 'cp_median_error_deg', 0), 1),
+                    "prefire_kills": getattr(p, 'prefire_kills', 0),
+                    "opening_kills": getattr(p, 'opening_kills', 0),
+                    "opening_deaths": getattr(p, 'opening_deaths', 0),
+                },
+                "utility": {
+                    "flashbangs_thrown": getattr(p, 'flashbangs_thrown', 0),
+                    "smokes_thrown": getattr(p, 'smokes_thrown', 0),
+                    "he_thrown": getattr(p, 'he_thrown', 0),
+                    "molotovs_thrown": getattr(p, 'molotovs_thrown', 0),
+                    "flash_assists": getattr(p, 'flash_assists', 0),
+                    "enemies_flashed": getattr(p, 'enemies_flashed', 0),
+                    "he_damage": getattr(p, 'he_damage', 0),
+                },
+                "duels": {
+                    "trade_kills": getattr(p, 'trade_kills', 0),
+                    "traded_deaths": getattr(p, 'traded_deaths', 0),
+                    "clutch_wins": getattr(p, 'clutch_wins', 0),
+                    "clutch_attempts": getattr(p, 'clutch_attempts', 0),
+                },
+            }
+
+        # Build round timeline
+        round_timeline = self._build_round_timeline(demo_data, analysis)
+
+        # Build kill matrix
+        kill_matrix = self._build_kill_matrix(demo_data)
+
+        # Build heatmap data
+        heatmap_data = self._build_heatmap_data(demo_data)
+
+        # Generate coaching insights
+        coaching = self._generate_coaching_insights(demo_data, analysis, players)
+
+        # Get tactical summary
+        tactical = self._get_tactical_summary(demo_data, analysis)
+
+        # Find MVP
+        mvp = None
+        if players:
+            mvp_data = max(players.values(), key=lambda x: x["rating"]["hltv_rating"])
+            mvp = {"name": mvp_data["name"], "rating": mvp_data["rating"]["hltv_rating"]}
+
+        # Convert to dict for caching
+        result = {
+            "demo_info": {
+                "map": analysis.map_name,
+                "rounds": analysis.total_rounds,
+                "duration_minutes": getattr(analysis, 'duration_minutes', 30),
+                "score": f"{analysis.team1_score} - {analysis.team2_score}",
+                "total_kills": sum(p["stats"]["kills"] for p in players.values()),
             },
+            "players": players,
+            "mvp": mvp,
+            "round_timeline": round_timeline,
+            "kill_matrix": kill_matrix,
+            "heatmap_data": heatmap_data,
+            "coaching": coaching,
+            "tactical": tactical,
             "analyzed_at": datetime.now().isoformat(),
         }
 
@@ -505,6 +600,236 @@ class CachedAnalyzer:
         self.cache.put(demo_path, result)
 
         return result
+
+    def _build_round_timeline(self, demo_data, analysis) -> list[dict]:
+        """Build round-by-round timeline data."""
+        timeline = []
+        kills = getattr(demo_data, "kills", [])
+
+        # Group kills by round
+        round_kills = {}
+        for kill in kills:
+            round_num = getattr(kill, "round_num", 0)
+            if round_num not in round_kills:
+                round_kills[round_num] = {"ct_kills": 0, "t_kills": 0, "first_kill": None, "first_death": None}
+
+            attacker_side = str(getattr(kill, "attacker_side", "")).upper()
+            if "CT" in attacker_side:
+                round_kills[round_num]["ct_kills"] += 1
+            else:
+                round_kills[round_num]["t_kills"] += 1
+
+            if round_kills[round_num]["first_kill"] is None:
+                round_kills[round_num]["first_kill"] = getattr(kill, "attacker_name", "Unknown")
+                round_kills[round_num]["first_death"] = getattr(kill, "victim_name", "Unknown")
+
+        # Build timeline entries
+        for round_num in sorted(round_kills.keys()):
+            rd = round_kills[round_num]
+            winner = "CT" if rd["ct_kills"] > rd["t_kills"] else "T"
+            timeline.append({
+                "round_num": round_num,
+                "winner": winner,
+                "win_reason": "Elimination" if abs(rd["ct_kills"] - rd["t_kills"]) >= 4 else "Objective",
+                "first_kill": rd["first_kill"],
+                "first_death": rd["first_death"],
+                "ct_kills": rd["ct_kills"],
+                "t_kills": rd["t_kills"],
+            })
+
+        return timeline
+
+    def _build_kill_matrix(self, demo_data) -> list[dict]:
+        """Build kill matrix showing who killed who."""
+        kills = getattr(demo_data, "kills", [])
+        player_names = getattr(demo_data, "player_names", {})
+
+        matrix = {}
+        for kill in kills:
+            attacker_id = getattr(kill, "attacker_steamid", 0)
+            victim_id = getattr(kill, "victim_steamid", 0)
+            attacker_name = player_names.get(attacker_id, getattr(kill, "attacker_name", "Unknown"))
+            victim_name = player_names.get(victim_id, getattr(kill, "victim_name", "Unknown"))
+
+            key = (attacker_name, victim_name)
+            matrix[key] = matrix.get(key, 0) + 1
+
+        return [{"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()]
+
+    def _build_heatmap_data(self, demo_data) -> dict:
+        """Build position data for heatmap visualization."""
+        kills = getattr(demo_data, "kills", [])
+
+        kill_positions = []
+        death_positions = []
+
+        for kill in kills:
+            # Kill position (attacker)
+            ax = getattr(kill, "attacker_x", None)
+            ay = getattr(kill, "attacker_y", None)
+            if ax is not None and ay is not None:
+                kill_positions.append({"x": ax, "y": ay, "z": getattr(kill, "attacker_z", 0)})
+
+            # Death position (victim)
+            vx = getattr(kill, "victim_x", None)
+            vy = getattr(kill, "victim_y", None)
+            if vx is not None and vy is not None:
+                death_positions.append({"x": vx, "y": vy, "z": getattr(kill, "victim_z", 0)})
+
+        return {"kill_positions": kill_positions, "death_positions": death_positions}
+
+    def _generate_coaching_insights(self, demo_data, analysis, players: dict) -> list[dict]:
+        """Generate coaching insights for each player."""
+        coaching = []
+
+        for steam_id, player in players.items():
+            insights = []
+            name = player["name"]
+            stats = player["stats"]
+            rating = player["rating"]
+            advanced = player["advanced"]
+            utility = player["utility"]
+            duels = player["duels"]
+
+            # Role detection
+            role = self._detect_role(player)
+
+            # Analyze strengths
+            if rating["hltv_rating"] >= 1.2:
+                insights.append({
+                    "type": "positive",
+                    "message": f"Outstanding performance with {rating['hltv_rating']:.2f} rating - carrying the team",
+                    "category": "Performance"
+                })
+            if stats["adr"] >= 90:
+                insights.append({
+                    "type": "positive",
+                    "message": f"Excellent damage output ({stats['adr']} ADR) - consistent impact every round",
+                    "category": "Damage"
+                })
+            if advanced["opening_kills"] >= 5:
+                insights.append({
+                    "type": "positive",
+                    "message": f"{advanced['opening_kills']} opening kills - strong entry fragging",
+                    "category": "Entry"
+                })
+            if rating["kast_percentage"] >= 80:
+                insights.append({
+                    "type": "positive",
+                    "message": f"{rating['kast_percentage']:.0f}% KAST - almost always contributing to rounds",
+                    "category": "Consistency"
+                })
+
+            # Analyze weaknesses
+            if stats["deaths"] > stats["kills"] + 5:
+                insights.append({
+                    "type": "mistake",
+                    "message": f"Dying too often ({stats['deaths']} deaths) - consider safer positioning",
+                    "category": "Positioning"
+                })
+            if advanced["ttd_median_ms"] > 400:
+                insights.append({
+                    "type": "warning",
+                    "message": f"Slow reaction time ({advanced['ttd_median_ms']:.0f}ms TTD) - work on pre-aiming angles",
+                    "category": "Mechanics"
+                })
+            if advanced["cp_median_error_deg"] > 15:
+                insights.append({
+                    "type": "warning",
+                    "message": f"Crosshair placement needs work ({advanced['cp_median_error_deg']:.1f}° error) - pre-aim common spots",
+                    "category": "Mechanics"
+                })
+            if utility["flashbangs_thrown"] < 3:
+                insights.append({
+                    "type": "warning",
+                    "message": "Low utility usage - buy and throw more flashes for team support",
+                    "category": "Utility"
+                })
+            if duels["traded_deaths"] > duels["trade_kills"] + 2:
+                insights.append({
+                    "type": "warning",
+                    "message": "Not getting traded when dying - stay closer to teammates",
+                    "category": "Teamplay"
+                })
+
+            # Role-specific advice
+            if role == "entry" and advanced["opening_kills"] < 3:
+                insights.append({
+                    "type": "warning",
+                    "message": "As entry, focus on getting more opening kills with flash support",
+                    "category": "Role"
+                })
+            if role == "awp" and stats["deaths"] > stats["kills"]:
+                insights.append({
+                    "type": "mistake",
+                    "message": "Dying with AWP too often - $4750 lost each time. Hold angles, don't peek",
+                    "category": "Economy"
+                })
+
+            # Add at least one insight
+            if not insights:
+                if rating["hltv_rating"] >= 1.0:
+                    insights.append({
+                        "type": "positive",
+                        "message": "Solid performance overall - keep up the consistency",
+                        "category": "General"
+                    })
+                else:
+                    insights.append({
+                        "type": "warning",
+                        "message": "Focus on staying alive and trading with teammates",
+                        "category": "General"
+                    })
+
+            coaching.append({
+                "player_name": name,
+                "steam_id": steam_id,
+                "role": role,
+                "insights": insights[:5],  # Top 5 insights per player
+            })
+
+        return coaching
+
+    def _detect_role(self, player: dict) -> str:
+        """Detect player role from stats."""
+        advanced = player["advanced"]
+        utility = player["utility"]
+        stats = player["stats"]
+
+        if advanced["opening_kills"] >= 5:
+            return "entry"
+        if utility["flashbangs_thrown"] >= 10 or utility["smokes_thrown"] >= 8:
+            return "support"
+        if stats["kills"] >= 20 and stats["headshot_pct"] >= 50:
+            return "rifler"
+        return "flex"
+
+    def _get_tactical_summary(self, demo_data, analysis) -> dict:
+        """Get tactical analysis summary."""
+        try:
+            from opensight.analysis.tactical_service import TacticalAnalysisService
+            service = TacticalAnalysisService(demo_data)
+            summary = service.analyze()
+
+            return {
+                "key_insights": summary.key_insights,
+                "t_stats": summary.t_stats,
+                "ct_stats": summary.ct_stats,
+                "t_executes": summary.t_executes,
+                "buy_patterns": summary.buy_patterns,
+                "t_strengths": summary.t_strengths,
+                "t_weaknesses": summary.t_weaknesses,
+                "ct_strengths": summary.ct_strengths,
+                "ct_weaknesses": summary.ct_weaknesses,
+                "team_recommendations": summary.team_recommendations,
+                "practice_drills": summary.practice_drills,
+            }
+        except Exception as e:
+            logger.warning(f"Tactical analysis failed: {e}")
+            return {
+                "key_insights": ["Demo analysis complete"],
+                "team_recommendations": ["Review round-by-round for specific improvements"],
+            }
 
 
 # Convenience functions
