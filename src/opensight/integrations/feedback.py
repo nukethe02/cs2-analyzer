@@ -300,9 +300,11 @@ class FeedbackDatabase:
                 category=row["category"],
                 comment=row["comment"] or "",
                 analysis_version=row["analysis_version"] or "",
-                created_at=datetime.fromisoformat(row["created_at"])
-                if row["created_at"]
-                else datetime.now(),
+                created_at=(
+                    datetime.fromisoformat(row["created_at"])
+                    if row["created_at"]
+                    else datetime.now()
+                ),
                 metadata=json.loads(row["metadata"]) if row["metadata"] else {},
             )
             for row in rows
@@ -327,9 +329,11 @@ class FeedbackDatabase:
                 content=row["content"],
                 x=row["x"],
                 y=row["y"],
-                created_at=datetime.fromisoformat(row["created_at"])
-                if row["created_at"]
-                else datetime.now(),
+                created_at=(
+                    datetime.fromisoformat(row["created_at"])
+                    if row["created_at"]
+                    else datetime.now()
+                ),
             )
             for row in rows
         ]
@@ -362,14 +366,12 @@ class FeedbackDatabase:
                 category_counts[row["category"]] = row["cnt"]
 
             # Coaching helpful rate
-            coaching_row = conn.execute(
-                """
+            coaching_row = conn.execute("""
                 SELECT
                     COUNT(*) as total,
                     SUM(CASE WHEN was_helpful = 1 THEN 1 ELSE 0 END) as helpful
                 FROM coaching_feedback
-                """
-            ).fetchone()
+                """).fetchone()
             coaching_total = coaching_row["total"]
             coaching_helpful = coaching_row["helpful"] or 0
             coaching_rate = (coaching_helpful / coaching_total * 100) if coaching_total > 0 else 0.0
@@ -414,8 +416,7 @@ class FeedbackDatabase:
                     (category,),
                 ).fetchall()
             else:
-                rows = conn.execute(
-                    """
+                rows = conn.execute("""
                     SELECT insight_category, insight_message,
                            COUNT(*) as total,
                            SUM(CASE WHEN was_helpful = 1 THEN 1 ELSE 0 END) as helpful,
@@ -423,8 +424,7 @@ class FeedbackDatabase:
                     FROM coaching_feedback
                     GROUP BY insight_category, insight_message
                     ORDER BY total DESC
-                    """
-                ).fetchall()
+                    """).fetchall()
 
         results = []
         for row in rows:
@@ -438,9 +438,9 @@ class FeedbackDatabase:
                     "message": row["insight_message"],
                     "total_feedback": row["total"],
                     "helpful_count": row["helpful"],
-                    "helpful_rate": (row["helpful"] / row["total"] * 100)
-                    if row["total"] > 0
-                    else 0,
+                    "helpful_rate": (
+                        (row["helpful"] / row["total"] * 100) if row["total"] > 0 else 0
+                    ),
                     "user_corrections": corrections[:5],  # Limit to 5
                 }
             )
@@ -464,14 +464,12 @@ class FeedbackDatabase:
             annotations = conn.execute("SELECT * FROM annotations ORDER BY created_at").fetchall()
 
             # Get highly rated analyses
-            good_analyses = conn.execute(
-                """
+            good_analyses = conn.execute("""
                 SELECT demo_hash, AVG(rating) as avg_rating, COUNT(*) as feedback_count
                 FROM feedback
                 GROUP BY demo_hash
                 HAVING AVG(rating) >= 4
-                """
-            ).fetchall()
+                """).fetchall()
 
         return {
             "coaching_feedback": [

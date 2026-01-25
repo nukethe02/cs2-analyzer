@@ -90,9 +90,7 @@ class Match(Base):
             "demo_hash": self.demo_hash,
             "map_name": self.map_name,
             "date_played": self.date_played.isoformat() if self.date_played else None,
-            "date_analyzed": (
-                self.date_analyzed.isoformat() if self.date_analyzed else None
-            ),
+            "date_analyzed": (self.date_analyzed.isoformat() if self.date_analyzed else None),
             "score": f"{self.score_ct}-{self.score_t}",
             "total_rounds": self.total_rounds,
             "duration_seconds": self.duration_seconds,
@@ -190,12 +188,8 @@ class PlayerMatch(Base):
             "adr": round(self.adr, 1),
             "hltv_rating": round(self.hltv_rating, 2),
             "kast_percentage": round(self.kast_percentage, 1),
-            "ttd_median_ms": (
-                round(self.ttd_median_ms, 1) if self.ttd_median_ms else None
-            ),
-            "cp_median_deg": (
-                round(self.cp_median_deg, 1) if self.cp_median_deg else None
-            ),
+            "ttd_median_ms": (round(self.ttd_median_ms, 1) if self.ttd_median_ms else None),
+            "cp_median_deg": (round(self.cp_median_deg, 1) if self.cp_median_deg else None),
             "opening_kills": self.opening_kills,
             "opening_deaths": self.opening_deaths,
             "clutch_wins": self.clutch_wins,
@@ -291,21 +285,15 @@ class PlayerProfile(Base):
         return {
             "steam_id": self.steam_id,
             "player_name": self.player_name,
-            "last_updated": (
-                self.last_updated.isoformat() if self.last_updated else None
-            ),
+            "last_updated": (self.last_updated.isoformat() if self.last_updated else None),
             "career": {
                 "matches": self.total_matches,
                 "wins": self.total_wins,
                 "losses": self.total_losses,
-                "win_rate": (
-                    round(self.total_wins / max(self.total_matches, 1) * 100, 1)
-                ),
+                "win_rate": (round(self.total_wins / max(self.total_matches, 1) * 100, 1)),
                 "kills": self.total_kills,
                 "deaths": self.total_deaths,
-                "kd_ratio": round(
-                    self.total_kills / max(self.total_deaths, 1), 2
-                ),
+                "kd_ratio": round(self.total_kills / max(self.total_deaths, 1), 2),
                 "headshots": self.total_headshots,
                 "total_damage": self.total_damage,
                 "rounds_played": self.total_rounds_played,
@@ -328,9 +316,7 @@ class PlayerProfile(Base):
                 "situations": self.total_clutch_situations,
                 "wins": self.total_clutch_wins,
                 "win_rate": round(
-                    self.total_clutch_wins
-                    / max(self.total_clutch_situations, 1)
-                    * 100,
+                    self.total_clutch_wins / max(self.total_clutch_situations, 1) * 100,
                     1,
                 ),
             },
@@ -413,9 +399,7 @@ class DatabaseManager:
         session = self.get_session()
         try:
             # Check for duplicate
-            existing = (
-                session.query(Match).filter(Match.demo_hash == demo_hash).first()
-            )
+            existing = session.query(Match).filter(Match.demo_hash == demo_hash).first()
             if existing:
                 logger.info(f"Match already exists: {demo_hash[:16]}...")
                 return None
@@ -509,9 +493,7 @@ class DatabaseManager:
                     session.add(round_obj)
 
             session.commit()
-            logger.info(
-                f"Saved match {demo_hash[:16]}... with {len(player_stats)} players"
-            )
+            logger.info(f"Saved match {demo_hash[:16]}... with {len(player_stats)} players")
             return match
 
         except Exception as e:
@@ -521,15 +503,9 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def _update_player_profile(
-        self, session: Session, pm: PlayerMatch, map_name: str
-    ) -> None:
+    def _update_player_profile(self, session: Session, pm: PlayerMatch, map_name: str) -> None:
         """Update or create player profile with new match data."""
-        profile = (
-            session.query(PlayerProfile)
-            .filter(PlayerProfile.steam_id == pm.steam_id)
-            .first()
-        )
+        profile = session.query(PlayerProfile).filter(PlayerProfile.steam_id == pm.steam_id).first()
 
         if not profile:
             profile = PlayerProfile(
@@ -560,19 +536,13 @@ class DatabaseManager:
         n = profile.total_matches
         profile.avg_kills = profile.total_kills / n
         profile.avg_deaths = profile.total_deaths / n
-        profile.avg_adr = (
-            profile.total_damage / max(profile.total_rounds_played, 1)
-        )
+        profile.avg_adr = profile.total_damage / max(profile.total_rounds_played, 1)
         # Running average for rating
-        profile.avg_rating = (
-            (profile.avg_rating * (n - 1) + pm.hltv_rating) / n
-        )
-        profile.avg_kast = (
-            (profile.avg_kast * (n - 1) + pm.kast_percentage) / n
-        )
+        profile.avg_rating = (profile.avg_rating * (n - 1) + pm.hltv_rating) / n
+        profile.avg_kast = (profile.avg_kast * (n - 1) + pm.kast_percentage) / n
         profile.avg_hs_percentage = (
-            (profile.avg_hs_percentage * (n - 1) + pm.headshot_percentage) / n
-        )
+            profile.avg_hs_percentage * (n - 1) + pm.headshot_percentage
+        ) / n
 
         # Update career highs
         if pm.hltv_rating > profile.best_rating:
@@ -585,9 +555,7 @@ class DatabaseManager:
             profile.best_kast = pm.kast_percentage
 
         # Update map stats
-        map_stats = (
-            json.loads(profile.map_stats_json) if profile.map_stats_json else {}
-        )
+        map_stats = json.loads(profile.map_stats_json) if profile.map_stats_json else {}
         if map_name not in map_stats:
             map_stats[map_name] = {"matches": 0, "wins": 0, "avg_rating": 0}
         map_stats[map_name]["matches"] += 1
@@ -595,15 +563,13 @@ class DatabaseManager:
             map_stats[map_name]["wins"] += 1
         old_avg = map_stats[map_name]["avg_rating"]
         old_n = map_stats[map_name]["matches"] - 1
-        map_stats[map_name]["avg_rating"] = (
-            (old_avg * old_n + pm.hltv_rating) / map_stats[map_name]["matches"]
-        )
+        map_stats[map_name]["avg_rating"] = (old_avg * old_n + pm.hltv_rating) / map_stats[
+            map_name
+        ]["matches"]
         profile.map_stats_json = json.dumps(map_stats)
 
         # Update recent form
-        recent_form = (
-            json.loads(profile.recent_form_json) if profile.recent_form_json else []
-        )
+        recent_form = json.loads(profile.recent_form_json) if profile.recent_form_json else []
         recent_form.append(round(pm.hltv_rating, 2))
         if len(recent_form) > 20:  # Keep last 20
             recent_form = recent_form[-20:]
@@ -613,9 +579,7 @@ class DatabaseManager:
         """Get a match by its demo hash."""
         session = self.get_session()
         try:
-            return (
-                session.query(Match).filter(Match.demo_hash == demo_hash).first()
-            )
+            return session.query(Match).filter(Match.demo_hash == demo_hash).first()
         finally:
             session.close()
 
@@ -646,16 +610,9 @@ class DatabaseManager:
                 query = query.filter(Match.map_name == map_name)
 
             if steam_id:
-                query = query.join(PlayerMatch).filter(
-                    PlayerMatch.steam_id == steam_id
-                )
+                query = query.join(PlayerMatch).filter(PlayerMatch.steam_id == steam_id)
 
-            matches = (
-                query.order_by(Match.date_analyzed.desc())
-                .offset(offset)
-                .limit(limit)
-                .all()
-            )
+            matches = query.order_by(Match.date_analyzed.desc()).offset(offset).limit(limit).all()
 
             result = []
             for m in matches:
@@ -702,17 +659,13 @@ class DatabaseManager:
         session = self.get_session()
         try:
             profile = (
-                session.query(PlayerProfile)
-                .filter(PlayerProfile.steam_id == steam_id)
-                .first()
+                session.query(PlayerProfile).filter(PlayerProfile.steam_id == steam_id).first()
             )
             return profile.to_dict() if profile else None
         finally:
             session.close()
 
-    def get_player_match_history(
-        self, steam_id: str, limit: int = 20
-    ) -> list[dict]:
+    def get_player_match_history(self, steam_id: str, limit: int = 20) -> list[dict]:
         """Get a player's recent matches."""
         session = self.get_session()
         try:
@@ -730,9 +683,7 @@ class DatabaseManager:
                     "match_id": pm.match_id,
                     "map_name": pm.match.map_name,
                     "date": (
-                        pm.match.date_analyzed.isoformat()
-                        if pm.match.date_analyzed
-                        else None
+                        pm.match.date_analyzed.isoformat() if pm.match.date_analyzed else None
                     ),
                     "score": f"{pm.match.score_ct}-{pm.match.score_t}",
                     "team": pm.team,
@@ -820,18 +771,12 @@ class DatabaseManager:
         session = self.get_session()
         try:
             total_matches = session.query(func.count(Match.id)).scalar() or 0
-            total_players = (
-                session.query(func.count(PlayerProfile.steam_id)).scalar() or 0
-            )
-            total_rounds = (
-                session.query(func.sum(Match.total_rounds)).scalar() or 0
-            )
+            total_players = session.query(func.count(PlayerProfile.steam_id)).scalar() or 0
+            total_rounds = session.query(func.sum(Match.total_rounds)).scalar() or 0
 
             # Map distribution
             map_counts = (
-                session.query(Match.map_name, func.count(Match.id))
-                .group_by(Match.map_name)
-                .all()
+                session.query(Match.map_name, func.count(Match.id)).group_by(Match.map_name).all()
             )
 
             return {

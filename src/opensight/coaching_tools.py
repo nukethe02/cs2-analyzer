@@ -12,7 +12,6 @@ Integrates with player_performance_metrics for data-driven coaching.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 from opensight.player_performance_metrics import (
     PlayerPerformanceMetrics,
@@ -43,9 +42,9 @@ class Priority(Enum):
     """Priority levels for improvement areas."""
 
     CRITICAL = 1  # Fix immediately
-    HIGH = 2      # Important to address
-    MEDIUM = 3    # Should improve
-    LOW = 4       # Nice to have
+    HIGH = 2  # Important to address
+    MEDIUM = 3  # Should improve
+    LOW = 4  # Nice to have
 
 
 @dataclass
@@ -79,8 +78,8 @@ class ImprovementPlan:
     area: ImprovementArea
     priority: Priority
     current_level: str  # Assessment of current skill
-    target_level: str   # Goal to reach
-    reasoning: str      # Why this was identified
+    target_level: str  # Goal to reach
+    reasoning: str  # Why this was identified
     strategies: list[str] = field(default_factory=list)
     exercises: list[PracticeExercise] = field(default_factory=list)
     metrics_to_track: list[str] = field(default_factory=list)
@@ -570,7 +569,9 @@ def analyze_and_coach(metrics: PlayerPerformanceMetrics) -> CoachingReport:
                     metrics_to_track=["opening_duel_win_rate", "first_kills", "first_deaths"],
                 )
             )
-            quick_tips.append("You're losing too many opening duels - use utility or let teammate entry")
+            quick_tips.append(
+                "You're losing too many opening duels - use utility or let teammate entry"
+            )
 
     # Analyze survival
     survival = metrics.time_alive.survival_rate
@@ -630,7 +631,9 @@ def analyze_and_coach(metrics: PlayerPerformanceMetrics) -> CoachingReport:
     # Check for nemesis
     nemesis = metrics.nemesis_stats.nemesis
     if nemesis and nemesis[1] >= 4:
-        quick_tips.append(f"{nemesis[0]} killed you {nemesis[1]} times - avoid their positions or peek differently")
+        quick_tips.append(
+            f"{nemesis[0]} killed you {nemesis[1]} times - avoid their positions or peek differently"
+        )
 
     # Generate overall assessment
     if kd >= 1.5 and hs_pct >= 45:

@@ -405,7 +405,9 @@ class TeamPerformanceCalculator:
                     # This is a simplification - real implementation would check positions
                     pass
 
-    def _calculate_time_metrics(self, metrics: TeamMetrics, team_players: set[int], side: str) -> None:
+    def _calculate_time_metrics(
+        self, metrics: TeamMetrics, team_players: set[int], side: str
+    ) -> None:
         """Calculate time-related metrics."""
         metrics.total_rounds_played = getattr(self.data, "num_rounds", 0)
 
@@ -422,7 +424,9 @@ class TeamPerformanceCalculator:
             for round_info in rounds_info:
                 round_num = getattr(round_info, "round_num", 0)
                 round_start = getattr(round_info, "start_tick", 0)
-                round_end = getattr(round_info, "end_tick", round_start + 64 * 115)  # ~115 sec default
+                round_end = getattr(
+                    round_info, "end_tick", round_start + 64 * 115
+                )  # ~115 sec default
 
                 # Find when each team player died this round
                 for player_id in team_players:
@@ -444,7 +448,9 @@ class TeamPerformanceCalculator:
             metrics.total_time_alive_seconds = total_ticks_alive / tick_rate
 
             if metrics.total_rounds_played > 0:
-                metrics.avg_time_alive_per_round = metrics.total_time_alive_seconds / metrics.total_rounds_played
+                metrics.avg_time_alive_per_round = (
+                    metrics.total_time_alive_seconds / metrics.total_rounds_played
+                )
 
     def _calculate_round_metrics(self, metrics: TeamMetrics, side: str) -> None:
         """Calculate round win/loss metrics."""
@@ -468,7 +474,9 @@ class TeamPerformanceCalculator:
         if total_rounds > 0:
             metrics.round_win_rate = (metrics.rounds_won / total_rounds) * 100
 
-    def _calculate_economy_metrics(self, metrics: TeamMetrics, team_players: set[int], side: str) -> None:
+    def _calculate_economy_metrics(
+        self, metrics: TeamMetrics, team_players: set[int], side: str
+    ) -> None:
         """Calculate economy metrics."""
         # This would require round-by-round economy data
         # For now, estimate from player stats if available
@@ -545,10 +553,10 @@ class TeamPerformanceCalculator:
 
     def _calculate_player_breakdown(self, metrics: TeamMetrics, team_players: set[int]) -> None:
         """Calculate per-player stats breakdown."""
-        player_kills: dict[int, int] = {p: 0 for p in team_players}
-        player_deaths: dict[int, int] = {p: 0 for p in team_players}
-        player_assists: dict[int, int] = {p: 0 for p in team_players}
-        player_headshots: dict[int, int] = {p: 0 for p in team_players}
+        player_kills: dict[int, int] = dict.fromkeys(team_players, 0)
+        player_deaths: dict[int, int] = dict.fromkeys(team_players, 0)
+        player_assists: dict[int, int] = dict.fromkeys(team_players, 0)
+        player_headshots: dict[int, int] = dict.fromkeys(team_players, 0)
 
         if hasattr(self.data, "kills"):
             for kill in self.data.kills:

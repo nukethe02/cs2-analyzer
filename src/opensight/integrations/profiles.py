@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
-from opensight.infra.database import DatabaseManager, PlayerMatch, PlayerProfile, Match, get_db
+from opensight.infra.database import DatabaseManager, get_db
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +65,7 @@ class Milestone:
         return {
             "name": self.name,
             "description": self.description,
-            "achieved_date": (
-                self.achieved_date.isoformat() if self.achieved_date else None
-            ),
+            "achieved_date": (self.achieved_date.isoformat() if self.achieved_date else None),
             "value": self.value,
             "category": self.category,
         }
@@ -165,9 +163,7 @@ class ProfileAnalyzer:
         insights.milestones = self._check_milestones(profile, matches)
 
         # Identify strengths and weaknesses
-        insights.strengths, insights.areas_to_improve = self._evaluate_performance(
-            profile
-        )
+        insights.strengths, insights.areas_to_improve = self._evaluate_performance(profile)
 
         # Describe current form
         insights.form_description = self._describe_form(matches)
@@ -218,8 +214,8 @@ class ProfileAnalyzer:
                 trend = "declining" if metric_name != "deaths" else "improving"
 
             # Confidence based on sample size
-            confidence = "high" if len(matches) >= 20 else (
-                "medium" if len(matches) >= 10 else "low"
+            confidence = (
+                "high" if len(matches) >= 20 else ("medium" if len(matches) >= 10 else "low")
             )
 
             trends.append(
@@ -237,9 +233,7 @@ class ProfileAnalyzer:
 
         return trends
 
-    def _check_milestones(
-        self, profile: dict, matches: list[dict]
-    ) -> list[Milestone]:
+    def _check_milestones(self, profile: dict, matches: list[dict]) -> list[Milestone]:
         """Check for achieved milestones."""
         milestones = []
         career = profile.get("career", {})
@@ -314,9 +308,7 @@ class ProfileAnalyzer:
 
         return milestones
 
-    def _evaluate_performance(
-        self, profile: dict
-    ) -> tuple[list[str], list[str]]:
+    def _evaluate_performance(self, profile: dict) -> tuple[list[str], list[str]]:
         """Identify strengths and areas to improve."""
         strengths = []
         weaknesses = []
@@ -410,25 +402,15 @@ class ProfileAnalyzer:
         # Based on weaknesses
         for weakness in weaknesses[:2]:  # Top 2 weaknesses
             if "damage" in weakness.lower():
-                recommendations.append(
-                    "Focus on trading damage even when not getting kills"
-                )
+                recommendations.append("Focus on trading damage even when not getting kills")
             elif "headshot" in weakness.lower():
-                recommendations.append(
-                    "Practice crosshair placement at head level"
-                )
+                recommendations.append("Practice crosshair placement at head level")
             elif "opening" in weakness.lower():
-                recommendations.append(
-                    "Work on positioning for favorable opening duels"
-                )
+                recommendations.append("Work on positioning for favorable opening duels")
             elif "clutch" in weakness.lower():
-                recommendations.append(
-                    "Practice 1vX scenarios in aim trainers"
-                )
+                recommendations.append("Practice 1vX scenarios in aim trainers")
             elif "kast" in weakness.lower() or "contribution" in weakness.lower():
-                recommendations.append(
-                    "Focus on staying alive and trading teammates"
-                )
+                recommendations.append("Focus on staying alive and trading teammates")
 
         # Based on declining trends
         for trend in trends:
@@ -438,9 +420,7 @@ class ProfileAnalyzer:
                         "Overall impact declining - review recent demos for mistakes"
                     )
                 elif trend.metric == "adr":
-                    recommendations.append(
-                        "Damage output declining - be more aggressive in trades"
-                    )
+                    recommendations.append("Damage output declining - be more aggressive in trades")
 
         # General recommendations if list is short
         if len(recommendations) < 2:
@@ -449,9 +429,7 @@ class ProfileAnalyzer:
 
         return recommendations[:4]  # Max 4 recommendations
 
-    def compare_players(
-        self, steam_id_a: str, steam_id_b: str
-    ) -> dict[str, Any] | None:
+    def compare_players(self, steam_id_a: str, steam_id_b: str) -> dict[str, Any] | None:
         """
         Compare two players head-to-head.
 
@@ -504,9 +482,7 @@ class ProfileAnalyzer:
 
         return comparison
 
-    def get_performance_over_time(
-        self, steam_id: str, days: int = 30
-    ) -> list[dict]:
+    def get_performance_over_time(self, steam_id: str, days: int = 30) -> list[dict]:
         """
         Get performance data points for time-series visualization.
 

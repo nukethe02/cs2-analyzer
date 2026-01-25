@@ -75,7 +75,9 @@ def get_default_replays_folder() -> Path:
         # Use a POSIX-style path string for macOS path expectations in tests
         from pathlib import PurePosixPath
 
-        return PurePosixPath("Library/Application Support/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays")
+        return PurePosixPath(
+            "Library/Application Support/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"
+        )
 
     elif system == "Linux":
         home = Path.home()
@@ -315,9 +317,9 @@ class DemoFileHandler(FileSystemEventHandler):
         self.min_file_size = min_file_size
         self.debounce_seconds = debounce_seconds
         self.demo_cache = demo_cache
-        self._pending_files: dict[
-            str, tuple[float, int]
-        ] = {}  # path -> (last_event_time, event_count)
+        self._pending_files: dict[str, tuple[float, int]] = (
+            {}
+        )  # path -> (last_event_time, event_count)
         self._lock = threading.Lock()
 
     def _is_demo_file(self, path: str) -> bool:

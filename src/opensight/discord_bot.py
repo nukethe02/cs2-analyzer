@@ -22,7 +22,6 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from typing import Any
@@ -33,6 +32,7 @@ logger = logging.getLogger(__name__)
 try:
     import discord
     from discord.ext import commands
+
     DISCORD_AVAILABLE = True
 except ImportError:
     DISCORD_AVAILABLE = False
@@ -40,6 +40,7 @@ except ImportError:
 
 try:
     import aiohttp
+
     AIOHTTP_AVAILABLE = True
 except ImportError:
     AIOHTTP_AVAILABLE = False
@@ -62,9 +63,7 @@ class OpenSightBot(commands.Bot if DISCORD_AVAILABLE else object):
         intents.message_content = True
 
         super().__init__(
-            command_prefix="!",
-            intents=intents,
-            description="OpenSight CS2 Demo Analyzer Bot"
+            command_prefix="!", intents=intents, description="OpenSight CS2 Demo Analyzer Bot"
         )
 
         self.api_url = OPENSIGHT_API_URL
@@ -87,12 +86,7 @@ class OpenSightBot(commands.Bot if DISCORD_AVAILABLE else object):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info(f"Connected to {len(self.guilds)} guilds")
 
-    async def _api_request(
-        self,
-        method: str,
-        endpoint: str,
-        **kwargs: Any
-    ) -> dict | None:
+    async def _api_request(self, method: str, endpoint: str, **kwargs: Any) -> dict | None:
         """Make a request to the OpenSight API."""
         if not self._session:
             self._session = aiohttp.ClientSession()
@@ -132,7 +126,9 @@ def create_bot() -> OpenSightBot:
         async with ctx.typing():
             result = await bot._api_request("GET", "/health")
             if result:
-                await ctx.send(f"✅ OpenSight API is healthy\nVersion: {result.get('version', 'unknown')}")
+                await ctx.send(
+                    f"✅ OpenSight API is healthy\nVersion: {result.get('version', 'unknown')}"
+                )
             else:
                 await ctx.send("❌ OpenSight API is not responding")
 
@@ -143,23 +139,22 @@ def create_bot() -> OpenSightBot:
         Usage: !decode CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx
         """
         async with ctx.typing():
-            result = await bot._api_request(
-                "POST",
-                "/decode",
-                json={"code": code}
-            )
+            result = await bot._api_request("POST", "/decode", json={"code": code})
 
             if result:
-                embed = discord.Embed(
-                    title="🔓 Share Code Decoded",
-                    color=discord.Color.green()
+                embed = discord.Embed(title="🔓 Share Code Decoded", color=discord.Color.green())
+                embed.add_field(
+                    name="Match ID", value=str(result.get("match_id", "N/A")), inline=True
                 )
-                embed.add_field(name="Match ID", value=str(result.get("match_id", "N/A")), inline=True)
-                embed.add_field(name="Outcome ID", value=str(result.get("outcome_id", "N/A")), inline=True)
+                embed.add_field(
+                    name="Outcome ID", value=str(result.get("outcome_id", "N/A")), inline=True
+                )
                 embed.add_field(name="Token", value=str(result.get("token", "N/A")), inline=True)
                 await ctx.send(embed=embed)
             else:
-                await ctx.send("❌ Failed to decode share code. Make sure it's a valid CS2 share code.")
+                await ctx.send(
+                    "❌ Failed to decode share code. Make sure it's a valid CS2 share code."
+                )
 
     @bot.command(name="analyze")
     async def analyze(ctx: commands.Context, url: str | None = None) -> None:
@@ -172,7 +167,7 @@ def create_bot() -> OpenSightBot:
         # Check for attached files
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
-            if not attachment.filename.endswith(('.dem', '.dem.gz')):
+            if not attachment.filename.endswith((".dem", ".dem.gz")):
                 await ctx.send("❌ Please attach a .dem or .dem.gz file")
                 return
 
@@ -185,10 +180,10 @@ def create_bot() -> OpenSightBot:
                 # Create form data
                 form = aiohttp.FormData()
                 form.add_field(
-                    'file',
+                    "file",
                     file_data,
                     filename=attachment.filename,
-                    content_type='application/octet-stream'
+                    content_type="application/octet-stream",
                 )
 
                 await ctx.send("🔍 Analyzing demo... This may take a minute.")
@@ -201,7 +196,9 @@ def create_bot() -> OpenSightBot:
                 else:
                     await ctx.send("❌ Analysis failed. Please try again.")
         elif url:
-            await ctx.send("❌ URL analysis not yet supported. Please attach the demo file directly.")
+            await ctx.send(
+                "❌ URL analysis not yet supported. Please attach the demo file directly."
+            )
         else:
             await ctx.send("❌ Please attach a .dem file or provide a URL")
 
@@ -237,14 +234,12 @@ def create_bot() -> OpenSightBot:
             # Send summary of all players
             embed = discord.Embed(
                 title=f"📊 Match Stats - {analysis.get('map_name', 'Unknown Map')}",
-                color=discord.Color.blue()
+                color=discord.Color.blue(),
             )
 
             # Sort by rating
             sorted_players = sorted(
-                players.values(),
-                key=lambda p: p.get("hltv_rating", 0),
-                reverse=True
+                players.values(), key=lambda p: p.get("hltv_rating", 0), reverse=True
             )
 
             for p in sorted_players[:10]:
@@ -256,7 +251,7 @@ def create_bot() -> OpenSightBot:
                 embed.add_field(
                     name=f"{name} ({p.get('team', '?')})",
                     value=f"Rating: **{rating:.2f}** | K/D: {kd} | ADR: {adr:.0f}",
-                    inline=False
+                    inline=False,
                 )
 
             await ctx.send(embed=embed)
@@ -277,16 +272,13 @@ def create_bot() -> OpenSightBot:
             await ctx.send("ℹ️ No coaching insights available for this demo")
             return
 
-        embed = discord.Embed(
-            title="🎯 AI Coaching Insights",
-            color=discord.Color.gold()
-        )
+        embed = discord.Embed(title="🎯 AI Coaching Insights", color=discord.Color.gold())
 
         for insight in coaching_data[:5]:
             embed.add_field(
                 name=insight.get("category", "Tip"),
                 value=insight.get("message", "No details"),
-                inline=False
+                inline=False,
             )
 
         await ctx.send(embed=embed)
@@ -306,14 +298,14 @@ def create_bot() -> OpenSightBot:
         """Send a summary of the analysis."""
         embed = discord.Embed(
             title=f"✅ Analysis Complete - {analysis.get('map_name', 'Unknown')}",
-            color=discord.Color.green()
+            color=discord.Color.green(),
         )
 
         embed.add_field(
             name="Match Info",
             value=f"Rounds: {analysis.get('total_rounds', '?')} | "
-                  f"Score: {analysis.get('team1_score', 0)}-{analysis.get('team2_score', 0)}",
-            inline=False
+            f"Score: {analysis.get('team1_score', 0)}-{analysis.get('team2_score', 0)}",
+            inline=False,
         )
 
         players = analysis.get("players", {})
@@ -322,7 +314,7 @@ def create_bot() -> OpenSightBot:
             embed.add_field(
                 name="MVP",
                 value=f"{mvp.get('name', 'Unknown')} - {mvp.get('hltv_rating', 0):.2f} rating",
-                inline=True
+                inline=True,
             )
 
         embed.set_footer(text="Use !stats or !coaching for more details")
@@ -332,24 +324,24 @@ def create_bot() -> OpenSightBot:
         """Send detailed stats for a player."""
         embed = discord.Embed(
             title=f"📊 {player.get('name', 'Unknown')} ({player.get('team', '?')})",
-            color=discord.Color.blue()
+            color=discord.Color.blue(),
         )
 
         # Combat stats
         embed.add_field(
             name="Combat",
             value=f"K/D/A: {player.get('kills', 0)}/{player.get('deaths', 0)}/{player.get('assists', 0)}\n"
-                  f"HS%: {player.get('headshot_percentage', 0):.0f}%\n"
-                  f"ADR: {player.get('adr', 0):.1f}",
-            inline=True
+            f"HS%: {player.get('headshot_percentage', 0):.0f}%\n"
+            f"ADR: {player.get('adr', 0):.1f}",
+            inline=True,
         )
 
         # Rating
         embed.add_field(
             name="Rating",
             value=f"HLTV: **{player.get('hltv_rating', 0):.2f}**\n"
-                  f"KAST: {player.get('kast_percentage', 0):.0f}%",
-            inline=True
+            f"KAST: {player.get('kast_percentage', 0):.0f}%",
+            inline=True,
         )
 
         # Advanced stats if available
@@ -382,7 +374,6 @@ def run_bot() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     run_bot()

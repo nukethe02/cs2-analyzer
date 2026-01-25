@@ -5,12 +5,12 @@ Unified game state tracking for CS2 demo analysis.
 Consolidates game mode, map, round state, and match context information.
 """
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Dict, List, Any
-import logging
+from typing import Any
 
-from opensight.core.constants import GameMode, DemoSource, Team, RoundEndReason
+from opensight.core.constants import DemoSource, GameMode, Team
 from opensight.core.parser import DemoData
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class RoundPhase(str, Enum):
     """Current phase within a round."""
+
     WARMUP = "warmup"
     FREEZE_TIME = "freeze_time"
     LIVE = "live"
@@ -29,6 +30,7 @@ class RoundPhase(str, Enum):
 
 class MatchPhase(str, Enum):
     """Overall match phase."""
+
     WARMUP = "warmup"
     FIRST_HALF = "first_half"
     HALFTIME = "halftime"
@@ -40,6 +42,7 @@ class MatchPhase(str, Enum):
 @dataclass
 class PlayerState:
     """Current state of a player."""
+
     steamid: int
     name: str
     team: Team
@@ -50,19 +53,20 @@ class PlayerState:
     has_defuser: bool = False
     money: int = 800
     equipment_value: int = 0
-    position: Optional[tuple[float, float, float]] = None
-    velocity: Optional[tuple[float, float, float]] = None
-    view_angles: Optional[tuple[float, float]] = None  # pitch, yaw
+    position: tuple[float, float, float] | None = None
+    velocity: tuple[float, float, float] | None = None
+    view_angles: tuple[float, float] | None = None  # pitch, yaw
 
 
 @dataclass
 class RoundState:
     """State of the current round."""
+
     round_num: int
     phase: RoundPhase
     time_remaining: float = 0.0
     bomb_planted: bool = False
-    bomb_site: Optional[str] = None  # "A" or "B"
+    bomb_site: str | None = None  # "A" or "B"
     bomb_time_remaining: float = 0.0
     ct_alive: int = 5
     t_alive: int = 5
@@ -73,17 +77,18 @@ class RoundState:
 @dataclass
 class GameState:
     """Complete game state at a point in time."""
+
     tick: int
     map_name: str
     game_mode: GameMode
     demo_source: DemoSource
     match_phase: MatchPhase
     round_state: RoundState
-    players: Dict[int, PlayerState] = field(default_factory=dict)
+    players: dict[int, PlayerState] = field(default_factory=dict)
 
     # Match metadata
-    match_id: Optional[str] = None
-    server_name: Optional[str] = None
+    match_id: str | None = None
+    server_name: str | None = None
     tick_rate: int = 64
 
 
@@ -118,8 +123,8 @@ class GameStateTracker:
             demo_data: Parsed demo data from DemoParser
         """
         self.demo_data = demo_data
-        self._round_states: Dict[int, List[GameState]] = {}
-        self._current_state: Optional[GameState] = None
+        self._round_states: dict[int, list[GameState]] = {}
+        self._current_state: GameState | None = None
         self._initialize_state()
 
     def _initialize_state(self) -> None:
@@ -131,12 +136,7 @@ class GameStateTracker:
         mode = detect_game_mode(self.demo_data)
 
         # Initialize round state
-        initial_round = RoundState(
-            round_num=1,
-            phase=RoundPhase.WARMUP,
-            ct_score=0,
-            t_score=0
-        )
+        initial_round = RoundState(round_num=1, phase=RoundPhase.WARMUP, ct_score=0, t_score=0)
 
         # Create initial game state
         self._current_state = GameState(
@@ -146,7 +146,7 @@ class GameStateTracker:
             demo_source=source,
             match_phase=MatchPhase.WARMUP,
             round_state=initial_round,
-            tick_rate=self.demo_data.tick_rate
+            tick_rate=self.demo_data.tick_rate,
         )
 
         # Initialize player states
@@ -167,9 +167,7 @@ class GameStateTracker:
             team = Team(team_num) if team_num in [t.value for t in Team] else Team.UNASSIGNED
 
             self._current_state.players[steamid] = PlayerState(
-                steamid=steamid,
-                name=name,
-                team=team
+                steamid=steamid, name=name, team=team
             )
 
     def get_state_at_tick(self, tick: int) -> GameState:
@@ -200,7 +198,7 @@ class GameStateTracker:
             round_num=round_num,
             phase=phase,
             ct_score=round_info.get("ct_score", 0) if round_info else 0,
-            t_score=round_info.get("t_score", 0) if round_info else 0
+            t_score=round_info.get("t_score", 0) if round_info else 0,
         )
 
         # Count alive players at this tick
@@ -217,14 +215,14 @@ class GameStateTracker:
             match_phase=match_phase,
             round_state=round_state,
             players=self._get_player_states_at_tick(tick),
-            tick_rate=self.demo_data.tick_rate
+            tick_rate=self.demo_data.tick_rate,
         )
 
         return state
 
     def _get_round_for_tick(self, tick: int) -> int:
         """Determine which round a tick belongs to."""
-        if not hasattr(self.demo_data, 'rounds') or not self.demo_data.rounds:
+        if not hasattr(self.demo_data, "rounds") or not self.demo_data.rounds:
             # Estimate from kills
             for kill in reversed(self.demo_data.kills):
                 if kill.tick <= tick:
@@ -237,9 +235,9 @@ class GameStateTracker:
 
         return 1
 
-    def _get_round_info(self, round_num: int) -> Optional[Dict[str, Any]]:
+    def _get_round_info(self, round_num: int) -> dict[str, Any] | None:
         """Get round information by round number."""
-        if not hasattr(self.demo_data, 'rounds') or not self.demo_data.rounds:
+        if not hasattr(self.demo_data, "rounds") or not self.demo_data.rounds:
             return None
 
         for round_info in self.demo_data.rounds:
@@ -251,18 +249,18 @@ class GameStateTracker:
                     "freeze_end_tick": round_info.freeze_end_tick,
                     "winner": round_info.winner,
                     "ct_score": round_info.ct_score,
-                    "t_score": round_info.t_score
+                    "t_score": round_info.t_score,
                 }
         return None
 
-    def _determine_phase(self, tick: int, round_info: Optional[Dict]) -> RoundPhase:
+    def _determine_phase(self, tick: int, round_info: dict | None) -> RoundPhase:
         """Determine the round phase at a given tick."""
         if not round_info:
             return RoundPhase.LIVE
 
         if tick < round_info.get("freeze_end_tick", 0):
             return RoundPhase.FREEZE_TIME
-        elif tick > round_info.get("end_tick", float('inf')):
+        elif tick > round_info.get("end_tick", float("inf")):
             return RoundPhase.POST_ROUND
         else:
             return RoundPhase.LIVE
@@ -294,7 +292,7 @@ class GameStateTracker:
 
         return ct_alive, t_alive
 
-    def _get_player_states_at_tick(self, tick: int) -> Dict[int, PlayerState]:
+    def _get_player_states_at_tick(self, tick: int) -> dict[int, PlayerState]:
         """Get player states at a specific tick."""
         if not self._current_state:
             return {}
@@ -306,7 +304,7 @@ class GameStateTracker:
                 steamid=base_state.steamid,
                 name=base_state.name,
                 team=base_state.team,
-                is_alive=True
+                is_alive=True,
             )
 
         # Update based on kills up to this tick
@@ -317,22 +315,16 @@ class GameStateTracker:
                     states[kill.victim_steamid].is_alive = False
 
         # Update positions if tick data available
-        if hasattr(self.demo_data, 'ticks_df') and self.demo_data.ticks_df is not None:
-            tick_data = self.demo_data.ticks_df[
-                self.demo_data.ticks_df['tick'] == tick
-            ]
+        if hasattr(self.demo_data, "ticks_df") and self.demo_data.ticks_df is not None:
+            tick_data = self.demo_data.ticks_df[self.demo_data.ticks_df["tick"] == tick]
             for _, row in tick_data.iterrows():
-                steamid = row.get('steamid')
+                steamid = row.get("steamid")
                 if steamid in states:
-                    states[steamid].position = (
-                        row.get('X', 0),
-                        row.get('Y', 0),
-                        row.get('Z', 0)
-                    )
+                    states[steamid].position = (row.get("X", 0), row.get("Y", 0), row.get("Z", 0))
 
         return states
 
-    def get_round_summary(self, round_num: int) -> Dict[str, Any]:
+    def get_round_summary(self, round_num: int) -> dict[str, Any]:
         """
         Get a summary of a specific round.
 
@@ -360,11 +352,11 @@ class GameStateTracker:
             "first_kill": round_kills[0] if round_kills else None,
             "kills_by_team": {
                 "CT": len([k for k in round_kills if k.attacker_side == "CT"]),
-                "T": len([k for k in round_kills if k.attacker_side == "T"])
-            }
+                "T": len([k for k in round_kills if k.attacker_side == "T"]),
+            },
         }
 
-    def get_match_summary(self) -> Dict[str, Any]:
+    def get_match_summary(self) -> dict[str, Any]:
         """
         Get a summary of the entire match.
 
@@ -378,7 +370,7 @@ class GameStateTracker:
         final_ct_score = 0
         final_t_score = 0
 
-        if hasattr(self.demo_data, 'rounds') and self.demo_data.rounds:
+        if hasattr(self.demo_data, "rounds") and self.demo_data.rounds:
             last_round = self.demo_data.rounds[-1]
             final_ct_score = last_round.ct_score
             final_t_score = last_round.t_score
@@ -389,12 +381,9 @@ class GameStateTracker:
             "demo_source": self._current_state.demo_source.value,
             "duration_seconds": self.demo_data.duration_seconds,
             "total_rounds": self.demo_data.num_rounds,
-            "final_score": {
-                "CT": final_ct_score,
-                "T": final_t_score
-            },
+            "final_score": {"CT": final_ct_score, "T": final_t_score},
             "total_kills": len(self.demo_data.kills),
-            "total_players": len(self.demo_data.player_names)
+            "total_players": len(self.demo_data.player_names),
         }
 
 

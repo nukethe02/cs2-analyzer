@@ -1,22 +1,16 @@
 """Tests for the combat analysis module."""
 
 from pathlib import Path
+
 import pandas as pd
 import pytest
 
-from opensight.domains.combat import (
-    CombatAnalyzer,
-    TradeKill,
-    OpeningDuel,
-    ClutchSituation,
-    ClutchResult,
-    MultiKill,
-    PlayerCombatStats,
-    CombatAnalysisResult,
-    analyze_combat,
-    TRADE_WINDOW_MS,
-)
 from opensight.core.parser import DemoData
+from opensight.domains.combat import (
+    CombatAnalysisResult,
+    CombatAnalyzer,
+    analyze_combat,
+)
 
 
 class TestTradeKillDetection:
@@ -27,14 +21,16 @@ class TestTradeKillDetection:
         """Create demo data with a trade kill scenario."""
         # Player 12345 (CT) kills Player 67890 (T) at tick 1000
         # Player 11111 (T) kills Player 12345 (CT) at tick 1200 (trade)
-        kills_df = pd.DataFrame({
-            "tick": [1000, 1200],
-            "attacker_steamid": [12345, 11111],
-            "user_steamid": [67890, 12345],
-            "weapon": ["ak47", "awp"],
-            "headshot": [True, False],
-            "total_rounds_played": [1, 1],
-        })
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1200],
+                "attacker_steamid": [12345, 11111],
+                "user_steamid": [67890, 12345],
+                "weapon": ["ak47", "awp"],
+                "headshot": [True, False],
+                "total_rounds_played": [1, 1],
+            }
+        )
 
         return DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -75,13 +71,15 @@ class TestTradeKillDetection:
     def test_no_trade_outside_window(self):
         """Kills outside trade window are not counted as trades."""
         # 10 second gap (outside 5s window)
-        kills_df = pd.DataFrame({
-            "tick": [1000, 1000 + (10 * 64)],  # 10 seconds apart
-            "attacker_steamid": [12345, 11111],
-            "user_steamid": [67890, 12345],
-            "weapon": ["ak47", "awp"],
-            "total_rounds_played": [1, 1],
-        })
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1000 + (10 * 64)],  # 10 seconds apart
+                "attacker_steamid": [12345, 11111],
+                "user_steamid": [67890, 12345],
+                "weapon": ["ak47", "awp"],
+                "total_rounds_played": [1, 1],
+            }
+        )
 
         demo = DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -110,14 +108,16 @@ class TestOpeningDuelDetection:
     @pytest.fixture
     def demo_with_rounds(self):
         """Create demo data with multiple rounds."""
-        kills_df = pd.DataFrame({
-            "tick": [1000, 1500, 3000, 3500],
-            "attacker_steamid": [12345, 67890, 67890, 12345],
-            "user_steamid": [67890, 12345, 12345, 67890],
-            "weapon": ["ak47", "m4a1", "awp", "ak47"],
-            "headshot": [True, False, True, False],
-            "total_rounds_played": [1, 1, 2, 2],
-        })
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1500, 3000, 3500],
+                "attacker_steamid": [12345, 67890, 67890, 12345],
+                "user_steamid": [67890, 12345, 12345, 67890],
+                "weapon": ["ak47", "m4a1", "awp", "ak47"],
+                "headshot": [True, False, True, False],
+                "total_rounds_played": [1, 1, 2, 2],
+            }
+        )
 
         return DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -161,14 +161,16 @@ class TestMultiKillDetection:
     @pytest.fixture
     def demo_with_ace(self):
         """Create demo data with an ace (5 kills)."""
-        kills_df = pd.DataFrame({
-            "tick": [1000, 1100, 1200, 1300, 1400],
-            "attacker_steamid": [12345, 12345, 12345, 12345, 12345],
-            "user_steamid": [1, 2, 3, 4, 5],
-            "weapon": ["ak47", "ak47", "ak47", "ak47", "ak47"],
-            "headshot": [True, True, True, True, True],
-            "total_rounds_played": [1, 1, 1, 1, 1],
-        })
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1100, 1200, 1300, 1400],
+                "attacker_steamid": [12345, 12345, 12345, 12345, 12345],
+                "user_steamid": [1, 2, 3, 4, 5],
+                "weapon": ["ak47", "ak47", "ak47", "ak47", "ak47"],
+                "headshot": [True, True, True, True, True],
+                "total_rounds_played": [1, 1, 1, 1, 1],
+            }
+        )
 
         return DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -211,14 +213,16 @@ class TestClutchDetection:
     def demo_with_clutch(self):
         """Create demo data with a 1v2 clutch."""
         # Round where all CTs die except one, then clutcher gets 2 kills
-        kills_df = pd.DataFrame({
-            "tick": [1000, 1100, 1200, 1300, 2000, 2100],
-            "attacker_steamid": [1, 1, 1, 1, 12345, 12345],
-            "user_steamid": [101, 102, 103, 104, 1, 2],  # T kills 4 CTs, then CT 12345 clutches
-            "weapon": ["ak47"] * 6,
-            "headshot": [False] * 6,
-            "total_rounds_played": [1, 1, 1, 1, 1, 1],
-        })
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1100, 1200, 1300, 2000, 2100],
+                "attacker_steamid": [1, 1, 1, 1, 12345, 12345],
+                "user_steamid": [101, 102, 103, 104, 1, 2],  # T kills 4 CTs, then CT 12345 clutches
+                "weapon": ["ak47"] * 6,
+                "headshot": [False] * 6,
+                "total_rounds_played": [1, 1, 1, 1, 1, 1],
+            }
+        )
 
         return DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -229,12 +233,21 @@ class TestClutchDetection:
             player_stats={},
             player_names={
                 12345: "Clutcher",
-                101: "CT1", 102: "CT2", 103: "CT3", 104: "CT4",
-                1: "T1", 2: "T2",
+                101: "CT1",
+                102: "CT2",
+                103: "CT3",
+                104: "CT4",
+                1: "T1",
+                2: "T2",
             },
             player_teams={
-                12345: 3, 101: 3, 102: 3, 103: 3, 104: 3,
-                1: 2, 2: 2,
+                12345: 3,
+                101: 3,
+                102: 3,
+                103: 3,
+                104: 3,
+                1: 2,
+                2: 2,
             },
             kills=[],
             damages=[],
@@ -264,14 +277,16 @@ class TestPlayerCombatStats:
 
     def test_player_stats_calculated(self):
         """Player stats are calculated correctly."""
-        kills_df = pd.DataFrame({
-            "tick": [1000, 2000],
-            "attacker_steamid": [12345, 12345],
-            "user_steamid": [67890, 11111],
-            "weapon": ["ak47", "ak47"],
-            "headshot": [True, False],
-            "total_rounds_played": [1, 2],
-        })
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 2000],
+                "attacker_steamid": [12345, 12345],
+                "user_steamid": [67890, 11111],
+                "weapon": ["ak47", "ak47"],
+                "headshot": [True, False],
+                "total_rounds_played": [1, 2],
+            }
+        )
 
         demo = DemoData(
             file_path=Path("/tmp/test.dem"),

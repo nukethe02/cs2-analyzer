@@ -613,11 +613,11 @@ class CommunicationAnalyzer:
                     "avg_sentiment": round(avg_sentiment, 3),
                     "positive_count": positive,
                     "negative_count": negative,
-                    "morale_trend": "up"
-                    if avg_sentiment > 0.1
-                    else "down"
-                    if avg_sentiment < -0.1
-                    else "stable",
+                    "morale_trend": (
+                        "up"
+                        if avg_sentiment > 0.1
+                        else "down" if avg_sentiment < -0.1 else "stable"
+                    ),
                 }
             )
 

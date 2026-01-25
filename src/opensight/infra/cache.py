@@ -235,7 +235,7 @@ class DemoCache:
 
         key = self.get_cache_key(demo_path)
 
-        with open(self.index_path, "r") as f:  # Add lock for thread safety
+        with open(self.index_path) as f:  # Add lock for thread safety
             if key not in self._index:
                 self._miss_count += 1
                 return None

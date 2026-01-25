@@ -1,22 +1,22 @@
 """Tests for the parser module."""
 
-from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from opensight.core.parser import (
+    DamageEvent,
     DemoData,
     DemoParser,
     KillEvent,
-    DamageEvent,
     RoundInfo,
+    parse_demo,
+    safe_bool,
     safe_int,
     safe_str,
-    safe_bool,
-    parse_demo,
 )
 
 
@@ -202,13 +202,15 @@ class TestDemoData:
 
     def test_demo_data_with_ticks(self):
         """DemoData can include optional tick data."""
-        ticks_df = pd.DataFrame({
-            "tick": [1, 2, 3],
-            "steamid": [12345, 12345, 12345],
-            "X": [100.0, 101.0, 102.0],
-            "Y": [200.0, 200.0, 200.0],
-            "Z": [0.0, 0.0, 0.0],
-        })
+        ticks_df = pd.DataFrame(
+            {
+                "tick": [1, 2, 3],
+                "steamid": [12345, 12345, 12345],
+                "X": [100.0, 101.0, 102.0],
+                "Y": [200.0, 200.0, 200.0],
+                "Z": [0.0, 0.0, 0.0],
+            }
+        )
         data = DemoData(
             file_path=Path("/tmp/test.dem"),
             map_name="de_dust2",
@@ -352,10 +354,12 @@ class TestOptimizations:
         """Test optimize_dataframe_dtypes returns DataFrame unchanged (awpy handles this)."""
         from opensight.core.parser import optimize_dataframe_dtypes
 
-        df = pd.DataFrame({
-            "tick": np.array([100, 200, 300], dtype=np.int64),
-            "damage": np.array([50, 75, 100], dtype=np.int64),
-        })
+        df = pd.DataFrame(
+            {
+                "tick": np.array([100, 200, 300], dtype=np.int64),
+                "damage": np.array([50, 75, 100], dtype=np.int64),
+            }
+        )
         original_dtypes = df.dtypes.copy()
         result = optimize_dataframe_dtypes(df.copy(), inplace=False)
 

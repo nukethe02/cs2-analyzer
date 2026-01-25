@@ -192,15 +192,12 @@ def detect_demo_metadata(
     tick_rate = TICK_RATES.get(source, CS2_TICK_RATE)
 
     # Check if match completed normally
-    is_complete = (
-        total_rounds >= 12  # At least half a match
-        and (
-            team_scores[0] >= 13
-            or team_scores[1] >= 13  # Someone won
-            or team_scores[0] == 12
-            and team_scores[1] == 12
-        )  # Or went to OT
-    )
+    is_complete = total_rounds >= 12 and (  # At least half a match
+        team_scores[0] >= 13
+        or team_scores[1] >= 13  # Someone won
+        or team_scores[0] == 12
+        and team_scores[1] == 12
+    )  # Or went to OT
 
     return DemoMetadata(
         source=source,

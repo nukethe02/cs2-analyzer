@@ -321,27 +321,35 @@ def export_to_excel(
     try:
         import pandas as pd
     except ImportError:
-        raise ImportError("pandas is required for Excel export")
+        raise ImportError("pandas is required for Excel export") from None
 
     try:
-        import openpyxl
+        import openpyxl as _  # noqa: F401
     except ImportError:
-        raise ImportError("openpyxl is required for Excel export")
+        raise ImportError("openpyxl is required for Excel export") from None
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         # Demo info sheet
         # Calculate duration_ticks from duration_seconds and tick_rate
         duration_ticks = int(demo_data.duration_seconds * demo_data.tick_rate)
         # Get round count from game_rounds or num_rounds
-        round_count = len(demo_data.rounds) if hasattr(demo_data, 'game_rounds') and demo_data.rounds else demo_data.num_rounds
-        demo_info = pd.DataFrame([{
-            "Map": demo_data.map_name,
-            "Duration (seconds)": demo_data.duration_seconds,
-            "Tick Rate": demo_data.tick_rate,
-            "Total Ticks": duration_ticks,
-            "Rounds": round_count,
-            "Players": len(demo_data.player_names),
-        }])
+        round_count = (
+            len(demo_data.rounds)
+            if hasattr(demo_data, "game_rounds") and demo_data.rounds
+            else demo_data.num_rounds
+        )
+        demo_info = pd.DataFrame(
+            [
+                {
+                    "Map": demo_data.map_name,
+                    "Duration (seconds)": demo_data.duration_seconds,
+                    "Tick Rate": demo_data.tick_rate,
+                    "Total Ticks": duration_ticks,
+                    "Rounds": round_count,
+                    "Players": len(demo_data.player_names),
+                }
+            ]
+        )
         demo_info.T.to_excel(writer, sheet_name="Demo Info", header=False)
 
         # Summary sheet
@@ -496,7 +504,11 @@ def export_to_html(
         title = f"OpenSight Analysis - {demo_data.map_name}"
 
     # Get round count
-    round_count = len(demo_data.rounds) if hasattr(demo_data, 'game_rounds') and demo_data.rounds else demo_data.num_rounds
+    round_count = (
+        len(demo_data.rounds)
+        if hasattr(demo_data, "game_rounds") and demo_data.rounds
+        else demo_data.num_rounds
+    )
 
     # Sort players by rating
     sorted_players = sorted(metrics.values(), key=lambda x: x.overall_rating(), reverse=True)
@@ -701,7 +713,11 @@ def export_analysis(
 
     if format == "json":
         # Get round count
-        json_round_count = len(demo_data.rounds) if hasattr(demo_data, 'game_rounds') and demo_data.rounds else demo_data.num_rounds
+        json_round_count = (
+            len(demo_data.rounds)
+            if hasattr(demo_data, "game_rounds") and demo_data.rounds
+            else demo_data.num_rounds
+        )
         data = {
             "demo_info": {
                 "file": str(demo_data.file_path),
@@ -788,7 +804,6 @@ def _export_pdf_reportlab(
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
     from reportlab.platypus import (
-        PageBreak,
         Paragraph,
         SimpleDocTemplate,
         Spacer,

@@ -108,7 +108,7 @@ def register_routes(app: Flask) -> None:
 
             filepath.parent.mkdir(parents=True, exist_ok=True)
             file.save(str(filepath))
-            
+
             try:
                 parser = DemoParser(filepath)
                 demo_data = parser.parse()
@@ -151,15 +151,12 @@ def register_routes(app: Flask) -> None:
                 # Cleanup temp file
                 try:
                     filepath.unlink()
-                except:
+                except Exception:  # noqa: E722
                     pass
 
         except Exception as e:
             logger.error(f"Tactical analysis error: {e}", exc_info=True)
-            return render_template(
-                "error.html",
-                error=f"Analysis failed: {str(e)}"
-            ), 500
+            return render_template("error.html", error=f"Analysis failed: {str(e)}"), 500
 
     @app.route("/decode", methods=["GET", "POST"])
     def decode():
@@ -393,9 +390,10 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(500)
     def server_error(e):
-        return render_template(
-            "error.html", error_code=500, error_message="Internal server error"
-        ), 500
+        return (
+            render_template("error.html", error_code=500, error_message="Internal server error"),
+            500,
+        )
 
     @app.errorhandler(RequestEntityTooLarge)
     def file_too_large(e):

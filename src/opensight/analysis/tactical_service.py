@@ -12,10 +12,8 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Tuple
-
-import numpy as np
+from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -23,44 +21,45 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TacticalSummary:
     """Complete tactical analysis summary."""
-    key_insights: List[str] = field(default_factory=list)
+
+    key_insights: list[str] = field(default_factory=list)
 
     # Team stats
-    t_stats: Dict[str, Any] = field(default_factory=dict)
-    ct_stats: Dict[str, Any] = field(default_factory=dict)
+    t_stats: dict[str, Any] = field(default_factory=dict)
+    ct_stats: dict[str, Any] = field(default_factory=dict)
 
     # Play patterns
-    t_executes: List[Tuple[str, int]] = field(default_factory=list)
-    buy_patterns: List[Tuple[str, float]] = field(default_factory=list)
+    t_executes: list[tuple[str, int]] = field(default_factory=list)
+    buy_patterns: list[tuple[str, float]] = field(default_factory=list)
 
     # Player info
-    key_players: List[Dict[str, Any]] = field(default_factory=list)
-    player_analysis: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    key_players: list[dict[str, Any]] = field(default_factory=list)
+    player_analysis: dict[int, dict[str, Any]] = field(default_factory=dict)
 
     # Round details
-    round_plays: List[Dict[str, Any]] = field(default_factory=list)
+    round_plays: list[dict[str, Any]] = field(default_factory=list)
 
     # Matchup
-    t_strengths: List[str] = field(default_factory=list)
-    t_weaknesses: List[str] = field(default_factory=list)
-    ct_strengths: List[str] = field(default_factory=list)
-    ct_weaknesses: List[str] = field(default_factory=list)
+    t_strengths: list[str] = field(default_factory=list)
+    t_weaknesses: list[str] = field(default_factory=list)
+    ct_strengths: list[str] = field(default_factory=list)
+    ct_weaknesses: list[str] = field(default_factory=list)
     t_win_rate: float = 0.0
     ct_win_rate: float = 0.0
 
     # Recommendations
-    team_recommendations: List[str] = field(default_factory=list)
-    individual_recommendations: List[str] = field(default_factory=list)
-    practice_drills: List[str] = field(default_factory=list)
+    team_recommendations: list[str] = field(default_factory=list)
+    individual_recommendations: list[str] = field(default_factory=list)
+    practice_drills: list[str] = field(default_factory=list)
 
 
 class TacticalAnalysisService:
     """Service for complete tactical demo analysis."""
-    
+
     def __init__(self, demo_data: Any):
         self.data = demo_data
         self.summary = TacticalSummary()
-        
+
     def analyze(self) -> TacticalSummary:
         """Run complete tactical analysis."""
         self._analyze_team_stats()
@@ -71,28 +70,28 @@ class TacticalAnalysisService:
         self._analyze_matchup()
         self._generate_recommendations()
         self._extract_key_insights()
-        
+
         return self.summary
-    
+
     def _analyze_team_stats(self) -> None:
         """Analyze team-level statistics."""
         kills = getattr(self.data, "kills", [])
-        
+
         # Count round wins by side
         t_wins = 0
         ct_wins = 0
         t_kills_total = 0
         ct_kills_total = 0
-        
+
         for kill in kills:
             attacker_side = self._get_side(kill.get("attacker_steamid"))
             is_t_kill = attacker_side == "T"
-            
+
             if is_t_kill:
                 t_kills_total += 1
             else:
                 ct_kills_total += 1
-        
+
         # Estimate win rates from kill distribution
         total_kills = t_kills_total + ct_kills_total
         if total_kills > 0:
@@ -105,7 +104,7 @@ class TacticalAnalysisService:
                 "utility_success": min(95, int(t_kill_rate * 100)),
                 "coordination_score": min(95, int(t_kill_rate * 90 + 20)),
             }
-            
+
             self.summary.ct_stats = {
                 "rounds_won": int((1 - t_kill_rate) * 16),
                 "rounds_lost": int(t_kill_rate * 16),
@@ -114,18 +113,18 @@ class TacticalAnalysisService:
                 "site_hold_success": min(90, int((1 - t_kill_rate) * 85 + 15)),
                 "retake_rate": min(85, int((1 - t_kill_rate) * 75 + 10)),
             }
-    
+
     def _analyze_executes(self) -> None:
         """Analyze T side attack executes."""
         kills = getattr(self.data, "kills", [])
         grenades = getattr(self.data, "grenades", [])
-        
+
         t_executes = defaultdict(int)
-        
+
         # Categorize executes by utility usage and kill timing
         for kill in kills:
             time = kill.get("time", 0)
-            
+
             # Simple heuristic
             if time < 15:
                 if any(g.get("grenade_type") == "flash" for g in grenades):
@@ -139,19 +138,15 @@ class TacticalAnalysisService:
                     exec_type = "Semi Execute"
             else:
                 exec_type = "Stall/Eco"
-            
+
             t_executes[exec_type] += 1
-        
-        self.summary.t_executes = sorted(
-            t_executes.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
-    
+
+        self.summary.t_executes = sorted(t_executes.items(), key=lambda x: x[1], reverse=True)
+
     def _analyze_buy_patterns(self) -> None:
         """Analyze buy type success rates."""
         kills = getattr(self.data, "kills", [])
-        
+
         # Buy types and their success rates
         buy_patterns = {
             "Full Buy": 75,
@@ -160,39 +155,35 @@ class TacticalAnalysisService:
             "Force": 35,
             "Save": 10,
         }
-        
+
         # Add some variance based on actual data
         if len(kills) > 30:
             # If many kills overall, full buys are successful
             buy_patterns["Full Buy"] = 85
-        
-        self.summary.buy_patterns = sorted(
-            buy_patterns.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
-    
+
+        self.summary.buy_patterns = sorted(buy_patterns.items(), key=lambda x: x[1], reverse=True)
+
     def _analyze_players(self) -> None:
         """Analyze individual player tactics."""
         kills = getattr(self.data, "kills", [])
         player_names = getattr(self.data, "player_names", {})
-        
+
         player_kills = defaultdict(list)
-        
+
         # Group kills by player
         for kill in kills:
             steam_id = kill.get("attacker_steamid")
             time = kill.get("time", 0)
             player_kills[steam_id].append(time)
-        
+
         # Analyze each player
         for steam_id, kill_times in player_kills.items():
             player_name = player_names.get(steam_id, f"Player {steam_id}")
-            
+
             # Count opening kills (first 15 seconds)
             opening_kills = sum(1 for t in kill_times if t < 15)
             trade_kills = sum(1 for t in kill_times if 1 < (t % 5) < 3)
-            
+
             # Determine role
             if opening_kills >= 3:
                 primary_role = "Entry"
@@ -200,7 +191,7 @@ class TacticalAnalysisService:
                 primary_role = "Rifler"
             else:
                 primary_role = "Support"
-            
+
             player_info = {
                 "steam_id": steam_id,
                 "name": player_name,
@@ -214,36 +205,38 @@ class TacticalAnalysisService:
                 "strengths": self._get_player_strengths(kill_times),
                 "weaknesses": self._get_player_weaknesses(kill_times),
             }
-            
+
             self.summary.player_analysis[steam_id] = player_info
-            
+
             # Add top 3 players
             if len(self.summary.key_players) < 3:
                 self.summary.key_players.append(player_info)
             elif len(kill_times) > len(self.summary.key_players[-1].get("kill_times", [])):
                 self.summary.key_players[-1] = player_info
-    
+
     def _analyze_rounds(self) -> None:
         """Analyze individual rounds."""
         kills = getattr(self.data, "kills", [])
-        
+
         round_data = defaultdict(list)
         for kill in kills:
             round_num = kill.get("round_num", 0)
             round_data[round_num].append(kill)
-        
+
         for round_num in sorted(round_data.keys())[:16]:  # First 16 rounds
             kills_in_round = round_data[round_num]
-            
+
             if kills_in_round:
                 kill_times = [k.get("time", 0) for k in kills_in_round]
                 first_kill_time = min(kill_times)
-                
+
                 # Determine winner
-                t_kills = sum(1 for k in kills_in_round if self._get_side(k.get("attacker_steamid")) == "T")
+                t_kills = sum(
+                    1 for k in kills_in_round if self._get_side(k.get("attacker_steamid")) == "T"
+                )
                 ct_kills = len(kills_in_round) - t_kills
                 winner = "T" if t_kills > ct_kills else "CT"
-                
+
                 round_play = {
                     "round_num": round_num,
                     "attack_type": "Execute" if first_kill_time > 10 else "Anti-Eco",
@@ -252,26 +245,26 @@ class TacticalAnalysisService:
                     "round_winner": winner,
                     "kills": len(kills_in_round),
                 }
-                
+
                 self.summary.round_plays.append(round_play)
-    
+
     def _analyze_matchup(self) -> None:
         """Analyze team matchup."""
         kills = getattr(self.data, "kills", [])
-        
+
         t_kills = sum(1 for k in kills if self._get_side(k.get("attacker_steamid")) == "T")
         ct_kills = len(kills) - t_kills
         total = t_kills + ct_kills
-        
+
         if total > 0:
             t_win_rate = (t_kills / total) * 100
             ct_win_rate = (ct_kills / total) * 100
         else:
             t_win_rate = ct_win_rate = 50.0
-        
+
         self.summary.t_win_rate = t_win_rate
         self.summary.ct_win_rate = ct_win_rate
-        
+
         # Determine strengths/weaknesses
         if t_win_rate > ct_win_rate:
             self.summary.t_strengths = [
@@ -307,7 +300,7 @@ class TacticalAnalysisService:
             self.summary.ct_weaknesses = [
                 "Mid-round positioning",
             ]
-    
+
     def _generate_recommendations(self) -> None:
         """Generate coaching recommendations."""
         self.summary.team_recommendations = [
@@ -316,90 +309,90 @@ class TacticalAnalysisService:
             "Work on mid-game transitions - many rounds lost to regrouping",
             "Establish default positions - players inconsistent in setups",
         ]
-        
+
         self.summary.individual_recommendations = [
             "Primary entry: Focus on flash timing - rushing before nades land",
             "Support: Improve utility placement - nades often miss targets",
             "Lurker: More aggressive - missing opportunit during splits",
             "IGL: Call timings seem off - team not executing on cue",
         ]
-        
+
         self.summary.practice_drills = [
             "5v5 execute drills - focus on timing and coordination",
             "1v1 positioning practice - improve opening duel consistency",
             "Retake scenarios - practice common site retake situations",
             "Utility placement workshop - smoke/flash positioning accuracy",
         ]
-    
+
     def _extract_key_insights(self) -> None:
         """Extract key tactical insights."""
         insights = []
-        
+
         # Insights from data
         if self.summary.t_win_rate > 60:
             insights.append("T side dominance - strong attacking composition")
         elif self.summary.ct_win_rate > 60:
             insights.append("CT side strong - excellent defensive fundamentals")
-        
+
         if self.summary.t_executes:
             top_exec = self.summary.t_executes[0][0]
             insights.append(f"Most common play: {top_exec} - shows predictability")
-        
+
         if self.summary.key_players:
             top_player = self.summary.key_players[0]
             if top_player.get("opening_kills", 0) > 5:
                 insights.append(
                     f"{top_player['name']} leads early aggression - strong entry presence"
                 )
-        
+
         if not insights:
             insights = [
                 "Balanced team composition",
                 "Mixed play patterns - unpredictable",
                 "Competitive demo with close round outcomes",
             ]
-        
+
         self.summary.key_insights = insights
-    
+
     def _get_side(self, steam_id: int) -> str:
         """Determine which side a player is on."""
         t_players = getattr(self.data, "t_players", [])
         ct_players = getattr(self.data, "ct_players", [])
-        
+
         if steam_id in t_players:
             return "T"
         elif steam_id in ct_players:
             return "CT"
         return "unknown"
-    
+
     def _get_player_strengths(self, kill_times: list[float]) -> list[str]:
         """Determine player strengths from kill pattern."""
         strengths = []
-        
+
         if len(kill_times) >= 8:
             strengths.append("Consistent fragging")
-        
+
         opening_kills = sum(1 for t in kill_times if t < 15)
         if opening_kills >= 3:
             strengths.append("Strong opening duels")
-        
+
         if not strengths:
             strengths.append("Reliable support player")
-        
+
         return strengths
-    
+
     def _get_player_weaknesses(self, kill_times: list[float]) -> list[str]:
         """Determine player weaknesses from kill pattern."""
         weaknesses = []
-        
+
         if len(kill_times) < 5:
             weaknesses.append("Low round impact")
-        
+
         late_kills = sum(1 for t in kill_times if t > 60)
         if late_kills == 0 and kill_times:
             weaknesses.append("Struggles in late round")
-        
+
         if not weaknesses:
             weaknesses.append("Focus on positioning improvements")
-        
+
         return weaknesses

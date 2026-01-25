@@ -14,17 +14,15 @@ These metrics complement the core analytics module with deeper insights.
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
 
-from opensight.parser import MatchData, safe_float, safe_int, safe_str
-
+from opensight.parser import MatchData
 
 # =============================================================================
 # Distance Classifications (CS2 units, approximately)
 # =============================================================================
 
 CLOSE_RANGE_MAX = 500  # ~5 meters - shotgun/SMG range
-MID_RANGE_MAX = 1500   # ~15 meters - rifle effective range
+MID_RANGE_MAX = 1500  # ~15 meters - rifle effective range
 # Beyond MID_RANGE_MAX is long range (AWP territory)
 
 
@@ -35,8 +33,8 @@ class KillDistanceStats:
     total_kills: int = 0
     total_distance: float = 0.0
     close_range_kills: int = 0  # < 500 units
-    mid_range_kills: int = 0    # 500-1500 units
-    long_range_kills: int = 0   # > 1500 units
+    mid_range_kills: int = 0  # 500-1500 units
+    long_range_kills: int = 0  # > 1500 units
     distances: list[float] = field(default_factory=list)
 
     @property
@@ -394,7 +392,9 @@ def compute_player_performance_metrics(
     round_start_ticks: dict[int, int] = {}
     round_end_ticks: dict[int, int] = {}
     for round_info in match_data.game_rounds:
-        round_start_ticks[round_info.round_num] = round_info.freeze_end_tick or round_info.start_tick
+        round_start_ticks[round_info.round_num] = (
+            round_info.freeze_end_tick or round_info.start_tick
+        )
         round_end_ticks[round_info.round_num] = round_info.end_tick
 
     # Track deaths per round for survival calculation
@@ -445,8 +445,12 @@ def compute_player_performance_metrics(
 
         # Kill distance
         distance = calculate_kill_distance(
-            kill.attacker_x, kill.attacker_y, kill.attacker_z,
-            kill.victim_x, kill.victim_y, kill.victim_z,
+            kill.attacker_x,
+            kill.attacker_y,
+            kill.attacker_z,
+            kill.victim_x,
+            kill.victim_y,
+            kill.victim_z,
         )
         if distance is not None:
             attacker.distance_stats.total_kills += 1
@@ -496,7 +500,9 @@ def compute_player_performance_metrics(
             if steam_id not in deaths_in_round.get(round_num, {}):
                 player.time_alive.rounds_survived += 1
                 # Full round survived - add round duration
-                round_duration = round_end_ticks.get(round_num, 0) - round_start_ticks.get(round_num, 0)
+                round_duration = round_end_ticks.get(round_num, 0) - round_start_ticks.get(
+                    round_num, 0
+                )
                 player.time_alive.total_time_alive_ticks += max(0, round_duration)
             else:
                 # Died in round - add time until death
@@ -514,7 +520,7 @@ def compute_player_performance_metrics(
     for kill in match_data.kills:
         kills_by_round[kill.round_num].append(kill)
 
-    for round_num, round_kills in kills_by_round.items():
+    for _round_num, round_kills in kills_by_round.items():
         if round_kills:
             # Sort by tick to find first kill
             round_kills.sort(key=lambda k: k.tick)
@@ -568,7 +574,10 @@ def get_performance_summary(metrics: PlayerPerformanceMetrics) -> dict:
     # Identify weaknesses
     if metrics.kda.headshot_percentage < 30:
         summary["weaknesses"].append("Low headshot percentage - work on crosshair placement")
-    if metrics.kda.opening_duel_win_rate < 40 and (metrics.kda.first_kills + metrics.kda.first_deaths) >= 3:
+    if (
+        metrics.kda.opening_duel_win_rate < 40
+        and (metrics.kda.first_kills + metrics.kda.first_deaths) >= 3
+    ):
         summary["weaknesses"].append("Losing opening duels - consider adjusting positioning")
     if metrics.time_alive.early_death_rate > 50:
         summary["weaknesses"].append("Dying too early in rounds - slow down entries")

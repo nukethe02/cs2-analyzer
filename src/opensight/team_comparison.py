@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from opensight.team_performance_metrics import (
-    MatchTeamAnalysis,
     TeamMetrics,
     calculate_team_metrics,
 )
@@ -167,9 +166,7 @@ class TeamComparisonCalculator:
         "total_kills": 1.0,
     }
 
-    def compare_teams(
-        self, team_a: TeamMetrics, team_b: TeamMetrics
-    ) -> TeamComparisonResult:
+    def compare_teams(self, team_a: TeamMetrics, team_b: TeamMetrics) -> TeamComparisonResult:
         """
         Compare two teams and generate comprehensive analysis.
 
@@ -192,11 +189,31 @@ class TeamComparisonCalculator:
             ("KDA Ratio", "kda_ratio", team_a.kda_ratio, team_b.kda_ratio),
             ("Total Kills", "total_kills", team_a.total_kills, team_b.total_kills),
             ("Total Deaths", "total_deaths", team_a.total_deaths, team_b.total_deaths),
-            ("Headshot %", "headshot_percentage", team_a.headshot_percentage, team_b.headshot_percentage),
-            ("Avg Kill Distance", "avg_kill_distance", team_a.avg_kill_distance, team_b.avg_kill_distance),
+            (
+                "Headshot %",
+                "headshot_percentage",
+                team_a.headshot_percentage,
+                team_b.headshot_percentage,
+            ),
+            (
+                "Avg Kill Distance",
+                "avg_kill_distance",
+                team_a.avg_kill_distance,
+                team_b.avg_kill_distance,
+            ),
             ("Round Win Rate", "round_win_rate", team_a.round_win_rate, team_b.round_win_rate),
-            ("Trade Success %", "trade_success_rate", team_a.trade_success_rate, team_b.trade_success_rate),
-            ("Successful Trades", "successful_trades", team_a.successful_trades, team_b.successful_trades),
+            (
+                "Trade Success %",
+                "trade_success_rate",
+                team_a.trade_success_rate,
+                team_b.trade_success_rate,
+            ),
+            (
+                "Successful Trades",
+                "successful_trades",
+                team_a.successful_trades,
+                team_b.successful_trades,
+            ),
         ]
 
         team_a_wins = 0
@@ -242,9 +259,7 @@ class TeamComparisonCalculator:
 
         return result
 
-    def _compare_metric(
-        self, name: str, key: str, val_a: float, val_b: float
-    ) -> MetricComparison:
+    def _compare_metric(self, name: str, key: str, val_a: float, val_b: float) -> MetricComparison:
         """Compare a single metric between teams."""
         diff = val_a - val_b
         pct_diff = 0.0
@@ -292,7 +307,6 @@ class TeamComparisonCalculator:
         if better == "tie":
             return f"Both teams have similar {name}"
 
-        diff = abs(val_a - val_b)
         pct = abs(val_a - val_b) / max(val_a, val_b, 1) * 100
 
         if pct < 5:
@@ -484,12 +498,9 @@ class TeamVisualizationGenerator:
         margin = {"top": 40, "right": 120, "bottom": 40, "left": 150}
 
         chart_width = width - margin["left"] - margin["right"]
-        chart_height = len(metrics) * (bar_height * 2 + gap)
 
         # Find max value for scaling
-        max_val = max(
-            max(m.team_a_value, m.team_b_value) for m in metrics
-        ) or 1
+        max_val = max(max(m.team_a_value, m.team_b_value) for m in metrics) or 1
 
         svg_parts = [
             f'<svg width="{width}" height="{height + 50}" xmlns="http://www.w3.org/2000/svg">',
@@ -538,12 +549,14 @@ class TeamVisualizationGenerator:
 
         # Legend
         legend_y = height - 20
-        svg_parts.extend([
-            f'<rect x="{width/2 - 100}" y="{legend_y}" width="15" height="15" fill="{self.COLORS["team_a"]}"/>',
-            f'<text x="{width/2 - 80}" y="{legend_y + 12}" font-size="12">{comparison.team_a_name}</text>',
-            f'<rect x="{width/2 + 20}" y="{legend_y}" width="15" height="15" fill="{self.COLORS["team_b"]}"/>',
-            f'<text x="{width/2 + 40}" y="{legend_y + 12}" font-size="12">{comparison.team_b_name}</text>',
-        ])
+        svg_parts.extend(
+            [
+                f'<rect x="{width/2 - 100}" y="{legend_y}" width="15" height="15" fill="{self.COLORS["team_a"]}"/>',
+                f'<text x="{width/2 - 80}" y="{legend_y + 12}" font-size="12">{comparison.team_a_name}</text>',
+                f'<rect x="{width/2 + 20}" y="{legend_y}" width="15" height="15" fill="{self.COLORS["team_b"]}"/>',
+                f'<text x="{width/2 + 40}" y="{legend_y + 12}" font-size="12">{comparison.team_b_name}</text>',
+            ]
+        )
 
         svg_parts.append("</svg>")
         return "\n".join(svg_parts)
@@ -636,12 +649,14 @@ class TeamVisualizationGenerator:
         )
 
         # Legend
-        svg_parts.extend([
-            f'<rect x="20" y="{height - 40}" width="15" height="15" fill="{self.COLORS["team_a"]}"/>',
-            f'<text x="40" y="{height - 28}" font-size="12">{comparison.team_a_name}</text>',
-            f'<rect x="20" y="{height - 20}" width="15" height="15" fill="{self.COLORS["team_b"]}"/>',
-            f'<text x="40" y="{height - 8}" font-size="12">{comparison.team_b_name}</text>',
-        ])
+        svg_parts.extend(
+            [
+                f'<rect x="20" y="{height - 40}" width="15" height="15" fill="{self.COLORS["team_a"]}"/>',
+                f'<text x="40" y="{height - 28}" font-size="12">{comparison.team_a_name}</text>',
+                f'<rect x="20" y="{height - 20}" width="15" height="15" fill="{self.COLORS["team_b"]}"/>',
+                f'<text x="40" y="{height - 8}" font-size="12">{comparison.team_b_name}</text>',
+            ]
+        )
 
         svg_parts.append("</svg>")
         return "\n".join(svg_parts)
@@ -662,11 +677,7 @@ class TeamVisualizationGenerator:
         winner_text = (
             f"{comparison.team_a_name}"
             if comparison.overall_winner == "A"
-            else (
-                f"{comparison.team_b_name}"
-                if comparison.overall_winner == "B"
-                else "Tie"
-            )
+            else (f"{comparison.team_b_name}" if comparison.overall_winner == "B" else "Tie")
         )
 
         html = f"""<!DOCTYPE html>
@@ -791,8 +802,12 @@ class TeamVisualizationGenerator:
 """
 
         for m in comparison.metric_comparisons:
-            a_class = "better" if m.better_team == "A" else ("worse" if m.better_team == "B" else "")
-            b_class = "better" if m.better_team == "B" else ("worse" if m.better_team == "A" else "")
+            a_class = (
+                "better" if m.better_team == "A" else ("worse" if m.better_team == "B" else "")
+            )
+            b_class = (
+                "better" if m.better_team == "B" else ("worse" if m.better_team == "A" else "")
+            )
             html += f"""
                 <tr>
                     <td>{m.metric_name}</td>
@@ -803,7 +818,7 @@ class TeamVisualizationGenerator:
                 </tr>
 """
 
-        html += """
+        html += f"""
             </tbody>
         </table>
     </div>
@@ -812,9 +827,9 @@ class TeamVisualizationGenerator:
         <h2>Team Analysis</h2>
         <div style="display: flex; gap: 20px;">
             <div style="flex: 1;">
-                <h3>{team_a}</h3>
+                <h3>{comparison.team_a_name}</h3>
                 <h4>Strengths</h4>
-""".format(team_a=comparison.team_a_name)
+"""
 
         for s in comparison.team_a_strengths:
             html += f'<div class="strength">{s.metric}: {s.description}</div>'

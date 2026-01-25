@@ -15,7 +15,6 @@ comparable to professional analytics platforms.
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -29,7 +28,8 @@ logger = logging.getLogger(__name__)
 # Helper Functions
 # ============================================================================
 
-def _find_column(df: pd.DataFrame, options: list[str]) -> Optional[str]:
+
+def _find_column(df: pd.DataFrame, options: list[str]) -> str | None:
     """Find the first matching column name from options."""
     if df is None:
         return None
@@ -43,10 +43,10 @@ def _get_round_ticks(demo_data: DemoData) -> tuple[list[int], list[int]]:
     """Extract round start and end ticks from rounds."""
     starts = []
     ends = []
-    if hasattr(demo_data, 'rounds') and demo_data.rounds:
+    if hasattr(demo_data, "rounds") and demo_data.rounds:
         for r in demo_data.rounds:
-            starts.append(getattr(r, 'start_tick', 0))
-            ends.append(getattr(r, 'end_tick', 0))
+            starts.append(getattr(r, "start_tick", 0))
+            ends.append(getattr(r, "end_tick", 0))
     return starts, ends
 
 
@@ -394,7 +394,7 @@ def calculate_ttd(demo_data: DemoData, steam_id: int | None = None) -> dict[int,
 
     # Build damage lookup: (attacker_id, victim_id, round) -> list of damage ticks
     damage_cache: dict[tuple, list[int]] = {}
-    
+
     # Get damage dataframe
     damage_df = demo_data.damages_df
     if damage_df is None or damage_df.empty:
@@ -407,7 +407,7 @@ def calculate_ttd(demo_data: DemoData, steam_id: int | None = None) -> dict[int,
         vic_col = _find_column(damage_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
         round_col = _find_column(damage_df, ["round_num", "round", "round_number"])
         tick_col = "tick"
-        
+
         if att_col and vic_col:
             # Build damage cache for fast lookup
             for _, row in damage_df.iterrows():
@@ -416,7 +416,7 @@ def calculate_ttd(demo_data: DemoData, steam_id: int | None = None) -> dict[int,
                     vic = int(row[vic_col]) if pd.notna(row[vic_col]) else 0
                     round_num = int(row[round_col]) if round_col and pd.notna(row[round_col]) else 0
                     tick = int(row[tick_col]) if pd.notna(row[tick_col]) else 0
-                    
+
                     if att and vic and tick:
                         key = (att, vic, round_num)
                         if key not in damage_cache:
@@ -424,42 +424,44 @@ def calculate_ttd(demo_data: DemoData, steam_id: int | None = None) -> dict[int,
                         damage_cache[key].append(tick)
                 except (ValueError, TypeError):
                     continue
-            
+
             # Sort damage ticks for each pair for binary search
             for key in damage_cache:
                 damage_cache[key].sort()
-            
-            logger.debug(f"Built damage cache with {len(damage_cache)} (attacker, victim, round) pairs")
+
+            logger.debug(
+                f"Built damage cache with {len(damage_cache)} (attacker, victim, round) pairs"
+            )
 
     # Constants for TTD validation
     MS_PER_TICK = 1000.0 / 64.0  # CS2 is 64 tick
     MIN_TTD_MS = 0
     MAX_TTD_MS = 1500  # Kills taking >1.5s are likely not pure reaction
-    
+
     # Process each kill
     player_ttd_values: dict[int, list[float]] = {}
-    
+
     for kill in kills:
         try:
             att_id = kill.attacker_steamid
             vic_id = kill.victim_steamid
             kill_tick = kill.tick
             round_num = kill.round_num
-            
+
             if not att_id or not vic_id or kill_tick <= 0:
                 continue
-                
+
             # Filter to specific player if requested
             if steam_id is not None and att_id != steam_id:
                 continue
-            
+
             ttd_ms = None
-            
+
             # Try to find first damage tick from damage cache
             if damage_cache:
                 cache_key = (att_id, vic_id, round_num)
                 damage_ticks = damage_cache.get(cache_key, [])
-                
+
                 if damage_ticks:
                     # Find first damage tick before kill
                     for dmg_tick in damage_ticks:
@@ -467,27 +469,27 @@ def calculate_ttd(demo_data: DemoData, steam_id: int | None = None) -> dict[int,
                             ttd_ticks = kill_tick - dmg_tick
                             ttd_ms = ttd_ticks * MS_PER_TICK
                             break
-            
+
             # If no damage found, use heuristic TTD estimate
             # Most pro players have 150-350ms TTD, average is around 250ms
             # If we have a headshot, assume better reaction time
             if ttd_ms is None:
                 # Estimate based on kill type
-                if hasattr(kill, 'headshot') and kill.headshot:
+                if hasattr(kill, "headshot") and kill.headshot:
                     ttd_ms = 180.0 + np.random.normal(0, 50)  # Elite range
                 else:
                     ttd_ms = 280.0 + np.random.normal(0, 80)  # Average range
-            
+
             # Validate TTD value
             if MIN_TTD_MS <= ttd_ms <= MAX_TTD_MS:
                 if att_id not in player_ttd_values:
                     player_ttd_values[att_id] = []
                 player_ttd_values[att_id].append(ttd_ms)
-                
+
         except (AttributeError, ValueError, TypeError) as e:
             logger.debug(f"Error processing kill for TTD: {e}")
             continue
-    
+
     # Build results
     for player_id, ttd_values in player_ttd_values.items():
         if ttd_values:
@@ -502,7 +504,7 @@ def calculate_ttd(demo_data: DemoData, steam_id: int | None = None) -> dict[int,
                 std_ttd_ms=float(np.std(ttd_values)),
                 ttd_values=ttd_values,
             )
-    
+
     if not results:
         logger.warning("No TTD values computed")
 
@@ -547,17 +549,17 @@ def calculate_crosshair_placement(
     for kill in kills:
         try:
             att_id = kill.attacker_steamid
-            
+
             # Filter to specific player if requested
             if steam_id is not None and att_id != steam_id:
                 continue
 
             # Check if we have position and angle data
-            if not hasattr(kill, 'attacker_x') or kill.attacker_x is None:
+            if not hasattr(kill, "attacker_x") or kill.attacker_x is None:
                 continue
-            if not hasattr(kill, 'attacker_pitch') or kill.attacker_pitch is None:
+            if not hasattr(kill, "attacker_pitch") or kill.attacker_pitch is None:
                 continue
-            if not hasattr(kill, 'victim_x') or kill.victim_x is None:
+            if not hasattr(kill, "victim_x") or kill.victim_x is None:
                 continue
 
             # Get positions
@@ -594,7 +596,7 @@ def calculate_crosshair_placement(
     for player_id, angles in player_angles.items():
         if angles:
             mean_angle = float(np.mean(angles))
-            
+
             # Score formula: 100 when angle is 0, exponential decay
             # At 45 degrees, score is ~37
             placement_score = 100.0 * np.exp(-mean_angle / 45.0)
@@ -806,9 +808,11 @@ def calculate_economy_metrics(
     results: dict[int, EconomyMetrics] = {}
 
     # Get DataFrames with proper attribute names
-    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
-    damage_df = demo_data.damages_df if hasattr(demo_data, 'damages_df') else pd.DataFrame()
-    shots_df = demo_data.weapon_fires_df if hasattr(demo_data, 'weapon_fires_df') else pd.DataFrame()
+    kills_df = demo_data.kills_df if hasattr(demo_data, "kills_df") else pd.DataFrame()
+    damage_df = demo_data.damages_df if hasattr(demo_data, "damages_df") else pd.DataFrame()
+    shots_df = (
+        demo_data.weapon_fires_df if hasattr(demo_data, "weapon_fires_df") else pd.DataFrame()
+    )
 
     if kills_df is None:
         kills_df = pd.DataFrame()
@@ -959,9 +963,11 @@ def calculate_utility_metrics(
     results: dict[int, UtilityMetrics] = {}
 
     # Get DataFrames with proper attribute names
-    damage_df = demo_data.damages_df if hasattr(demo_data, 'damages_df') else pd.DataFrame()
-    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
-    shots_df = demo_data.weapon_fires_df if hasattr(demo_data, 'weapon_fires_df') else pd.DataFrame()
+    damage_df = demo_data.damages_df if hasattr(demo_data, "damages_df") else pd.DataFrame()
+    kills_df = demo_data.kills_df if hasattr(demo_data, "kills_df") else pd.DataFrame()
+    shots_df = (
+        demo_data.weapon_fires_df if hasattr(demo_data, "weapon_fires_df") else pd.DataFrame()
+    )
 
     if damage_df is None:
         damage_df = pd.DataFrame()
@@ -1150,8 +1156,8 @@ def calculate_positioning_metrics(
     results: dict[int, PositioningMetrics] = {}
 
     # Get position data from ticks_df
-    positions = demo_data.ticks_df if hasattr(demo_data, 'ticks_df') else pd.DataFrame()
-    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
+    positions = demo_data.ticks_df if hasattr(demo_data, "ticks_df") else pd.DataFrame()
+    kills_df = demo_data.kills_df if hasattr(demo_data, "kills_df") else pd.DataFrame()
 
     if positions is None or positions.empty:
         return results
@@ -1217,18 +1223,22 @@ def calculate_positioning_metrics(
             tick_positions = positions[positions["tick"] == tick]
             player_at_tick = tick_positions[tick_positions[steamid_col] == player_id]
             teammates = tick_positions[
-                (tick_positions[steamid_col] != player_id) &
-                (tick_positions[steamid_col].apply(
-                    lambda x: demo_data.player_teams.get(int(x), "") == player_team
-                ))
+                (tick_positions[steamid_col] != player_id)
+                & (
+                    tick_positions[steamid_col].apply(
+                        lambda x: demo_data.player_teams.get(int(x), "") == player_team
+                    )
+                )
             ]
 
             if not player_at_tick.empty and not teammates.empty:
-                player_xyz = np.array([
-                    player_at_tick.iloc[0][x_col],
-                    player_at_tick.iloc[0][y_col],
-                    player_at_tick.iloc[0][z_col]
-                ])
+                player_xyz = np.array(
+                    [
+                        player_at_tick.iloc[0][x_col],
+                        player_at_tick.iloc[0][y_col],
+                        player_at_tick.iloc[0][z_col],
+                    ]
+                )
                 for _, mate in teammates.iterrows():
                     mate_xyz = np.array([mate[x_col], mate[y_col], mate[z_col]])
                     teammate_distances.append(np.linalg.norm(player_xyz - mate_xyz))
@@ -1248,8 +1258,7 @@ def calculate_positioning_metrics(
                 # Get positions at death tick
                 victim_pos = player_pos[player_pos["tick"] == death_tick]
                 attacker_pos = positions[
-                    (positions["tick"] == death_tick) &
-                    (positions[steamid_col] == attacker_id)
+                    (positions["tick"] == death_tick) & (positions[steamid_col] == attacker_id)
                 ]
 
                 if not victim_pos.empty and not attacker_pos.empty:
@@ -1277,12 +1286,14 @@ def calculate_positioning_metrics(
             round_end = round_start + (15 * demo_data.tick_rate)  # First 15 seconds
             if not kills_df.empty and kill_att_col and kill_vic_col:
                 round_kills = kills_df[
-                    (kills_df["tick"] >= round_start) &
-                    (kills_df["tick"] <= round_end)
+                    (kills_df["tick"] >= round_start) & (kills_df["tick"] <= round_end)
                 ]
                 if not round_kills.empty:
                     first_kill = round_kills.iloc[0]
-                    if first_kill.get(kill_att_col) == player_id or first_kill.get(kill_vic_col) == player_id:
+                    if (
+                        first_kill.get(kill_att_col) == player_id
+                        or first_kill.get(kill_vic_col) == player_id
+                    ):
                         first_contacts += 1
 
         first_contact_rate = (first_contacts / max(len(sample_rounds), 1)) * 100
@@ -1322,7 +1333,7 @@ def calculate_trade_metrics(
     """
     results: dict[int, TradeMetrics] = {}
 
-    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
+    kills_df = demo_data.kills_df if hasattr(demo_data, "kills_df") else pd.DataFrame()
     if kills_df is None or kills_df.empty:
         return results
 
@@ -1355,9 +1366,9 @@ def calculate_trade_metrics(
 
             # Look for recent teammate deaths by this victim
             recent_deaths = kills_sorted[
-                (kills_sorted[att_col] == victim_id) &
-                (kills_sorted["tick"] >= kill_tick - trade_window_ticks) &
-                (kills_sorted["tick"] < kill_tick)
+                (kills_sorted[att_col] == victim_id)
+                & (kills_sorted["tick"] >= kill_tick - trade_window_ticks)
+                & (kills_sorted["tick"] < kill_tick)
             ]
 
             for _, death in recent_deaths.iterrows():
@@ -1377,9 +1388,9 @@ def calculate_trade_metrics(
 
             # Look for teammate killing the killer shortly after
             trades = kills_sorted[
-                (kills_sorted[vic_col] == killer_id) &
-                (kills_sorted["tick"] > death_tick) &
-                (kills_sorted["tick"] <= death_tick + trade_window_ticks)
+                (kills_sorted[vic_col] == killer_id)
+                & (kills_sorted["tick"] > death_tick)
+                & (kills_sorted["tick"] <= death_tick + trade_window_ticks)
             ]
 
             for _, trade in trades.iterrows():
@@ -1421,7 +1432,7 @@ def calculate_opening_metrics(
     """
     results: dict[int, OpeningDuelMetrics] = {}
 
-    kills_df = demo_data.kills_df if hasattr(demo_data, 'kills_df') else pd.DataFrame()
+    kills_df = demo_data.kills_df if hasattr(demo_data, "kills_df") else pd.DataFrame()
     round_starts, round_ends = _get_round_ticks(demo_data)
 
     if kills_df is None or kills_df.empty or not round_starts:

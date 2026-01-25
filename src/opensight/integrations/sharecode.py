@@ -95,7 +95,7 @@ def decode_sharecode(code: str) -> ShareCodeInfo:
     try:
         raw_bytes = _decode_base57(code)
     except (ValueError, struct.error) as e:
-        raise ValueError(f"Failed to decode share code: {e}")
+        raise ValueError(f"Failed to decode share code: {e}") from e
 
     # Extract fields from the decoded bytes
     # Layout: match_id (8 bytes) | outcome_id (8 bytes) | token (2 bytes)

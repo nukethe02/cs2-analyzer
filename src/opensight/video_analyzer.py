@@ -50,6 +50,7 @@ def _check_cv2_available() -> bool:
     if _CV2_AVAILABLE is None:
         try:
             import cv2 as _  # noqa: F401
+
             _CV2_AVAILABLE = True
         except ImportError:
             _CV2_AVAILABLE = False
@@ -62,6 +63,7 @@ def _check_sklearn_available() -> bool:
     if _SKLEARN_AVAILABLE is None:
         try:
             import sklearn as _  # noqa: F401
+
             _SKLEARN_AVAILABLE = True
         except ImportError:
             _SKLEARN_AVAILABLE = False
@@ -72,8 +74,10 @@ def _check_sklearn_available() -> bool:
 # Data Classes
 # =============================================================================
 
+
 class ActionType(Enum):
     """Types of gameplay actions detected in video."""
+
     IDLE = "idle"
     MOVING = "moving"
     SHOOTING = "shooting"
@@ -87,6 +91,7 @@ class ActionType(Enum):
 
 class MistakeType(Enum):
     """Types of gameplay mistakes."""
+
     BAD_CROSSHAIR_PLACEMENT = "bad_crosshair_placement"
     POOR_POSITIONING = "poor_positioning"
     SLOW_REACTION = "slow_reaction"
@@ -101,6 +106,7 @@ class MistakeType(Enum):
 
 class SkillLevel(Enum):
     """Player skill level classification."""
+
     BEGINNER = "beginner"
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
@@ -111,6 +117,7 @@ class SkillLevel(Enum):
 @dataclass
 class CrosshairPosition:
     """Crosshair position at a specific frame."""
+
     frame_num: int
     timestamp_ms: float
     x: int  # Pixel X coordinate
@@ -122,6 +129,7 @@ class CrosshairPosition:
 @dataclass
 class DetectedAction:
     """A detected gameplay action."""
+
     action_type: ActionType
     start_frame: int
     end_frame: int
@@ -134,6 +142,7 @@ class DetectedAction:
 @dataclass
 class DetectedMistake:
     """A detected gameplay mistake."""
+
     mistake_type: MistakeType
     frame_num: int
     timestamp_ms: float
@@ -146,6 +155,7 @@ class DetectedMistake:
 @dataclass
 class PerformanceMetrics:
     """Performance metrics extracted from video analysis."""
+
     # Crosshair metrics
     crosshair_stability: float = 0.0  # 0-100, higher is more stable
     crosshair_placement_score: float = 0.0  # 0-100, head level consistency
@@ -175,6 +185,7 @@ class PerformanceMetrics:
 @dataclass
 class CoachingTip:
     """A personalized coaching tip."""
+
     category: str  # 'aim', 'movement', 'positioning', 'utility', 'game_sense'
     priority: int  # 1-5, 1 being highest priority
     title: str
@@ -186,6 +197,7 @@ class CoachingTip:
 @dataclass
 class VideoAnalysisResult:
     """Complete video analysis results."""
+
     # Video info
     video_path: str
     duration_seconds: float
@@ -210,6 +222,7 @@ class VideoAnalysisResult:
 # Crosshair Tracker
 # =============================================================================
 
+
 class CrosshairTracker:
     """
     Tracks crosshair position across video frames.
@@ -222,10 +235,10 @@ class CrosshairTracker:
 
     # Common crosshair colors (BGR format for OpenCV)
     CROSSHAIR_COLORS = [
-        (0, 255, 0),    # Green
+        (0, 255, 0),  # Green
         (255, 255, 255),  # White
         (0, 255, 255),  # Yellow
-        (0, 0, 255),    # Red
+        (0, 0, 255),  # Red
         (255, 0, 255),  # Magenta
     ]
 
@@ -247,7 +260,9 @@ class CrosshairTracker:
         self.position_history: list[tuple[int, int]] = []
         self.max_history = 10
 
-    def detect(self, frame: np.ndarray, frame_num: int, timestamp_ms: float) -> CrosshairPosition | None:
+    def detect(
+        self, frame: np.ndarray, frame_num: int, timestamp_ms: float
+    ) -> CrosshairPosition | None:
         """
         Detect crosshair position in a frame.
 
@@ -267,13 +282,12 @@ class CrosshairTracker:
                 x=self.center_x,
                 y=self.center_y,
                 confidence=0.5,
-                screen_region="center"
+                screen_region="center",
             )
 
-        import cv2
 
         # Extract ROI around center
-        roi = frame[self.roi_y1:self.roi_y2, self.roi_x1:self.roi_x2]
+        roi = frame[self.roi_y1 : self.roi_y2, self.roi_x1 : self.roi_x2]
 
         best_pos = None
         best_confidence = 0.0
@@ -313,7 +327,7 @@ class CrosshairTracker:
             x=frame_x,
             y=frame_y,
             confidence=best_confidence,
-            screen_region=screen_region
+            screen_region=screen_region,
         )
 
     def _detect_by_color(
@@ -338,14 +352,14 @@ class CrosshairTracker:
         # Find contour closest to center of ROI
         roi_center = (roi.shape[1] // 2, roi.shape[0] // 2)
         best_contour = None
-        best_dist = float('inf')
+        best_dist = float("inf")
 
         for contour in contours:
             M = cv2.moments(contour)
             if M["m00"] > 0:
                 cx = int(M["m10"] / M["m00"])
                 cy = int(M["m01"] / M["m00"])
-                dist = np.sqrt((cx - roi_center[0])**2 + (cy - roi_center[1])**2)
+                dist = np.sqrt((cx - roi_center[0]) ** 2 + (cy - roi_center[1]) ** 2)
                 if dist < best_dist:
                     best_dist = dist
                     best_contour = (cx, cy)
@@ -354,7 +368,7 @@ class CrosshairTracker:
             return None, 0.0
 
         # Calculate confidence based on distance from center
-        max_dist = np.sqrt(roi.shape[0]**2 + roi.shape[1]**2) / 2
+        max_dist = np.sqrt(roi.shape[0] ** 2 + roi.shape[1] ** 2) / 2
         confidence = 1.0 - (best_dist / max_dist)
 
         return best_contour, confidence
@@ -370,8 +384,7 @@ class CrosshairTracker:
         edges = cv2.Canny(gray, 50, 150)
 
         # Apply Hough line detection to find crosshair lines
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=20,
-                                minLineLength=10, maxLineGap=5)
+        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=20, minLineLength=10, maxLineGap=5)
 
         if lines is None or len(lines) < 2:
             return None, 0.0
@@ -384,7 +397,7 @@ class CrosshairTracker:
         for line in lines:
             x1, y1, x2, y2 = line[0]
             mx, my = (x1 + x2) // 2, (y1 + y2) // 2
-            dist = np.sqrt((mx - roi_center[0])**2 + (my - roi_center[1])**2)
+            dist = np.sqrt((mx - roi_center[0]) ** 2 + (my - roi_center[1]) ** 2)
             if dist < roi.shape[0] // 4:  # Only consider lines near center
                 midpoints.append((mx, my))
 
@@ -439,6 +452,7 @@ class CrosshairTracker:
 # Action Detector
 # =============================================================================
 
+
 class ActionDetector:
     """
     Detects gameplay actions from video frames.
@@ -465,9 +479,7 @@ class ActionDetector:
         self.brightness_history: list[float] = []
         self.max_brightness_history = 10
 
-    def detect(
-        self, frame: np.ndarray, frame_num: int
-    ) -> DetectedAction | None:
+    def detect(self, frame: np.ndarray, frame_num: int) -> DetectedAction | None:
         """
         Detect action in current frame.
 
@@ -568,6 +580,7 @@ class ActionDetector:
 # Mistake Analyzer
 # =============================================================================
 
+
 class MistakeAnalyzer:
     """
     Analyzes gameplay for common mistakes.
@@ -604,7 +617,7 @@ class MistakeAnalyzer:
         frame_num: int,
         crosshair_pos: CrosshairPosition | None,
         current_action: ActionType,
-        prev_action: ActionType | None
+        prev_action: ActionType | None,
     ) -> DetectedMistake | None:
         """
         Analyze a single frame for mistakes.
@@ -642,9 +655,7 @@ class MistakeAnalyzer:
 
         return None
 
-    def _check_crosshair_placement(
-        self, pos: CrosshairPosition
-    ) -> DetectedMistake | None:
+    def _check_crosshair_placement(self, pos: CrosshairPosition) -> DetectedMistake | None:
         """Check if crosshair is at proper head level."""
         normalized_y = pos.y / self.frame_height
 
@@ -657,7 +668,7 @@ class MistakeAnalyzer:
                 severity="medium",
                 description="Crosshair placed too high (above head level)",
                 suggestion="Lower your crosshair to head level for faster target acquisition",
-                confidence=0.7
+                confidence=0.7,
             )
         elif normalized_y > self.HEAD_LEVEL_MAX + 0.15:
             return DetectedMistake(
@@ -667,16 +678,13 @@ class MistakeAnalyzer:
                 severity="high",
                 description="Crosshair placed too low (at body/ground level)",
                 suggestion="Raise your crosshair to head level - this is critical for CS2",
-                confidence=0.8
+                confidence=0.8,
             )
 
         return None
 
     def _check_running_shooting(
-        self,
-        frame_num: int,
-        current_action: ActionType,
-        prev_action: ActionType | None
+        self, frame_num: int, current_action: ActionType, prev_action: ActionType | None
     ) -> DetectedMistake | None:
         """Check if player is shooting while moving."""
         # This is a simplified check - in reality would need more context
@@ -688,7 +696,7 @@ class MistakeAnalyzer:
                 severity="high",
                 description="Firing while transitioning from movement",
                 suggestion="Counter-strafe before shooting for accurate fire",
-                confidence=0.6
+                confidence=0.6,
             )
         return None
 
@@ -714,7 +722,7 @@ class MistakeAnalyzer:
                 severity="low",
                 description="Crosshair movement appears unstable/shaky",
                 suggestion="Practice smooth crosshair control in aim training maps",
-                confidence=0.5
+                confidence=0.5,
             )
 
         return None
@@ -723,6 +731,7 @@ class MistakeAnalyzer:
 # =============================================================================
 # Coaching Feedback Generator
 # =============================================================================
+
 
 class CoachingFeedbackGenerator:
     """
@@ -741,7 +750,7 @@ class CoachingFeedbackGenerator:
         metrics: PerformanceMetrics,
         mistakes: list[DetectedMistake],
         crosshair_positions: list[CrosshairPosition],
-        actions: list[DetectedAction]
+        actions: list[DetectedAction],
     ) -> list[CoachingTip]:
         """
         Generate personalized coaching tips.
@@ -773,32 +782,24 @@ class CoachingFeedbackGenerator:
         self.tips_generated = tips[:5]
         return self.tips_generated
 
-    def _analyze_mistake_patterns(
-        self, mistakes: list[DetectedMistake]
-    ) -> list[CoachingTip]:
+    def _analyze_mistake_patterns(self, mistakes: list[DetectedMistake]) -> list[CoachingTip]:
         """Analyze mistake patterns and generate tips."""
         tips = []
 
         # Count mistakes by type
         mistake_counts: dict[MistakeType, int] = {}
         for mistake in mistakes:
-            mistake_counts[mistake.mistake_type] = mistake_counts.get(
-                mistake.mistake_type, 0
-            ) + 1
+            mistake_counts[mistake.mistake_type] = mistake_counts.get(mistake.mistake_type, 0) + 1
 
         # Generate tips for most common mistakes
-        for mistake_type, count in sorted(
-            mistake_counts.items(), key=lambda x: -x[1]
-        )[:3]:
+        for mistake_type, count in sorted(mistake_counts.items(), key=lambda x: -x[1])[:3]:
             tip = self._get_tip_for_mistake(mistake_type, count)
             if tip:
                 tips.append(tip)
 
         return tips
 
-    def _get_tip_for_mistake(
-        self, mistake_type: MistakeType, count: int
-    ) -> CoachingTip | None:
+    def _get_tip_for_mistake(self, mistake_type: MistakeType, count: int) -> CoachingTip | None:
         """Get coaching tip for a specific mistake type."""
         tips_map = {
             MistakeType.BAD_CROSSHAIR_PLACEMENT: CoachingTip(
@@ -806,27 +807,27 @@ class CoachingFeedbackGenerator:
                 priority=1,
                 title="Improve Crosshair Placement",
                 description=f"Detected {count} instances of suboptimal crosshair placement. "
-                           "Keeping your crosshair at head level is crucial for winning duels.",
+                "Keeping your crosshair at head level is crucial for winning duels.",
                 drill_suggestion="Play 15 minutes of Yprac Crosshair Placement map daily",
-                related_mistakes=[MistakeType.BAD_CROSSHAIR_PLACEMENT]
+                related_mistakes=[MistakeType.BAD_CROSSHAIR_PLACEMENT],
             ),
             MistakeType.RUNNING_WHILE_SHOOTING: CoachingTip(
                 category="movement",
                 priority=2,
                 title="Master Counter-Strafing",
                 description=f"Detected {count} instances of shooting while moving. "
-                           "Your bullets are inaccurate when moving.",
+                "Your bullets are inaccurate when moving.",
                 drill_suggestion="Practice counter-strafe timing in deathmatch",
-                related_mistakes=[MistakeType.RUNNING_WHILE_SHOOTING]
+                related_mistakes=[MistakeType.RUNNING_WHILE_SHOOTING],
             ),
             MistakeType.POOR_MOVEMENT: CoachingTip(
                 category="movement",
                 priority=3,
                 title="Stabilize Your Aim",
                 description=f"Detected {count} instances of shaky crosshair movement. "
-                           "Smooth, controlled movements lead to better accuracy.",
+                "Smooth, controlled movements lead to better accuracy.",
                 drill_suggestion="Lower your sensitivity slightly and practice tracking",
-                related_mistakes=[MistakeType.POOR_MOVEMENT]
+                related_mistakes=[MistakeType.POOR_MOVEMENT],
             ),
             MistakeType.SLOW_REACTION: CoachingTip(
                 category="aim",
@@ -834,7 +835,7 @@ class CoachingFeedbackGenerator:
                 title="Improve Reaction Time",
                 description=f"Detected {count} slow reactions to enemy appearances.",
                 drill_suggestion="Play aim trainers focusing on reaction time",
-                related_mistakes=[MistakeType.SLOW_REACTION]
+                related_mistakes=[MistakeType.SLOW_REACTION],
             ),
         }
 
@@ -845,44 +846,48 @@ class CoachingFeedbackGenerator:
         tips = []
 
         if metrics.crosshair_placement_score < 60:
-            tips.append(CoachingTip(
-                category="aim",
-                priority=1,
-                title="Focus on Crosshair Placement",
-                description=f"Your crosshair placement score is {metrics.crosshair_placement_score:.0f}/100. "
-                           "This is the #1 skill that separates good players from great ones.",
-                drill_suggestion="Watch pro player POVs and study their crosshair placement",
-                related_mistakes=[MistakeType.BAD_CROSSHAIR_PLACEMENT]
-            ))
+            tips.append(
+                CoachingTip(
+                    category="aim",
+                    priority=1,
+                    title="Focus on Crosshair Placement",
+                    description=f"Your crosshair placement score is {metrics.crosshair_placement_score:.0f}/100. "
+                    "This is the #1 skill that separates good players from great ones.",
+                    drill_suggestion="Watch pro player POVs and study their crosshair placement",
+                    related_mistakes=[MistakeType.BAD_CROSSHAIR_PLACEMENT],
+                )
+            )
 
         if metrics.crosshair_stability < 50:
-            tips.append(CoachingTip(
-                category="aim",
-                priority=2,
-                title="Improve Crosshair Stability",
-                description=f"Your crosshair stability is {metrics.crosshair_stability:.0f}/100. "
-                           "A stable crosshair leads to more consistent aim.",
-                drill_suggestion="Consider lowering your mouse sensitivity",
-                related_mistakes=[MistakeType.POOR_MOVEMENT]
-            ))
+            tips.append(
+                CoachingTip(
+                    category="aim",
+                    priority=2,
+                    title="Improve Crosshair Stability",
+                    description=f"Your crosshair stability is {metrics.crosshair_stability:.0f}/100. "
+                    "A stable crosshair leads to more consistent aim.",
+                    drill_suggestion="Consider lowering your mouse sensitivity",
+                    related_mistakes=[MistakeType.POOR_MOVEMENT],
+                )
+            )
 
         if metrics.movement_score < 50:
-            tips.append(CoachingTip(
-                category="movement",
-                priority=3,
-                title="Work on Movement Mechanics",
-                description=f"Your movement score is {metrics.movement_score:.0f}/100. "
-                           "Good movement makes you harder to hit and improves positioning.",
-                drill_suggestion="Practice strafing and bunny hopping in KZ maps",
-                related_mistakes=[]
-            ))
+            tips.append(
+                CoachingTip(
+                    category="movement",
+                    priority=3,
+                    title="Work on Movement Mechanics",
+                    description=f"Your movement score is {metrics.movement_score:.0f}/100. "
+                    "Good movement makes you harder to hit and improves positioning.",
+                    drill_suggestion="Practice strafing and bunny hopping in KZ maps",
+                    related_mistakes=[],
+                )
+            )
 
         return tips
 
     def _generate_crosshair_tips(
-        self,
-        positions: list[CrosshairPosition],
-        metrics: PerformanceMetrics
+        self, positions: list[CrosshairPosition], metrics: PerformanceMetrics
     ) -> list[CoachingTip]:
         """Generate tips based on crosshair position analysis."""
         tips = []
@@ -892,15 +897,17 @@ class CoachingFeedbackGenerator:
 
         # Analyze average crosshair height
         if metrics.average_crosshair_height > 0.55:
-            tips.append(CoachingTip(
-                category="aim",
-                priority=1,
-                title="Raise Your Crosshair",
-                description="Your crosshair tends to be placed too low on average. "
-                           "This means you need to flick up for headshots.",
-                drill_suggestion="Consciously aim at head level while clearing angles",
-                related_mistakes=[MistakeType.BAD_CROSSHAIR_PLACEMENT]
-            ))
+            tips.append(
+                CoachingTip(
+                    category="aim",
+                    priority=1,
+                    title="Raise Your Crosshair",
+                    description="Your crosshair tends to be placed too low on average. "
+                    "This means you need to flick up for headshots.",
+                    drill_suggestion="Consciously aim at head level while clearing angles",
+                    related_mistakes=[MistakeType.BAD_CROSSHAIR_PLACEMENT],
+                )
+            )
 
         return tips
 
@@ -908,6 +915,7 @@ class CoachingFeedbackGenerator:
 # =============================================================================
 # Video Analyzer (Main Class)
 # =============================================================================
+
 
 class VideoAnalyzer:
     """
@@ -926,7 +934,7 @@ class VideoAnalyzer:
     """
 
     # Supported video formats
-    SUPPORTED_FORMATS = {'.mp4', '.avi', '.mkv', '.mov', '.webm', '.flv'}
+    SUPPORTED_FORMATS = {".mp4", ".avi", ".mkv", ".mov", ".webm", ".flv"}
 
     def __init__(self, video_path: str | Path):
         """
@@ -966,11 +974,11 @@ class VideoAnalyzer:
             raise ValueError(f"Could not open video: {self.video_path}")
 
         self._video_info = {
-            'width': int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-            'height': int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-            'fps': cap.get(cv2.CAP_PROP_FPS),
-            'total_frames': int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
-            'duration_seconds': cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS)
+            "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            "fps": cap.get(cv2.CAP_PROP_FPS),
+            "total_frames": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+            "duration_seconds": cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS),
         }
 
         cap.release()
@@ -984,7 +992,7 @@ class VideoAnalyzer:
         detect_mistakes: bool = True,
         generate_coaching: bool = True,
         sample_rate: int = 2,  # Analyze every Nth frame
-        progress_callback: Any | None = None
+        progress_callback: Any | None = None,
     ) -> VideoAnalysisResult:
         """
         Analyze the gameplay video.
@@ -1009,10 +1017,10 @@ class VideoAnalyzer:
 
         # Initialize components
         cap = cv2.VideoCapture(str(self.video_path))
-        width = self._video_info['width']
-        height = self._video_info['height']
-        fps = self._video_info['fps']
-        total_frames = self._video_info['total_frames']
+        width = self._video_info["width"]
+        height = self._video_info["height"]
+        fps = self._video_info["fps"]
+        total_frames = self._video_info["total_frames"]
         ms_per_frame = 1000.0 / fps
 
         crosshair_tracker = CrosshairTracker(width, height) if detect_crosshair else None
@@ -1082,10 +1090,7 @@ class VideoAnalyzer:
 
         # Calculate performance metrics
         metrics = self._calculate_metrics(
-            crosshair_positions,
-            detected_actions,
-            detected_mistakes,
-            width, height, fps
+            crosshair_positions, detected_actions, detected_mistakes, width, height, fps
         )
 
         # Generate coaching feedback
@@ -1101,7 +1106,7 @@ class VideoAnalyzer:
 
         return VideoAnalysisResult(
             video_path=str(self.video_path),
-            duration_seconds=self._video_info['duration_seconds'],
+            duration_seconds=self._video_info["duration_seconds"],
             total_frames=total_frames,
             fps=fps,
             resolution=(width, height),
@@ -1112,7 +1117,7 @@ class VideoAnalyzer:
             coaching_tips=coaching_tips,
             analysis_time_seconds=analysis_time,
             frames_analyzed=frames_analyzed,
-            sample_rate=sample_rate
+            sample_rate=sample_rate,
         )
 
     def _calculate_metrics(
@@ -1122,7 +1127,7 @@ class VideoAnalyzer:
         mistakes: list[DetectedMistake],
         width: int,
         height: int,
-        fps: float
+        fps: float,
     ) -> PerformanceMetrics:
         """Calculate performance metrics from analysis data."""
         metrics = PerformanceMetrics()
@@ -1140,10 +1145,7 @@ class VideoAnalyzer:
             metrics.crosshair_stability = round(stability, 1)
 
             # Crosshair placement score (how often at head level)
-            head_level_count = sum(
-                1 for p in crosshair_positions
-                if 0.3 <= p.y / height <= 0.5
-            )
+            head_level_count = sum(1 for p in crosshair_positions if 0.3 <= p.y / height <= 0.5)
             metrics.crosshair_placement_score = round(
                 head_level_count / len(crosshair_positions) * 100, 1
             )
@@ -1157,8 +1159,8 @@ class VideoAnalyzer:
             if len(crosshair_positions) > 1:
                 movements = []
                 for i in range(1, len(crosshair_positions)):
-                    dx = crosshair_positions[i].x - crosshair_positions[i-1].x
-                    dy = crosshair_positions[i].y - crosshair_positions[i-1].y
+                    dx = crosshair_positions[i].x - crosshair_positions[i - 1].x
+                    dy = crosshair_positions[i].y - crosshair_positions[i - 1].y
                     movements.append(np.sqrt(dx**2 + dy**2))
 
                 # Smoothness is inverse of movement variance
@@ -1212,10 +1214,8 @@ class VideoAnalyzer:
 # Convenience Functions
 # =============================================================================
 
-def analyze_gameplay_video(
-    video_path: str | Path,
-    sample_rate: int = 2
-) -> VideoAnalysisResult:
+
+def analyze_gameplay_video(video_path: str | Path, sample_rate: int = 2) -> VideoAnalysisResult:
     """
     Convenience function to analyze a gameplay video.
 
@@ -1262,13 +1262,13 @@ def get_video_info(video_path: str | Path) -> dict[str, Any]:
         raise ValueError(f"Could not open video: {video_path}")
 
     info = {
-        'path': str(path),
-        'width': int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-        'height': int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-        'fps': cap.get(cv2.CAP_PROP_FPS),
-        'total_frames': int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
-        'duration_seconds': cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS),
-        'codec': int(cap.get(cv2.CAP_PROP_FOURCC)),
+        "path": str(path),
+        "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+        "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+        "fps": cap.get(cv2.CAP_PROP_FPS),
+        "total_frames": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+        "duration_seconds": cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS),
+        "codec": int(cap.get(cv2.CAP_PROP_FOURCC)),
     }
 
     cap.release()

@@ -1,19 +1,18 @@
 """Comprehensive tests for the watcher module."""
 
-import pytest
-import time
-import threading
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-import queue
-import tempfile
 import os
+import queue
+import time
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+import pytest
 
 from opensight.infra.watcher import (
-    get_default_replays_folder,
     DemoFileEvent,
     DemoFileHandler,
     ReplayWatcher,
+    get_default_replays_folder,
     watch_replays,
 )
 
@@ -21,7 +20,7 @@ from opensight.infra.watcher import (
 class TestGetDefaultReplaysFolder:
     """Tests for get_default_replays_folder function."""
 
-    @patch('platform.system')
+    @patch("platform.system")
     def test_windows_path(self, mock_system):
         """Test default path on Windows."""
         mock_system.return_value = "Windows"
@@ -31,7 +30,7 @@ class TestGetDefaultReplaysFolder:
             assert "Steam" in str(path)
             assert "replays" in str(path)
 
-    @patch('platform.system')
+    @patch("platform.system")
     def test_macos_path(self, mock_system):
         """Test default path on macOS."""
         mock_system.return_value = "Darwin"
@@ -40,7 +39,7 @@ class TestGetDefaultReplaysFolder:
         assert "Library/Application Support/Steam" in str(path)
         assert "replays" in str(path)
 
-    @patch('platform.system')
+    @patch("platform.system")
     def test_linux_path(self, mock_system):
         """Test default path on Linux."""
         mock_system.return_value = "Linux"
@@ -49,7 +48,7 @@ class TestGetDefaultReplaysFolder:
         assert ".steam" in str(path) or ".local/share/Steam" in str(path)
         assert "replays" in str(path)
 
-    @patch('platform.system')
+    @patch("platform.system")
     def test_unsupported_os(self, mock_system):
         """Test error on unsupported OS."""
         mock_system.return_value = "BeOS"
@@ -203,7 +202,7 @@ class TestReplayWatcher:
         watcher = ReplayWatcher(watch_folder=watch_folder, recursive=True)
         assert watcher.recursive is True
 
-    @patch('opensight.infra.watcher.get_default_replays_folder')
+    @patch("opensight.infra.watcher.get_default_replays_folder")
     def test_init_uses_default_folder(self, mock_get_default):
         """Test that default folder is used when not specified."""
         mock_get_default.return_value = Path("/default/replays")
@@ -427,7 +426,7 @@ class TestWatchReplaysFunction:
 
         watcher.stop()
 
-    @patch('opensight.infra.watcher.get_default_replays_folder')
+    @patch("opensight.infra.watcher.get_default_replays_folder")
     def test_watch_replays_uses_default_folder(self, mock_get_default, tmp_path):
         """Test that default folder is used when not specified."""
         default_folder = tmp_path / "default_replays"
