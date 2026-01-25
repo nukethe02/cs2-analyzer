@@ -533,8 +533,8 @@
             font-family: 'JetBrains Mono', monospace;
         }
 
-        /* Players Grid */
-        .players-grid {
+        /* Teams Container - 5v5 Layout */
+        .teams-container {
             display: grid;
             gap: 20px;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -1483,6 +1483,66 @@
             return '';
         }
 
+        // Map name formatting - converts de_nuke to Nuke, etc.
+        const MAP_NAMES = {
+            'de_dust2': 'Dust II',
+            'de_mirage': 'Mirage',
+            'de_inferno': 'Inferno',
+            'de_nuke': 'Nuke',
+            'de_overpass': 'Overpass',
+            'de_ancient': 'Ancient',
+            'de_anubis': 'Anubis',
+            'de_vertigo': 'Vertigo',
+            'de_train': 'Train',
+            'de_cache': 'Cache',
+            'de_cbble': 'Cobblestone',
+            'cs_office': 'Office',
+            'cs_italy': 'Italy'
+        };
+
+        function formatMapName(mapName) {
+            if (!mapName) return 'Unknown Map';
+            const lower = mapName.toLowerCase();
+            if (MAP_NAMES[lower]) return MAP_NAMES[lower];
+            // Fallback: remove de_ or cs_ prefix and capitalize
+            return mapName.replace(/^(de_|cs_)/i, '').replace(/^\w/, c => c.toUpperCase());
+        }
+
+        // Parse team value to proper CT/T string
+        function parseTeam(team) {
+            if (!team) return 'Unknown';
+            if (typeof team === 'number') {
+                if (team === 3) return 'CT';
+                if (team === 2) return 'T';
+                return 'Unknown';
+            }
+            const str = String(team).toUpperCase();
+            if (str === 'CT' || str.includes('COUNTER')) return 'CT';
+            if (str === 'T' || str === 'TERRORIST') return 'T';
+            if (str === 'UNKNOWN' || str === '?') return 'Unknown';
+            return str;
+        }
+
+        // Parse score and handle potential knife round
+        function parseScore(scoreStr, totalRounds) {
+            if (!scoreStr) return { ct: 0, t: 0, knife: false };
+            const parts = scoreStr.split(' - ').map(s => parseInt(s.trim()) || 0);
+            let ct = parts[0] || 0;
+            let t = parts[1] || 0;
+            let knife = false;
+
+            // If total score > 24 (max regular rounds) or > total rounds, likely includes knife
+            const totalScore = ct + t;
+            if (totalScore > 24 || (totalRounds && totalScore > totalRounds)) {
+                // Assume the extra round is a knife round - subtract 1 from winner
+                if (ct > t) ct--;
+                else if (t > ct) t--;
+                else ct--; // Arbitrary if tied
+                knife = true;
+            }
+            return { ct, t, knife };
+        }
+
         // Render results
         function renderResults(data) {
             const info = data.demo_info || {};
@@ -1492,7 +1552,7 @@
 
             let html = `
                 <div class="match-header">
-                    <div class="map-name">${esc(info.map) || 'Unknown Map'}</div>
+                    <div class="map-name">${formatMapName(info.map)}</div>
                     <div class="match-meta">
                         <span>${info.rounds || 0} rounds</span>
                         <span>&bull;</span>
@@ -1544,7 +1604,7 @@
                 </div>
 
                 <div class="tab-content" id="tab-heatmap">
-                    ${renderHeatmap(data.heatmap_data || {}, info.map || 'unknown')}
+                    ${renderHeatmap(data.heatmap_data || {}, formatMapName(info.map))}
                 </div>
 
                 <div class="tab-content" id="tab-coaching">
@@ -1552,7 +1612,7 @@
                 </div>
 
                 <div class="tab-content" id="tab-replay">
-                    ${renderReplayViewer(players, info.map || 'unknown')}
+                    ${renderReplayViewer(players, formatMapName(info.map))}
                 </div>
             `;
 
@@ -1713,8 +1773,6 @@
                             </div>
                         </div>
                     </div>
-                `;
-            }
 
             html += '</div>';
 
@@ -2328,8 +2386,24 @@
 
             if (!ctContainer || !tContainer) return;
 
-            const ctPlayers = players.filter(p => p.team === 'CT');
-            const tPlayers = players.filter(p => p.team === 'T');
+            // Parse teams properly
+            const playersWithTeam = players.map(p => ({
+                ...p,
+                parsedTeam: parseTeam(p.team)
+            }));
+
+            const ctPlayers = playersWithTeam.filter(p => p.parsedTeam === 'CT');
+            const tPlayers = playersWithTeam.filter(p => p.parsedTeam === 'T');
+
+            // Distribute unknowns
+            const unknowns = playersWithTeam.filter(p => p.parsedTeam === 'Unknown');
+            unknowns.forEach((p, i) => {
+                if (ctPlayers.length <= tPlayers.length) {
+                    ctPlayers.push(p);
+                } else {
+                    tPlayers.push(p);
+                }
+            });
 
             ctContainer.innerHTML = ctPlayers.map((p, i) => `
                 <div class="replay-player-item" data-player="${esc(p.name)}" onclick="selectReplayPlayer('${esc(p.name)}')">
