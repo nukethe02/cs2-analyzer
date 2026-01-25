@@ -56,14 +56,14 @@
                 </div>
                 <div class="team-stat-row">
                     <span>Utility Mastery</span>
-                    <div class="skill-bar">
-                        <div class="skill-fill" style="width: {{ t_stats.utility_success }}%"></div>
+                        <div class="skill-bar">
+                        <div class="skill-fill" data-width="{{ t_stats.utility_success }}"></div>
                     </div>
                 </div>
                 <div class="team-stat-row">
                     <span>Coordination</span>
                     <div class="skill-bar">
-                        <div class="skill-fill" style="width: {{ t_stats.coordination_score }}%"></div>
+                        <div class="skill-fill" data-width="{{ t_stats.coordination_score }}"></div>
                     </div>
                 </div>
             </div>
@@ -84,14 +84,14 @@
                 </div>
                 <div class="team-stat-row">
                     <span>Site Holds</span>
-                    <div class="skill-bar">
-                        <div class="skill-fill" style="width: {{ ct_stats.site_hold_success }}%"></div>
+                        <div class="skill-bar">
+                        <div class="skill-fill" data-width="{{ ct_stats.site_hold_success }}"></div>
                     </div>
                 </div>
                 <div class="team-stat-row">
                     <span>Retake Success</span>
-                    <div class="skill-bar">
-                        <div class="skill-fill" style="width: {{ ct_stats.retake_rate }}%"></div>
+                        <div class="skill-bar">
+                        <div class="skill-fill" data-width="{{ ct_stats.retake_rate }}"></div>
                     </div>
                 </div>
             </div>
@@ -112,8 +112,8 @@
                     <div class="play-name">{{ exec_type }}</div>
                     <div class="play-stats">
                         <span class="play-count">{{ count }}x</span>
-                        <div class="play-bar">
-                            <div class="play-fill" style="width: {{ (count / total_t_executes) * 100 }}%"></div>
+                            <div class="play-bar">
+                            <div class="play-fill" data-width="{{ (count / total_t_executes) * 100 }}"></div>
                         </div>
                     </div>
                 </div>
@@ -360,8 +360,8 @@
                 {% for exec_type, success_rate in execution_success %}
                 <div class="exec-success-item">
                     <span>{{ exec_type }}</span>
-                    <div class="success-bar">
-                        <div class="success-fill" style="width: {{ success_rate }}%"></div>
+                        <div class="success-bar">
+                        <div class="success-fill" data-width="{{ success_rate }}"></div>
                     </div>
                     <span class="success-pct">{{ success_rate }}%</span>
                 </div>
@@ -1055,4 +1055,17 @@
     line-height: 1.4;
 }
 </style>
+<script>
+// Apply widths computed on server-side (data-width attributes) to avoid template CSS lint issues
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-width]').forEach(function (el) {
+        var v = el.getAttribute('data-width');
+        if (v !== null && v !== undefined && v !== '') {
+            // ensure numeric value
+            var n = Number(v) || 0;
+            el.style.width = n + '%';
+        }
+    });
+});
+</script>
 {% endblock %}

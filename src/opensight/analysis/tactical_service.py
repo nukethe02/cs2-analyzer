@@ -1,5 +1,4 @@
-"""
-Tactical Analysis Service - Complete Game Review Engine
+"""Tactical Analysis Service - Complete Game Review Engine
 
 Generates comprehensive tactical insights for demo review:
 - Play-by-play breakdown
@@ -9,10 +8,12 @@ Generates comprehensive tactical insights for demo review:
 - Coaching recommendations
 """
 
+from __future__ import annotations
+
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
@@ -22,35 +23,35 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TacticalSummary:
     """Complete tactical analysis summary."""
-    key_insights: list[str] = field(default_factory=list)
-    
+    key_insights: List[str] = field(default_factory=list)
+
     # Team stats
-    t_stats: dict[str, Any] = field(default_factory=dict)
-    ct_stats: dict[str, Any] = field(default_factory=dict)
-    
+    t_stats: Dict[str, Any] = field(default_factory=dict)
+    ct_stats: Dict[str, Any] = field(default_factory=dict)
+
     # Play patterns
-    t_executes: list[tuple[str, int]] = field(default_factory=list)
-    buy_patterns: list[tuple[str, float]] = field(default_factory=list)
-    
+    t_executes: List[Tuple[str, int]] = field(default_factory=list)
+    buy_patterns: List[Tuple[str, float]] = field(default_factory=list)
+
     # Player info
-    key_players: list[dict] = field(default_factory=list)
-    player_analysis: dict[int, dict] = field(default_factory=dict)
-    
+    key_players: List[Dict[str, Any]] = field(default_factory=list)
+    player_analysis: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+
     # Round details
-    round_plays: list[dict] = field(default_factory=list)
-    
+    round_plays: List[Dict[str, Any]] = field(default_factory=list)
+
     # Matchup
-    t_strengths: list[str] = field(default_factory=list)
-    t_weaknesses: list[str] = field(default_factory=list)
-    ct_strengths: list[str] = field(default_factory=list)
-    ct_weaknesses: list[str] = field(default_factory=list)
+    t_strengths: List[str] = field(default_factory=list)
+    t_weaknesses: List[str] = field(default_factory=list)
+    ct_strengths: List[str] = field(default_factory=list)
+    ct_weaknesses: List[str] = field(default_factory=list)
     t_win_rate: float = 0.0
     ct_win_rate: float = 0.0
-    
+
     # Recommendations
-    team_recommendations: list[str] = field(default_factory=list)
-    individual_recommendations: list[str] = field(default_factory=list)
-    practice_drills: list[str] = field(default_factory=list)
+    team_recommendations: List[str] = field(default_factory=list)
+    individual_recommendations: List[str] = field(default_factory=list)
+    practice_drills: List[str] = field(default_factory=list)
 
 
 class TacticalAnalysisService:

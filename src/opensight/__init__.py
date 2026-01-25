@@ -425,3 +425,10 @@ __all__ = [
     "get_faceit_player",
     "get_faceit_match_history",
 ]
+
+
+# Backwards-compatible module alias for tests that import opensight.sharecode
+try:
+    from opensight.integrations import sharecode as sharecode  # type: ignore
+except Exception:
+    sharecode = None

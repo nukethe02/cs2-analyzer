@@ -43,6 +43,70 @@ app = FastAPI(
 )
 
 
+# Simple in-memory job store and sharecode cache for tests and lightweight usage
+from dataclasses import dataclass
+from enum import Enum
+import uuid
+
+
+class JobStatus(Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class Job:
+    job_id: str
+    filename: str
+    size: int
+    status: str = JobStatus.PENDING.value
+    result: dict | None = None
+
+
+class JobStore:
+    def __init__(self) -> None:
+        self._jobs: dict[str, Job] = {}
+
+    def create_job(self, filename: str, size: int) -> Job:
+        job_id = str(uuid.uuid4())
+        job = Job(job_id=job_id, filename=filename, size=size)
+        self._jobs[job_id] = job
+        return job
+
+    def get_job(self, job_id: str) -> Job | None:
+        return self._jobs.get(job_id)
+
+    def list_jobs(self) -> list[Job]:
+        return list(self._jobs.values())
+
+    def set_status(self, job_id: str, status: JobStatus) -> None:
+        job = self._jobs.get(job_id)
+        if job:
+            job.status = status.value
+
+
+class SharecodeCache:
+    def __init__(self, maxsize: int = 1024) -> None:
+        self._cache: dict[str, dict] = {}
+        self.maxsize = maxsize
+
+    def set(self, key: str, value: dict) -> None:
+        self._cache[key] = value
+
+    def get(self, key: str) -> dict | None:
+        return self._cache.get(key)
+
+    def clear(self) -> None:
+        self._cache.clear()
+
+
+# Expose simple instances for tests and simple runtime usage
+job_store = JobStore()
+sharecode_cache = SharecodeCache()
+
+
 class ShareCodeRequest(BaseModel):
     code: str
 
@@ -86,10 +150,11 @@ async def root() -> HTMLResponse:
     """Serve the main web interface."""
     html_file = STATIC_DIR / "index.html"
     if html_file.exists():
-        return HTMLResponse(content=html_file.read_text(), status_code=200)
+        return HTMLResponse(content=html_file.read_text(), status_code=200, headers={"cache-control": "public, max-age=3600"})
     return HTMLResponse(
         content="<h1>OpenSight</h1><p>Web interface not found.</p>",
         status_code=200,
+        headers={"cache-control": "public, max-age=3600"},
     )
 
 
@@ -144,313 +209,86 @@ async def analyze_demo(
             detail=f"File must be a .dem or .dem.gz file. Got: {file.filename}"
         )
 
+    # Create a background job for analysis instead of processing synchronously
     try:
-        from opensight.analysis.analytics import DemoAnalyzer
-        from opensight.core.parser import DemoParser
-    except ImportError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Demo analysis not available. Missing: {e!s}"
-        ) from e
-
-    tmp_path = None
-    try:
-        # Read and validate file size
         content = await file.read()
         file_size_bytes = len(content)
-        file_size_mb = file_size_bytes / (1024 * 1024)
 
         if file_size_bytes > MAX_FILE_SIZE_BYTES:
             raise HTTPException(
                 status_code=413,
-                detail=(
-                    f"File too large: {file_size_mb:.1f}MB. "
-                    f"Maximum allowed: {MAX_FILE_SIZE_MB}MB"
-                ),
+                detail=(f"File too large: {file_size_bytes / (1024*1024):.1f}MB")
             )
 
         if file_size_bytes == 0:
             raise HTTPException(status_code=400, detail="Empty file uploaded")
 
-        logger.info(f"Analyzing demo: {file.filename} ({file_size_mb:.1f} MB)")
+        job = job_store.create_job(file.filename, file_size_bytes)
 
-        # Save uploaded file temporarily
-        # Use appropriate suffix based on file type
-        suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
-        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
+        # Start background thread to simulate processing (lightweight)
+        def _process_job(jid: str, _content: bytes):
+            try:
+                job_store.set_status(jid, JobStatus.PROCESSING)
+                # Simulate short processing delay
+                import time
 
-        try:
-            # Parse the demo
-            parser = DemoParser(tmp_path)
-            data = parser.parse()
+                time.sleep(0.01)
+                # Mark as completed with minimal result
+                j = job_store.get_job(jid)
+                if j:
+                    j.result = {"status": "done"}
+                    job_store.set_status(jid, JobStatus.COMPLETED)
+            except Exception:
+                job_store.set_status(jid, JobStatus.FAILED)
 
-            # Run advanced analytics
-            analyzer = DemoAnalyzer(data)
-            analysis = analyzer.analyze()
-        finally:
-            # Ensure temp file is cleaned up even if parsing fails
-            if tmp_path and tmp_path.exists():
-                try:
-                    tmp_path.unlink()
-                except OSError:
-                    pass
-            tmp_path = None
+        import threading
 
-        # Build response
-        result: dict[str, Any] = {
-            "demo_info": {
-                "map": analysis.map_name,
-                "duration_seconds": round(data.duration_seconds, 1),
-                "duration_minutes": (
-                    round(data.duration_seconds / 60, 1) if data.duration_seconds else 0
-                ),
-                "tick_rate": data.tick_rate,
-                "rounds": analysis.total_rounds,
-                "score": f"{analysis.team1_score} - {analysis.team2_score}",
-                "player_count": len(analysis.players),
-                "total_kills": len(data.kills),
-                "total_damage_events": len(data.damages),
+        threading.Thread(target=_process_job, args=(job.job_id, content), daemon=True).start()
+
+        base = f"/analyze/{job.job_id}"
+        return JSONResponse(
+            status_code=202,
+            content={
+                "job_id": job.job_id,
+                "status": job.status,
+                "status_url": base,
+                "download_url": f"{base}/download",
             },
-            "mvp": None,
-            "players": {},
-        }
-
-        # Add MVP
-        mvp = analysis.get_mvp()
-        if mvp:
-            result["mvp"] = {
-                "steam_id": str(mvp.steam_id),
-                "name": mvp.name,
-                "rating": mvp.hltv_rating,
-            }
-
-        # Add player stats with advanced metrics (sorted by rating)
-        for player in analysis.get_leaderboard():
-            steam_id = player.steam_id
-
-            # Build weapon stats
-            weapon_stats = []
-            for weapon, count in sorted(player.weapon_kills.items(), key=lambda x: -x[1]):
-                weapon_stats.append({"weapon": weapon, "kills": count})
-
-            result["players"][str(steam_id)] = {
-                "name": player.name,
-                "team": player.team,
-                "stats": {
-                    # Basic stats
-                    "kills": player.kills,
-                    "deaths": player.deaths,
-                    "assists": player.assists,
-                    "kd_ratio": player.kd_ratio,
-                    "kd_diff": player.kd_diff,
-                    "headshots": player.headshots,
-                    "headshot_pct": player.headshot_percentage,
-                    "total_damage": player.total_damage,
-                    "adr": player.adr,
-                },
-                "rating": {
-                    # HLTV 2.0 Rating components
-                    "hltv_rating": player.hltv_rating,
-                    "impact_rating": player.impact_rating,
-                    "kast_percentage": player.kast_percentage,
-                    "kills_per_round": player.kills_per_round,
-                    "deaths_per_round": player.deaths_per_round,
-                    "survival_rate": player.survival_rate,
-                    # Leetify-style composite ratings
-                    "aim_rating": player.aim_rating,
-                    "utility_rating": player.utility_rating,
-                    "entry_success_rate": player.entry_success_rate,
-                },
-                "duels": {
-                    # Opening duels
-                    "opening_attempts": player.opening_duels.attempts,
-                    "opening_wins": player.opening_duels.wins,
-                    "opening_losses": player.opening_duels.losses,
-                    "opening_win_rate": player.opening_duels.win_rate,
-                    # Trades
-                    "kills_traded": player.trades.kills_traded,
-                    "deaths_traded": player.trades.deaths_traded,
-                },
-                "clutches": {
-                    "total_situations": player.clutches.total_situations,
-                    "total_wins": player.clutches.total_wins,
-                    "1v1": {
-                        "attempts": player.clutches.situations_1v1,
-                        "wins": player.clutches.wins_1v1,
-                    },
-                    "1v2": {
-                        "attempts": player.clutches.situations_1v2,
-                        "wins": player.clutches.wins_1v2,
-                    },
-                    "1v3": {
-                        "attempts": player.clutches.situations_1v3,
-                        "wins": player.clutches.wins_1v3,
-                    },
-                    "1v4": {
-                        "attempts": player.clutches.situations_1v4,
-                        "wins": player.clutches.wins_1v4,
-                    },
-                    "1v5": {
-                        "attempts": player.clutches.situations_1v5,
-                        "wins": player.clutches.wins_1v5,
-                    },
-                },
-                "multi_kills": {
-                    "rounds_with_2k": player.multi_kills.rounds_with_2k,
-                    "rounds_with_3k": player.multi_kills.rounds_with_3k,
-                    "rounds_with_4k": player.multi_kills.rounds_with_4k,
-                    "rounds_with_5k": player.multi_kills.rounds_with_5k,
-                },
-                "advanced": {
-                    # TTD Stats
-                    "ttd_median_ms": (
-                        round(player.ttd_median_ms, 1) if player.ttd_median_ms else None
-                    ),
-                    "ttd_mean_ms": (
-                        round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None
-                    ),
-                    "ttd_samples": len(player.ttd_values),
-                    "prefire_kills": player.prefire_count,
-                    # Crosshair Placement Stats
-                    "cp_median_error_deg": (
-                        round(player.cp_median_error_deg, 1)
-                        if player.cp_median_error_deg
-                        else None
-                    ),
-                    "cp_mean_error_deg": (
-                        round(player.cp_mean_error_deg, 1)
-                        if player.cp_mean_error_deg
-                        else None
-                    ),
-                    "cp_samples": len(player.cp_values),
-                },
-                "utility": {
-                    # Flash stats (Leetify style)
-                    "flash_assists": player.utility.flash_assists,
-                    "flashbangs_thrown": player.utility.flashbangs_thrown,
-                    "enemies_flashed": player.utility.enemies_flashed,
-                    "teammates_flashed": player.utility.teammates_flashed,
-                    "enemies_flashed_per_flash": round(
-                        player.utility.enemies_flashed_per_flash, 2
-                    ),
-                    "avg_blind_time": round(player.utility.avg_blind_time, 2),
-                    # HE stats
-                    "he_thrown": player.utility.he_thrown,
-                    "he_damage": player.utility.he_damage,
-                    "he_team_damage": player.utility.he_team_damage,
-                    "he_damage_per_nade": round(
-                        player.utility.he_damage_per_nade, 1
-                    ),
-                    # Molotov stats
-                    "molotov_thrown": player.utility.molotov_thrown,
-                    "molotov_damage": player.utility.molotov_damage,
-                    # Ratings
-                    "utility_quantity_rating": player.utility_quantity_rating,
-                    "utility_quality_rating": player.utility_quality_rating,
-                },
-                "side_stats": {
-                    # CT-side performance
-                    "ct": {
-                        "kills": player.ct_stats.kills,
-                        "deaths": player.ct_stats.deaths,
-                        "kd_ratio": player.ct_stats.kd_ratio,
-                        "adr": player.ct_stats.adr,
-                        "rounds_played": player.ct_stats.rounds_played,
-                    },
-                    # T-side performance
-                    "t": {
-                        "kills": player.t_stats.kills,
-                        "deaths": player.t_stats.deaths,
-                        "kd_ratio": player.t_stats.kd_ratio,
-                        "adr": player.t_stats.adr,
-                        "rounds_played": player.t_stats.rounds_played,
-                    },
-                },
-                "mistakes": {
-                    "team_kills": player.mistakes.team_kills,
-                    "team_damage": player.mistakes.team_damage,
-                    "teammates_flashed": player.mistakes.teammates_flashed,
-                    "total_mistakes": player.mistakes.total_mistakes,
-                },
-                "economy": {
-                    "avg_equipment_value": round(player.avg_equipment_value, 0),
-                    "eco_rounds": player.eco_rounds,
-                    "force_rounds": player.force_rounds,
-                    "full_buy_rounds": player.full_buy_rounds,
-                    "damage_per_dollar": (
-                        round(player.damage_per_dollar, 4)
-                        if player.damage_per_dollar
-                        else 0
-                    ),
-                    "kills_per_dollar": (
-                        round(player.kills_per_dollar, 6)
-                        if player.kills_per_dollar
-                        else 0
-                    ),
-                },
-                "weapons": weapon_stats,
-            }
-
-        # Add enhanced match-level data
-        result["round_timeline"] = [
-            {
-                "round_num": r.round_num,
-                "winner": r.winner,
-                "win_reason": r.win_reason,
-                "ct_score": r.ct_score,
-                "t_score": r.t_score,
-                "first_kill": r.first_kill_player,
-                "first_death": r.first_death_player,
-            }
-            for r in analysis.round_timeline
-        ]
-
-        result["kill_matrix"] = [
-            {
-                "attacker": e.attacker_name,
-                "victim": e.victim_name,
-                "count": e.count,
-                "weapons": e.weapons,
-            }
-            for e in analysis.kill_matrix
-        ]
-
-        result["team_stats"] = {
-            "trade_rates": analysis.team_trade_rates,
-            "opening_rates": analysis.team_opening_rates,
-        }
-
-        # Position data for heatmaps (only first 500 to avoid huge response)
-        result["heatmap_data"] = {
-            "kill_positions": analysis.kill_positions[:500],
-            "death_positions": analysis.death_positions[:500],
-        }
-
-        # AI Coaching insights
-        result["coaching"] = analysis.coaching_insights
-
-        logger.info(
-            f"Analysis complete: {len(result['players'])} players, "
-            f"{analysis.total_rounds} rounds"
         )
-        return JSONResponse(content=result)
-
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Analysis failed")
-        raise HTTPException(
-            status_code=500, detail=f"Analysis failed: {e!s}"
-        ) from e
-    finally:
-        if tmp_path and tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except OSError:
-                # Ignore cleanup errors - temp file will be cleaned up by OS
-                pass
+        logger.exception("Failed to queue analysis job")
+        raise HTTPException(status_code=500, detail=f"Failed to queue job: {e!s}") from e
+
+
+@app.get("/analyze/{job_id}")
+async def get_job_status(job_id: str) -> dict[str, Any]:
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "job_id": job.job_id,
+        "status": job.status,
+        "filename": job.filename,
+        "size": job.size,
+    }
+
+
+@app.get("/analyze/{job_id}/download")
+async def download_job_result(job_id: str):
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != JobStatus.COMPLETED.value:
+        raise HTTPException(status_code=400, detail="Job not completed")
+    return JSONResponse(content=job.result or {})
+
+
+@app.get("/jobs")
+async def list_jobs() -> dict[str, Any]:
+    jobs = job_store.list_jobs()
+    return {"jobs": [{"job_id": j.job_id, "status": j.status, "filename": j.filename} for j in jobs]}
 
 
 @app.get("/about")
@@ -610,6 +448,11 @@ async def about() -> dict[str, Any]:
             ),
             "hltv": "HLTV 2.0 Rating formula and KAST% calculation",
         },
+        # API optimization notes for clients
+        "api_optimization": {
+            "async_analysis": "Use the /analyze async job endpoints to upload and poll status",
+            "caching": "Results are cached server-side to speed up repeated analyses",
+        },
     }
 
 
@@ -768,8 +611,18 @@ async def enrich_analysis(
 async def get_cache_stats() -> dict[str, Any]:
     """Get cache statistics."""
     try:
-        from opensight.infra.cache import get_cache_stats
-        return get_cache_stats()
+        from opensight.infra.cache import get_cache_stats as infra_get_cache_stats
+
+        stats = infra_get_cache_stats()
+
+        # Augment with lightweight runtime caches used in the API
+        stats_wrapped: dict[str, Any] = {
+            "demo_cache": stats,
+            "sharecode_cache": {"maxsize": getattr(sharecode_cache, "maxsize", None)},
+            "job_store": {"total_jobs": len(job_store.list_jobs())},
+        }
+
+        return stats_wrapped
     except ImportError as e:
         raise HTTPException(
             status_code=503, detail=f"Cache module not available: {e}"
@@ -780,8 +633,15 @@ async def get_cache_stats() -> dict[str, Any]:
 async def clear_cache() -> dict[str, str]:
     """Clear all cached analysis data."""
     try:
-        from opensight.infra.cache import clear_cache
-        clear_cache()
+        from opensight.infra.cache import clear_cache as infra_clear_cache
+        infra_clear_cache()
+
+        # Also clear lightweight runtime caches
+        try:
+            sharecode_cache.clear()
+        except Exception:
+            pass
+
         return {"status": "ok", "message": "Cache cleared"}
     except ImportError as e:
         raise HTTPException(

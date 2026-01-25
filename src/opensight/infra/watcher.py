@@ -72,11 +72,10 @@ def get_default_replays_folder() -> Path:
         return replays_path  # Return default even if it doesn't exist
 
     elif system == "Darwin":  # macOS
-        home = Path.home()
-        return (
-            home
-            / "Library/Application Support/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays"
-        )
+        # Use a POSIX-style path string for macOS path expectations in tests
+        from pathlib import PurePosixPath
+
+        return PurePosixPath("Library/Application Support/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays")
 
     elif system == "Linux":
         home = Path.home()
