@@ -227,6 +227,12 @@ class DemoCache:
         Returns:
             Cached analysis dict or None if not cached
         """
+        # Ensure cache directory and index exist (first-run safety)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        if not self.index_path.exists():
+            self._miss_count += 1
+            return None
+
         key = self.get_cache_key(demo_path)
 
         with open(self.index_path, "r") as f:  # Add lock for thread safety
