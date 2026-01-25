@@ -225,25 +225,44 @@ async def analyze_demo(
 
         job = job_store.create_job(file.filename, file_size_bytes)
 
-        # Start background thread to simulate processing (lightweight)
-        def _process_job(jid: str, _content: bytes):
+        # Start background worker to save upload and run real analysis
+        try:
+            tmp = NamedTemporaryFile(suffix=".dem", delete=False)
             try:
-                job_store.set_status(jid, JobStatus.PROCESSING)
-                # Simulate short processing delay
-                import time
+                tmp.write(content)
+                tmp.flush()
+                demo_path = Path(tmp.name)
+            finally:
+                tmp.close()
 
-                time.sleep(0.01)
-                # Mark as completed with minimal result
-                j = job_store.get_job(jid)
-                if j:
-                    j.result = {"status": "done"}
-                    job_store.set_status(jid, JobStatus.COMPLETED)
-            except Exception:
-                job_store.set_status(jid, JobStatus.FAILED)
+            def _process_job(jid: str, demo_path: Path):
+                try:
+                    job_store.set_status(jid, JobStatus.PROCESSING)
+                    from opensight.infra.cache import analyze_with_cache
 
-        import threading
+                    result = analyze_with_cache(demo_path)
+                    j = job_store.get_job(jid)
+                    if j:
+                        j.result = result
+                        job_store.set_status(jid, JobStatus.COMPLETED)
+                except Exception as ex:
+                    logger.exception("Job processing failed")
+                    j = job_store.get_job(jid)
+                    if j:
+                        j.result = {"error": str(ex)}
+                        job_store.set_status(jid, JobStatus.FAILED)
+                finally:
+                    try:
+                        demo_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
-        threading.Thread(target=_process_job, args=(job.job_id, content), daemon=True).start()
+            import threading
+
+            threading.Thread(target=_process_job, args=(job.job_id, demo_path), daemon=True).start()
+        except Exception:
+            # If we fail to start the worker, mark job failed
+            job_store.set_status(job.job_id, JobStatus.FAILED)
 
         base = f"/analyze/{job.job_id}"
         return JSONResponse(
