@@ -1,0 +1,1058 @@
+{% extends "base.html" %}
+
+{% block title %}Tactical Analysis{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="analysis-header mb-6">
+    <h1>{{ demo_info.map }} - Tactical Breakdown</h1>
+    <div class="demo-meta">
+        <span class="meta-item">{{ demo_info.rounds }} rounds</span>
+        <span class="meta-item">{{ "%.1f"|format(demo_info.duration / 60) }} minutes</span>
+        <span class="meta-item">{{ players|length }} players</span>
+    </div>
+</div>
+
+<!-- Quick Insights Panel -->
+<div class="insights-panel card mb-6">
+    <div class="card-header">
+        <h2><i class="fas fa-lightbulb"></i> Key Tactical Insights</h2>
+    </div>
+    <div class="insights-list">
+        {% for insight in tactical_summary.key_insights %}
+        <div class="insight-item">
+            <i class="fas fa-check-circle"></i>
+            <span>{{ insight }}</span>
+        </div>
+        {% else %}
+        <p class="text-muted">Analyzing tactical patterns...</p>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Three Column Layout: Team Overview / Plays / Players -->
+<div class="grid grid-3 gap-4 mb-6">
+    
+    <!-- LEFT: TEAM OVERVIEW -->
+    <div class="column">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="fas fa-users"></i> Team Overview</h3>
+            </div>
+            
+            <!-- T Side Stats -->
+            <div class="team-section ct-section">
+                <div class="team-header">
+                    <span class="team-name">TERRORISTS</span>
+                    <span class="team-record">{{ t_stats.rounds_won }}-{{ t_stats.rounds_lost }}</span>
+                </div>
+                <div class="team-stat-row">
+                    <span>Win Condition</span>
+                    <strong>{{ t_stats.primary_win_condition }}</strong>
+                </div>
+                <div class="team-stat-row">
+                    <span>Play Style</span>
+                    <strong>{{ t_stats.play_style }}</strong>
+                </div>
+                <div class="team-stat-row">
+                    <span>Utility Mastery</span>
+                    <div class="skill-bar">
+                        <div class="skill-fill" style="width: {{ t_stats.utility_success }}%"></div>
+                    </div>
+                </div>
+                <div class="team-stat-row">
+                    <span>Coordination</span>
+                    <div class="skill-bar">
+                        <div class="skill-fill" style="width: {{ t_stats.coordination_score }}%"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- CT Side Stats -->
+            <div class="team-section t-section">
+                <div class="team-header">
+                    <span class="team-name">COUNTER-TERRORISTS</span>
+                    <span class="team-record">{{ ct_stats.rounds_won }}-{{ ct_stats.rounds_lost }}</span>
+                </div>
+                <div class="team-stat-row">
+                    <span>Defense Strategy</span>
+                    <strong>{{ ct_stats.defense_strategy }}</strong>
+                </div>
+                <div class="team-stat-row">
+                    <span>Anti-Exe Effectiveness</span>
+                    <strong>{{ ct_stats.anti_exe_rate }}%</strong>
+                </div>
+                <div class="team-stat-row">
+                    <span>Site Holds</span>
+                    <div class="skill-bar">
+                        <div class="skill-fill" style="width: {{ ct_stats.site_hold_success }}%"></div>
+                    </div>
+                </div>
+                <div class="team-stat-row">
+                    <span>Retake Success</span>
+                    <div class="skill-bar">
+                        <div class="skill-fill" style="width: {{ ct_stats.retake_rate }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MIDDLE: PLAY BREAKDOWN -->
+    <div class="column">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="fas fa-chess"></i> Play Execution</h3>
+            </div>
+            
+            <div class="play-section">
+                <div class="section-title">T Side Attacks</div>
+                {% for exec_type, count in t_executes %}
+                <div class="play-item">
+                    <div class="play-name">{{ exec_type }}</div>
+                    <div class="play-stats">
+                        <span class="play-count">{{ count }}x</span>
+                        <div class="play-bar">
+                            <div class="play-fill" style="width: {{ (count / total_t_executes) * 100 }}%"></div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <hr style="margin: 1rem 0; opacity: 0.3;">
+            
+            <div class="play-section">
+                <div class="section-title">Buy Patterns</div>
+                {% for buy_type, win_rate in buy_patterns %}
+                <div class="buy-item">
+                    <span class="buy-type">{{ buy_type }}</span>
+                    <span class="buy-wr {% if win_rate >= 60 %}win-rate-good{% elif win_rate >= 40 %}win-rate-ok{% else %}win-rate-bad{% endif %}">{{ win_rate }}%</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- RIGHT: KEY PLAYERS -->
+    <div class="column">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="fas fa-crown"></i> Key Players</h3>
+            </div>
+            
+            {% for player in key_players %}
+            <div class="player-highlight-card">
+                <div class="player-name-role">
+                    <span class="player-name">{{ player.name }}</span>
+                    <span class="player-role {% if player.team == 'T' %}t-side{% else %}ct-side{% endif %}">
+                        {{ player.primary_role }}
+                    </span>
+                </div>
+                
+                <div class="player-stat-compact">
+                    <div class="stat-mini">
+                        <span class="stat-label">Opening Kills</span>
+                        <span class="stat-value">{{ player.opening_kills }}</span>
+                    </div>
+                    <div class="stat-mini">
+                        <span class="stat-label">Trades</span>
+                        <span class="stat-value">{{ player.trade_kills }}</span>
+                    </div>
+                    <div class="stat-mini">
+                        <span class="stat-label">Rating</span>
+                        <span class="stat-value">{{ player.impact_rating }}</span>
+                    </div>
+                </div>
+                
+                <div class="player-strength">
+                    {% if player.strengths %}
+                    <span class="strength-tag">{{ player.strengths[0] }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- ROUND-BY-ROUND ANALYSIS -->
+<div class="card mb-6">
+    <div class="card-header">
+        <h2><i class="fas fa-list"></i> Round-by-Round Breakdown</h2>
+    </div>
+    
+    <div class="rounds-timeline">
+        {% for play in round_plays %}
+        <div class="round-item {% if play.round_winner == 'T' %}round-t-win{% else %}round-ct-win{% endif %}">
+            <div class="round-num">R{{ play.round_num }}</div>
+            
+            <div class="round-details">
+                <div class="round-play-type">
+                    <strong>{{ play.attack_type }}</strong>
+                </div>
+                
+                {% if play.utility_used %}
+                <div class="round-utilities">
+                    {% for utility in play.utility_used %}
+                    <span class="utility-badge">{{ utility }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <div class="round-outcome">
+                    {% if play.first_kill_time %}
+                    First kill: {{ "%.1f"|format(play.first_kill_time) }}s
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="round-result">
+                <span class="round-winner-badge">{{ play.round_winner }} Won</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- DETAILED PLAYER ANALYSIS -->
+<div class="card mb-6">
+    <div class="card-header">
+        <h2><i class="fas fa-user"></i> Individual Player Analysis</h2>
+    </div>
+    
+    <div class="tabs">
+        <div class="tab-buttons">
+            {% for player in players %}
+            <button class="tab-btn {% if loop.first %}active{% endif %}" data-tab="player-{{ player.steam_id }}">
+                {{ player.name }}
+            </button>
+            {% endfor %}
+        </div>
+        
+        {% for player in players %}
+        <div class="tab-content {% if loop.first %}active{% endif %}" id="player-{{ player.steam_id }}">
+            <div class="player-analysis-grid">
+                <!-- Role & Playstyle -->
+                <div class="analysis-section">
+                    <h4>Role & Playstyle</h4>
+                    <div class="role-info">
+                        <div class="role-badge primary-role">{{ player.primary_role }}</div>
+                        <p class="role-description">
+                            {% if player.primary_role == 'entry' %}
+                                Primary entry fragger - leads attacks
+                            {% elif player.primary_role == 'awp' %}
+                                AWP specialist - sniper plays
+                            {% elif player.primary_role == 'support' %}
+                                Support player - utility focused
+                            {% elif player.primary_role == 'lurker' %}
+                                Lurk player - flank attacks
+                            {% else %}
+                                Flexible rifler - adapts to team needs
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- Strengths -->
+                <div class="analysis-section strengths">
+                    <h4><i class="fas fa-arrow-up"></i> Strengths</h4>
+                    {% for strength in player.strengths %}
+                    <div class="strength-item">
+                        <i class="fas fa-check"></i> {{ strength }}
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <!-- Weaknesses -->
+                <div class="analysis-section weaknesses">
+                    <h4><i class="fas fa-arrow-down"></i> Areas for Improvement</h4>
+                    {% for weakness in player.weaknesses %}
+                    <div class="weakness-item">
+                        <i class="fas fa-exclamation"></i> {{ weakness }}
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <!-- Key Metrics -->
+                <div class="analysis-section metrics">
+                    <h4><i class="fas fa-chart-bar"></i> Key Metrics</h4>
+                    
+                    <div class="metric-grid">
+                        <div class="metric-card">
+                            <span class="metric-label">Opening Kills</span>
+                            <span class="metric-value">{{ player.opening_kills }}</span>
+                            <span class="metric-sublabel">per match</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">Trade Efficiency</span>
+                            <span class="metric-value">{{ player.trade_kills }}</span>
+                            <span class="metric-sublabel">trades made</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">Impact Rating</span>
+                            <span class="metric-value">{{ player.impact_rating }}</span>
+                            <span class="metric-sublabel">round impact</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">Lurk Frequency</span>
+                            <span class="metric-value">{{ "%.0f"|format(player.lurk_frequency * 100) }}%</span>
+                            <span class="metric-sublabel">away from team</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Positioning Heat -->
+                <div class="analysis-section">
+                    <h4><i class="fas fa-map-pin"></i> Default Positions</h4>
+                    <div class="position-list">
+                        {% for position, count in player.default_positions.items() %}
+                        <div class="position-item">
+                            <span class="position-name">{{ position }}</span>
+                            <span class="position-count">{{ count }}x</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- TEAM MATCHUP ANALYSIS -->
+<div class="card mb-6">
+    <div class="card-header">
+        <h2><i class="fas fa-handshake"></i> Team Matchup Analysis</h2>
+    </div>
+    
+    <div class="matchup-grid">
+        <div class="matchup-side">
+            <h3>T Side Strengths</h3>
+            <ul class="strength-list">
+                {% for strength in t_strengths %}
+                <li>{{ strength }}</li>
+                {% endfor %}
+            </ul>
+            
+            <h3 style="margin-top: 2rem;">T Side Weaknesses</h3>
+            <ul class="weakness-list">
+                {% for weakness in t_weaknesses %}
+                <li>{{ weakness }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <div class="matchup-center">
+            <div class="matchup-score">
+                <div class="score-item">
+                    <span class="score-label">T Win Rate</span>
+                    <span class="score-big">{{ t_win_rate }}%</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">CT Win Rate</span>
+                    <span class="score-big">{{ ct_win_rate }}%</span>
+                </div>
+            </div>
+            
+            <div class="execution-summary">
+                <h4>Execution Success</h4>
+                {% for exec_type, success_rate in execution_success %}
+                <div class="exec-success-item">
+                    <span>{{ exec_type }}</span>
+                    <div class="success-bar">
+                        <div class="success-fill" style="width: {{ success_rate }}%"></div>
+                    </div>
+                    <span class="success-pct">{{ success_rate }}%</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <div class="matchup-side">
+            <h3>CT Side Strengths</h3>
+            <ul class="strength-list">
+                {% for strength in ct_strengths %}
+                <li>{{ strength }}</li>
+                {% endfor %}
+            </ul>
+            
+            <h3 style="margin-top: 2rem;">CT Side Weaknesses</h3>
+            <ul class="weakness-list">
+                {% for weakness in ct_weaknesses %}
+                <li>{{ weakness }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- COACHING RECOMMENDATIONS -->
+<div class="card">
+    <div class="card-header">
+        <h2><i class="fas fa-graduation-cap"></i> Coaching Recommendations</h2>
+    </div>
+    
+    <div class="recommendations-grid">
+        <div class="rec-section">
+            <h4><i class="fas fa-chess-pawn"></i> Team Level</h4>
+            <ol class="rec-list">
+                {% for rec in team_recommendations %}
+                <li>{{ rec }}</li>
+                {% endfor %}
+            </ol>
+        </div>
+        
+        <div class="rec-section">
+            <h4><i class="fas fa-user-graduate"></i> Individual Focus</h4>
+            <ol class="rec-list">
+                {% for rec in individual_recommendations %}
+                <li>{{ rec }}</li>
+                {% endfor %}
+            </ol>
+        </div>
+        
+        <div class="rec-section">
+            <h4><i class="fas fa-bullseye"></i> Practice Drills</h4>
+            <ol class="rec-list">
+                {% for drill in practice_drills %}
+                <li>{{ drill }}</li>
+                {% endfor %}
+            </ol>
+        </div>
+    </div>
+</div>
+
+<style>
+.analysis-header {
+    border-bottom: 2px solid var(--accent-primary);
+    padding-bottom: 1.5rem;
+}
+
+.demo-meta {
+    display: flex;
+    gap: 2rem;
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.meta-item {
+    color: var(--text-secondary);
+}
+
+.insights-panel .insights-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.insight-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: rgba(0, 212, 170, 0.1);
+    border-radius: 6px;
+    color: #00d4aa;
+}
+
+.team-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.team-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.team-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+}
+
+.team-name {
+    font-weight: 600;
+    color: #fff;
+}
+
+.team-record {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.team-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+}
+
+.skill-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-left: 1rem;
+}
+
+.skill-fill {
+    height: 100%;
+    background: var(--accent-primary);
+    border-radius: 3px;
+}
+
+.play-section {
+    margin-bottom: 1.5rem;
+}
+
+.section-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+}
+
+.play-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+}
+
+.play-name {
+    flex: 1;
+}
+
+.play-stats {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.play-count {
+    font-weight: 600;
+    min-width: 2.5rem;
+    text-align: right;
+}
+
+.play-bar {
+    width: 80px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2.5px;
+    overflow: hidden;
+}
+
+.play-fill {
+    height: 100%;
+    background: var(--accent-primary);
+}
+
+.buy-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+}
+
+.buy-type {
+    flex: 1;
+}
+
+.buy-wr {
+    font-weight: 600;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.win-rate-good {
+    color: #00ff00;
+    background: rgba(0, 255, 0, 0.1) !important;
+}
+
+.win-rate-ok {
+    color: #ffaa00;
+    background: rgba(255, 170, 0, 0.1) !important;
+}
+
+.win-rate-bad {
+    color: #ff4444;
+    background: rgba(255, 68, 68, 0.1) !important;
+}
+
+.player-highlight-card {
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    background: rgba(0, 212, 170, 0.05);
+    border-left: 3px solid var(--accent-primary);
+    border-radius: 4px;
+}
+
+.player-name-role {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.player-name {
+    font-weight: 600;
+}
+
+.player-role {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    text-transform: uppercase;
+}
+
+.t-side {
+    background: rgba(255, 100, 100, 0.2) !important;
+    color: #ff6464;
+}
+
+.ct-side {
+    background: rgba(100, 150, 255, 0.2) !important;
+    color: #6496ff;
+}
+
+.player-stat-compact {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.stat-mini {
+    text-align: center;
+    font-size: 0.85rem;
+}
+
+.stat-label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.stat-value {
+    display: block;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--accent-primary);
+}
+
+.player-strength {
+    display: flex;
+}
+
+.strength-tag {
+    font-size: 0.8rem;
+    background: rgba(0, 255, 100, 0.2);
+    color: #00ff64;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+}
+
+.rounds-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.round-item {
+    display: grid;
+    grid-template-columns: 50px 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.75rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.round-t-win {
+    border-left: 3px solid #ff6464;
+    background: rgba(255, 100, 100, 0.08);
+}
+
+.round-ct-win {
+    border-left: 3px solid #6496ff;
+    background: rgba(100, 150, 255, 0.08);
+}
+
+.round-num {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.round-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.round-play-type {
+    font-size: 0.9rem;
+}
+
+.round-utilities {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.utility-badge {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    text-transform: uppercase;
+}
+
+.round-outcome {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.round-result {
+    text-align: right;
+}
+
+.round-winner-badge {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.25rem 0.75rem;
+    background: var(--accent-primary);
+    color: #000;
+    border-radius: 3px;
+}
+
+.tabs {
+    width: 100%;
+}
+
+.tab-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 1rem;
+}
+
+.tab-btn {
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.tab-btn.active {
+    color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
+}
+
+.tab-btn:hover {
+    color: #fff;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.player-analysis-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2rem;
+}
+
+@media (max-width: 1200px) {
+    .player-analysis-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.analysis-section {
+    padding: 1rem;
+    background: rgba(0, 212, 170, 0.05);
+    border-radius: 6px;
+    border: 1px solid rgba(0, 212, 170, 0.2);
+}
+
+.analysis-section h4 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.95rem;
+    color: var(--accent-primary);
+}
+
+.role-badge {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--accent-primary);
+    color: #000;
+    border-radius: 4px;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+}
+
+.role-description {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.strength-item,
+.weakness-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.strength-item i {
+    color: #00ff64;
+}
+
+.weakness-item i {
+    color: #ffaa00;
+}
+
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+}
+
+.metric-card {
+    display: flex;
+    flex-direction: column;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    text-align: center;
+}
+
+.metric-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.metric-value {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--accent-primary);
+}
+
+.metric-sublabel {
+    font-size: 0.7rem;
+    color: #666;
+}
+
+.position-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.position-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+    font-size: 0.9rem;
+}
+
+.position-name {
+    flex: 1;
+}
+
+.position-count {
+    font-weight: 600;
+    color: var(--accent-primary);
+}
+
+.matchup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2rem;
+}
+
+@media (max-width: 1200px) {
+    .matchup-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.matchup-side {
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+}
+
+.matchup-side h3 {
+    font-size: 0.95rem;
+    margin: 0 0 0.75rem 0;
+    color: #fff;
+}
+
+.strength-list,
+.weakness-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.strength-list li {
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    background: rgba(0, 255, 100, 0.1);
+    border-left: 3px solid #00ff64;
+    border-radius: 3px;
+    font-size: 0.9rem;
+    color: #00ff64;
+}
+
+.weakness-list li {
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    background: rgba(255, 170, 0, 0.1);
+    border-left: 3px solid #ffaa00;
+    border-radius: 3px;
+    font-size: 0.9rem;
+    color: #ffaa00;
+}
+
+.matchup-center {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.matchup-score {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.score-item {
+    text-align: center;
+    padding: 1rem;
+    background: rgba(0, 212, 170, 0.1);
+    border-radius: 6px;
+}
+
+.score-label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.score-big {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+.execution-summary {
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+}
+
+.execution-summary h4 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.95rem;
+}
+
+.exec-success-item {
+    display: grid;
+    grid-template-columns: 100px 1fr 50px;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.success-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.success-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary), #00ff64);
+}
+
+.success-pct {
+    font-weight: 600;
+    text-align: right;
+}
+
+.recommendations-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+}
+
+@media (max-width: 1200px) {
+    .recommendations-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.rec-section {
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+}
+
+.rec-section h4 {
+    margin: 0 0 1rem 0;
+    color: var(--accent-primary);
+}
+
+.rec-list {
+    list-style: decimal;
+    padding-left: 1.5rem;
+    margin: 0;
+}
+
+.rec-list li {
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+</style>
+{% endblock %}

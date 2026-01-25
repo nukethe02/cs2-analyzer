@@ -1,68 +1,448 @@
 {% extends "base.html" %}
 
-{% block title %}Analyze Demo{% endblock %}
+{% block title %}Demo Analysis{% endblock %}
 
 {% block content %}
-<h1 class="mb-3" style="font-size: 2rem;">
-    <i class="fas fa-chart-line" style="color: var(--accent-primary);"></i>
-    Analyze Demo
-</h1>
+<div class="analyze-container">
+    <h1 class="analyze-title">
+        <i class="fas fa-film"></i>
+        Upload & Analyze
+    </h1>
+    
+    <p class="analyze-description">
+        Upload a CS2 demo file (.dem) to get instant tactical insights for league play review
+    </p>
 
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title"><i class="fas fa-upload"></i> Upload Demo File</h2>
+    <!-- Analysis Type Selection -->
+    <div class="analysis-type-selector">
+        <h2>Select Analysis Type</h2>
+        <div class="type-options">
+            <input type="radio" name="analysis_type" id="type_tactical" value="tactical" checked>
+            <label for="type_tactical" class="type-card type-card-active">
+                <div class="type-icon">
+                    <i class="fas fa-chess"></i>
+                </div>
+                <div class="type-content">
+                    <div class="type-title">Tactical Review</div>
+                    <div class="type-description">
+                        Play execution, roles, utility usage, team strengths/weaknesses. Perfect for league coaching.
+                    </div>
+                </div>
+            </label>
+
+            <input type="radio" name="analysis_type" id="type_stats" value="stats">
+            <label for="type_stats" class="type-card">
+                <div class="type-icon">
+                    <i class="fas fa-chart-bar"></i>
+                </div>
+                <div class="type-content">
+                    <div class="type-title">Player Stats</div>
+                    <div class="type-description">
+                        Individual metrics: K/D, HS%, ADR, Rating. Quick performance overview.
+                    </div>
+                </div>
+            </label>
+        </div>
     </div>
 
-    <form action="{{ url_for('analyze') }}" method="POST" enctype="multipart/form-data" id="uploadForm">
-        <div class="file-upload" id="dropZone">
-            <input type="file" name="demo_file" id="demoFile" accept=".dem" style="display: none;" required>
-            <div class="file-upload-icon">
+    <!-- Upload Area -->
+    <div class="upload-section">
+        <div class="upload-box" id="uploadBox">
+            <div class="upload-content">
                 <i class="fas fa-cloud-upload-alt"></i>
+                <h2>Drop your demo here</h2>
+                <p>or click to browse</p>
+                <input type="file" id="fileInput" accept=".dem,.dem.gz" hidden>
             </div>
-            <div class="file-upload-text">
-                <strong>Click to upload</strong> or drag and drop
-            </div>
-            <div class="file-upload-hint">
-                CS2 Demo files only (.dem) • Max 500MB
-            </div>
-            <div id="fileName" style="margin-top: 1rem; color: var(--accent-secondary); font-weight: 600; display: none;"></div>
         </div>
 
-        <div class="mt-4" style="text-align: center;">
-            <button type="submit" class="btn btn-primary btn-lg" id="analyzeBtn" disabled>
-                <i class="fas fa-cog"></i> Analyze Demo
-            </button>
+        <form id="analyzeForm" method="POST" enctype="multipart/form-data" style="display: none;">
+            <input type="file" name="file" id="formFileInput" accept=".dem,.dem.gz" hidden>
+            <input type="hidden" name="analysis_type" id="analysisTypeInput">
+            <button type="submit" id="submitBtn" style="display: none;"></button>
+        </form>
+
+        <div id="progressContainer" style="display: none; margin-top: 2rem;">
+            <div class="progress-text">Analyzing demo...</div>
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
         </div>
-    </form>
+    </div>
+
+    <!-- File Info (shown after selection) -->
+    <div id="fileInfo" style="display: none; margin-top: 2rem;" class="file-info-box">
+        <div class="file-item">
+            <div class="file-icon">
+                <i class="fas fa-file-video"></i>
+            </div>
+            <div class="file-details">
+                <div class="file-name" id="selectedFileName"></div>
+                <div class="file-size" id="selectedFileSize"></div>
+            </div>
+            <div class="file-actions">
+                <button type="button" id="analyzeBtn" class="btn btn-primary">
+                    <i class="fas fa-play"></i> Analyze
+                </button>
+                <button type="button" id="changeBtn" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Change
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Requirements & Tips -->
+    <div class="info-section">
+        <div class="info-card">
+            <h3><i class="fas fa-info-circle"></i> Requirements</h3>
+            <ul>
+                <li>File format: <strong>.dem</strong> (CS2 demo)</li>
+                <li>Maximum size: <strong>500 MB</strong></li>
+                <li>Processing time: <strong>10-30 seconds</strong></li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h3><i class="fas fa-lightbulb"></i> Pro Tips</h3>
+            <ul>
+                <li>For league play, use <strong>Tactical Review</strong> to catch team issues</li>
+                <li>Focus on <strong>play execution</strong> and <strong>utility timing</strong></li>
+                <li>Check <strong>team matchup analysis</strong> for strategic weaknesses</li>
+                <li>Use coaching recommendations as <strong>practice drill topics</strong></li>
+            </ul>
+        </div>
+    </div>
 </div>
 
-<!-- Tips -->
-<div class="card mt-4">
-    <div class="card-header">
-        <h2 class="card-title"><i class="fas fa-lightbulb"></i> Tips</h2>
-    </div>
-    <div class="grid-2">
-        <div>
-            <h4 style="margin-bottom: 0.5rem; color: var(--accent-secondary);">
-                <i class="fas fa-folder"></i> Finding Demo Files
-            </h4>
-            <p class="text-muted">
-                CS2 demos are stored in:<br>
-                <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
-                    Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays/
-                </code>
-            </p>
-        </div>
-        <div>
-            <h4 style="margin-bottom: 0.5rem; color: var(--accent-secondary);">
-                <i class="fas fa-download"></i> Download Matches
-            </h4>
-            <p class="text-muted">
-                Use the share code on the "Your Matches" page in CS2 to download demos from past games.
-            </p>
-        </div>
-    </div>
-</div>
+<style>
+.analyze-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.analyze-title {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+.analyze-description {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin-bottom: 3rem;
+}
+
+.analysis-type-selector {
+    margin-bottom: 3rem;
+}
+
+.analysis-type-selector h2 {
+    font-size: 1.3rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.type-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+    .type-options {
+        grid-template-columns: 1fr;
+    }
+}
+
+.type-options input[type="radio"] {
+    display: none;
+}
+
+.type-card {
+    display: flex;
+    gap: 1rem;
+    padding: 1.5rem;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.type-card:hover {
+    border-color: var(--accent-primary);
+    background: rgba(0, 212, 170, 0.05);
+    transform: translateY(-2px);
+}
+
+.type-options input[type="radio"]:checked + .type-card {
+    border-color: var(--accent-primary);
+    background: rgba(0, 212, 170, 0.1);
+    box-shadow: 0 0 20px rgba(0, 212, 170, 0.2);
+}
+
+.type-icon {
+    font-size: 2rem;
+    color: var(--accent-primary);
+    display: flex;
+    align-items: center;
+}
+
+.type-content {
+    flex: 1;
+}
+
+.type-title {
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 0.25rem;
+}
+
+.type-description {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.upload-section {
+    margin-bottom: 3rem;
+}
+
+.upload-box {
+    border: 2px dashed var(--accent-primary);
+    border-radius: 8px;
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: rgba(0, 212, 170, 0.05);
+}
+
+.upload-box:hover {
+    background: rgba(0, 212, 170, 0.1);
+    border-color: #00ff64;
+}
+
+.upload-box.drag-over {
+    background: rgba(0, 212, 170, 0.15);
+    border-color: #00ff64;
+    transform: scale(1.02);
+}
+
+.upload-content i {
+    font-size: 3rem;
+    color: var(--accent-primary);
+    margin-bottom: 1rem;
+    display: block;
+}
+
+.upload-content h2 {
+    margin-bottom: 0.5rem;
+    font-size: 1.5rem;
+}
+
+.upload-content p {
+    color: var(--text-secondary);
+}
+
+.progress-text {
+    margin-bottom: 1rem;
+    font-weight: 500;
+}
+
+.progress-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary), #00ff64);
+    animation: progress 2s ease-in-out infinite;
+}
+
+@keyframes progress {
+    0%, 100% { width: 0%; }
+    50% { width: 100%; }
+}
+
+.file-info-box {
+    background: rgba(0, 212, 170, 0.1);
+    border: 1px solid rgba(0, 212, 170, 0.2);
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.file-icon {
+    font-size: 2.5rem;
+    color: var(--accent-primary);
+}
+
+.file-details {
+    flex: 1;
+}
+
+.file-name {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.file-size {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.file-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.info-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-top: 3rem;
+}
+
+@media (max-width: 768px) {
+    .info-section {
+        grid-template-columns: 1fr;
+    }
+}
+
+.info-card {
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+}
+
+.info-card h3 {
+    margin: 0 0 1rem 0;
+    color: var(--accent-primary);
+}
+
+.info-card ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.info-card li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.95rem;
+}
+
+.info-card li:last-child {
+    border-bottom: none;
+}
+</style>
+
+<script>
+// File upload handling
+const uploadBox = document.getElementById('uploadBox');
+const fileInput = document.getElementById('fileInput');
+const formFileInput = document.getElementById('formFileInput');
+const fileInfo = document.getElementById('fileInfo');
+const selectedFileName = document.getElementById('selectedFileName');
+const selectedFileSize = document.getElementById('selectedFileSize');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const changeBtn = document.getElementById('changeBtn');
+const analyzeForm = document.getElementById('analyzeForm');
+const progressContainer = document.getElementById('progressContainer');
+const analysisTypeInput = document.getElementById('analysisTypeInput');
+
+// Click to browse
+uploadBox.addEventListener('click', () => fileInput.click());
+
+// Handle file selection
+fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+        showFileInfo(file);
+        formFileInput.files = fileInput.files;
+    }
+});
+
+// Drag and drop
+uploadBox.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadBox.classList.add('drag-over');
+});
+
+uploadBox.addEventListener('dragleave', () => {
+    uploadBox.classList.remove('drag-over');
+});
+
+uploadBox.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadBox.classList.remove('drag-over');
+    
+    const file = e.dataTransfer.files[0];
+    if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
+        fileInput.files = e.dataTransfer.files;
+        showFileInfo(file);
+        formFileInput.files = e.dataTransfer.files;
+    }
+});
+
+// Show file info
+function showFileInfo(file) {
+    selectedFileName.textContent = file.name;
+    selectedFileSize.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+    uploadBox.style.display = 'none';
+    fileInfo.style.display = 'block';
+}
+
+// Change file
+changeBtn.addEventListener('click', () => {
+    fileInput.value = '';
+    formFileInput.value = '';
+    uploadBox.style.display = 'block';
+    fileInfo.style.display = 'none';
+});
+
+// Analyze button
+analyzeBtn.addEventListener('click', () => {
+    const analysisType = document.querySelector('input[name="analysis_type"]:checked').value;
+    
+    // Determine the endpoint
+    if (analysisType === 'tactical') {
+        analyzeForm.action = '{{ url_for("tactical_analysis") }}';
+    } else {
+        analyzeForm.action = '{{ url_for("analyze") }}';
+    }
+    
+    analysisTypeInput.value = analysisType;
+    progressContainer.style.display = 'block';
+    analyzeBtn.disabled = true;
+    changeBtn.disabled = true;
+    
+    analyzeForm.submit();
+});
+
+// Analysis type switching
+document.querySelectorAll('input[name="analysis_type"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+        document.querySelectorAll('.type-card').forEach(card => {
+            card.classList.remove('type-card-active');
+        });
+        document.querySelector(`label[for="${radio.id}"]`).classList.add('type-card-active');
+    });
+});
+</script>
 {% endblock %}
 
 {% block extra_js %}

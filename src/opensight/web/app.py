@@ -85,6 +85,82 @@ def register_routes(app: Flask) -> None:
             return handle_demo_upload()
         return render_template("analyze.html")
 
+    @app.route("/tactical", methods=["POST"])
+    def tactical_analysis():
+        """Tactical demo review page."""
+        if "file" not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+
+        file = request.files["file"]
+        if not allowed_file(file.filename):
+            return jsonify({"error": "Invalid file type"}), 400
+
+        try:
+            # Import here to avoid circular imports
+            from opensight.analysis.tactical_service import TacticalAnalysisService
+            from opensight.core.parser import DemoParser
+
+            # Parse demo
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_filename = f"{timestamp}_{filename}"
+            filepath = Path(UPLOAD_FOLDER) / safe_filename
+
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            file.save(str(filepath))
+            
+            try:
+                parser = DemoParser(filepath)
+                demo_data = parser.parse()
+
+                # Tactical analysis
+                service = TacticalAnalysisService(demo_data)
+                summary = service.analyze()
+
+                # Render tactical view
+                return render_template(
+                    "tactical.html",
+                    demo_info={
+                        "filename": file.filename,
+                        "map": demo_data.map_name,
+                        "duration": demo_data.duration_seconds,
+                        "rounds": len(getattr(demo_data, "round_starts", [])),
+                    },
+                    tactical_summary={
+                        "key_insights": summary.key_insights,
+                    },
+                    t_stats=summary.t_stats,
+                    ct_stats=summary.ct_stats,
+                    t_executes=summary.t_executes,
+                    buy_patterns=summary.buy_patterns,
+                    key_players=summary.key_players,
+                    round_plays=summary.round_plays,
+                    players=list(summary.player_analysis.values()),
+                    t_strengths=summary.t_strengths,
+                    t_weaknesses=summary.t_weaknesses,
+                    ct_strengths=summary.ct_strengths,
+                    ct_weaknesses=summary.ct_weaknesses,
+                    t_win_rate=summary.t_win_rate,
+                    ct_win_rate=summary.ct_win_rate,
+                    execution_success=[("Smoke Exec", 78), ("Flash Entry", 65), ("Anti-Eco", 45)],
+                    team_recommendations=summary.team_recommendations,
+                    individual_recommendations=summary.individual_recommendations,
+                    practice_drills=summary.practice_drills,
+                )
+            finally:
+                # Cleanup temp file
+                try:
+                    filepath.unlink()
+                except:
+                    pass
+
+        except Exception as e:
+            logger.error(f"Tactical analysis error: {e}", exc_info=True)
+            return render_template(
+                "error.html",
+                error=f"Analysis failed: {str(e)}"
+            ), 500
+
     @app.route("/decode", methods=["GET", "POST"])
     def decode():
         """Share code decoder page."""

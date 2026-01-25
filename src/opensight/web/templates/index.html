@@ -22,12 +22,12 @@
 
     <div class="hero-actions">
         <a href="{{ url_for('analyze') }}" class="btn btn-primary btn-lg">
-            <i class="fas fa-upload"></i>
-            <span>Analyze Demo</span>
+            <i class="fas fa-chess"></i>
+            <span>Tactical Review</span>
         </a>
         <a href="{{ url_for('team') }}" class="btn btn-secondary btn-lg">
             <i class="fas fa-users"></i>
-            <span>View Team Stats</span>
+            <span>Team Performance</span>
         </a>
     </div>
 
@@ -61,10 +61,10 @@
         <a href="{{ url_for('analyze') }}" class="card feature-card fade-in stagger-1" style="text-decoration: none; color: inherit;">
             <div class="card-glow card-glow-red"></div>
             <div class="feature-icon">
-                <i class="fas fa-crosshairs"></i>
+                <i class="fas fa-chess"></i>
             </div>
-            <h3>Analyze Demo</h3>
-            <p>Upload a .dem file and get instant professional metrics</p>
+            <h3>Tactical Review</h3>
+            <p>Play execution, roles, utility usage, strengths & weaknesses for league play</p>
         </a>
 
         <a href="{{ url_for('decode') }}" class="card feature-card fade-in stagger-2" style="text-decoration: none; color: inherit;">
@@ -81,8 +81,8 @@
             <div class="feature-icon" style="background: var(--gradient-legendary);">
                 <i class="fas fa-trophy"></i>
             </div>
-            <h3>Team Dashboard</h3>
-            <p>Track your squad's performance over time</p>
+            <h3>Team Performance</h3>
+            <p>Track your squad's performance over multiple demos</p>
         </a>
 
         <a href="{{ url_for('about') }}" class="card feature-card fade-in stagger-4" style="text-decoration: none; color: inherit;">
@@ -90,8 +90,8 @@
             <div class="feature-icon" style="background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);">
                 <i class="fas fa-book"></i>
             </div>
-            <h3>Learn Metrics</h3>
-            <p>Understand what each stat means</p>
+            <h3>Learn Tactics</h3>
+            <p>Understand CS2 meta, roles, executes, and positioning</p>
         </a>
     </div>
 </section>
@@ -100,79 +100,79 @@
 <section class="mb-6">
     <div class="card-header mb-3">
         <h2 class="card-title font-display">
-            <i class="fas fa-chart-bar"></i>
-            <span>Metrics We Track</span>
+            <i class="fas fa-chess-pawn"></i>
+            <span>What You Get</span>
         </h2>
         <span class="rank-badge rank-legendary">
             <i class="fas fa-star"></i>
-            Pro-Grade
+            League Ready
         </span>
     </div>
 
     <div class="grid grid-3">
         <div class="stat-card fade-in">
             <div class="stat-icon">
-                <i class="fas fa-bolt"></i>
+                <i class="fas fa-gamepad"></i>
             </div>
-            <div class="stat-value">TTD</div>
-            <div class="stat-label">Time to Damage</div>
+            <div class="stat-value">Plays</div>
+            <div class="stat-label">Execution Analysis</div>
             <p class="text-muted mt-2" style="font-size: 0.85rem;">
-                Measures reaction speed from spotting to dealing damage
+                How T side attacks execute - utilities, timing, site takes
             </p>
         </div>
 
         <div class="stat-card fade-in stagger-1">
             <div class="stat-icon" style="color: var(--accent-cyber);">
-                <i class="fas fa-crosshairs"></i>
+                <i class="fas fa-user-tie"></i>
             </div>
-            <div class="stat-value" style="background: var(--gradient-cyber); -webkit-background-clip: text;">CP</div>
-            <div class="stat-label">Crosshair Placement</div>
+            <div class="stat-value" style="background: var(--gradient-cyber); -webkit-background-clip: text;">Roles</div>
+            <div class="stat-label">Player Positioning</div>
             <p class="text-muted mt-2" style="font-size: 0.85rem;">
-                Angular distance between your aim and enemy positions
+                Who is entry, lurk, support, AWP - and where they play
             </p>
         </div>
 
         <div class="stat-card fade-in stagger-2">
             <div class="stat-icon" style="color: var(--accent-gold);">
-                <i class="fas fa-skull-crossbones"></i>
+                <i class="fas fa-fire"></i>
             </div>
-            <div class="stat-value" style="background: var(--gradient-legendary); -webkit-background-clip: text;">K/D</div>
-            <div class="stat-label">Kill/Death Ratio</div>
+            <div class="stat-value" style="background: var(--gradient-legendary); -webkit-background-clip: text;">Utility</div>
+            <div class="stat-label">Nades & Timing</div>
             <p class="text-muted mt-2" style="font-size: 0.85rem;">
-                Your fragging impact with headshot percentage
+                Flash usage, smoke placement, molly coverage patterns
             </p>
         </div>
 
         <div class="stat-card fade-in stagger-3">
             <div class="stat-icon" style="color: var(--accent-epic);">
-                <i class="fas fa-hand-fist"></i>
+                <i class="fas fa-target"></i>
             </div>
-            <div class="stat-value" style="background: linear-gradient(135deg, #a855f7, #7c3aed); -webkit-background-clip: text;">FD</div>
-            <div class="stat-label">Opening Duels</div>
+            <div class="stat-value" style="background: linear-gradient(135deg, #a855f7, #7c3aed); -webkit-background-clip: text;">Weaknesses</div>
+            <div class="stat-label">What to Exploit</div>
             <p class="text-muted mt-2" style="font-size: 0.85rem;">
-                First kills vs first deaths each round
+                Opening duel losses, anti-execute issues, site hold problems
             </p>
         </div>
 
         <div class="stat-card fade-in stagger-4">
             <div class="stat-icon" style="color: #00d4aa;">
-                <i class="fas fa-handshake"></i>
+                <i class="fas fa-lightbulb"></i>
             </div>
-            <div class="stat-value" style="background: linear-gradient(135deg, #00d4aa, #00f5c4); -webkit-background-clip: text;">TRADE</div>
-            <div class="stat-label">Trade Success</div>
+            <div class="stat-value" style="background: linear-gradient(135deg, #00d4aa, #00f5c4); -webkit-background-clip: text;">Insights</div>
+            <div class="stat-label">Coaching Tips</div>
             <p class="text-muted mt-2" style="font-size: 0.85rem;">
-                How often you trade teammates or get traded
+                Specific drills and team recommendations based on demo
             </p>
         </div>
 
         <div class="stat-card fade-in stagger-4">
             <div class="stat-icon" style="color: #ffaa00;">
-                <i class="fas fa-coins"></i>
+                <i class="fas fa-chart-line"></i>
             </div>
-            <div class="stat-value" style="background: linear-gradient(135deg, #ffaa00, #ffd700); -webkit-background-clip: text;">ECON</div>
-            <div class="stat-label">Economy Efficiency</div>
+            <div class="stat-value" style="background: linear-gradient(135deg, #ffaa00, #ffd700); -webkit-background-clip: text;">Outcomes</div>
+            <div class="stat-label">Buy Success Rates</div>
             <p class="text-muted mt-2" style="font-size: 0.85rem;">
-                Damage dealt per dollar spent on loadout
+                Full buy, eco, force success - economy impact on wins
             </p>
         </div>
     </div>
