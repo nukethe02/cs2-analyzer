@@ -13,14 +13,13 @@ Provides:
 - Community feedback system
 """
 
+import logging
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-import logging
-from typing import Optional, List
+from typing import Annotated, Any
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Body
-from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 __version__ = "0.3.0"
@@ -36,7 +35,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="OpenSight API",
-    description="CS2 demo analyzer - professional-grade metrics including HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement",
+    description=(
+        "CS2 demo analyzer - professional-grade metrics including "
+        "HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement"
+    ),
     version=__version__,
 )
 
@@ -57,8 +59,8 @@ class FeedbackRequest(BaseModel):
     player_steam_id: str = Field(..., description="Steam ID of the player")
     metric_name: str = Field(..., description="Name of the metric being rated")
     rating: int = Field(..., ge=1, le=5, description="Rating from 1-5")
-    comment: Optional[str] = Field(None, description="Optional comment")
-    correction_value: Optional[float] = Field(None, description="Optional corrected value")
+    comment: str | None = Field(None, description="Optional comment")
+    correction_value: float | None = Field(None, description="Optional corrected value")
 
 
 class CoachingFeedbackRequest(BaseModel):
@@ -66,13 +68,13 @@ class CoachingFeedbackRequest(BaseModel):
     demo_hash: str
     insight_id: str
     was_helpful: bool
-    correction: Optional[str] = None
+    correction: str | None = None
 
 
 class RadarRequest(BaseModel):
     """Request model for radar coordinate transformation."""
     map_name: str
-    positions: List[dict] = Field(..., description="List of {x, y, z} game coordinates")
+    positions: list[dict[str, float]] = Field(..., description="List of {x, y, z} game coordinates")
 
 
 # Get the static files directory
@@ -80,22 +82,25 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
+async def root() -> HTMLResponse:
     """Serve the main web interface."""
     html_file = STATIC_DIR / "index.html"
     if html_file.exists():
         return HTMLResponse(content=html_file.read_text(), status_code=200)
-    return HTMLResponse(content="<h1>OpenSight</h1><p>Web interface not found.</p>", status_code=200)
+    return HTMLResponse(
+        content="<h1>OpenSight</h1><p>Web interface not found.</p>",
+        status_code=200,
+    )
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, Any]:
     """Health check endpoint."""
     return {"status": "ok", "version": __version__}
 
 
 @app.post("/decode", response_model=ShareCodeResponse)
-async def decode_share_code(request: ShareCodeRequest):
+async def decode_share_code(request: ShareCodeRequest) -> dict[str, int]:
     """Decode a CS2 share code to extract match metadata."""
     try:
         from opensight.integrations.sharecode import decode_sharecode
@@ -106,13 +111,17 @@ async def decode_share_code(request: ShareCodeRequest):
             "token": info.token,
         }
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Module not available: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Module not available: {e!s}"
+        ) from e
 
 
 @app.post("/analyze")
-async def analyze_demo(file: UploadFile = File(...)):
+async def analyze_demo(
+    file: Annotated[UploadFile, File(...)],
+) -> JSONResponse:
     """
     Analyze an uploaded CS2 demo file.
 
@@ -136,13 +145,13 @@ async def analyze_demo(file: UploadFile = File(...)):
         )
 
     try:
-        from opensight.core.parser import DemoParser
         from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.core.parser import DemoParser
     except ImportError as e:
         raise HTTPException(
             status_code=503,
-            detail=f"Demo analysis not available. Missing: {str(e)}"
-        )
+            detail=f"Demo analysis not available. Missing: {e!s}"
+        ) from e
 
     tmp_path = None
     try:
@@ -154,7 +163,10 @@ async def analyze_demo(file: UploadFile = File(...)):
         if file_size_bytes > MAX_FILE_SIZE_BYTES:
             raise HTTPException(
                 status_code=413,
-                detail=f"File too large: {file_size_mb:.1f}MB. Maximum allowed: {MAX_FILE_SIZE_MB}MB"
+                detail=(
+                    f"File too large: {file_size_mb:.1f}MB. "
+                    f"Maximum allowed: {MAX_FILE_SIZE_MB}MB"
+                ),
             )
 
         if file_size_bytes == 0:
@@ -187,11 +199,13 @@ async def analyze_demo(file: UploadFile = File(...)):
             tmp_path = None
 
         # Build response
-        result = {
+        result: dict[str, Any] = {
             "demo_info": {
                 "map": analysis.map_name,
                 "duration_seconds": round(data.duration_seconds, 1),
-                "duration_minutes": round(data.duration_seconds / 60, 1) if data.duration_seconds else 0,
+                "duration_minutes": (
+                    round(data.duration_seconds / 60, 1) if data.duration_seconds else 0
+                ),
                 "tick_rate": data.tick_rate,
                 "rounds": analysis.total_rounds,
                 "score": f"{analysis.team1_score} - {analysis.team2_score}",
@@ -200,7 +214,7 @@ async def analyze_demo(file: UploadFile = File(...)):
                 "total_damage_events": len(data.damages),
             },
             "mvp": None,
-            "players": {}
+            "players": {},
         }
 
         # Add MVP
@@ -262,11 +276,26 @@ async def analyze_demo(file: UploadFile = File(...)):
                 "clutches": {
                     "total_situations": player.clutches.total_situations,
                     "total_wins": player.clutches.total_wins,
-                    "1v1": {"attempts": player.clutches.situations_1v1, "wins": player.clutches.wins_1v1},
-                    "1v2": {"attempts": player.clutches.situations_1v2, "wins": player.clutches.wins_1v2},
-                    "1v3": {"attempts": player.clutches.situations_1v3, "wins": player.clutches.wins_1v3},
-                    "1v4": {"attempts": player.clutches.situations_1v4, "wins": player.clutches.wins_1v4},
-                    "1v5": {"attempts": player.clutches.situations_1v5, "wins": player.clutches.wins_1v5},
+                    "1v1": {
+                        "attempts": player.clutches.situations_1v1,
+                        "wins": player.clutches.wins_1v1,
+                    },
+                    "1v2": {
+                        "attempts": player.clutches.situations_1v2,
+                        "wins": player.clutches.wins_1v2,
+                    },
+                    "1v3": {
+                        "attempts": player.clutches.situations_1v3,
+                        "wins": player.clutches.wins_1v3,
+                    },
+                    "1v4": {
+                        "attempts": player.clutches.situations_1v4,
+                        "wins": player.clutches.wins_1v4,
+                    },
+                    "1v5": {
+                        "attempts": player.clutches.situations_1v5,
+                        "wins": player.clutches.wins_1v5,
+                    },
                 },
                 "multi_kills": {
                     "rounds_with_2k": player.multi_kills.rounds_with_2k,
@@ -276,13 +305,25 @@ async def analyze_demo(file: UploadFile = File(...)):
                 },
                 "advanced": {
                     # TTD Stats
-                    "ttd_median_ms": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
-                    "ttd_mean_ms": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
+                    "ttd_median_ms": (
+                        round(player.ttd_median_ms, 1) if player.ttd_median_ms else None
+                    ),
+                    "ttd_mean_ms": (
+                        round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None
+                    ),
                     "ttd_samples": len(player.ttd_values),
                     "prefire_kills": player.prefire_count,
                     # Crosshair Placement Stats
-                    "cp_median_error_deg": round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None,
-                    "cp_mean_error_deg": round(player.cp_mean_error_deg, 1) if player.cp_mean_error_deg else None,
+                    "cp_median_error_deg": (
+                        round(player.cp_median_error_deg, 1)
+                        if player.cp_median_error_deg
+                        else None
+                    ),
+                    "cp_mean_error_deg": (
+                        round(player.cp_mean_error_deg, 1)
+                        if player.cp_mean_error_deg
+                        else None
+                    ),
                     "cp_samples": len(player.cp_values),
                 },
                 "utility": {
@@ -291,13 +332,17 @@ async def analyze_demo(file: UploadFile = File(...)):
                     "flashbangs_thrown": player.utility.flashbangs_thrown,
                     "enemies_flashed": player.utility.enemies_flashed,
                     "teammates_flashed": player.utility.teammates_flashed,
-                    "enemies_flashed_per_flash": round(player.utility.enemies_flashed_per_flash, 2),
+                    "enemies_flashed_per_flash": round(
+                        player.utility.enemies_flashed_per_flash, 2
+                    ),
                     "avg_blind_time": round(player.utility.avg_blind_time, 2),
                     # HE stats
                     "he_thrown": player.utility.he_thrown,
                     "he_damage": player.utility.he_damage,
                     "he_team_damage": player.utility.he_team_damage,
-                    "he_damage_per_nade": round(player.utility.he_damage_per_nade, 1),
+                    "he_damage_per_nade": round(
+                        player.utility.he_damage_per_nade, 1
+                    ),
                     # Molotov stats
                     "molotov_thrown": player.utility.molotov_thrown,
                     "molotov_damage": player.utility.molotov_damage,
@@ -334,8 +379,16 @@ async def analyze_demo(file: UploadFile = File(...)):
                     "eco_rounds": player.eco_rounds,
                     "force_rounds": player.force_rounds,
                     "full_buy_rounds": player.full_buy_rounds,
-                    "damage_per_dollar": round(player.damage_per_dollar, 4) if player.damage_per_dollar else 0,
-                    "kills_per_dollar": round(player.kills_per_dollar, 6) if player.kills_per_dollar else 0,
+                    "damage_per_dollar": (
+                        round(player.damage_per_dollar, 4)
+                        if player.damage_per_dollar
+                        else 0
+                    ),
+                    "kills_per_dollar": (
+                        round(player.kills_per_dollar, 6)
+                        if player.kills_per_dollar
+                        else 0
+                    ),
                 },
                 "weapons": weapon_stats,
             }
@@ -378,14 +431,19 @@ async def analyze_demo(file: UploadFile = File(...)):
         # AI Coaching insights
         result["coaching"] = analysis.coaching_insights
 
-        logger.info(f"Analysis complete: {len(result['players'])} players, {analysis.total_rounds} rounds")
+        logger.info(
+            f"Analysis complete: {len(result['players'])} players, "
+            f"{analysis.total_rounds} rounds"
+        )
         return JSONResponse(content=result)
 
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("Analysis failed")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Analysis failed: {e!s}"
+        ) from e
     finally:
         if tmp_path and tmp_path.exists():
             try:
@@ -396,12 +454,15 @@ async def analyze_demo(file: UploadFile = File(...)):
 
 
 @app.get("/about")
-async def about():
+async def about() -> dict[str, Any]:
     """Information about the API and metrics."""
     return {
         "name": "OpenSight",
         "version": __version__,
-        "description": "Local CS2 analytics framework - Leetify/Scope.gg style professional-grade metrics",
+        "description": (
+            "Local CS2 analytics framework - "
+            "Leetify/Scope.gg style professional-grade metrics"
+        ),
         "metrics": {
             "basic": {
                 "kills": "Total eliminations",
@@ -412,35 +473,63 @@ async def about():
                 "headshot_pct": "Percentage of kills that were headshots",
             },
             "rating": {
-                "hltv_rating": "HLTV 2.0 Rating - industry standard performance metric (1.0 = average)",
-                "impact_rating": "Impact component - measures round-winning contributions",
-                "kast_percentage": "KAST% - rounds with Kill, Assist, Survived, or Traded",
-                "aim_rating": "Leetify-style Aim Rating (0-100, 50 = average) - based on TTD, CP, HS%",
-                "utility_rating": "Leetify-style Utility Rating (0-100) - geometric mean of quantity and quality",
+                "hltv_rating": (
+                    "HLTV 2.0 Rating - industry standard performance metric "
+                    "(1.0 = average)"
+                ),
+                "impact_rating": (
+                    "Impact component - measures round-winning contributions"
+                ),
+                "kast_percentage": (
+                    "KAST% - rounds with Kill, Assist, Survived, or Traded"
+                ),
+                "aim_rating": (
+                    "Leetify-style Aim Rating (0-100, 50 = average) - "
+                    "based on TTD, CP, HS%"
+                ),
+                "utility_rating": (
+                    "Leetify-style Utility Rating (0-100) - "
+                    "geometric mean of quantity and quality"
+                ),
                 "entry_success_rate": "Percentage of opening duels won",
             },
             "advanced": {
-                "ttd_median_ms": "Time to Damage (median) - milliseconds from engagement start to damage dealt",
+                "ttd_median_ms": (
+                    "Time to Damage (median) - "
+                    "milliseconds from engagement start to damage dealt"
+                ),
                 "ttd_mean_ms": "Time to Damage (mean)",
-                "cp_median_error_deg": "Crosshair Placement error (median) - degrees off-target when engaging",
-                "prefire_kills": "Kills where damage was dealt before/instantly upon visibility (prediction shots)",
+                "cp_median_error_deg": (
+                    "Crosshair Placement error (median) - "
+                    "degrees off-target when engaging"
+                ),
+                "prefire_kills": (
+                    "Kills where damage was dealt before/instantly "
+                    "upon visibility (prediction shots)"
+                ),
             },
             "duels": {
                 "opening_wins": "First kills of the round won",
                 "opening_losses": "First deaths of the round",
                 "kills_traded": "Times you avenged a teammate within 5 seconds",
-                "deaths_traded": "Times a teammate avenged your death within 5 seconds",
+                "deaths_traded": (
+                    "Times a teammate avenged your death within 5 seconds"
+                ),
             },
             "utility": {
                 "flash_assists": "Kills on enemies you flashed",
                 "enemies_flashed": "Total enemies blinded >1.1s",
                 "teammates_flashed": "Times you blinded teammates (mistake)",
-                "enemies_flashed_per_flash": "Average enemies blinded per flashbang (Leetify metric)",
+                "enemies_flashed_per_flash": (
+                    "Average enemies blinded per flashbang (Leetify metric)"
+                ),
                 "avg_blind_time": "Average enemy blind duration per flash",
                 "he_damage": "Total HE grenade damage to enemies",
                 "he_damage_per_nade": "Average damage per HE grenade",
                 "molotov_damage": "Total molotov/incendiary damage",
-                "utility_quantity_rating": "How much utility thrown vs expected (3/round)",
+                "utility_quantity_rating": (
+                    "How much utility thrown vs expected (3/round)"
+                ),
                 "utility_quality_rating": "Flash/HE effectiveness composite",
             },
             "side_stats": {
@@ -482,19 +571,45 @@ async def about():
             },
         },
         "methodology": {
-            "hltv_rating": "Rating = 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + 0.2372*Impact + 0.0032*ADR + 0.1587*RMK",
-            "trade_window": "5.0 seconds (industry standard from Leetify/Stratbook)",
-            "ttd": "TTD measures reaction time from first damage to kill. Lower is better. Values under 200ms indicate fast reactions.",
-            "crosshair_placement": "CP measures how far your crosshair was from the enemy when engaging. Lower is better. Under 5 degrees is elite-level.",
-            "aim_rating": "Composite of TTD, CP, HS%, and prefire rate. 50 = average, adjusted by component performance.",
-            "utility_rating": "Geometric mean of Quantity (utility thrown) and Quality (effectiveness). Leetify methodology.",
-            "enemies_flashed_threshold": "Only counts enemies blinded for >1.1 seconds (excludes half-blinds).",
+            "hltv_rating": (
+                "Rating = 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + "
+                "0.2372*Impact + 0.0032*ADR + 0.1587*RMK"
+            ),
+            "trade_window": (
+                "5.0 seconds (industry standard from Leetify/Stratbook)"
+            ),
+            "ttd": (
+                "TTD measures reaction time from first damage to kill. "
+                "Lower is better. Values under 200ms indicate fast reactions."
+            ),
+            "crosshair_placement": (
+                "CP measures how far your crosshair was from the enemy "
+                "when engaging. Lower is better. Under 5 degrees is elite."
+            ),
+            "aim_rating": (
+                "Composite of TTD, CP, HS%, and prefire rate. "
+                "50 = average, adjusted by component performance."
+            ),
+            "utility_rating": (
+                "Geometric mean of Quantity (utility thrown) and "
+                "Quality (effectiveness). Leetify methodology."
+            ),
+            "enemies_flashed_threshold": (
+                "Only counts enemies blinded for >1.1 seconds "
+                "(excludes half-blinds)."
+            ),
         },
         "comparisons": {
-            "leetify": "Aim Rating, Utility Rating, and detailed flash stats follow Leetify methodology",
-            "scope_gg": "Mistakes tracking and side-based stats follow Scope.gg methodology",
+            "leetify": (
+                "Aim Rating, Utility Rating, and detailed flash stats "
+                "follow Leetify methodology"
+            ),
+            "scope_gg": (
+                "Mistakes tracking and side-based stats "
+                "follow Scope.gg methodology"
+            ),
             "hltv": "HLTV 2.0 Rating formula and KAST% calculation",
-        }
+        },
     }
 
 
@@ -503,7 +618,7 @@ async def about():
 # =============================================================================
 
 @app.get("/maps")
-async def list_maps():
+async def list_maps() -> dict[str, Any]:
     """List all available maps with radar support."""
     try:
         from opensight.visualization.radar import MAP_DATA
@@ -522,10 +637,10 @@ async def list_maps():
 
 
 @app.get("/maps/{map_name}")
-async def get_map_info(map_name: str):
+async def get_map_info(map_name: str) -> dict[str, Any]:
     """Get map metadata and radar information."""
     try:
-        from opensight.visualization.radar import get_map_metadata, RadarImageManager
+        from opensight.visualization.radar import RadarImageManager, get_map_metadata
 
         metadata = get_map_metadata(map_name)
         if not metadata:
@@ -545,11 +660,13 @@ async def get_map_info(map_name: str):
             "has_multiple_levels": metadata.z_cutoff is not None,
         }
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Radar module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"Radar module not available: {e}"
+        ) from e
 
 
 @app.post("/radar/transform")
-async def transform_coordinates(request: RadarRequest):
+async def transform_coordinates(request: RadarRequest) -> dict[str, Any]:
     """Transform game coordinates to radar pixel coordinates."""
     try:
         from opensight.visualization.radar import CoordinateTransformer
@@ -558,9 +675,9 @@ async def transform_coordinates(request: RadarRequest):
         results = []
 
         for pos in request.positions:
-            x = pos.get("x", 0)
-            y = pos.get("y", 0)
-            z = pos.get("z", 0)
+            x = pos.get("x", 0.0)
+            y = pos.get("y", 0.0)
+            z = pos.get("z", 0.0)
             radar_pos = transformer.game_to_radar(x, y, z)
             results.append({
                 "game": {"x": x, "y": y, "z": z},
@@ -573,7 +690,9 @@ async def transform_coordinates(request: RadarRequest):
             "positions": results,
         }
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Radar module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"Radar module not available: {e}"
+        ) from e
 
 
 # =============================================================================
@@ -581,48 +700,64 @@ async def transform_coordinates(request: RadarRequest):
 # =============================================================================
 
 @app.get("/hltv/rankings")
-async def get_hltv_rankings(top_n: int = Query(default=10, le=30)):
+async def get_hltv_rankings(
+    top_n: Annotated[int, Query(le=30)] = 10,
+) -> dict[str, Any]:
     """Get current world team rankings (cached data)."""
     try:
         from opensight.integrations.hltv import HLTVClient
         client = HLTVClient()
         return {"rankings": client.get_world_rankings(top_n)}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"HLTV module not available: {e}"
+        ) from e
 
 
 @app.get("/hltv/map/{map_name}")
-async def get_hltv_map_stats(map_name: str):
+async def get_hltv_map_stats(map_name: str) -> dict[str, Any]:
     """Get map statistics from HLTV data."""
     try:
         from opensight.integrations.hltv import get_map_statistics
         stats = get_map_statistics(map_name)
         if not stats:
-            raise HTTPException(status_code=404, detail=f"No stats for map: {map_name}")
+            raise HTTPException(
+                status_code=404, detail=f"No stats for map: {map_name}"
+            )
         return stats
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"HLTV module not available: {e}"
+        ) from e
 
 
 @app.get("/hltv/player/search")
-async def search_hltv_player(nickname: str = Query(..., min_length=2)):
+async def search_hltv_player(
+    nickname: Annotated[str, Query(..., min_length=2)],
+) -> dict[str, Any]:
     """Search for a player by nickname."""
     try:
         from opensight.integrations.hltv import HLTVClient
         client = HLTVClient()
         return {"results": client.search_player(nickname)}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"HLTV module not available: {e}"
+        ) from e
 
 
 @app.post("/hltv/enrich")
-async def enrich_analysis(analysis_data: dict = Body(...)):
+async def enrich_analysis(
+    analysis_data: Annotated[dict[str, Any], Body(...)],
+) -> dict[str, Any]:
     """Enrich analysis data with HLTV information."""
     try:
         from opensight.integrations.hltv import enrich_match_analysis
         return enrich_match_analysis(analysis_data)
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"HLTV module not available: {e}"
+        ) from e
 
 
 # =============================================================================
@@ -630,24 +765,28 @@ async def enrich_analysis(analysis_data: dict = Body(...)):
 # =============================================================================
 
 @app.get("/cache/stats")
-async def get_cache_stats():
+async def get_cache_stats() -> dict[str, Any]:
     """Get cache statistics."""
     try:
         from opensight.infra.cache import get_cache_stats
         return get_cache_stats()
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"Cache module not available: {e}"
+        ) from e
 
 
 @app.post("/cache/clear")
-async def clear_cache():
+async def clear_cache() -> dict[str, str]:
     """Clear all cached analysis data."""
     try:
         from opensight.infra.cache import clear_cache
         clear_cache()
         return {"status": "ok", "message": "Cache cleared"}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"Cache module not available: {e}"
+        ) from e
 
 
 # =============================================================================
@@ -655,12 +794,18 @@ async def clear_cache():
 # =============================================================================
 
 @app.post("/feedback")
-async def submit_feedback(request: FeedbackRequest):
+async def submit_feedback(request: FeedbackRequest) -> dict[str, Any]:
     """Submit feedback on analysis accuracy."""
     try:
         from datetime import datetime
+
         from opensight.integrations.feedback import FeedbackDatabase, FeedbackEntry
         db = FeedbackDatabase()
+        metadata: dict[str, Any] = (
+            {"correction_value": request.correction_value}
+            if request.correction_value
+            else {}
+        )
         feedback = FeedbackEntry(
             id=None,
             demo_hash=request.demo_hash,
@@ -670,20 +815,25 @@ async def submit_feedback(request: FeedbackRequest):
             comment=request.comment or "",
             analysis_version=__version__,
             created_at=datetime.now(),
-            metadata={"correction_value": request.correction_value} if request.correction_value else {},
+            metadata=metadata,
         )
         entry_id = db.add_feedback(feedback)
         return {"status": "ok", "feedback_id": entry_id}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"Feedback module not available: {e}"
+        ) from e
 
 
 @app.post("/feedback/coaching")
-async def submit_coaching_feedback(request: CoachingFeedbackRequest):
+async def submit_coaching_feedback(
+    request: CoachingFeedbackRequest,
+) -> dict[str, Any]:
     """Submit feedback on coaching insights."""
     try:
         from datetime import datetime
-        from opensight.integrations.feedback import FeedbackDatabase, CoachingFeedback
+
+        from opensight.integrations.feedback import CoachingFeedback, FeedbackDatabase
         db = FeedbackDatabase()
         feedback = CoachingFeedback(
             id=None,
@@ -698,18 +848,22 @@ async def submit_coaching_feedback(request: CoachingFeedbackRequest):
         entry_id = db.add_coaching_feedback(feedback)
         return {"status": "ok", "feedback_id": entry_id}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"Feedback module not available: {e}"
+        ) from e
 
 
 @app.get("/feedback/stats")
-async def get_feedback_stats():
+async def get_feedback_stats() -> Any:
     """Get feedback statistics for model improvement."""
     try:
         from opensight.integrations.feedback import FeedbackDatabase
         db = FeedbackDatabase()
         return db.get_stats()
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"Feedback module not available: {e}"
+        ) from e
 
 
 # =============================================================================
@@ -717,18 +871,18 @@ async def get_feedback_stats():
 # =============================================================================
 
 @app.get("/parallel/status")
-async def get_parallel_status():
+async def get_parallel_status() -> dict[str, Any]:
     """Get parallel processing capabilities."""
     try:
-        from opensight.infra.parallel import get_system_info, DEFAULT_WORKERS, MAX_WORKERS
         import multiprocessing
+
+        from opensight.infra.parallel import DEFAULT_WORKERS, MAX_WORKERS
 
         return {
             "available": True,
             "cpu_count": multiprocessing.cpu_count(),
             "default_workers": DEFAULT_WORKERS,
             "max_workers": MAX_WORKERS,
-            "system_info": get_system_info(),
         }
     except ImportError as e:
         return {
@@ -743,9 +897,11 @@ async def get_parallel_status():
 
 @app.post("/replay/generate")
 async def generate_replay_data(
-    file: UploadFile = File(...),
-    sample_rate: int = Query(default=16, ge=1, le=128, description="Extract every Nth tick"),
-):
+    file: Annotated[UploadFile, File(...)],
+    sample_rate: Annotated[
+        int, Query(ge=1, le=128, description="Extract every Nth tick")
+    ] = 16,
+) -> dict[str, Any]:
     """
     Generate 2D replay data from a demo file.
 
@@ -760,15 +916,17 @@ async def generate_replay_data(
     if not filename_lower.endswith(ALLOWED_EXTENSIONS):
         raise HTTPException(
             status_code=400,
-            detail=f"File must be a .dem or .dem.gz file"
+            detail="File must be a .dem or .dem.gz file"
         )
 
     try:
         from opensight.core.parser import DemoParser
-        from opensight.visualization.replay import ReplayGenerator
         from opensight.visualization.radar import CoordinateTransformer
+        from opensight.visualization.replay import ReplayGenerator
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Replay module not available: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"Replay module not available: {e}"
+        ) from e
 
     tmp_path = None
     try:
@@ -797,13 +955,25 @@ async def generate_replay_data(
         # Get coordinate transformer for radar positions
         transformer = CoordinateTransformer(data.map_name)
 
-        # Convert to response format
+        # Collect all frames from all rounds
+        all_replay_frames = [
+            frame for r in replay.rounds for frame in r.frames
+        ]
+
+        # Calculate total ticks from rounds
+        total_ticks = 0
+        if replay.rounds:
+            total_ticks = (
+                replay.rounds[-1].end_tick - replay.rounds[0].start_tick
+            )
+
+        # Convert to response format (limit frames to prevent huge response)
         frames = []
-        for frame in replay.frames[:10000]:  # Limit frames to prevent huge response
-            frame_data = {
+        for frame in all_replay_frames[:10000]:
+            frame_data: dict[str, Any] = {
                 "tick": frame.tick,
                 "round": frame.round_num,
-                "time_in_round": round(frame.time_in_round, 2),
+                "time_in_round": round(frame.game_time, 2),
                 "players": [],
                 "bomb": None,
             }
@@ -824,21 +994,28 @@ async def generate_replay_data(
                 })
 
             if frame.bomb:
-                bomb_pos = transformer.game_to_radar(frame.bomb.x, frame.bomb.y, frame.bomb.z)
+                bomb_pos = transformer.game_to_radar(
+                    frame.bomb.x, frame.bomb.y, frame.bomb.z
+                )
+                bomb_state = (
+                    frame.bomb.state.value
+                    if hasattr(frame.bomb.state, "value")
+                    else frame.bomb.state
+                )
                 frame_data["bomb"] = {
                     "x": round(bomb_pos.x, 1),
                     "y": round(bomb_pos.y, 1),
-                    "state": frame.bomb.state.value if hasattr(frame.bomb.state, 'value') else frame.bomb.state,
+                    "state": bomb_state,
                 }
 
             frames.append(frame_data)
 
         return {
             "map_name": replay.map_name,
-            "total_ticks": replay.total_ticks,
+            "total_ticks": total_ticks,
             "tick_rate": replay.tick_rate,
             "sample_rate": sample_rate,
-            "total_frames": len(replay.frames),
+            "total_frames": len(all_replay_frames),
             "frames_returned": len(frames),
             "rounds": [
                 {
@@ -856,7 +1033,9 @@ async def generate_replay_data(
         raise
     except Exception as e:
         logger.exception("Replay generation failed")
-        raise HTTPException(status_code=500, detail=f"Replay generation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Replay generation failed: {e!s}"
+        ) from e
     finally:
         if tmp_path and tmp_path.exists():
             try:
