@@ -1246,6 +1246,30 @@ class DemoAnalyzer:
             # Fallback to direct comparison
             return df[df[col] == steam_id]
 
+    def _normalize_team(self, value: Any) -> str:
+        """Normalize team/side values to 'CT' or 'T' for consistent comparison.
+
+        Handles various formats from demo data:
+        - Strings: 'CT', 'ct', 'CounterTerrorist', 'TERRORIST', etc.
+        - Numbers: 2 = T, 3 = CT (CS2 team numbers)
+        """
+        if value is None:
+            return "Unknown"
+        if isinstance(value, str):
+            upper = value.upper()
+            if "CT" in upper or "COUNTER" in upper:
+                return "CT"
+            elif "T" in upper and "CT" not in upper:
+                return "T"
+            return "Unknown"
+        elif isinstance(value, (int, float)):
+            val = int(value)
+            if val == 3:
+                return "CT"
+            elif val == 2:
+                return "T"
+        return "Unknown"
+
     def _init_column_cache(self) -> None:
         """Initialize column name cache for kills DataFrame."""
         kills_df = self.data.kills_df
@@ -1524,14 +1548,12 @@ class DemoAnalyzer:
             victim_id = safe_int(first_kill.get(self._vic_id_col))
             kill_tick = safe_int(first_kill.get("tick"))
 
-            # Get attacker side for T/CT classification
+            # Get attacker side for T/CT classification using normalized team values
             attacker_side = ""
             if self._att_side_col and self._att_side_col in kills_df.columns:
-                side_val = first_kill.get(self._att_side_col)
-                if isinstance(side_val, str):
-                    attacker_side = (
-                        "CT" if "CT" in side_val.upper() else "T" if "T" in side_val.upper() else ""
-                    )
+                attacker_side = self._normalize_team(first_kill.get(self._att_side_col))
+                if attacker_side == "Unknown":
+                    attacker_side = ""
 
             if attacker_id in self._players:
                 self._players[attacker_id].opening_duels.attempts += 1
@@ -1601,11 +1623,13 @@ class DemoAnalyzer:
 
             for _idx, kill in round_kills.iterrows():
                 victim_id = safe_int(kill.get(self._vic_id_col))
-                victim_team = safe_str(kill.get(self._vic_side_col)) if self._vic_side_col else ""
+                # Normalize victim team to "CT" or "T" for consistent comparison
+                raw_victim_team = kill.get(self._vic_side_col) if self._vic_side_col else ""
+                victim_team = self._normalize_team(raw_victim_team)
                 killer_id = safe_int(kill.get(self._att_id_col))
                 kill_tick = safe_int(kill.get("tick"))
 
-                if not victim_id or not killer_id:
+                if not victim_id or not killer_id or victim_team == "Unknown":
                     continue
 
                 # Need attacker_side column for trade detection
@@ -1628,12 +1652,17 @@ class DemoAnalyzer:
                         total_opportunities += 1
 
                 # Look for trade (teammate kills the killer within window)
-                potential_trades = round_kills[
-                    (round_kills["tick"] > kill_tick)
-                    & (round_kills["tick"] <= kill_tick + trade_window_ticks)
-                    & (round_kills[self._vic_id_col].astype(float) == float(killer_id))
-                    & (round_kills[self._att_side_col] == victim_team)
-                ]
+                # Filter by tick window and victim being the original killer
+                tick_filter = (round_kills["tick"] > kill_tick) & (
+                    round_kills["tick"] <= kill_tick + trade_window_ticks
+                )
+                victim_filter = round_kills[self._vic_id_col].astype(float) == float(killer_id)
+
+                # Filter by attacker being on same team as original victim (normalized comparison)
+                attacker_teams = round_kills[self._att_side_col].apply(self._normalize_team)
+                team_filter = attacker_teams == victim_team
+
+                potential_trades = round_kills[tick_filter & victim_filter & team_filter]
 
                 if not potential_trades.empty:
                     # Trade occurred
@@ -1684,17 +1713,17 @@ class DemoAnalyzer:
             # Get round winner (CT or T)
             round_winner = round_winners.get(int(round_num), "Unknown")
 
-            # Track deaths in order for each team
+            # Track deaths in order for each team using normalized team values
             ct_deaths = []
             t_deaths = []
 
             for _, kill in round_kills.iterrows():
                 victim_id = safe_int(kill.get(self._vic_id_col))
-                victim_side = safe_str(kill.get(self._vic_side_col))
+                victim_side = self._normalize_team(kill.get(self._vic_side_col))
 
-                if "CT" in victim_side.upper():
+                if victim_side == "CT":
                     ct_deaths.append(victim_id)
-                elif "T" in victim_side.upper() and "CT" not in victim_side.upper():
+                elif victim_side == "T":
                     t_deaths.append(victim_id)
 
             # Detect clutch situations for each side
@@ -1705,30 +1734,27 @@ class DemoAnalyzer:
                 if len(deaths) < 4:  # Need 4+ teammates dead for 1vX (5-player team)
                     continue
 
-                # Find players on this team
-                team_players = [sid for sid, p in self._players.items() if side in p.team.upper()]
+                # Find players on this team using exact match after normalization
+                team_players = [sid for sid, p in self._players.items() if p.team == side]
 
-                if len(team_players) != 5:
-                    continue  # Skip if team size is unexpected
+                # Allow teams with 4-5 players (some demos may have disconnects)
+                if len(team_players) < 4 or len(team_players) > 5:
+                    continue
 
-                # When 4th teammate dies, the 5th is in a clutch
-                # Count how many enemies were alive at that moment
-                5 - len([d for d in enemy_deaths if d in enemy_deaths[: len(deaths)]])
-
-                # More accurate: count enemy deaths that happened BEFORE 4th teammate death
+                # Count enemy deaths that happened BEFORE 4th teammate death
                 # We look at kill order in the DataFrame
                 fourth_death_idx = -1
                 current_ct_deaths = 0
                 current_t_deaths = 0
 
                 for i, (_, kill) in enumerate(round_kills.iterrows()):
-                    victim_side = safe_str(kill.get(self._vic_side_col))
-                    if "CT" in victim_side.upper():
+                    victim_side_norm = self._normalize_team(kill.get(self._vic_side_col))
+                    if victim_side_norm == "CT":
                         current_ct_deaths += 1
                         if side == "CT" and current_ct_deaths == 4:
                             fourth_death_idx = i
                             break
-                    elif "T" in victim_side.upper():
+                    elif victim_side_norm == "T":
                         current_t_deaths += 1
                         if side == "T" and current_t_deaths == 4:
                             fourth_death_idx = i
