@@ -1291,6 +1291,32 @@ class DemoParser:
             )
             rounds.append(round_info)
 
+        # Filter out knife round if present  
+        # In CS2 ESEA (MR12): max 24 rounds + potential 1 knife round at the beginning
+        # Knife round detection heuristics:
+        # 1. Total rounds = 25 (exceeds normal max of 24)
+        # 2. First round has "knife" or "side" in reason
+        # 3. First round is unrelated to bomb logic
+        if len(rounds) == 25:
+            first_round = rounds[0]
+            first_round_reason_lower = first_round.reason.lower()
+            
+            # Check for knife round indicators
+            knife_round_reasons = ["knife", "side", "determination", "pick"]
+            is_knife_reason = any(r in first_round_reason_lower for r in knife_round_reasons)
+            
+            # Also check if reason is not bomb-related (normal rounds have bomb events)
+            bomb_reasons = ["bomb_planted", "bomb_defused", "target_bombed", "target_saved", "elimination"]
+            is_bomb_related = any(b in first_round_reason_lower for b in bomb_reasons)
+            
+            # If it looks like a knife round, remove it
+            if is_knife_reason or (len(rounds) > 1 and not is_bomb_related):
+                logger.info(f"Detected and filtering out knife round (reason: {first_round.reason})")
+                rounds = rounds[1:]  # Remove first round
+                # Re-number remaining rounds to start from 1
+                for i in range(len(rounds)):
+                    rounds[i].round_num = i + 1
+        
         return rounds
 
     def _build_weapon_fires(self, weapon_fires_df: pd.DataFrame) -> list[WeaponFireEvent]:
