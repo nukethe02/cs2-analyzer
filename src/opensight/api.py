@@ -65,26 +65,71 @@ class Job:
     result: dict | None = None
 
 
-class JobStore:
-    def __init__(self) -> None:
-        self._jobs: dict[str, Job] = {}
-
-    def create_job(self, filename: str, size: int) -> Job:
-        job_id = str(uuid.uuid4())
-        job = Job(job_id=job_id, filename=filename, size=size)
-        self._jobs[job_id] = job
-        return job
-
-    def get_job(self, job_id: str) -> Job | None:
-        return self._jobs.get(job_id)
-
-    def list_jobs(self) -> list[Job]:
-        return list(self._jobs.values())
-
-    def set_status(self, job_id: str, status: JobStatus) -> None:
-        job = self._jobs.get(job_id)
-        if job:
-            job.status = status.value
+def player_stats_to_dict(player: Any) -> dict:
+    """Convert PlayerMatchStats to a JSON-serializable dict."""
+    return {
+        "steam_id": str(player.steam_id),
+        "name": player.name,
+        "team": player.team,
+        "kills": player.kills,
+        "deaths": player.deaths,
+        "assists": player.assists,
+        "headshots": player.headshots,
+        "total_damage": player.total_damage,
+        "rounds_played": player.rounds_played,
+        "kd_ratio": player.kd_ratio,
+        "kd_diff": player.kd_diff,
+        "adr": player.adr,
+        "headshot_percentage": player.headshot_percentage,
+        "kast_percentage": player.kast_percentage,
+        "hltv_rating": player.hltv_rating,
+        "impact_rating": player.impact_rating,
+        "survival_rate": player.survival_rate,
+        "kills_per_round": player.kills_per_round,
+        "deaths_per_round": player.deaths_per_round,
+        # TTD (Time to Damage)
+        "ttd_median_ms": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
+        "ttd_mean_ms": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
+        "ttd_samples": len(player.ttd_values),
+        "prefire_count": player.prefire_count,
+        # Crosshair Placement
+        "cp_median_error_deg": round(player.cp_median_error_deg, 1)
+        if player.cp_median_error_deg
+        else None,
+        "cp_mean_error_deg": round(player.cp_mean_error_deg, 1)
+        if player.cp_mean_error_deg
+        else None,
+        "cp_samples": len(player.cp_values),
+        # Opening duels
+        "opening_duel_wins": player.opening_duels.wins,
+        "opening_duel_losses": player.opening_duels.losses,
+        "opening_duel_attempts": player.opening_duels.attempts,
+        "opening_duel_win_rate": player.opening_duels.win_rate,
+        # Trades
+        "kills_traded": player.trades.kills_traded,
+        "deaths_traded": player.trades.deaths_traded,
+        # Clutches
+        "clutch_situations": player.clutches.total_situations,
+        "clutch_wins": player.clutches.total_wins,
+        "clutch_win_rate": player.clutches.win_rate,
+        # Multi-kills
+        "rounds_with_2k": player.multi_kills.rounds_with_2k,
+        "rounds_with_3k": player.multi_kills.rounds_with_3k,
+        "rounds_with_4k": player.multi_kills.rounds_with_4k,
+        "rounds_with_5k": player.multi_kills.rounds_with_5k,
+        # Utility
+        "flashbangs_thrown": player.utility.flashbangs_thrown,
+        "enemies_flashed": player.utility.enemies_flashed,
+        "flash_assists": player.utility.flash_assists,
+        "he_thrown": player.utility.he_thrown,
+        "he_damage": player.utility.he_damage,
+        # Weapon breakdown
+        "weapon_kills": player.weapon_kills,
+        # RWS (Round Win Shares) - ESEA style
+        "rws": player.rws,
+        "damage_in_won_rounds": player.damage_in_won_rounds,
+        "rounds_won": player.rounds_won,
+    }
 
 
 class SharecodeCache:
