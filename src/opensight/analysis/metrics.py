@@ -1616,3 +1616,211 @@ def calculate_comprehensive_metrics(
         )
 
     return results
+
+
+# ============================================================================
+# RWS (Round Win Shares) Calculation
+# ============================================================================
+
+
+@dataclass
+class RWSResult:
+    """RWS (Round Win Shares) calculation result for a player.
+
+    RWS measures contribution to round wins based on damage dealt.
+    - 100 points per round divided among winning team based on damage
+    - Bomb planter/defuser gets 30 bonus points for objective completion
+    - Average RWS ranges from ~8-12 for average players, 15+ for stars
+    """
+
+    steam_id: int
+    player_name: str
+    rounds_played: int
+    rounds_won: int
+    total_rws: float
+    avg_rws: float  # Average RWS per round played
+    total_damage: int
+    damage_per_round: float
+    objective_completions: int  # Bomb plants/defuses that exploded/succeeded
+    objective_rws: float  # RWS from objective completions
+
+    def __repr__(self) -> str:
+        return f"RWS({self.player_name}: {self.avg_rws:.2f} avg, {self.rounds_won}/{self.rounds_played} won)"
+
+
+def calculate_rws(demo_data: DemoData, steam_id: int | None = None) -> dict[int, RWSResult]:
+    """
+    Calculate RWS (Round Win Shares) for players.
+
+    RWS Formula (per round):
+    - Losing team: 0 RWS
+    - Winning team: 100 RWS divided based on damage dealt
+    - Bomb explodes: Planter gets 30 + (damage share of 70)
+    - Bomb defused: Defuser gets 30 + (damage share of 70)
+    - Elimination/Time: Just damage share of 100
+
+    Args:
+        demo_data: Parsed demo data with rounds, damages, and bomb_events
+        steam_id: Optional specific player to analyze
+
+    Returns:
+        Dictionary mapping steam_id to RWSResult
+    """
+    results: dict[int, RWSResult] = {}
+
+    # Get data
+    rounds = getattr(demo_data, "rounds", [])
+    damages = getattr(demo_data, "damages", [])
+    bomb_events = getattr(demo_data, "bomb_events", [])
+    player_names = getattr(demo_data, "player_names", {})
+    player_teams = getattr(demo_data, "player_teams", {})
+
+    if not rounds:
+        logger.warning("No round data available for RWS calculation")
+        return results
+
+    # Group damages by round
+    round_damages: dict[int, dict[int, int]] = {}  # round_num -> {steam_id -> damage}
+    for dmg in damages:
+        round_num = getattr(dmg, "round_num", 0)
+        attacker_id = getattr(dmg, "attacker_steamid", 0)
+        damage_val = getattr(dmg, "damage", 0)
+        attacker_side = getattr(dmg, "attacker_side", "").upper()
+        victim_side = getattr(dmg, "victim_side", "").upper()
+
+        # Only count damage to enemies
+        if attacker_side and victim_side and attacker_side != victim_side:
+            if round_num not in round_damages:
+                round_damages[round_num] = {}
+            if attacker_id not in round_damages[round_num]:
+                round_damages[round_num][attacker_id] = 0
+            round_damages[round_num][attacker_id] += damage_val
+
+    # Get bomb planters/defusers per round
+    round_planters: dict[int, int] = {}  # round_num -> planter_steam_id
+    round_defusers: dict[int, int] = {}  # round_num -> defuser_steam_id
+    for event in bomb_events:
+        round_num = getattr(event, "round_num", 0)
+        player_id = getattr(event, "player_steamid", 0)
+        event_type = getattr(event, "event_type", "")
+
+        if event_type == "planted":
+            round_planters[round_num] = player_id
+        elif event_type == "defused":
+            round_defusers[round_num] = player_id
+
+    # Initialize player stats
+    player_stats: dict[int, dict] = {}
+    for pid in player_names:
+        player_stats[pid] = {
+            "rounds_played": 0,
+            "rounds_won": 0,
+            "total_rws": 0.0,
+            "total_damage": 0,
+            "objective_completions": 0,
+            "objective_rws": 0.0,
+        }
+
+    # Calculate RWS for each round
+    for round_info in rounds:
+        round_num = getattr(round_info, "round_num", 0)
+        winner = getattr(round_info, "winner", "").upper()
+        reason = getattr(round_info, "reason", "")
+
+        if not winner:
+            continue
+
+        # Get damage dealt this round
+        round_dmg = round_damages.get(round_num, {})
+
+        # Determine which players won
+        winning_players = []
+        for pid, team in player_teams.items():
+            team_upper = str(team).upper()
+            # Handle both "CT" and "COUNTER-TERRORISTS" style
+            is_ct = "CT" in team_upper or "COUNTER" in team_upper
+            is_t = "T" in team_upper and not is_ct
+
+            if (winner == "CT" and is_ct) or (winner == "T" and is_t):
+                winning_players.append(pid)
+
+            # Track rounds played
+            if pid in player_stats:
+                player_stats[pid]["rounds_played"] += 1
+
+        # Skip if no winning players identified
+        if not winning_players:
+            continue
+
+        # Calculate total damage by winning team this round
+        winning_team_damage = sum(round_dmg.get(pid, 0) for pid in winning_players)
+
+        # Determine if objective bonus applies
+        objective_player = None
+        objective_bonus = 0.0
+        damage_pool = 100.0  # Total RWS to distribute
+
+        if reason == "target_bombed" and round_num in round_planters:
+            planter = round_planters[round_num]
+            if planter in winning_players:
+                objective_player = planter
+                objective_bonus = 30.0
+                damage_pool = 70.0
+        elif reason == "bomb_defused" and round_num in round_defusers:
+            defuser = round_defusers[round_num]
+            if defuser in winning_players:
+                objective_player = defuser
+                objective_bonus = 30.0
+                damage_pool = 70.0
+
+        # Distribute RWS to winning team
+        for pid in winning_players:
+            if pid not in player_stats:
+                continue
+
+            player_stats[pid]["rounds_won"] += 1
+
+            # Calculate damage share
+            player_damage = round_dmg.get(pid, 0)
+            player_stats[pid]["total_damage"] += player_damage
+
+            if winning_team_damage > 0:
+                damage_share = player_damage / winning_team_damage
+                rws_from_damage = damage_share * damage_pool
+            else:
+                # Equal share if no damage recorded
+                rws_from_damage = damage_pool / len(winning_players)
+
+            # Add objective bonus
+            rws_this_round = rws_from_damage
+            if pid == objective_player:
+                rws_this_round += objective_bonus
+                player_stats[pid]["objective_completions"] += 1
+                player_stats[pid]["objective_rws"] += objective_bonus
+
+            player_stats[pid]["total_rws"] += rws_this_round
+
+    # Build results
+    target_ids = {steam_id} if steam_id else set(player_stats.keys())
+
+    for pid in target_ids:
+        if pid not in player_stats:
+            continue
+
+        stats = player_stats[pid]
+        rounds_played = max(stats["rounds_played"], 1)
+
+        results[pid] = RWSResult(
+            steam_id=pid,
+            player_name=player_names.get(pid, f"Player {pid}"),
+            rounds_played=stats["rounds_played"],
+            rounds_won=stats["rounds_won"],
+            total_rws=stats["total_rws"],
+            avg_rws=stats["total_rws"] / rounds_played,
+            total_damage=stats["total_damage"],
+            damage_per_round=stats["total_damage"] / rounds_played,
+            objective_completions=stats["objective_completions"],
+            objective_rws=stats["objective_rws"],
+        )
+
+    return results

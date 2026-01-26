@@ -15,14 +15,48 @@ import gzip
 import hashlib
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Default cache directory
-DEFAULT_CACHE_DIR = Path.home() / ".opensight" / "cache"
+
+def _get_default_cache_dir() -> Path:
+    """Get the default cache directory, compatible with Hugging Face Spaces."""
+    # Check for explicit cache dir environment variable
+    if env_cache := os.environ.get("OPENSIGHT_CACHE_DIR"):
+        return Path(env_cache)
+
+    # Try home directory first (works locally)
+    home_cache = Path.home() / ".opensight" / "cache"
+    try:
+        home_cache.mkdir(parents=True, exist_ok=True)
+        # Test if we can write
+        test_file = home_cache / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+        return home_cache
+    except (OSError, PermissionError):
+        pass
+
+    # Fallback to /tmp for Hugging Face Spaces and other restricted environments
+    tmp_cache = Path("/tmp/opensight/cache")
+    try:
+        tmp_cache.mkdir(parents=True, exist_ok=True)
+        return tmp_cache
+    except (OSError, PermissionError):
+        pass
+
+    # Last resort: current working directory
+    cwd_cache = Path.cwd() / ".opensight_cache"
+    cwd_cache.mkdir(parents=True, exist_ok=True)
+    return cwd_cache
+
+
+# Default cache directory (HF Spaces compatible)
+DEFAULT_CACHE_DIR = _get_default_cache_dir()
 
 # Cache entry max age in days
 DEFAULT_MAX_AGE_DAYS = 30
@@ -456,7 +490,7 @@ class CachedAnalyzer:
             force: Force re-analysis even if cached
 
         Returns:
-            Analysis result dict
+            Comprehensive analysis result dict including tactical data
         """
         # Check cache first
         if not force:
@@ -467,37 +501,191 @@ class CachedAnalyzer:
 
         # Run analysis
         logger.info(f"Analyzing {demo_path.name}")
-        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.analysis.analytics import DemoAnalyzer, compute_kill_positions
         from opensight.core.parser import DemoParser
+        from opensight.core.enhanced_parser import CoachingAnalysisEngine
 
         parser = DemoParser(demo_path)
         demo_data = parser.parse()
 
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()
+        
+        # Calculate professional metrics using enhanced parser
+        try:
+            logger.info(f"Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)")
+            engine = CoachingAnalysisEngine()
+            enhanced_metrics = engine.analyze_demo(demo_path)
+        except Exception as e:
+            logger.warning(f"Enhanced metrics calculation failed, using basic analysis only: {e}")
+            enhanced_metrics = {}
 
-        # Convert to dict for caching
-        result = {
-            "map_name": analysis.map_name,
-            "total_rounds": analysis.total_rounds,
-            "team1_score": analysis.team1_score,
-            "team2_score": analysis.team2_score,
-            "players": {
-                str(sid): {
-                    "name": p.name,
-                    "team": p.team,
+        # Calculate RWS using direct method (more reliable)
+        rws_data = self._calculate_rws_direct(demo_data)
+
+        # Calculate multi-kills (2K, 3K, 4K, 5K)
+        multikills = self._calculate_multikills(demo_data)
+
+        # Build timeline graph data
+        timeline_graph = self._build_timeline_graph_data(demo_data)
+
+        # Build comprehensive player data
+        players = {}
+        for sid, p in analysis.players.items():
+            mk = multikills.get(sid, {"2k": 0, "3k": 0, "4k": 0, "5k": 0})
+            players[str(sid)] = {
+                "name": p.name,
+                "team": p.team,
+                "stats": {
                     "kills": p.kills,
                     "deaths": p.deaths,
                     "assists": p.assists,
-                    "adr": p.adr,
-                    "headshot_percentage": p.headshot_percentage,
-                    "hltv_rating": p.hltv_rating,
-                    "kast_percentage": p.kast_percentage,
-                    "aim_rating": p.aim_rating,
-                    "utility_rating": p.utility_rating,
-                }
-                for sid, p in analysis.players.items()
+                    "adr": round(p.adr, 1) if p.adr else 0,
+                    "headshot_pct": round(p.headshot_percentage, 1) if p.headshot_percentage else 0,
+                    "kd_ratio": round(p.kills / max(1, p.deaths), 2),
+                    "2k": mk["2k"],
+                    "3k": mk["3k"],
+                    "4k": mk["4k"],
+                    "5k": mk["5k"],
+                },
+                "rating": {
+                    "hltv_rating": round(p.hltv_rating, 2) if p.hltv_rating else 0,
+                    "kast_percentage": round(p.kast_percentage, 1) if p.kast_percentage else 0,
+                    "aim_rating": round(p.aim_rating, 1) if p.aim_rating else 50,
+                    "utility_rating": round(p.utility_rating, 1) if p.utility_rating else 50,
+                    "impact_rating": round(getattr(p, 'impact_rating', None) or 0, 2),
+                },
+                "advanced": {
+                    # From enhanced parser (TTD - Time to Damage)
+                    "ttd_median_ms": round(getattr(p, 'ttd_median_ms', None) or 0, 1),
+                    "ttd_mean_ms": round(getattr(p, 'ttd_mean_ms', None) or 0, 1),
+                    "ttd_95th_ms": round(getattr(p, 'ttd_95th_ms', None) or 0, 1),
+                    # From enhanced parser (CP - Crosshair Placement)
+                    "cp_median_error_deg": round(getattr(p, 'cp_median_error_deg', None) or 0, 1),
+                    "cp_mean_error_deg": round(getattr(p, 'cp_mean_error_deg', None) or 0, 1),
+                    # Other advanced stats
+                    "prefire_kills": getattr(p, 'prefire_kills', None) or 0,
+                    "opening_kills": getattr(p, 'opening_kills', None) or 0,
+                    "opening_deaths": getattr(p, 'opening_deaths', None) or 0,
+                },
+                "utility": {
+                    "flashbangs_thrown": getattr(p, 'flashbangs_thrown', None) or 0,
+                    "smokes_thrown": getattr(p, 'smokes_thrown', None) or 0,
+                    "he_thrown": getattr(p, 'he_thrown', None) or 0,
+                    "molotovs_thrown": getattr(p, 'molotovs_thrown', None) or 0,
+                    "flash_assists": getattr(p, 'flash_assists', None) or 0,
+                    "enemies_flashed": getattr(p, 'enemies_flashed', None) or 0,
+                    "he_damage": getattr(p, 'he_damage', None) or 0,
+                },
+                "duels": {
+                    "trade_kills": getattr(p, 'trade_kills', None) or 0,
+                    "traded_deaths": getattr(p, 'traded_deaths', None) or 0,
+                    "clutch_wins": getattr(p, 'clutch_wins', None) or 0,
+                    "clutch_attempts": getattr(p, 'clutch_attempts', None) or 0,
+                },
+                "entry": self._get_entry_stats(p),
+                "trades": self._get_trade_stats(p),
+                "clutches": self._get_clutch_stats(p),
+                "rws": rws_data.get(sid, {"avg_rws": 0, "total_rws": 0, "rounds_won": 0, "rounds_played": 0, "damage_per_round": 0, "objective_completions": 0}),
+            }
+        
+        # Merge enhanced metrics from professional parser
+        if enhanced_metrics and "entry_frags" in enhanced_metrics:
+            for steam_id, entry_data in enhanced_metrics.get("entry_frags", {}).items():
+                if steam_id in players:
+                    if "entry" not in players[steam_id]:
+                        players[steam_id]["entry"] = {}
+                    players[steam_id]["entry"].update({
+                        "entry_attempts": entry_data.get("entry_attempts", 0),
+                        "entry_kills": entry_data.get("entry_kills", 0),
+                        "entry_deaths": entry_data.get("entry_deaths", 0),
+                    })
+        
+        # Merge TTD metrics
+        if enhanced_metrics and "ttd_metrics" in enhanced_metrics:
+            for steam_id, ttd_data in enhanced_metrics.get("ttd_metrics", {}).items():
+                if steam_id in players:
+                    players[steam_id]["advanced"].update({
+                        "ttd_median_ms": ttd_data.get("ttd_median_ms", 0),
+                        "ttd_mean_ms": ttd_data.get("ttd_mean_ms", 0),
+                        "ttd_95th_ms": ttd_data.get("ttd_95th_ms", 0),
+                    })
+        
+        # Merge CP metrics
+        if enhanced_metrics and "crosshair_placement" in enhanced_metrics:
+            for steam_id, cp_data in enhanced_metrics.get("crosshair_placement", {}).items():
+                if steam_id in players:
+                    players[steam_id]["advanced"].update({
+                        "cp_median_error_deg": cp_data.get("cp_median_error_deg", 0),
+                        "cp_mean_error_deg": cp_data.get("cp_mean_error_deg", 0),
+                    })
+        
+        # Merge Trade Kill metrics
+        if enhanced_metrics and "trade_kills" in enhanced_metrics:
+            for steam_id, trade_data in enhanced_metrics.get("trade_kills", {}).items():
+                if steam_id in players:
+                    players[steam_id]["duels"].update({
+                        "trade_kills": trade_data.get("trade_kills", 0),
+                        "deaths_traded": trade_data.get("deaths_traded", 0),
+                    })
+        
+        # Merge Clutch metrics
+        if enhanced_metrics and "clutch_stats" in enhanced_metrics:
+            for steam_id, clutch_data in enhanced_metrics.get("clutch_stats", {}).items():
+                if steam_id in players:
+                    players[steam_id]["duels"].update({
+                        "clutch_wins": clutch_data.get("clutch_wins", 0),
+                        "clutch_attempts": clutch_data.get("clutch_attempts", 0),
+                    })
+                    # Add breakdown by variant
+                    if "clutches" not in players[steam_id]:
+                        players[steam_id]["clutches"] = {}
+                    players[steam_id]["clutches"].update({
+                        "v1_wins": clutch_data.get("v1_wins", 0),
+                        "v2_wins": clutch_data.get("v2_wins", 0),
+                        "v3_wins": clutch_data.get("v3_wins", 0),
+                        "v4_wins": clutch_data.get("v4_wins", 0),
+                        "v5_wins": clutch_data.get("v5_wins", 0),
+                    })
+
+        # Build round timeline
+        round_timeline = self._build_round_timeline(demo_data, analysis)
+
+        # Build kill matrix
+        kill_matrix = self._build_kill_matrix(demo_data)
+
+        # Build heatmap data
+        heatmap_data = self._build_heatmap_data(demo_data)
+
+        # Generate coaching insights
+        coaching = self._generate_coaching_insights(demo_data, analysis, players)
+
+        # Get tactical summary
+        tactical = self._get_tactical_summary(demo_data, analysis)
+
+        # Find MVP
+        mvp = None
+        if players:
+            mvp_data = max(players.values(), key=lambda x: x["rating"]["hltv_rating"])
+            mvp = {"name": mvp_data["name"], "rating": mvp_data["rating"]["hltv_rating"]}
+
+        # Convert to dict for caching
+        result = {
+            "demo_info": {
+                "map": analysis.map_name,
+                "rounds": analysis.total_rounds,
+                "duration_minutes": getattr(analysis, 'duration_minutes', 30),
+                "score": f"{analysis.team1_score} - {analysis.team2_score}",
+                "total_kills": sum(p["stats"]["kills"] for p in players.values()),
             },
+            "players": players,
+            "mvp": mvp,
+            "round_timeline": round_timeline,
+            "kill_matrix": kill_matrix,
+            "heatmap_data": heatmap_data,
+            "coaching": coaching,
+            "tactical": tactical,
+            "timeline_graph": timeline_graph,
             "analyzed_at": datetime.now().isoformat(),
         }
 
@@ -505,6 +693,553 @@ class CachedAnalyzer:
         self.cache.put(demo_path, result)
 
         return result
+
+    def _get_entry_stats(self, player) -> dict:
+        """Get comprehensive entry/opening duel stats like FACEIT."""
+        opening = getattr(player, 'opening_duels', None)
+        if opening:
+            attempts = getattr(opening, 'attempts', 0) or 0
+            wins = getattr(opening, 'wins', 0) or 0
+            losses = getattr(opening, 'losses', 0) or 0
+            rounds = getattr(player, 'rounds_played', 0) or 1
+            return {
+                "entry_attempts": attempts,
+                "entry_kills": wins,
+                "entry_deaths": losses,
+                "entry_diff": wins - losses,
+                "entry_attempts_pct": round(attempts / rounds * 100, 0) if rounds > 0 else 0,
+                "entry_success_pct": round(wins / attempts * 100, 0) if attempts > 0 else 0,
+            }
+        return {
+            "entry_attempts": 0,
+            "entry_kills": 0,
+            "entry_deaths": 0,
+            "entry_diff": 0,
+            "entry_attempts_pct": 0,
+            "entry_success_pct": 0,
+        }
+
+    def _get_trade_stats(self, player) -> dict:
+        """Get comprehensive trade stats like FACEIT."""
+        trades = getattr(player, 'trades', None)
+        if trades:
+            return {
+                "trade_kills": getattr(trades, 'kills_traded', 0) or 0,
+                "deaths_traded": getattr(trades, 'deaths_traded', 0) or 0,
+                "traded_entry_kills": 0,  # Would need additional tracking
+                "traded_entry_deaths": 0,  # Would need additional tracking
+            }
+        return {
+            "trade_kills": 0,
+            "deaths_traded": 0,
+            "traded_entry_kills": 0,
+            "traded_entry_deaths": 0,
+        }
+
+    def _get_clutch_stats(self, player) -> dict:
+        """Get comprehensive clutch stats like FACEIT."""
+        clutches = getattr(player, 'clutches', None)
+        if clutches:
+            total = getattr(clutches, 'total_situations', 0) or 0
+            wins = getattr(clutches, 'total_wins', 0) or 0
+            return {
+                "clutch_wins": wins,
+                "clutch_losses": total - wins,
+                "clutch_success_pct": round(wins / total * 100, 0) if total > 0 else 0,
+                "v1_wins": getattr(clutches, 'v1_wins', 0) or 0,
+                "v2_wins": getattr(clutches, 'v2_wins', 0) or 0,
+                "v3_wins": getattr(clutches, 'v3_wins', 0) or 0,
+                "v4_wins": getattr(clutches, 'v4_wins', 0) or 0,
+                "v5_wins": getattr(clutches, 'v5_wins', 0) or 0,
+            }
+        return {
+            "clutch_wins": 0,
+            "clutch_losses": 0,
+            "clutch_success_pct": 0,
+            "v1_wins": 0,
+            "v2_wins": 0,
+            "v3_wins": 0,
+            "v4_wins": 0,
+            "v5_wins": 0,
+        }
+
+    def _get_rws_for_player(self, steam_id: int, rws_data: dict) -> dict:
+        """Get RWS data for a specific player."""
+        if steam_id in rws_data:
+            rws = rws_data[steam_id]
+            return {
+                "avg_rws": round(rws.avg_rws, 2),
+                "total_rws": round(rws.total_rws, 1),
+                "rounds_won": rws.rounds_won,
+                "rounds_played": rws.rounds_played,
+                "damage_per_round": round(rws.damage_per_round, 1),
+                "objective_completions": rws.objective_completions,
+            }
+        return {
+            "avg_rws": 0.0,
+            "total_rws": 0.0,
+            "rounds_won": 0,
+            "rounds_played": 0,
+            "damage_per_round": 0.0,
+            "objective_completions": 0,
+        }
+
+    def _build_round_timeline(self, demo_data, analysis) -> list[dict]:
+        """Build round-by-round timeline data."""
+        timeline = []
+        kills = getattr(demo_data, "kills", [])
+
+        # Group kills by round
+        round_kills = {}
+        for kill in kills:
+            round_num = getattr(kill, "round_num", 0)
+            if round_num not in round_kills:
+                round_kills[round_num] = {"ct_kills": 0, "t_kills": 0, "first_kill": None, "first_death": None}
+
+            attacker_side = str(getattr(kill, "attacker_side", "")).upper()
+            if "CT" in attacker_side:
+                round_kills[round_num]["ct_kills"] += 1
+            else:
+                round_kills[round_num]["t_kills"] += 1
+
+            if round_kills[round_num]["first_kill"] is None:
+                round_kills[round_num]["first_kill"] = getattr(kill, "attacker_name", "Unknown")
+                round_kills[round_num]["first_death"] = getattr(kill, "victim_name", "Unknown")
+
+        # Build timeline entries
+        for round_num in sorted(round_kills.keys()):
+            rd = round_kills[round_num]
+            winner = "CT" if rd["ct_kills"] > rd["t_kills"] else "T"
+            timeline.append({
+                "round_num": round_num,
+                "winner": winner,
+                "win_reason": "Elimination" if abs(rd["ct_kills"] - rd["t_kills"]) >= 4 else "Objective",
+                "first_kill": rd["first_kill"],
+                "first_death": rd["first_death"],
+                "ct_kills": rd["ct_kills"],
+                "t_kills": rd["t_kills"],
+            })
+
+        return timeline
+
+    def _calculate_multikills(self, demo_data) -> dict[int, dict]:
+        """Calculate multi-kill counts (2K, 3K, 4K, 5K) per player per round."""
+        kills = getattr(demo_data, "kills", [])
+
+        # Count kills per player per round
+        player_round_kills: dict[int, dict[int, int]] = {}  # steam_id -> {round_num -> kill_count}
+
+        for kill in kills:
+            attacker_id = getattr(kill, "attacker_steamid", 0)
+            round_num = getattr(kill, "round_num", 0)
+
+            if attacker_id and round_num:
+                if attacker_id not in player_round_kills:
+                    player_round_kills[attacker_id] = {}
+                if round_num not in player_round_kills[attacker_id]:
+                    player_round_kills[attacker_id][round_num] = 0
+                player_round_kills[attacker_id][round_num] += 1
+
+        # Count 2K, 3K, 4K, 5K for each player
+        result: dict[int, dict] = {}
+        for steam_id, round_kills in player_round_kills.items():
+            counts = {"2k": 0, "3k": 0, "4k": 0, "5k": 0}
+            for _, kill_count in round_kills.items():
+                if kill_count == 2:
+                    counts["2k"] += 1
+                elif kill_count == 3:
+                    counts["3k"] += 1
+                elif kill_count == 4:
+                    counts["4k"] += 1
+                elif kill_count >= 5:
+                    counts["5k"] += 1
+            result[steam_id] = counts
+
+        return result
+
+    def _build_timeline_graph_data(self, demo_data) -> dict:
+        """Build round-by-round data for timeline graphs (kills, damage per round per player)."""
+        kills = getattr(demo_data, "kills", [])
+        damages = getattr(demo_data, "damages", [])
+        player_names = getattr(demo_data, "player_names", {})
+
+        # Initialize per-player round data
+        player_round_data: dict[int, dict[int, dict]] = {}  # steam_id -> {round_num -> {kills, damage}}
+
+        # Get max rounds
+        max_round = 0
+
+        # Count kills per player per round
+        for kill in kills:
+            attacker_id = getattr(kill, "attacker_steamid", 0)
+            round_num = getattr(kill, "round_num", 0)
+
+            if not attacker_id or not round_num:
+                continue
+
+            max_round = max(max_round, round_num)
+
+            if attacker_id not in player_round_data:
+                player_round_data[attacker_id] = {}
+            if round_num not in player_round_data[attacker_id]:
+                player_round_data[attacker_id][round_num] = {"kills": 0, "damage": 0}
+            player_round_data[attacker_id][round_num]["kills"] += 1
+
+        # Sum damage per player per round
+        for dmg in damages:
+            attacker_id = getattr(dmg, "attacker_steamid", 0)
+            round_num = getattr(dmg, "round_num", 0)
+            damage_val = getattr(dmg, "damage", 0)
+
+            if not attacker_id or not round_num:
+                continue
+
+            max_round = max(max_round, round_num)
+
+            if attacker_id not in player_round_data:
+                player_round_data[attacker_id] = {}
+            if round_num not in player_round_data[attacker_id]:
+                player_round_data[attacker_id][round_num] = {"kills": 0, "damage": 0}
+            player_round_data[attacker_id][round_num]["damage"] += damage_val
+
+        # Build cumulative data for graphs
+        players_timeline = []
+        for steam_id, round_data in player_round_data.items():
+            player_name = player_names.get(steam_id, f"Player {steam_id}")
+
+            cumulative_kills = 0
+            cumulative_damage = 0
+            rounds = []
+
+            for r in range(1, max_round + 1):
+                rd = round_data.get(r, {"kills": 0, "damage": 0})
+                cumulative_kills += rd["kills"]
+                cumulative_damage += rd["damage"]
+                rounds.append({
+                    "round": r,
+                    "kills": cumulative_kills,
+                    "damage": cumulative_damage,
+                    "round_kills": rd["kills"],
+                    "round_damage": rd["damage"],
+                })
+
+            players_timeline.append({
+                "steam_id": steam_id,
+                "name": player_name,
+                "rounds": rounds,
+            })
+
+        return {
+            "max_rounds": max_round,
+            "players": players_timeline,
+        }
+
+    def _calculate_rws_direct(self, demo_data) -> dict[int, dict]:
+        """Calculate RWS directly from demo data with better team handling."""
+        kills = getattr(demo_data, "kills", [])
+        damages = getattr(demo_data, "damages", [])
+        rounds = getattr(demo_data, "rounds", [])
+        player_names = getattr(demo_data, "player_names", {})
+
+        if not rounds or not kills:
+            return {}
+
+        # Build player teams from kills (more reliable than player_teams dict)
+        player_teams: dict[int, str] = {}
+        for kill in kills:
+            att_id = getattr(kill, "attacker_steamid", 0)
+            att_side = str(getattr(kill, "attacker_side", "")).upper()
+            vic_id = getattr(kill, "victim_steamid", 0)
+            vic_side = str(getattr(kill, "victim_side", "")).upper()
+
+            if att_id and "CT" in att_side:
+                player_teams[att_id] = "CT"
+            elif att_id and "T" in att_side:
+                player_teams[att_id] = "T"
+            if vic_id and "CT" in vic_side:
+                player_teams[vic_id] = "CT"
+            elif vic_id and "T" in vic_side:
+                player_teams[vic_id] = "T"
+
+        # Group damage by round
+        round_damages: dict[int, dict[int, int]] = {}  # round_num -> {steam_id -> damage}
+        for dmg in damages:
+            round_num = getattr(dmg, "round_num", 0)
+            attacker_id = getattr(dmg, "attacker_steamid", 0)
+            damage_val = getattr(dmg, "damage", 0)
+            attacker_side = str(getattr(dmg, "attacker_side", "")).upper()
+            victim_side = str(getattr(dmg, "victim_side", "")).upper()
+
+            # Only count damage to enemies
+            is_enemy_damage = (
+                ("CT" in attacker_side and "T" in victim_side and "CT" not in victim_side) or
+                ("T" in attacker_side and "CT" not in attacker_side and "CT" in victim_side)
+            )
+
+            if attacker_id and round_num and is_enemy_damage:
+                if round_num not in round_damages:
+                    round_damages[round_num] = {}
+                if attacker_id not in round_damages[round_num]:
+                    round_damages[round_num][attacker_id] = 0
+                round_damages[round_num][attacker_id] += damage_val
+
+        # Initialize player stats
+        player_stats: dict[int, dict] = {}
+        for pid in player_names:
+            player_stats[pid] = {
+                "rounds_played": 0,
+                "rounds_won": 0,
+                "total_rws": 0.0,
+                "total_damage": 0,
+            }
+
+        # Calculate RWS for each round
+        for round_info in rounds:
+            round_num = getattr(round_info, "round_num", 0)
+            winner = str(getattr(round_info, "winner", "")).upper()
+
+            if not winner or winner == "UNKNOWN":
+                continue
+
+            round_dmg = round_damages.get(round_num, {})
+
+            # Find winning players based on their side in this half
+            winning_players = []
+            for pid, team in player_teams.items():
+                if pid in player_stats:
+                    player_stats[pid]["rounds_played"] += 1
+
+                    # Check if player is on winning team
+                    if (winner == "CT" and team == "CT") or (winner == "T" and team == "T"):
+                        winning_players.append(pid)
+
+            if not winning_players:
+                continue
+
+            # Calculate total damage by winning team
+            winning_team_damage = sum(round_dmg.get(pid, 0) for pid in winning_players)
+
+            # Distribute 100 RWS among winning team based on damage
+            for pid in winning_players:
+                player_stats[pid]["rounds_won"] += 1
+                player_damage = round_dmg.get(pid, 0)
+                player_stats[pid]["total_damage"] += player_damage
+
+                if winning_team_damage > 0:
+                    damage_share = player_damage / winning_team_damage
+                    rws_this_round = damage_share * 100
+                else:
+                    # Equal share if no damage recorded
+                    rws_this_round = 100 / len(winning_players)
+
+                player_stats[pid]["total_rws"] += rws_this_round
+
+        # Build results
+        results = {}
+        for pid, stats in player_stats.items():
+            rounds_played = max(stats["rounds_played"], 1)
+            results[pid] = {
+                "avg_rws": round(stats["total_rws"] / rounds_played, 2),
+                "total_rws": round(stats["total_rws"], 1),
+                "rounds_won": stats["rounds_won"],
+                "rounds_played": stats["rounds_played"],
+                "damage_per_round": round(stats["total_damage"] / rounds_played, 1),
+                "objective_completions": 0,
+            }
+
+        return results
+
+    def _build_kill_matrix(self, demo_data) -> list[dict]:
+        """Build kill matrix showing who killed who."""
+        kills = getattr(demo_data, "kills", [])
+        player_names = getattr(demo_data, "player_names", {})
+
+        matrix = {}
+        for kill in kills:
+            attacker_id = getattr(kill, "attacker_steamid", 0)
+            victim_id = getattr(kill, "victim_steamid", 0)
+            attacker_name = player_names.get(attacker_id, getattr(kill, "attacker_name", "Unknown"))
+            victim_name = player_names.get(victim_id, getattr(kill, "victim_name", "Unknown"))
+
+            key = (attacker_name, victim_name)
+            matrix[key] = matrix.get(key, 0) + 1
+
+        return [{"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()]
+
+    def _build_heatmap_data(self, demo_data) -> dict:
+        """Build position data for heatmap visualization."""
+        kills = getattr(demo_data, "kills", [])
+
+        kill_positions = []
+        death_positions = []
+
+        for kill in kills:
+            # Kill position (attacker)
+            ax = getattr(kill, "attacker_x", None)
+            ay = getattr(kill, "attacker_y", None)
+            if ax is not None and ay is not None:
+                kill_positions.append({"x": ax, "y": ay, "z": getattr(kill, "attacker_z", 0)})
+
+            # Death position (victim)
+            vx = getattr(kill, "victim_x", None)
+            vy = getattr(kill, "victim_y", None)
+            if vx is not None and vy is not None:
+                death_positions.append({"x": vx, "y": vy, "z": getattr(kill, "victim_z", 0)})
+
+        return {"kill_positions": kill_positions, "death_positions": death_positions}
+
+    def _generate_coaching_insights(self, demo_data, analysis, players: dict) -> list[dict]:
+        """Generate coaching insights for each player."""
+        coaching = []
+
+        for steam_id, player in players.items():
+            insights = []
+            name = player["name"]
+            stats = player["stats"]
+            rating = player["rating"]
+            advanced = player["advanced"]
+            utility = player["utility"]
+            duels = player["duels"]
+
+            # Role detection
+            role = self._detect_role(player)
+
+            # Analyze strengths
+            if rating["hltv_rating"] >= 1.2:
+                insights.append({
+                    "type": "positive",
+                    "message": f"Outstanding performance with {rating['hltv_rating']:.2f} rating - carrying the team",
+                    "category": "Performance"
+                })
+            if stats["adr"] >= 90:
+                insights.append({
+                    "type": "positive",
+                    "message": f"Excellent damage output ({stats['adr']} ADR) - consistent impact every round",
+                    "category": "Damage"
+                })
+            if advanced["opening_kills"] >= 5:
+                insights.append({
+                    "type": "positive",
+                    "message": f"{advanced['opening_kills']} opening kills - strong entry fragging",
+                    "category": "Entry"
+                })
+            if rating["kast_percentage"] >= 80:
+                insights.append({
+                    "type": "positive",
+                    "message": f"{rating['kast_percentage']:.0f}% KAST - almost always contributing to rounds",
+                    "category": "Consistency"
+                })
+
+            # Analyze weaknesses
+            if stats["deaths"] > stats["kills"] + 5:
+                insights.append({
+                    "type": "mistake",
+                    "message": f"Dying too often ({stats['deaths']} deaths) - consider safer positioning",
+                    "category": "Positioning"
+                })
+            if advanced["ttd_median_ms"] > 400:
+                insights.append({
+                    "type": "warning",
+                    "message": f"Slow reaction time ({advanced['ttd_median_ms']:.0f}ms TTD) - work on pre-aiming angles",
+                    "category": "Mechanics"
+                })
+            if advanced["cp_median_error_deg"] > 15:
+                insights.append({
+                    "type": "warning",
+                    "message": f"Crosshair placement needs work ({advanced['cp_median_error_deg']:.1f}° error) - pre-aim common spots",
+                    "category": "Mechanics"
+                })
+            if utility["flashbangs_thrown"] < 3:
+                insights.append({
+                    "type": "warning",
+                    "message": "Low utility usage - buy and throw more flashes for team support",
+                    "category": "Utility"
+                })
+            if duels["traded_deaths"] > duels["trade_kills"] + 2:
+                insights.append({
+                    "type": "warning",
+                    "message": "Not getting traded when dying - stay closer to teammates",
+                    "category": "Teamplay"
+                })
+
+            # Role-specific advice
+            if role == "entry" and advanced["opening_kills"] < 3:
+                insights.append({
+                    "type": "warning",
+                    "message": "As entry, focus on getting more opening kills with flash support",
+                    "category": "Role"
+                })
+            if role == "awp" and stats["deaths"] > stats["kills"]:
+                insights.append({
+                    "type": "mistake",
+                    "message": "Dying with AWP too often - $4750 lost each time. Hold angles, don't peek",
+                    "category": "Economy"
+                })
+
+            # Add at least one insight
+            if not insights:
+                if rating["hltv_rating"] >= 1.0:
+                    insights.append({
+                        "type": "positive",
+                        "message": "Solid performance overall - keep up the consistency",
+                        "category": "General"
+                    })
+                else:
+                    insights.append({
+                        "type": "warning",
+                        "message": "Focus on staying alive and trading with teammates",
+                        "category": "General"
+                    })
+
+            coaching.append({
+                "player_name": name,
+                "steam_id": steam_id,
+                "role": role,
+                "insights": insights[:5],  # Top 5 insights per player
+            })
+
+        return coaching
+
+    def _detect_role(self, player: dict) -> str:
+        """Detect player role from stats."""
+        advanced = player["advanced"]
+        utility = player["utility"]
+        stats = player["stats"]
+
+        if advanced["opening_kills"] >= 5:
+            return "entry"
+        if utility["flashbangs_thrown"] >= 10 or utility["smokes_thrown"] >= 8:
+            return "support"
+        if stats["kills"] >= 20 and stats["headshot_pct"] >= 50:
+            return "rifler"
+        return "flex"
+
+    def _get_tactical_summary(self, demo_data, analysis) -> dict:
+        """Get tactical analysis summary."""
+        try:
+            from opensight.analysis.tactical_service import TacticalAnalysisService
+            service = TacticalAnalysisService(demo_data)
+            summary = service.analyze()
+
+            return {
+                "key_insights": summary.key_insights,
+                "t_stats": summary.t_stats,
+                "ct_stats": summary.ct_stats,
+                "t_executes": summary.t_executes,
+                "buy_patterns": summary.buy_patterns,
+                "t_strengths": summary.t_strengths,
+                "t_weaknesses": summary.t_weaknesses,
+                "ct_strengths": summary.ct_strengths,
+                "ct_weaknesses": summary.ct_weaknesses,
+                "team_recommendations": summary.team_recommendations,
+                "practice_drills": summary.practice_drills,
+            }
+        except Exception as e:
+            logger.warning(f"Tactical analysis failed: {e}")
+            return {
+                "key_insights": ["Demo analysis complete"],
+                "team_recommendations": ["Review round-by-round for specific improvements"],
+            }
 
 
 # Convenience functions

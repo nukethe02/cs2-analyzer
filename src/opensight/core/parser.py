@@ -521,21 +521,35 @@ class DemoParser:
         # CORE EVENTS - Always parse these
         # ===========================================
 
-        # Parse kills WITH comprehensive data
+        # Parse kills WITH comprehensive data - enhanced for coaching metrics
         kills_df = self._parse_event_safe(
             parser,
             "player_death",
-            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z"],
-            other_props=["total_rounds_played"],
+            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z", "health", "armor_value"],
+            other_props=["total_rounds_played", "headshot"],
         )
         if kills_df.empty:
             # Fallback without player props
             kills_df = self._parse_event_safe(parser, "player_death")
-        logger.info(f"Parsed {len(kills_df)} kills. Columns: {list(kills_df.columns)[:15]}...")
+        logger.info(f"Parsed {len(kills_df)} kills with positional context. Columns: {list(kills_df.columns)[:20]}...")
 
-        # Parse damages with hitgroup data
-        damages_df = self._parse_event_safe(parser, "player_hurt")
-        logger.info(f"Parsed {len(damages_df)} damage events")
+        # Parse damages with full positional context for TTD calculation
+        damages_df = self._parse_event_safe(
+            parser,
+            "player_hurt",
+            player_props=["X", "Y", "Z", "health", "armor_value"],
+            other_props=["total_rounds_played", "hitgroup"],
+        )
+        logger.info(f"Parsed {len(damages_df)} damage events with position context")
+
+        # Parse weapon fires for spray analysis and accuracy metrics
+        weapon_fires_df = self._parse_event_safe(
+            parser,
+            "weapon_fire",
+            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y"],
+            other_props=["total_rounds_played", "weapon", "inaccuracy"],
+        )
+        logger.info(f"Parsed {len(weapon_fires_df)} weapon fire events for spray analysis")
 
         # Parse round events
         round_end_df = self._parse_event_safe(parser, "round_end")
@@ -1291,6 +1305,32 @@ class DemoParser:
             )
             rounds.append(round_info)
 
+        # Filter out knife round if present  
+        # In CS2 ESEA (MR12): max 24 rounds + potential 1 knife round at the beginning
+        # Knife round detection heuristics:
+        # 1. Total rounds = 25 (exceeds normal max of 24)
+        # 2. First round has "knife" or "side" in reason
+        # 3. First round is unrelated to bomb logic
+        if len(rounds) == 25:
+            first_round = rounds[0]
+            first_round_reason_lower = first_round.reason.lower()
+            
+            # Check for knife round indicators
+            knife_round_reasons = ["knife", "side", "determination", "pick"]
+            is_knife_reason = any(r in first_round_reason_lower for r in knife_round_reasons)
+            
+            # Also check if reason is not bomb-related (normal rounds have bomb events)
+            bomb_reasons = ["bomb_planted", "bomb_defused", "target_bombed", "target_saved", "elimination"]
+            is_bomb_related = any(b in first_round_reason_lower for b in bomb_reasons)
+            
+            # If it looks like a knife round, remove it
+            if is_knife_reason or (len(rounds) > 1 and not is_bomb_related):
+                logger.info(f"Detected and filtering out knife round (reason: {first_round.reason})")
+                rounds = rounds[1:]  # Remove first round
+                # Re-number remaining rounds to start from 1
+                for i in range(len(rounds)):
+                    rounds[i].round_num = i + 1
+        
         return rounds
 
     def _build_weapon_fires(self, weapon_fires_df: pd.DataFrame) -> list[WeaponFireEvent]:
