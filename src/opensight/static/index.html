@@ -1710,86 +1710,111 @@
                 `;
             }
 
-            html += '<div class="players-grid">';
+            // Organize players by team
+            const ctPlayers = players.filter(p => p.team === 'CT');
+            const tPlayers = players.filter(p => p.team === 'T');
+            
+            // If we can't determine teams perfectly, split by first 5 vs rest
+            const team1 = ctPlayers.length > 0 ? ctPlayers : players.slice(0, 5);
+            const team2 = tPlayers.length > 0 ? tPlayers : players.slice(5);
 
-            for (const player of players) {
-                const s = player.stats || {};
-                const r = player.rating || {};
-                const adv = player.advanced || {};
-                const util = player.utility || {};
-                const teamClass = player.team === 'CT' ? 'ct' : player.team === 'T' ? 't' : '';
-                const teamBadgeClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
+            // Create team-based layout
+            html += '<div class="players-teams-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 24px;">';
+            
+            // Helper function to render a team's players
+            const renderTeam = (teamPlayers, teamName, isCtTeam) => {
+                const teamBgColor = isCtTeam ? 'rgba(92, 156, 255, 0.08)' : 'rgba(255, 140, 0, 0.08)';
+                const teamBorderColor = isCtTeam ? 'rgba(92, 156, 255, 0.2)' : 'rgba(255, 140, 0, 0.2)';
+                const teamHeaderColor = isCtTeam ? 'var(--ct-color)' : 'var(--t-color)';
+                
+                let teamHtml = `<div style="background: ${teamBgColor}; border: 1px solid ${teamBorderColor}; border-radius: var(--radius-lg); padding: 20px;">`;
+                teamHtml += `<h3 style="color: ${teamHeaderColor}; font-size: 1rem; margin-bottom: 16px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em;">${teamName}</h3>`;
+                teamHtml += '<div class="team-players-grid" style="display: flex; flex-direction: column; gap: 12px;">';
+                
+                for (const player of teamPlayers) {
+                    const s = player.stats || {};
+                    const r = player.rating || {};
+                    const adv = player.advanced || {};
+                    const util = player.utility || {};
+                    const teamClass = player.team === 'CT' ? 'ct' : player.team === 'T' ? 't' : '';
+                    const teamBadgeClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
 
-                html += `
-                    <div class="player-card">
-                        <div class="player-header">
-                            <div class="player-info">
-                                <div class="player-avatar ${teamClass}">${(player.name || 'U')[0].toUpperCase()}</div>
-                                <div>
-                                    <div class="player-name">${esc(player.name) || 'Unknown Player'}</div>
-                                    <span class="player-team ${teamBadgeClass}">${esc(player.team) || '?'}</span>
+                    teamHtml += `
+                        <div class="player-card">
+                            <div class="player-header">
+                                <div class="player-info">
+                                    <div class="player-avatar ${teamClass}">${(player.name || 'U')[0].toUpperCase()}</div>
+                                    <div>
+                                        <div class="player-name">${esc(player.name) || 'Unknown Player'}</div>
+                                        <span class="player-team ${teamBadgeClass}">${esc(player.team) || '?'}</span>
+                                    </div>
+                                </div>
+                                <div class="rating-badge">${(r.hltv_rating || 0).toFixed(2)}</div>
+                            </div>
+                            <div class="stats-grid">
+                                <div class="stat highlight">
+                                    <div class="stat-value">${s.kills || 0}</div>
+                                    <div class="stat-label">Kills</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${s.deaths || 0}</div>
+                                    <div class="stat-label">Deaths</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${s.assists || 0}</div>
+                                    <div class="stat-label">Assists</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${s.kd_ratio || '-'}</div>
+                                    <div class="stat-label">K/D</div>
+                                </div>
+                                <div class="stat highlight">
+                                    <div class="stat-value">${s.adr || 0}</div>
+                                    <div class="stat-label">ADR</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${s.headshot_pct || 0}%</div>
+                                    <div class="stat-label">HS%</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value ${r.kast_percentage >= 70 ? 'good' : r.kast_percentage < 50 ? 'bad' : ''}">${r.kast_percentage || 0}%</div>
+                                    <div class="stat-label">KAST</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value ${r.aim_rating >= 60 ? 'good' : r.aim_rating < 40 ? 'bad' : ''}">${r.aim_rating || 0}</div>
+                                    <div class="stat-label">Aim</div>
+                                </div>
+                                <div class="stat highlight">
+                                    <div class="stat-value" style="color: var(--accent-secondary);">${player.rws ? player.rws.avg_rws.toFixed(2) : '0.00'}</div>
+                                    <div class="stat-label">RWS</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</div>
+                                    <div class="stat-label">TTD</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</div>
+                                    <div class="stat-label">CP</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value">${util.flashbangs_thrown || 0}</div>
+                                    <div class="stat-label">Flashes</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value ${r.utility_rating >= 60 ? 'good' : r.utility_rating < 30 ? 'bad' : ''}">${r.utility_rating || 0}</div>
+                                    <div class="stat-label">Util</div>
                                 </div>
                             </div>
-                            <div class="rating-badge">${(r.hltv_rating || 0).toFixed(2)}</div>
                         </div>
-                        <div class="stats-grid">
-                            <div class="stat highlight">
-                                <div class="stat-value">${s.kills || 0}</div>
-                                <div class="stat-label">Kills</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.deaths || 0}</div>
-                                <div class="stat-label">Deaths</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.assists || 0}</div>
-                                <div class="stat-label">Assists</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.kd_ratio || '-'}</div>
-                                <div class="stat-label">K/D</div>
-                            </div>
-                            <div class="stat highlight">
-                                <div class="stat-value">${s.adr || 0}</div>
-                                <div class="stat-label">ADR</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${s.headshot_pct || 0}%</div>
-                                <div class="stat-label">HS%</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value ${r.kast_percentage >= 70 ? 'good' : r.kast_percentage < 50 ? 'bad' : ''}">${r.kast_percentage || 0}%</div>
-                                <div class="stat-label">KAST</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value ${r.aim_rating >= 60 ? 'good' : r.aim_rating < 40 ? 'bad' : ''}">${r.aim_rating || 0}</div>
-                                <div class="stat-label">Aim</div>
-                            </div>
-                            <div class="stat highlight">
-                                <div class="stat-value" style="color: var(--accent-secondary);">${player.rws ? player.rws.avg_rws.toFixed(2) : '0.00'}</div>
-                                <div class="stat-label">RWS</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</div>
-                                <div class="stat-label">TTD</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</div>
-                                <div class="stat-label">CP</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value">${util.flashbangs_thrown || 0}</div>
-                                <div class="stat-label">Flashes</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-value ${r.utility_rating >= 60 ? 'good' : r.utility_rating < 30 ? 'bad' : ''}">${r.utility_rating || 0}</div>
-                                <div class="stat-label">Util</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-
+                    `;
+                }
+                
+                teamHtml += '</div></div>';
+                return teamHtml;
+            };
+            
+            html += renderTeam(team1, 'CT SIDE', true);
+            html += renderTeam(team2, 'T SIDE', false);
             html += '</div>';
 
             // Add detailed stats tables like FACEIT
