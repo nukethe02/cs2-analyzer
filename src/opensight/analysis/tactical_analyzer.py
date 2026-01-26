@@ -338,8 +338,7 @@ class TacticalAnalyzer:
 
     def _analyze_team_tactics(self) -> None:
         """Analyze team tactical patterns."""
-        teams = {}
-        for play in self.round_plays:
+        for _play in self.round_plays:
             # Group plays by team and analyze patterns
             pass
 

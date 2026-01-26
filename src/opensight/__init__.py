@@ -336,8 +336,8 @@ def __getattr__(name):
     raise AttributeError(f"module 'opensight' has no attribute '{name}'")
 
 
-# Export
-from opensight.visualization.export import (
+# Export (imported here after lazy loading setup)
+from opensight.visualization.export import (  # noqa: E402
     export_analysis,
     export_metrics_to_csv,
     export_to_excel,

@@ -178,7 +178,7 @@ class MetricCalculator:
             kills_by_round[kill.round_num].append(kill)
 
         # For each round, find first kill (entry frag)
-        for round_num, round_kills in kills_by_round.items():
+        for _round_num, round_kills in kills_by_round.items():
             if not round_kills:
                 continue
 
@@ -200,7 +200,7 @@ class MetricCalculator:
                 entry_stats[attacker_id]["entry_kills"] += 1
 
         # Track entry deaths (died in first 15 seconds without entry kill)
-        for round_num, round_kills in kills_by_round.items():
+        for _round_num, round_kills in kills_by_round.items():
             entry_kill_attacker = None
             for kill in round_kills:
                 if kill.time_in_round_seconds < 15:
@@ -278,7 +278,7 @@ class MetricCalculator:
             damages_by_attacker[key].append(dmg)
 
         # Calculate TTD from distance and time
-        for (attacker_id, round_num), dmg_list in damages_by_attacker.items():
+        for (attacker_id, _round_num), dmg_list in damages_by_attacker.items():
             sorted_dmg = sorted(dmg_list, key=lambda d: d.tick)
             if not sorted_dmg:
                 continue
@@ -413,7 +413,7 @@ class MetricCalculator:
 class ChunkedDemoParser:
     """
     Parse demo files in chunks to handle 500MB+ files efficiently.
-    
+
     Processes round-by-round instead of loading entire demo into memory.
     """
 
@@ -479,7 +479,7 @@ class ChunkedDemoParser:
 class CoachingAnalysisEngine:
     """
     Comprehensive analysis for coaching insights.
-    
+
     Processes chunked demo data and generates professional coaching metrics.
     """
 

@@ -108,6 +108,13 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = [
+    "E501",  # Line too long - many template strings exceed limit
+    "B008",  # Function call in default argument - standard typer pattern
+    "B904",  # raise without from in except - acceptable for simple re-raises
+    "E402",  # Import not at top - intentional for optional/lazy imports
+    "B023",  # Loop variable capture - acceptable in some lambda cases
+]
 
 [tool.mypy]
 python_version = "3.10"

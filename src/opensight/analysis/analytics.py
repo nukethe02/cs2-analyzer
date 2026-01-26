@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Import optimized metrics computation
 try:
-    from opensight.analysis.metrics_optimized import (
+    from opensight.analysis.metrics_optimized import (  # noqa: F401
         MetricType,
         OptimizedMetricsComputer,
         compute_cp_from_dataframe_vectorized,
@@ -51,7 +51,7 @@ except ImportError:
 
 # Import economy and combat modules for integration
 try:
-    from opensight.domains.economy import (
+    from opensight.domains.economy import (  # noqa: F401
         BuyType,
         EconomyAnalyzer,
         EconomyStats,
@@ -64,7 +64,11 @@ except ImportError:
     logger.debug("Economy module not available")
 
 try:
-    from opensight.domains.combat import CombatAnalysisResult, CombatAnalyzer, PlayerCombatStats
+    from opensight.domains.combat import (  # noqa: F401
+        CombatAnalysisResult,
+        CombatAnalyzer,
+        PlayerCombatStats,
+    )
 
     HAS_COMBAT = True
 except ImportError:
@@ -1786,7 +1790,7 @@ class DemoAnalyzer:
                 continue
 
             # Use sliding window approach for efficiency
-            for i, kill in round_kills.iterrows():
+            for _i, kill in round_kills.iterrows():
                 victim_id = safe_int(kill.get(self._vic_id_col))
                 # Normalize victim team to "CT" or "T" for consistent comparison
                 raw_victim_team = kill.get(self._vic_side_col) if self._vic_side_col else ""
@@ -1896,7 +1900,7 @@ class DemoAnalyzer:
                     t_deaths.append(victim_id)
 
             # Detect clutch situations for each side
-            for side, deaths, enemy_deaths in [
+            for side, deaths, _enemy_deaths in [
                 ("CT", ct_deaths, t_deaths),
                 ("T", t_deaths, ct_deaths),
             ]:
@@ -2028,7 +2032,7 @@ class DemoAnalyzer:
                 round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
                 traded_players = set()
 
-                for idx, death in round_kills.iterrows():
+                for _idx, death in round_kills.iterrows():
                     victim_id = int(death.get(self._vic_id_col, 0))
                     if not victim_id:
                         continue
@@ -2160,7 +2164,6 @@ class DemoAnalyzer:
         logger.info(f"Built damage cache with {len(damage_cache)} (attacker, victim) pairs")
 
         # TTD validation thresholds
-        TTD_OUTLIER_MULTIPLIER = 3.0  # Remove values > 3 std devs from mean
 
         # Process kills using cached damage lookups
         raw_ttd_values: dict[int, list[float]] = {}  # For outlier removal later
@@ -2202,8 +2205,8 @@ class DemoAnalyzer:
                 is_prefire = ttd_ms <= self.TTD_MIN_MS
 
                 # Account for wallbangs/through-smoke kills (may have higher TTD)
-                is_wallbang = getattr(kill, "penetrated", False)
-                is_thrusmoke = getattr(kill, "thrusmoke", False)
+                getattr(kill, "penetrated", False)
+                getattr(kill, "thrusmoke", False)
 
                 # Store raw values for later outlier removal
                 if att_id not in raw_ttd_values:
@@ -2556,7 +2559,7 @@ class DemoAnalyzer:
         att_id_col = self._find_col(df, self.ATT_ID_COLS)
         vic_id_col = self._find_col(df, self.VIC_ID_COLS)
 
-        for i, (idx, row) in enumerate(df.iterrows()):
+        for i, (_idx, row) in enumerate(df.iterrows()):
             att_id = safe_int(row.get(att_id_col)) if att_id_col else 0
             vic_id = safe_int(row.get(vic_id_col)) if vic_id_col else 0
             tick = safe_int(row.get("tick"))
@@ -2825,7 +2828,7 @@ class DemoAnalyzer:
             return
 
         # Cache player teams for teammate detection
-        player_teams_cache: dict[int, str] = {
+        {
             steam_id: player.team for steam_id, player in self._players.items()
         }
 
@@ -2873,7 +2876,7 @@ class DemoAnalyzer:
                 player.utility.total_blind_time = sum(b.blind_duration for b in enemy_blinds)
 
                 # Count unique flashbangs (group blinds by tick proximity)
-                blind_ticks = sorted(set(b.tick for b in player_blinds))
+                blind_ticks = sorted({b.tick for b in player_blinds})
                 if blind_ticks:
                     # Group ticks within 10 ticks as same flash
                     flash_count = 1

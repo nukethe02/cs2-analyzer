@@ -403,7 +403,7 @@ def _display_economy_metrics(data, steam_id: int | None, metrics_funcs: dict) ->
     table.add_column("Full Buy Kills", justify="right")
     table.add_column("Favorite Weapon", justify="right")
 
-    for sid, econ in sorted(
+    for _sid, econ in sorted(
         econ_results.items(), key=lambda x: x[1].weapon_efficiency, reverse=True
     ):
         table.add_row(
@@ -417,6 +417,27 @@ def _display_economy_metrics(data, steam_id: int | None, metrics_funcs: dict) ->
         )
 
     console.print(table)
+    console.print()
+
+
+def _display_utility_metrics(data, steam_id: int | None, metrics_funcs: dict) -> None:
+    """Display utility usage metrics table."""
+    # TODO: Implement utility metrics display
+    console.print("[yellow]Utility metrics not yet implemented[/yellow]")
+    console.print()
+
+
+def _display_trade_metrics(data, steam_id: int | None, metrics_funcs: dict) -> None:
+    """Display trade kill metrics table."""
+    # TODO: Implement trade metrics display
+    console.print("[yellow]Trade metrics not yet implemented[/yellow]")
+    console.print()
+
+
+def _display_opening_metrics(data, steam_id: int | None, metrics_funcs: dict) -> None:
+    """Display opening duel metrics table."""
+    # TODO: Implement opening duel metrics display
+    console.print("[yellow]Opening duel metrics not yet implemented[/yellow]")
     console.print()
 
 

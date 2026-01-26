@@ -109,7 +109,7 @@ class SafeExpressionEvaluator:
             tree = ast.parse(expression, mode="eval")
             return self._eval_node(tree.body)
         except (SyntaxError, ValueError, TypeError, KeyError) as e:
-            raise ValueError(f"Invalid expression: {e}")
+            raise ValueError(f"Invalid expression: {e}") from e
 
     def _eval_node(self, node: ast.expr) -> Any:
         """Recursively evaluate an AST node."""

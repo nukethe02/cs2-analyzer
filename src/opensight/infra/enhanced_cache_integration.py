@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 def analyze_with_enhanced_metrics(demo_path: Path) -> dict:
     """
     Analyze demo with comprehensive professional metrics.
-    
+
     This replaces the standard analysis with enhanced metrics extraction
     including TTD, CP, entry/trade/clutch detection, and chunked processing.
-    
+
     Args:
         demo_path: Path to demo file
-        
+
     Returns:
         Comprehensive analysis dict ready for web display
     """

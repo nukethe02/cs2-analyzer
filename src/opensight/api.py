@@ -1092,7 +1092,7 @@ async def generate_replay_data(
 async def get_player_metrics(steam_id: str, demo_id: str = Query(None)) -> dict:
     """
     Get professional metrics for a player.
-    
+
     Returns:
     - TTD (Time to Damage): Reaction time metrics (ms)
     - CP (Crosshair Placement): Angular error metrics (degrees)
@@ -1103,7 +1103,7 @@ async def get_player_metrics(steam_id: str, demo_id: str = Query(None)) -> dict:
     try:
         from opensight.infra.cache import CacheManager
 
-        cache = CacheManager()
+        CacheManager()
 
         # If demo_id provided, get metrics from that analysis
         if demo_id:

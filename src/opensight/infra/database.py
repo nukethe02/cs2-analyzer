@@ -783,7 +783,7 @@ class DatabaseManager:
                 "total_matches": total_matches,
                 "total_players": total_players,
                 "total_rounds": total_rounds,
-                "maps": {m: c for m, c in map_counts},
+                "maps": dict(map_counts),
             }
         finally:
             session.close()

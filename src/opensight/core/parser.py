@@ -39,7 +39,7 @@ except ImportError:
 
 # awpy as fallback
 try:
-    from awpy import Demo
+    from awpy import Demo  # noqa: F401
 
     AWPY_AVAILABLE = True
 except ImportError:
@@ -569,8 +569,8 @@ class DemoParser:
         he_det_df = pd.DataFrame()
         smoke_det_df = pd.DataFrame()
         molly_det_df = pd.DataFrame()
-        inferno_start_df = pd.DataFrame()
-        inferno_end_df = pd.DataFrame()
+        pd.DataFrame()
+        pd.DataFrame()
         bomb_planted_df = pd.DataFrame()
         bomb_defused_df = pd.DataFrame()
         bomb_exploded_df = pd.DataFrame()
@@ -606,8 +606,8 @@ class DemoParser:
             he_det_df = self._parse_event_safe(parser, "hegrenade_detonate")
             smoke_det_df = self._parse_event_safe(parser, "smokegrenade_detonate")
             molly_det_df = self._parse_event_safe(parser, "molotov_detonate")
-            inferno_start_df = self._parse_event_safe(parser, "inferno_startburn")
-            inferno_end_df = self._parse_event_safe(parser, "inferno_expire")
+            self._parse_event_safe(parser, "inferno_startburn")
+            self._parse_event_safe(parser, "inferno_expire")
             logger.info(
                 f"Parsed grenades: {len(grenades_thrown_df)} thrown, {len(flash_det_df)} flash, {len(he_det_df)} HE, {len(smoke_det_df)} smoke, {len(molly_det_df)} molly"
             )

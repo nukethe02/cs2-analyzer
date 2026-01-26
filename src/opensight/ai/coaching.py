@@ -624,7 +624,10 @@ class AdaptiveCoach:
                     "condition": lambda stats, bench: stats.get("ttd_median_ms", 999)
                     > bench["ttd_ms"],
                     "severity": "high",
-                    "description": "Your reaction time from first damage to kill is slower than expected for your rank.",
+                    "description": (
+                        "Your reaction time from first damage to kill is slower "
+                        "than expected for your rank."
+                    ),
                     "tips": [
                         "Practice aim trainers like Aim Lab or Kovaak's",
                         "Focus on pre-aiming common angles",
@@ -641,7 +644,10 @@ class AdaptiveCoach:
                     "condition": lambda stats, bench: stats.get("hs_percent", 0)
                     < bench["hs_percent"],
                     "severity": "medium",
-                    "description": "Your headshot percentage is below average. Focus on head-level aim.",
+                    "description": (
+                        "Your headshot percentage is below average. "
+                        "Focus on head-level aim."
+                    ),
                     "tips": [
                         "Keep crosshair at head level",
                         "Practice head-level pre-aims for common positions",
@@ -660,7 +666,10 @@ class AdaptiveCoach:
                     "condition": lambda stats, bench: stats.get("cp_median_error", 999)
                     > bench["cp_error_deg"],
                     "severity": "high",
-                    "description": "Your crosshair is often far from where enemies appear. This costs valuable milliseconds.",
+                    "description": (
+                        "Your crosshair is often far from where enemies appear. "
+                        "This costs valuable milliseconds."
+                    ),
                     "tips": [
                         "Pre-aim common angles when moving",
                         "Keep crosshair at head level always",
@@ -679,7 +688,10 @@ class AdaptiveCoach:
                     "condition": lambda stats, bench: stats.get("utility_per_round", 0)
                     < bench["utility_per_round"],
                     "severity": "medium",
-                    "description": "You're not using enough utility each round. Grenades can win rounds.",
+                    "description": (
+                        "You're not using enough utility each round. "
+                        "Grenades can win rounds."
+                    ),
                     "tips": [
                         "Buy utility every round you can",
                         "Learn 2-3 smokes per map for executes",
@@ -752,7 +764,10 @@ class AdaptiveCoach:
                     "condition": lambda stats, bench: stats.get("deaths_per_round", 1) > 0.8
                     and stats.get("kast", 0) < 60,
                     "severity": "medium",
-                    "description": "You're dying too often without impact. Consider safer positions.",
+                    "description": (
+                        "You're dying too often without impact. "
+                        "Consider safer positions."
+                    ),
                     "tips": [
                         "Hold angles instead of pushing",
                         "Stay alive for retakes",
@@ -1107,7 +1122,10 @@ class AdaptiveCoach:
                     {
                         "activity": "Utility lineups practice",
                         "duration": activity_time,
-                        "details": f"Learn 3 new lineups for {profile.map_pool[0] if profile.map_pool else 'dust2'}",
+                        "details": (
+                            f"Learn 3 new lineups for "
+                            f"{profile.map_pool[0] if profile.map_pool else 'dust2'}"
+                        ),
                     }
                 )
                 plan["focus_areas"].append("utility_usage")
