@@ -21,6 +21,7 @@ from typing import Annotated, Any
 
 from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
@@ -161,7 +162,7 @@ class SharecodeCache:
 
 
 # Global share code cache
-sharecode_cache = ShareCodeCache(maxsize=1000, ttl_minutes=60)
+sharecode_cache = SharecodeCache(maxsize=1000)
 
 
 # =============================================================================

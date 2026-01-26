@@ -1804,17 +1804,8 @@ class DemoAnalyzer:
                     continue
 
                 # Look for trade: teammate kills the killer within window
-                # Sliding window: only check subsequent kills in the same round
                 trade_found = False
-                for j in range(i + 1, len(round_kills)):
-                    trade_kill = round_kills.iloc[j]
-                    trade_tick = safe_int(trade_kill.get("tick"))
 
-                    # Check if still within trade window
-                    if trade_tick > kill_tick + trade_window_ticks:
-                        break  # Past the window, no need to check further
-
-                # Look for trade (teammate kills the killer within window)
                 # Filter by tick window and victim being the original killer
                 tick_filter = (round_kills["tick"] > kill_tick) & (
                     round_kills["tick"] <= kill_tick + trade_window_ticks
@@ -1826,6 +1817,11 @@ class DemoAnalyzer:
                 team_filter = attacker_teams == victim_team
 
                 potential_trades = round_kills[tick_filter & victim_filter & team_filter]
+
+                # Check each potential trade
+                for _, trade_kill in potential_trades.iterrows():
+                    trade_victim_id = safe_int(trade_kill.get(self._vic_id_col))
+                    trader_id = safe_int(trade_kill.get(self._att_id_col))
 
                     # Trade conditions:
                     # 1. The original killer was killed
