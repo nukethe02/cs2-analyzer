@@ -1006,8 +1006,22 @@
             const r = player.rating || {};
             const adv = player.advanced || {};
             const util = player.utility || {};
+            const duels = player.duels || {};
+            const clutches = player.clutches || {};
             const teamClass = teamSide === 'CT' ? 'team-ct' : 'team-t';
             const ratingClass = getRatingClass(r.hltv_rating);
+
+            // Format entry rate
+            const entryWinRate = duels.opening_win_rate != null ? Math.round(duels.opening_win_rate) + '%' : '-';
+            const entryAttempts = duels.opening_attempts || 0;
+
+            // Format trades
+            const tradesGot = duels.kills_traded || 0;
+            const tradesDied = duels.deaths_traded || 0;
+
+            // Format clutches
+            const clutchWins = clutches.total_wins || 0;
+            const clutchAttempts = clutches.total_situations || 0;
 
             return `
                 <div class="player-card">
@@ -1050,16 +1064,16 @@
                             <div class="stat-label">Aim</div>
                         </div>
                         <div class="stat">
-                            <div class="stat-value">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</div>
-                            <div class="stat-label">TTD</div>
+                            <div class="stat-value ${entryAttempts > 0 && duels.opening_win_rate >= 50 ? 'good' : entryAttempts > 0 && duels.opening_win_rate < 30 ? 'bad' : ''}">${entryWinRate}</div>
+                            <div class="stat-label">Entry (${entryAttempts})</div>
                         </div>
                         <div class="stat">
-                            <div class="stat-value">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</div>
-                            <div class="stat-label">CP</div>
+                            <div class="stat-value ${tradesGot > tradesDied ? 'good' : tradesGot < tradesDied ? 'bad' : ''}">${tradesGot}/${tradesDied}</div>
+                            <div class="stat-label">Trades +/-</div>
                         </div>
                         <div class="stat">
-                            <div class="stat-value">${util.flashbangs_thrown || 0}</div>
-                            <div class="stat-label">Flashes</div>
+                            <div class="stat-value ${clutchWins > 0 ? 'good' : ''}">${clutchWins}/${clutchAttempts}</div>
+                            <div class="stat-label">Clutches</div>
                         </div>
                         <div class="stat">
                             <div class="stat-value ${r.utility_rating >= 60 ? 'good' : r.utility_rating < 30 ? 'bad' : ''}">${r.utility_rating || 0}</div>
