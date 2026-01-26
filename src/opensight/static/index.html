@@ -1868,6 +1868,8 @@
                         <button class="stats-tab-btn active" data-stats-tab="entry" style="padding: 8px 16px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Entry Stats</button>
                         <button class="stats-tab-btn" data-stats-tab="trade" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Trade Stats</button>
                         <button class="stats-tab-btn" data-stats-tab="clutch" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Clutch Stats</button>
+                        <button class="stats-tab-btn" data-stats-tab="ttd" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">TTD (Timing)</button>
+                        <button class="stats-tab-btn" data-stats-tab="cp" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">CP (Positioning)</button>
                     </div>
 
                     <div class="stats-tab-content" id="stats-entry" style="display: block;">
@@ -1878,6 +1880,12 @@
                     </div>
                     <div class="stats-tab-content" id="stats-clutch" style="display: none;">
                         ${renderClutchStatsTable(teamA, teamB)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-ttd" style="display: none;">
+                        ${renderTTDStatsTable(teamA, teamB)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-cp" style="display: none;">
+                        ${renderCPStatsTable(teamA, teamB)}
                     </div>
                 </div>
             `;
@@ -2079,7 +2087,150 @@
             return renderTeamSection(team1, 'Team 1') + renderTeamSection(team2, 'Team 2');
         }
 
-        // Render Timeline Tab
+        // Render TTD (Time to Damage) Stats Table
+        function renderTTDStatsTable(team1, team2) {
+            const renderPlayerCard = (player) => {
+                const a = player.advanced || {};
+                const median = a.ttd_median_ms || 0;
+                const mean = a.ttd_mean_ms || 0;
+                const p95 = a.ttd_95th_ms || 0;
+
+                // Professional range: 150-350ms
+                const rating = median < 200 ? 'Excellent' : median < 300 ? 'Good' : median < 400 ? 'Average' : 'Slow';
+                const color = median < 200 ? 'var(--success)' : median < 300 ? '#00d4ff' : median < 400 ? 'var(--warning)' : 'var(--danger)';
+
+                return `
+                    <div class="ttd-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; min-width: 280px;">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1rem;">
+                                ${(player.name || 'U')[0].toUpperCase()}
+                            </div>
+                            <div>
+                                <div style="font-weight: 600; font-size: 1rem;">${esc(player.name)}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">Reaction Time Metrics</div>
+                            </div>
+                        </div>
+
+                        <div style="text-align: center; margin-bottom: 16px;">
+                            <div style="font-size: 2.5rem; font-weight: 800; color: ${color};">
+                                ${Math.round(median)}ms
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">${rating} Timing</div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Median</div>
+                                <div style="font-size: 1rem; font-weight: 700; color: ${color};">${Math.round(median)}ms</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Mean</div>
+                                <div style="font-size: 1rem; font-weight: 700; color: #00d4ff;">${Math.round(mean)}ms</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">95th %ile</div>
+                                <div style="font-size: 1rem; font-weight: 700; color: var(--text-secondary);">${Math.round(p95)}ms</div>
+                            </div>
+                        </div>
+
+                        <div style="padding: 8px 12px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; font-size: 0.75rem; color: var(--text-muted);">
+                            <span style="color: var(--accent-primary);">Pro Range: 150-350ms</span> · Lower is better
+                        </div>
+                    </div>
+                `;
+            };
+
+            const renderTeamSection = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+
+                const sorted = [...players].sort((a, b) => {
+                    const aTime = (a.advanced?.ttd_median_ms || 0);
+                    const bTime = (b.advanced?.ttd_median_ms || 0);
+                    return aTime - bTime;
+                });
+
+                return `
+                    <div style="margin-bottom: 32px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em;">${teamName}</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+                            ${sorted.map(p => renderPlayerCard(p)).join('')}
+                        </div>
+                    </div>
+                `;
+            };
+
+            return renderTeamSection(team1, 'Team 1') + renderTeamSection(team2, 'Team 2');
+        }
+
+        // Render CP (Crosshair Placement) Stats Table
+        function renderCPStatsTable(team1, team2) {
+            const renderPlayerCard = (player) => {
+                const a = player.advanced || {};
+                const median = a.cp_median_error_deg || 0;
+                const mean = a.cp_mean_error_deg || 0;
+
+                // Professional range: 3-8 degrees
+                const rating = median < 4 ? 'Excellent' : median < 6 ? 'Good' : median < 8 ? 'Average' : 'Poor';
+                const color = median < 4 ? 'var(--success)' : median < 6 ? '#00d4ff' : median < 8 ? 'var(--warning)' : 'var(--danger)';
+
+                return `
+                    <div class="cp-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; min-width: 280px;">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #7c4dff, #ff4081); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1rem;">
+                                ${(player.name || 'U')[0].toUpperCase()}
+                            </div>
+                            <div>
+                                <div style="font-weight: 600; font-size: 1rem;">${esc(player.name)}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">Positioning Accuracy</div>
+                            </div>
+                        </div>
+
+                        <div style="text-align: center; margin-bottom: 16px;">
+                            <div style="font-size: 2.5rem; font-weight: 800; color: ${color};">
+                                ${median.toFixed(1)}°
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">${rating} Placement</div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Median Error</div>
+                                <div style="font-size: 1rem; font-weight: 700; color: ${color};">${median.toFixed(1)}°</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Mean Error</div>
+                                <div style="font-size: 1rem; font-weight: 700; color: #7c4dff;">${mean.toFixed(1)}°</div>
+                            </div>
+                        </div>
+
+                        <div style="padding: 8px 12px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; font-size: 0.75rem; color: var(--text-muted);">
+                            <span style="color: var(--accent-secondary);">Pro Range: 3-8°</span> · Lower is better
+                        </div>
+                    </div>
+                `;
+            };
+
+            const renderTeamSection = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+
+                const sorted = [...players].sort((a, b) => {
+                    const aError = (a.advanced?.cp_median_error_deg || 0);
+                    const bError = (b.advanced?.cp_median_error_deg || 0);
+                    return aError - bError;
+                });
+
+                return `
+                    <div style="margin-bottom: 32px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em;">${teamName}</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+                            ${sorted.map(p => renderPlayerCard(p)).join('')}
+                        </div>
+                    </div>
+                `;
+            };
+
+            return renderTeamSection(team1, 'Team 1') + renderTeamSection(team2, 'Team 2');
+        }
         function renderTimeline(timeline) {
             if (!timeline.length) {
                 return `

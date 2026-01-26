@@ -503,12 +503,22 @@ class CachedAnalyzer:
         logger.info(f"Analyzing {demo_path.name}")
         from opensight.analysis.analytics import DemoAnalyzer, compute_kill_positions
         from opensight.core.parser import DemoParser
+        from opensight.core.enhanced_parser import CoachingAnalysisEngine
 
         parser = DemoParser(demo_path)
         demo_data = parser.parse()
 
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()
+        
+        # Calculate professional metrics using enhanced parser
+        try:
+            logger.info(f"Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)")
+            engine = CoachingAnalysisEngine()
+            enhanced_metrics = engine.analyze_demo(demo_path)
+        except Exception as e:
+            logger.warning(f"Enhanced metrics calculation failed, using basic analysis only: {e}")
+            enhanced_metrics = {}
 
         # Calculate RWS using direct method (more reliable)
         rws_data = self._calculate_rws_direct(demo_data)
@@ -546,9 +556,14 @@ class CachedAnalyzer:
                     "impact_rating": round(getattr(p, 'impact_rating', None) or 0, 2),
                 },
                 "advanced": {
+                    # From enhanced parser (TTD - Time to Damage)
                     "ttd_median_ms": round(getattr(p, 'ttd_median_ms', None) or 0, 1),
                     "ttd_mean_ms": round(getattr(p, 'ttd_mean_ms', None) or 0, 1),
+                    "ttd_95th_ms": round(getattr(p, 'ttd_95th_ms', None) or 0, 1),
+                    # From enhanced parser (CP - Crosshair Placement)
                     "cp_median_error_deg": round(getattr(p, 'cp_median_error_deg', None) or 0, 1),
+                    "cp_mean_error_deg": round(getattr(p, 'cp_mean_error_deg', None) or 0, 1),
+                    # Other advanced stats
                     "prefire_kills": getattr(p, 'prefire_kills', None) or 0,
                     "opening_kills": getattr(p, 'opening_kills', None) or 0,
                     "opening_deaths": getattr(p, 'opening_deaths', None) or 0,
@@ -573,6 +588,65 @@ class CachedAnalyzer:
                 "clutches": self._get_clutch_stats(p),
                 "rws": rws_data.get(sid, {"avg_rws": 0, "total_rws": 0, "rounds_won": 0, "rounds_played": 0, "damage_per_round": 0, "objective_completions": 0}),
             }
+        
+        # Merge enhanced metrics from professional parser
+        if enhanced_metrics and "entry_frags" in enhanced_metrics:
+            for steam_id, entry_data in enhanced_metrics.get("entry_frags", {}).items():
+                if steam_id in players:
+                    if "entry" not in players[steam_id]:
+                        players[steam_id]["entry"] = {}
+                    players[steam_id]["entry"].update({
+                        "entry_attempts": entry_data.get("entry_attempts", 0),
+                        "entry_kills": entry_data.get("entry_kills", 0),
+                        "entry_deaths": entry_data.get("entry_deaths", 0),
+                    })
+        
+        # Merge TTD metrics
+        if enhanced_metrics and "ttd_metrics" in enhanced_metrics:
+            for steam_id, ttd_data in enhanced_metrics.get("ttd_metrics", {}).items():
+                if steam_id in players:
+                    players[steam_id]["advanced"].update({
+                        "ttd_median_ms": ttd_data.get("ttd_median_ms", 0),
+                        "ttd_mean_ms": ttd_data.get("ttd_mean_ms", 0),
+                        "ttd_95th_ms": ttd_data.get("ttd_95th_ms", 0),
+                    })
+        
+        # Merge CP metrics
+        if enhanced_metrics and "crosshair_placement" in enhanced_metrics:
+            for steam_id, cp_data in enhanced_metrics.get("crosshair_placement", {}).items():
+                if steam_id in players:
+                    players[steam_id]["advanced"].update({
+                        "cp_median_error_deg": cp_data.get("cp_median_error_deg", 0),
+                        "cp_mean_error_deg": cp_data.get("cp_mean_error_deg", 0),
+                    })
+        
+        # Merge Trade Kill metrics
+        if enhanced_metrics and "trade_kills" in enhanced_metrics:
+            for steam_id, trade_data in enhanced_metrics.get("trade_kills", {}).items():
+                if steam_id in players:
+                    players[steam_id]["duels"].update({
+                        "trade_kills": trade_data.get("trade_kills", 0),
+                        "deaths_traded": trade_data.get("deaths_traded", 0),
+                    })
+        
+        # Merge Clutch metrics
+        if enhanced_metrics and "clutch_stats" in enhanced_metrics:
+            for steam_id, clutch_data in enhanced_metrics.get("clutch_stats", {}).items():
+                if steam_id in players:
+                    players[steam_id]["duels"].update({
+                        "clutch_wins": clutch_data.get("clutch_wins", 0),
+                        "clutch_attempts": clutch_data.get("clutch_attempts", 0),
+                    })
+                    # Add breakdown by variant
+                    if "clutches" not in players[steam_id]:
+                        players[steam_id]["clutches"] = {}
+                    players[steam_id]["clutches"].update({
+                        "v1_wins": clutch_data.get("v1_wins", 0),
+                        "v2_wins": clutch_data.get("v2_wins", 0),
+                        "v3_wins": clutch_data.get("v3_wins", 0),
+                        "v4_wins": clutch_data.get("v4_wins", 0),
+                        "v5_wins": clutch_data.get("v5_wins", 0),
+                    })
 
         # Build round timeline
         round_timeline = self._build_round_timeline(demo_data, analysis)
