@@ -514,8 +514,8 @@ class CachedAnalyzer:
         # Calculate professional metrics using enhanced parser
         try:
             logger.info("Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)")
-            engine = CoachingAnalysisEngine()
-            enhanced_metrics = engine.analyze_demo(demo_path)
+            engine = CoachingAnalysisEngine(demo_path)
+            enhanced_metrics = engine.analyze()
         except Exception as e:
             logger.warning(f"Enhanced metrics calculation failed, using basic analysis only: {e}")
             enhanced_metrics = {}
