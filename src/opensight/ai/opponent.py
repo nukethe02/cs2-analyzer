@@ -490,7 +490,9 @@ class TendencyAnalyzer:
         utility_used = player_stats.get("utility_per_round", 0)
 
         # Calculate playstyle scores (protect against division by zero)
-        aggression_score = min(1.0, (opening_attempts / max(rounds, 1)) * 2 + deaths_per_round * 0.5)
+        aggression_score = min(
+            1.0, (opening_attempts / max(rounds, 1)) * 2 + deaths_per_round * 0.5
+        )
         utility_score = min(1.0, utility_used / 3)
         aim_score = min(1.0, adr / 100)
 

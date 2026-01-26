@@ -143,8 +143,7 @@ class FACEITClient:
                     )
             except ImportError:
                 raise ImportError(
-                    "requests library required for FACEIT API. "
-                    "Install with: pip install requests"
+                    "requests library required for FACEIT API. Install with: pip install requests"
                 )
         return self._session
 

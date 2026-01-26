@@ -285,7 +285,6 @@ class CrosshairTracker:
                 screen_region="center",
             )
 
-
         # Extract ROI around center
         roi = frame[self.roi_y1 : self.roi_y2, self.roi_x1 : self.roi_x2]
 

@@ -525,13 +525,26 @@ class DemoParser:
         kills_df = self._parse_event_safe(
             parser,
             "player_death",
-            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z", "health", "armor_value"],
+            player_props=[
+                "X",
+                "Y",
+                "Z",
+                "pitch",
+                "yaw",
+                "velocity_X",
+                "velocity_Y",
+                "velocity_Z",
+                "health",
+                "armor_value",
+            ],
             other_props=["total_rounds_played", "headshot"],
         )
         if kills_df.empty:
             # Fallback without player props
             kills_df = self._parse_event_safe(parser, "player_death")
-        logger.info(f"Parsed {len(kills_df)} kills with positional context. Columns: {list(kills_df.columns)[:20]}...")
+        logger.info(
+            f"Parsed {len(kills_df)} kills with positional context. Columns: {list(kills_df.columns)[:20]}..."
+        )
 
         # Parse damages with full positional context for TTD calculation
         damages_df = self._parse_event_safe(
@@ -1082,13 +1095,17 @@ class DemoParser:
                         att_side = (
                             "CT"
                             if "CT" in att_side_val.upper()
-                            else "T" if "T" in att_side_val.upper() else att_side_val
+                            else "T"
+                            if "T" in att_side_val.upper()
+                            else att_side_val
                         )
                     elif isinstance(att_side_val, (int, float)) and pd.notna(att_side_val):
                         att_side = (
                             "CT"
                             if int(att_side_val) == 3
-                            else "T" if int(att_side_val) == 2 else "Unknown"
+                            else "T"
+                            if int(att_side_val) == 2
+                            else "Unknown"
                         )
 
                 vic_side = "Unknown"
@@ -1098,13 +1115,17 @@ class DemoParser:
                         vic_side = (
                             "CT"
                             if "CT" in vic_side_val.upper()
-                            else "T" if "T" in vic_side_val.upper() else vic_side_val
+                            else "T"
+                            if "T" in vic_side_val.upper()
+                            else vic_side_val
                         )
                     elif isinstance(vic_side_val, (int, float)) and pd.notna(vic_side_val):
                         vic_side = (
                             "CT"
                             if int(vic_side_val) == 3
-                            else "T" if int(vic_side_val) == 2 else "Unknown"
+                            else "T"
+                            if int(vic_side_val) == 2
+                            else "Unknown"
                         )
 
                 # Extract position data with safe fallback
@@ -1204,7 +1225,9 @@ class DemoParser:
                     att_side = (
                         "CT"
                         if "CT" in att_side_val.upper()
-                        else "T" if "T" in att_side_val.upper() else att_side_val
+                        else "T"
+                        if "T" in att_side_val.upper()
+                        else att_side_val
                     )
 
             vic_side = "Unknown"
@@ -1214,7 +1237,9 @@ class DemoParser:
                     vic_side = (
                         "CT"
                         if "CT" in vic_side_val.upper()
-                        else "T" if "T" in vic_side_val.upper() else vic_side_val
+                        else "T"
+                        if "T" in vic_side_val.upper()
+                        else vic_side_val
                     )
 
             dmg = DamageEvent(
@@ -1259,7 +1284,9 @@ class DemoParser:
                     winner = (
                         "CT"
                         if "CT" in winner_col.upper()
-                        else "T" if "T" in winner_col.upper() else winner_col
+                        else "T"
+                        if "T" in winner_col.upper()
+                        else winner_col
                     )
                 elif isinstance(winner_col, (int, float)):
                     # Check for NaN before converting to int
@@ -1269,7 +1296,9 @@ class DemoParser:
                         winner = (
                             "CT"
                             if int(winner_col) == 3
-                            else "T" if int(winner_col) == 2 else "Unknown"
+                            else "T"
+                            if int(winner_col) == 2
+                            else "Unknown"
                         )
             elif reason:
                 # Infer from reason
@@ -1320,12 +1349,20 @@ class DemoParser:
             is_knife_reason = any(r in first_round_reason_lower for r in knife_round_reasons)
 
             # Also check if reason is not bomb-related (normal rounds have bomb events)
-            bomb_reasons = ["bomb_planted", "bomb_defused", "target_bombed", "target_saved", "elimination"]
+            bomb_reasons = [
+                "bomb_planted",
+                "bomb_defused",
+                "target_bombed",
+                "target_saved",
+                "elimination",
+            ]
             is_bomb_related = any(b in first_round_reason_lower for b in bomb_reasons)
 
             # If it looks like a knife round, remove it
             if is_knife_reason or (len(rounds) > 1 and not is_bomb_related):
-                logger.info(f"Detected and filtering out knife round (reason: {first_round.reason})")
+                logger.info(
+                    f"Detected and filtering out knife round (reason: {first_round.reason})"
+                )
                 rounds = rounds[1:]  # Remove first round
                 # Re-number remaining rounds to start from 1
                 for i in range(len(rounds)):
@@ -1369,7 +1406,9 @@ class DemoParser:
                     side = (
                         "CT"
                         if "CT" in team_val.upper()
-                        else "T" if "T" in team_val.upper() else team_val
+                        else "T"
+                        if "T" in team_val.upper()
+                        else team_val
                     )
 
             fire = WeaponFireEvent(

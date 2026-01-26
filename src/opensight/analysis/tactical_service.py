@@ -193,7 +193,11 @@ class TacticalAnalysisService:
 
         # Analyze each player
         for steam_id, kill_times in player_kills.items():
-            player_name = player_names.get(steam_id, f"Player {steam_id}") if isinstance(player_names, dict) else f"Player {steam_id}"
+            player_name = (
+                player_names.get(steam_id, f"Player {steam_id}")
+                if isinstance(player_names, dict)
+                else f"Player {steam_id}"
+            )
 
             # Count opening kills (first 15 seconds)
             opening_kills = sum(1 for t in kill_times if t < 15)

@@ -405,7 +405,7 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         if file_size_bytes > MAX_FILE_SIZE_BYTES:
             raise HTTPException(
-                status_code=413, detail=(f"File too large: {file_size_bytes / (1024*1024):.1f}MB")
+                status_code=413, detail=(f"File too large: {file_size_bytes / (1024 * 1024):.1f}MB")
             )
 
         if file_size_bytes == 0:
@@ -507,7 +507,7 @@ async def about() -> dict[str, Any]:
         "name": "OpenSight",
         "version": __version__,
         "description": (
-            "Local CS2 analytics framework - " "Leetify/Scope.gg style professional-grade metrics"
+            "Local CS2 analytics framework - Leetify/Scope.gg style professional-grade metrics"
         ),
         "metrics": {
             "basic": {
@@ -520,27 +520,25 @@ async def about() -> dict[str, Any]:
             },
             "rating": {
                 "hltv_rating": (
-                    "HLTV 2.0 Rating - industry standard performance metric " "(1.0 = average)"
+                    "HLTV 2.0 Rating - industry standard performance metric (1.0 = average)"
                 ),
                 "impact_rating": ("Impact component - measures round-winning contributions"),
                 "kast_percentage": ("KAST% - rounds with Kill, Assist, Survived, or Traded"),
                 "aim_rating": (
-                    "Leetify-style Aim Rating (0-100, 50 = average) - " "based on TTD, CP, HS%"
+                    "Leetify-style Aim Rating (0-100, 50 = average) - based on TTD, CP, HS%"
                 ),
                 "utility_rating": (
-                    "Leetify-style Utility Rating (0-100) - "
-                    "geometric mean of quantity and quality"
+                    "Leetify-style Utility Rating (0-100) - geometric mean of quantity and quality"
                 ),
                 "entry_success_rate": "Percentage of opening duels won",
             },
             "advanced": {
                 "ttd_median_ms": (
-                    "Time to Damage (median) - "
-                    "milliseconds from engagement start to damage dealt"
+                    "Time to Damage (median) - milliseconds from engagement start to damage dealt"
                 ),
                 "ttd_mean_ms": "Time to Damage (mean)",
                 "cp_median_error_deg": (
-                    "Crosshair Placement error (median) - " "degrees off-target when engaging"
+                    "Crosshair Placement error (median) - degrees off-target when engaging"
                 ),
                 "prefire_kills": (
                     "Kills where damage was dealt before/instantly "
@@ -640,14 +638,14 @@ async def about() -> dict[str, Any]:
                 "Quality (effectiveness). Leetify methodology."
             ),
             "enemies_flashed_threshold": (
-                "Only counts enemies blinded for >1.1 seconds " "(excludes half-blinds)."
+                "Only counts enemies blinded for >1.1 seconds (excludes half-blinds)."
             ),
         },
         "comparisons": {
             "leetify": (
-                "Aim Rating, Utility Rating, and detailed flash stats " "follow Leetify methodology"
+                "Aim Rating, Utility Rating, and detailed flash stats follow Leetify methodology"
             ),
-            "scope_gg": ("Mistakes tracking and side-based stats " "follow Scope.gg methodology"),
+            "scope_gg": ("Mistakes tracking and side-based stats follow Scope.gg methodology"),
             "hltv": "HLTV 2.0 Rating formula and KAST% calculation",
         },
         # API optimization notes for clients
@@ -1087,6 +1085,7 @@ async def generate_replay_data(
 # ============================================================================
 # Professional Metrics Endpoints
 # ============================================================================
+
 
 @app.get("/api/players/{steam_id}/metrics")
 async def get_player_metrics(steam_id: str, demo_id: str = Query(None)) -> dict:

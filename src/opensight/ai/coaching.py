@@ -645,8 +645,7 @@ class AdaptiveCoach:
                     < bench["hs_percent"],
                     "severity": "medium",
                     "description": (
-                        "Your headshot percentage is below average. "
-                        "Focus on head-level aim."
+                        "Your headshot percentage is below average. Focus on head-level aim."
                     ),
                     "tips": [
                         "Keep crosshair at head level",
@@ -689,8 +688,7 @@ class AdaptiveCoach:
                     < bench["utility_per_round"],
                     "severity": "medium",
                     "description": (
-                        "You're not using enough utility each round. "
-                        "Grenades can win rounds."
+                        "You're not using enough utility each round. Grenades can win rounds."
                     ),
                     "tips": [
                         "Buy utility every round you can",
@@ -765,8 +763,7 @@ class AdaptiveCoach:
                     and stats.get("kast", 0) < 60,
                     "severity": "medium",
                     "description": (
-                        "You're dying too often without impact. "
-                        "Consider safer positions."
+                        "You're dying too often without impact. Consider safer positions."
                     ),
                     "tips": [
                         "Hold angles instead of pushing",

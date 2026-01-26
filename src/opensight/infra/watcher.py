@@ -317,9 +317,9 @@ class DemoFileHandler(FileSystemEventHandler):
         self.min_file_size = min_file_size
         self.debounce_seconds = debounce_seconds
         self.demo_cache = demo_cache
-        self._pending_files: dict[str, tuple[float, int]] = (
-            {}
-        )  # path -> (last_event_time, event_count)
+        self._pending_files: dict[
+            str, tuple[float, int]
+        ] = {}  # path -> (last_event_time, event_count)
         self._lock = threading.Lock()
 
     def _is_demo_file(self, path: str) -> bool:

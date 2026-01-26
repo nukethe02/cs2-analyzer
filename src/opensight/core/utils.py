@@ -179,7 +179,7 @@ def format_duration(seconds: float) -> str:
         Formatted string like "2m 30s" or "1.5s"
     """
     if seconds < 1:
-        return f"{seconds*1000:.0f}ms"
+        return f"{seconds * 1000:.0f}ms"
     elif seconds < 60:
         return f"{seconds:.1f}s"
     else:

@@ -616,7 +616,9 @@ class CommunicationAnalyzer:
                     "morale_trend": (
                         "up"
                         if avg_sentiment > 0.1
-                        else "down" if avg_sentiment < -0.1 else "stable"
+                        else "down"
+                        if avg_sentiment < -0.1
+                        else "stable"
                     ),
                 }
             )

@@ -506,7 +506,7 @@ class TeamVisualizationGenerator:
             f'<svg width="{width}" height="{height + 50}" xmlns="http://www.w3.org/2000/svg">',
             f'<rect width="100%" height="100%" fill="{self.COLORS["background"]}"/>',
             # Title
-            f'<text x="{width/2}" y="25" text-anchor="middle" font-size="16" font-weight="bold" fill="{self.COLORS["text"]}">',
+            f'<text x="{width / 2}" y="25" text-anchor="middle" font-size="16" font-weight="bold" fill="{self.COLORS["text"]}">',
             f"Team Comparison: {comparison.team_a_name} vs {comparison.team_b_name}",
             "</text>",
             # Chart group
@@ -530,7 +530,7 @@ class TeamVisualizationGenerator:
                 f'fill="{self.COLORS["team_a"]}" rx="3"/>'
             )
             svg_parts.append(
-                f'<text x="{width_a + 5}" y="{y + bar_height/2 + 4}" '
+                f'<text x="{width_a + 5}" y="{y + bar_height / 2 + 4}" '
                 f'font-size="11" fill="{self.COLORS["text"]}">{metric.team_a_value:.1f}</text>'
             )
 
@@ -551,10 +551,10 @@ class TeamVisualizationGenerator:
         legend_y = height - 20
         svg_parts.extend(
             [
-                f'<rect x="{width/2 - 100}" y="{legend_y}" width="15" height="15" fill="{self.COLORS["team_a"]}"/>',
-                f'<text x="{width/2 - 80}" y="{legend_y + 12}" font-size="12">{comparison.team_a_name}</text>',
-                f'<rect x="{width/2 + 20}" y="{legend_y}" width="15" height="15" fill="{self.COLORS["team_b"]}"/>',
-                f'<text x="{width/2 + 40}" y="{legend_y + 12}" font-size="12">{comparison.team_b_name}</text>',
+                f'<rect x="{width / 2 - 100}" y="{legend_y}" width="15" height="15" fill="{self.COLORS["team_a"]}"/>',
+                f'<text x="{width / 2 - 80}" y="{legend_y + 12}" font-size="12">{comparison.team_a_name}</text>',
+                f'<rect x="{width / 2 + 20}" y="{legend_y}" width="15" height="15" fill="{self.COLORS["team_b"]}"/>',
+                f'<text x="{width / 2 + 40}" y="{legend_y + 12}" font-size="12">{comparison.team_b_name}</text>',
             ]
         )
 

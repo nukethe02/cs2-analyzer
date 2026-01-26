@@ -1562,6 +1562,7 @@ class DemoAnalyzer:
 
         # Track RWS contributions per player
         from collections import defaultdict
+
         player_rws_contributions: dict[int, list[float]] = defaultdict(list)
         player_damage_in_won: dict[int, int] = defaultdict(int)
         player_rounds_won: dict[int, int] = defaultdict(int)
@@ -2127,7 +2128,9 @@ class DemoAnalyzer:
         # Fallback: Original per-kill loop implementation
         logger.info("Using per-kill TTD computation (fallback)")
         damages_df = self.data.damages_df
-        logger.info(f"TTD computation: {len(damages_df)} damage events, {len(self.data.kills)} kills")
+        logger.info(
+            f"TTD computation: {len(damages_df)} damage events, {len(self.data.kills)} kills"
+        )
         logger.debug(f"Damage columns available: {list(damages_df.columns)}")
 
         # Find the right column names
@@ -2828,9 +2831,7 @@ class DemoAnalyzer:
             return
 
         # Cache player teams for teammate detection
-        {
-            steam_id: player.team for steam_id, player in self._players.items()
-        }
+        {steam_id: player.team for steam_id, player in self._players.items()}
 
         # Constants for validation
         MIN_BLIND_DURATION = 0.0

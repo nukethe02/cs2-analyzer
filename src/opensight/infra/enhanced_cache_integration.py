@@ -31,7 +31,9 @@ def analyze_with_enhanced_metrics(demo_path: Path) -> dict:
     engine = CoachingAnalysisEngine(demo_path)
     analysis_result = engine.analyze()
 
-    logger.info(f"Enhanced analysis complete: {analysis_result['total_rounds']} rounds, "
-               f"{analysis_result['total_kills']} kills")
+    logger.info(
+        f"Enhanced analysis complete: {analysis_result['total_rounds']} rounds, "
+        f"{analysis_result['total_kills']} kills"
+    )
 
     return analysis_result

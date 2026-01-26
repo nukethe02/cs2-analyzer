@@ -695,8 +695,7 @@ class StateMachine:
             # Use Polars for fast aggregation
             effective = (
                 self._blinds_pl.filter(
-                    (pl.col("blind_duration") >= EFFECTIVE_FLASH_DURATION)
-                    & ~pl.col("is_teammate")
+                    (pl.col("blind_duration") >= EFFECTIVE_FLASH_DURATION) & ~pl.col("is_teammate")
                 )
                 .group_by("attacker_steamid")
                 .agg(
@@ -707,8 +706,7 @@ class StateMachine:
 
             ineffective = (
                 self._blinds_pl.filter(
-                    (pl.col("blind_duration") < EFFECTIVE_FLASH_DURATION)
-                    & ~pl.col("is_teammate")
+                    (pl.col("blind_duration") < EFFECTIVE_FLASH_DURATION) & ~pl.col("is_teammate")
                 )
                 .group_by("attacker_steamid")
                 .agg(pl.count().alias("ineffective_count"))
