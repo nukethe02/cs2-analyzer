@@ -1972,12 +1972,19 @@ class DemoAnalyzer:
         # Fallback: Original per-kill loop implementation
         logger.info("Using per-kill TTD computation (fallback)")
         damages_df = self.data.damages_df
+        logger.info(f"TTD computation: {len(damages_df)} damage events, {len(self.data.kills)} kills")
+        logger.debug(f"Damage columns available: {list(damages_df.columns)}")
 
         # Find the right column names
-        dmg_att_col = self._find_col(damages_df, ["attacker_steamid", "attacker_steam_id"])
-        dmg_vic_col = self._find_col(
-            damages_df, ["user_steamid", "victim_steamid", "victim_steam_id"]
-        )
+        def find_col(df, options):
+            for col in options:
+                if col in df.columns:
+                    return col
+            return None
+
+        dmg_att_col = find_col(damages_df, ["attacker_steamid", "attacker_steam_id"])
+        dmg_vic_col = find_col(damages_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
+        logger.info(f"TTD columns: attacker={dmg_att_col}, victim={dmg_vic_col}")
 
         if not dmg_att_col or not dmg_vic_col:
             logger.warning(f"Missing columns for TTD. Have: {list(damages_df.columns)}")
@@ -2075,28 +2082,13 @@ class DemoAnalyzer:
                 logger.debug(f"Error processing kill for TTD: {e}")
                 continue
 
-        # Apply outlier removal (remove values > 3 std devs from mean)
-        for steam_id, values in raw_ttd_values.items():
-            if steam_id not in self._players or len(values) < 3:
-                # Not enough data for statistical filtering
-                if steam_id in self._players:
-                    self._players[steam_id].ttd_values = values
-                continue
-
-            values_arr = np.array(values)
-            mean_val = np.mean(values_arr)
-            std_val = np.std(values_arr)
-
-            if std_val > 0:
-                # Filter outliers
-                filtered = [
-                    v for v in values if abs(v - mean_val) <= TTD_OUTLIER_MULTIPLIER * std_val
-                ]
-                self._players[steam_id].ttd_values = filtered
-            else:
-                self._players[steam_id].ttd_values = values
-
-        logger.info(f"Computed TTD for {len(self._ttd_results)} engagements (with outlier removal)")
+        # Summary of TTD results per player
+        players_with_ttd = sum(1 for p in self._players.values() if p.ttd_values)
+        total_ttd_values = sum(len(p.ttd_values) for p in self._players.values())
+        logger.info(
+            f"Computed TTD for {len(self._ttd_results)} engagements, "
+            f"{players_with_ttd} players have TTD values ({total_ttd_values} total samples)"
+        )
 
     def _compute_crosshair_placement(self) -> None:
         """Compute crosshair placement error for each kill.
@@ -2122,6 +2114,16 @@ class DemoAnalyzer:
         logger.info("Using per-kill CP computation (fallback)")
 
         # First try using KillEvent objects directly (preferred - they have embedded position data)
+        # Count what data is available
+        kills_with_x = sum(1 for k in self.data.kills if k.attacker_x is not None)
+        kills_with_pitch = sum(1 for k in self.data.kills if k.attacker_pitch is not None)
+        kills_with_victim_x = sum(1 for k in self.data.kills if k.victim_x is not None)
+        logger.info(
+            f"CP data availability: {len(self.data.kills)} kills, "
+            f"{kills_with_x} with attacker_x, {kills_with_pitch} with pitch, "
+            f"{kills_with_victim_x} with victim_x"
+        )
+
         kills_with_pos = [
             k
             for k in self.data.kills
