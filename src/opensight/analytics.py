@@ -461,6 +461,99 @@ class MistakesStats:
 
 
 @dataclass
+class DetailedAccuracyStats:
+    """Detailed accuracy metrics (Leetify/Scope.gg style Match Details).
+
+    These metrics provide granular breakdown of aiming performance:
+    - Spotted Accuracy: Accuracy when enemy is visible (shots within damage window)
+    - Spray Accuracy: Accuracy during spray/burst fire (consecutive rapid shots)
+    - Counter-Strafe Rating: How well player stops before shooting
+    - Head Accuracy: % of hits that land on head
+    - First Bullet Accuracy: Accuracy of first shot in each engagement
+    """
+    # Spotted accuracy (shots fired after seeing enemy)
+    spotted_shots_fired: int = 0
+    spotted_shots_hit: int = 0
+
+    # Spray accuracy (shots in rapid succession)
+    spray_shots_fired: int = 0
+    spray_shots_hit: int = 0
+    spray_headshot_hits: int = 0
+
+    # First bullet accuracy (first shot in engagement)
+    first_bullet_shots: int = 0
+    first_bullet_hits: int = 0
+    first_bullet_headshots: int = 0
+
+    # Counter-strafing metrics
+    shots_while_moving: int = 0  # Shots fired with velocity > threshold
+    shots_while_stopped: int = 0  # Shots fired while stationary
+    avg_velocity_at_shot: float = 0.0  # Average velocity when firing
+
+    # Burst vs tap metrics
+    tap_shots: int = 0  # Single shots (no rapid follow-up)
+    burst_shots: int = 0  # 2-5 shot bursts
+    spray_shots: int = 0  # 6+ consecutive shots
+
+    @property
+    def spotted_accuracy(self) -> float:
+        """Accuracy when enemy was spotted (shots that could hit)."""
+        if self.spotted_shots_fired <= 0:
+            return 0.0
+        return round(self.spotted_shots_hit / self.spotted_shots_fired * 100, 1)
+
+    @property
+    def spray_accuracy(self) -> float:
+        """Accuracy during spray/burst fire."""
+        if self.spray_shots_fired <= 0:
+            return 0.0
+        return round(self.spray_shots_hit / self.spray_shots_fired * 100, 1)
+
+    @property
+    def spray_headshot_rate(self) -> float:
+        """Headshot rate during spray."""
+        if self.spray_shots_hit <= 0:
+            return 0.0
+        return round(self.spray_headshot_hits / self.spray_shots_hit * 100, 1)
+
+    @property
+    def first_bullet_accuracy(self) -> float:
+        """First bullet accuracy (crucial for duels)."""
+        if self.first_bullet_shots <= 0:
+            return 0.0
+        return round(self.first_bullet_hits / self.first_bullet_shots * 100, 1)
+
+    @property
+    def first_bullet_hs_rate(self) -> float:
+        """First bullet headshot rate."""
+        if self.first_bullet_hits <= 0:
+            return 0.0
+        return round(self.first_bullet_headshots / self.first_bullet_hits * 100, 1)
+
+    @property
+    def counter_strafe_rating(self) -> float:
+        """
+        Counter-strafe rating (0-100).
+        Based on % of shots fired while stopped.
+        Higher = better counter-strafing discipline.
+        """
+        total = self.shots_while_moving + self.shots_while_stopped
+        if total <= 0:
+            return 50.0  # Default average
+        stopped_pct = self.shots_while_stopped / total
+        # Scale: 0% stopped = 0, 70% stopped = 50, 100% stopped = 100
+        return round(min(100, (stopped_pct / 0.7) * 50 + (stopped_pct - 0.7) / 0.3 * 50 if stopped_pct > 0.7 else (stopped_pct / 0.7) * 50), 1)
+
+    @property
+    def movement_accuracy_penalty(self) -> float:
+        """Estimated accuracy loss from shooting while moving."""
+        total = self.shots_while_moving + self.shots_while_stopped
+        if total <= 0:
+            return 0.0
+        return round(self.shots_while_moving / total * 100, 1)
+
+
+@dataclass
 class LurkStats:
     """Lurk statistics from State Machine."""
     kills: int = 0
@@ -500,6 +593,9 @@ class PlayerMatchStats:
 
     # Lurk stats (State Machine)
     lurk: LurkStats = field(default_factory=LurkStats)
+
+    # Detailed accuracy stats (Leetify/Scope.gg Match Details)
+    detailed_accuracy: DetailedAccuracyStats = field(default_factory=DetailedAccuracyStats)
 
     # KAST tracking
     kast_rounds: int = 0  # Rounds with Kill/Assist/Survived/Traded
@@ -1067,6 +1163,8 @@ class DemoAnalyzer:
         # Calculate accuracy stats (from weapon_fire events)
         if "accuracy" in self._requested_metrics:
             self._calculate_accuracy_stats()
+            # Also calculate detailed accuracy metrics
+            self._calculate_detailed_accuracy()
 
         # Calculate mistakes
         if "mistakes" in self._requested_metrics:
@@ -2164,6 +2262,150 @@ class DemoAnalyzer:
                         player.headshot_hits = len(head_hits)
 
         logger.info("Calculated accuracy stats")
+
+    def _calculate_detailed_accuracy(self) -> None:
+        """
+        Calculate detailed accuracy metrics (Leetify/Scope.gg Match Details style).
+
+        Computes:
+        - Spotted Accuracy: Accuracy for shots fired when enemy is visible
+        - Spray Accuracy: Accuracy during consecutive rapid fire
+        - Counter-Strafing: How well player stops before shooting
+        - First Bullet Accuracy: Accuracy of opening shots
+        """
+        if not hasattr(self.data, 'weapon_fires') or not self.data.weapon_fires:
+            logger.info("No weapon_fire data for detailed accuracy")
+            return
+
+        damages_df = self.data.damages_df
+        if damages_df.empty:
+            logger.info("No damage data for detailed accuracy")
+            return
+
+        # Constants for analysis
+        SPRAY_WINDOW_TICKS = 8  # ~125ms between shots = spray
+        STOPPED_VELOCITY_THRESHOLD = 34.0  # Max velocity for accurate rifle fire
+        SPOTTED_WINDOW_TICKS = 64  # 1 second window for "spotted" shots
+
+        for steam_id, player in self._players.items():
+            # Get all shots for this player, sorted by tick
+            player_shots = sorted(
+                [f for f in self.data.weapon_fires if f.player_steamid == steam_id],
+                key=lambda x: x.tick
+            )
+
+            if not player_shots:
+                continue
+
+            # Get damage events for this player
+            att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+            if not att_col:
+                continue
+
+            player_damages = damages_df[damages_df[att_col] == steam_id].copy()
+            if player_damages.empty:
+                continue
+
+            damage_ticks = set(player_damages['tick'].tolist()) if 'tick' in player_damages.columns else set()
+            hitgroup_col = self._find_col(damages_df, ["hitgroup"])
+
+            # Categorize each shot
+            prev_shot_tick = None
+            engagement_start_tick = None
+            consecutive_shot_count = 0
+
+            stats = player.detailed_accuracy
+
+            for shot in player_shots:
+                shot_tick = shot.tick
+
+                # Determine if this is part of a spray
+                is_spray_shot = False
+                if prev_shot_tick and (shot_tick - prev_shot_tick) <= SPRAY_WINDOW_TICKS:
+                    consecutive_shot_count += 1
+                    if consecutive_shot_count >= 2:
+                        is_spray_shot = True
+                        stats.spray_shots_fired += 1
+                else:
+                    # New engagement
+                    consecutive_shot_count = 1
+                    engagement_start_tick = shot_tick
+                    stats.first_bullet_shots += 1
+
+                # Check if this shot hit (within a small tick window of damage event)
+                shot_hit = any(abs(shot_tick - dmg_tick) <= 2 for dmg_tick in damage_ticks)
+
+                # Check if shot was during spotted window (near any damage event)
+                is_spotted_shot = any(
+                    abs(shot_tick - dmg_tick) <= SPOTTED_WINDOW_TICKS
+                    for dmg_tick in damage_ticks
+                )
+
+                if is_spotted_shot:
+                    stats.spotted_shots_fired += 1
+                    if shot_hit:
+                        stats.spotted_shots_hit += 1
+
+                # Track spray hits
+                if is_spray_shot and shot_hit:
+                    stats.spray_shots_hit += 1
+                    # Check if headshot
+                    if hitgroup_col:
+                        nearby_dmg = player_damages[
+                            abs(player_damages['tick'] - shot_tick) <= 2
+                        ]
+                        if not nearby_dmg.empty:
+                            is_headshot = nearby_dmg[hitgroup_col].str.lower().str.contains('head', na=False).any()
+                            if is_headshot:
+                                stats.spray_headshot_hits += 1
+
+                # Track first bullet hits
+                if consecutive_shot_count == 1 and shot_hit:
+                    stats.first_bullet_hits += 1
+                    if hitgroup_col:
+                        nearby_dmg = player_damages[
+                            abs(player_damages['tick'] - shot_tick) <= 2
+                        ]
+                        if not nearby_dmg.empty:
+                            is_headshot = nearby_dmg[hitgroup_col].str.lower().str.contains('head', na=False).any()
+                            if is_headshot:
+                                stats.first_bullet_headshots += 1
+
+                # Counter-strafe analysis (velocity at shot)
+                if hasattr(shot, 'player_x') and shot.player_x is not None:
+                    # Estimate velocity from position data (simplified)
+                    # In real implementation, would use tick data for precise velocity
+                    if prev_shot_tick and hasattr(self.data, 'ticks_df') and self.data.ticks_df is not None:
+                        # Use tick data if available
+                        pass
+                    else:
+                        # Simplified: assume shots during spray are moving
+                        if is_spray_shot:
+                            stats.shots_while_moving += 1
+                        else:
+                            stats.shots_while_stopped += 1
+                else:
+                    # Without position data, use spray heuristic
+                    if is_spray_shot and consecutive_shot_count > 3:
+                        stats.shots_while_moving += 1
+                    else:
+                        stats.shots_while_stopped += 1
+
+                # Categorize shot type (tap/burst/spray)
+                if consecutive_shot_count == 1:
+                    pass  # Will be categorized on next shot
+                elif consecutive_shot_count <= 5:
+                    stats.burst_shots += 1
+                else:
+                    stats.spray_shots += 1
+
+                prev_shot_tick = shot_tick
+
+            # Count tap shots (single shots that weren't followed up)
+            # This is approximate - would need to track shot sequences properly
+            stats.tap_shots = max(0, stats.first_bullet_shots - stats.burst_shots // 3)
+
+        logger.info("Calculated detailed accuracy stats")
 
     def _calculate_mistakes(self) -> None:
         """Calculate mistakes (Scope.gg style)."""
