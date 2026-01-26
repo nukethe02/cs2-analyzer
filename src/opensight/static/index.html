@@ -710,603 +710,116 @@
             gap: 12px;
         }
 
-        .stat {
-            text-align: center;
-            padding: 16px 8px;
-            background: var(--bg-secondary);
-            border-radius: var(--radius-md);
-            border: 1px solid transparent;
-            transition: all 0.2s;
-        }
-
-        .stat:hover {
-            border-color: var(--border-hover);
-            background: var(--bg-elevated);
-        }
-
-        .stat-value {
-            font-size: 1.3rem;
-            font-weight: 700;
-            font-family: 'JetBrains Mono', monospace;
-            margin-bottom: 4px;
-        }
-
-        .stat-label {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .stat.highlight {
-            background: linear-gradient(135deg, rgba(0, 229, 255, 0.08), rgba(124, 77, 255, 0.08));
-            border: 1px solid rgba(0, 229, 255, 0.2);
-        }
-
-        .stat-value.good { color: var(--success); }
-        .stat-value.bad { color: var(--danger); }
-        .stat-value.warning { color: var(--warning); }
-
-        /* Section Headers */
-        .section-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-
-        .section-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-            border-radius: var(--radius-md);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .section-icon svg {
-            width: 20px;
-            height: 20px;
-            fill: var(--bg-primary);
-        }
-
-        .section-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-        }
-
-        /* Round Timeline */
-        .timeline-container {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-            overflow-x: auto;
-        }
-
-        .timeline {
-            display: flex;
-            gap: 6px;
-            min-width: max-content;
-            padding: 8px 0;
-        }
-
-        .round-box {
-            width: 42px;
-            height: 42px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: var(--radius-md);
-            font-size: 0.85rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        .round-box:hover { transform: scale(1.15); }
-
-        .round-box.ct-win {
-            background: var(--ct-bg);
-            color: var(--ct-color);
-            border: 1px solid rgba(92, 156, 255, 0.3);
-        }
-
-        .round-box.ct-win:hover {
-            box-shadow: 0 0 20px var(--ct-glow);
-        }
-
-        .round-box.t-win {
-            background: var(--t-bg);
-            color: var(--t-color);
-            border: 1px solid rgba(255, 179, 71, 0.3);
-        }
-
-        .round-box.t-win:hover {
-            box-shadow: 0 0 20px var(--t-glow);
-        }
-
-        .round-box.half-marker {
-            background: transparent;
-            border: 2px dashed var(--border);
-            color: var(--text-muted);
-            font-size: 1.2rem;
-        }
-
-        /* Kill Matrix */
-        .matrix-container {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-            overflow-x: auto;
-        }
-
-        .matrix-table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 4px;
-            font-size: 0.85rem;
-        }
-
-        .matrix-table th, .matrix-table td {
-            padding: 12px 16px;
-            text-align: center;
-            border-radius: var(--radius-sm);
-        }
-
-        .matrix-table th {
-            background: var(--bg-elevated);
-            color: var(--text-secondary);
-            font-weight: 500;
-        }
-
-        .matrix-table td {
-            background: var(--bg-secondary);
-            transition: all 0.2s;
-        }
-
-        .matrix-table td:hover {
-            background: var(--bg-elevated);
-        }
-
-        .matrix-table td.highlight {
-            background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(124, 77, 255, 0.15));
-            color: var(--accent-primary);
-            font-weight: 700;
-        }
-
-        .matrix-table td.victim { background: var(--danger-bg); }
-        .matrix-table td.killer { background: var(--success-bg); }
-
-        /* Heatmap */
-        .heatmap-container {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-        }
-
-        .heatmap-canvas {
-            width: 100%;
-            max-width: 800px;
-            margin: 0 auto;
-            display: block;
-            border-radius: var(--radius-md);
-            background: var(--bg-secondary);
-        }
-
-        .heatmap-controls {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-
-        .heatmap-controls label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            padding: 8px 16px;
-            background: var(--bg-secondary);
-            border-radius: 100px;
-            transition: all 0.2s;
-        }
-
-        .heatmap-controls label:hover {
-            background: var(--bg-elevated);
-            color: var(--text-primary);
-        }
-
-        .heatmap-controls input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            accent-color: var(--accent-primary);
-        }
-
-        /* Coaching Panel */
-        .coaching-panel {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-        }
-
-        .coaching-player {
-            margin-bottom: 28px;
-            padding-bottom: 28px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .coaching-player:last-child {
-            margin-bottom: 0;
-            padding-bottom: 0;
-            border-bottom: none;
-        }
-
-        .coaching-player-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .coaching-player-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: var(--radius-sm);
-            background: var(--bg-elevated);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
+        /* Team color accents */
+        .team-ct { border-left: 3px solid #4a90d9; }
+        .team-t { border-left: 3px solid #de9b35; }
 
-        .coaching-player-name {
-            font-weight: 600;
-            font-size: 1.1rem;
+        /* Rating Breakdown Sliders */
+        .rating-breakdown {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(71, 85, 105, 0.5);
+            border-radius: 12px;
+            padding: 1.5rem;
         }
-
-        .insight {
-            display: flex;
-            align-items: flex-start;
-            gap: 14px;
-            padding: 16px;
-            border-radius: var(--radius-md);
-            margin-bottom: 10px;
-            transition: all 0.2s;
-        }
-
-        .insight:hover {
-            transform: translateX(4px);
-        }
-
-        .insight.warning {
-            background: var(--warning-bg);
-            border-left: 3px solid var(--warning);
-        }
-
-        .insight.positive {
-            background: var(--success-bg);
-            border-left: 3px solid var(--success);
-        }
-
-        .insight.mistake {
-            background: var(--danger-bg);
-            border-left: 3px solid var(--danger);
-        }
-
-        .insight-icon {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.9rem;
-            flex-shrink: 0;
-        }
-
-        .insight.warning .insight-icon { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
-        .insight.positive .insight-icon { background: rgba(16, 185, 129, 0.2); color: var(--success); }
-        .insight.mistake .insight-icon { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
-
-        .insight-content { flex: 1; }
-
-        .insight-text {
-            font-size: 0.95rem;
-            color: var(--text-primary);
-            line-height: 1.5;
-        }
-
-        .insight-category {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-top: 6px;
-        }
-
-        /* Error Box */
-        .error-box {
-            background: var(--danger-bg);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            border-radius: var(--radius-lg);
-            padding: 32px;
-            text-align: center;
-        }
-
-        .error-icon {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 16px;
-            background: rgba(239, 68, 68, 0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2rem;
-        }
-
-        .error-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--danger);
-            margin-bottom: 8px;
-        }
-
-        .error-message {
-            color: var(--text-secondary);
-        }
-
-        /* Footer */
-        footer {
-            position: relative;
-            z-index: 10;
-            text-align: center;
-            padding: 48px 24px;
-            border-top: 1px solid var(--border);
-            margin-top: 48px;
-        }
-
-        footer p {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
-
-        footer a {
-            color: var(--accent-primary);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.2s;
-        }
-
-        footer a:hover {
-            color: var(--text-primary);
-        }
-
-        /* Replay Viewer */
-        .replay-container {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-        }
-
-        .replay-viewer {
-            display: flex;
-            gap: 24px;
-            flex-wrap: wrap;
-        }
-
-        .replay-canvas-container {
-            flex: 1;
-            min-width: 400px;
-        }
-
-        .replay-canvas {
-            width: 100%;
-            aspect-ratio: 1;
-            border-radius: var(--radius-md);
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-        }
-
-        .replay-controls {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            margin-top: 16px;
-            flex-wrap: wrap;
-            padding: 12px;
-            background: var(--bg-secondary);
-            border-radius: var(--radius-md);
-        }
-
-        .replay-btn {
-            padding: 10px 16px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            color: var(--text-primary);
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-family: inherit;
-            transition: all 0.2s;
-        }
-
-        .replay-btn:hover {
-            background: var(--bg-card-hover);
-            border-color: var(--border-hover);
-        }
-
-        .replay-btn.active {
-            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-            border-color: transparent;
-            color: var(--bg-primary);
-            font-weight: 600;
-        }
-
-        .replay-slider {
-            flex: 1;
-            min-width: 150px;
-            height: 6px;
-            -webkit-appearance: none;
-            appearance: none;
-            background: var(--bg-elevated);
-            border-radius: 100px;
-            outline: none;
-        }
-
-        .replay-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 18px;
-            height: 18px;
-            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 2px 8px var(--accent-glow);
-        }
-
-        .replay-info {
-            display: flex;
-            gap: 24px;
-            margin-top: 12px;
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        .replay-sidebar {
-            width: 280px;
-            background: var(--bg-secondary);
-            border-radius: var(--radius-md);
-            padding: 16px;
-        }
-
-        .replay-player-list h4 {
-            font-size: 0.85rem;
-            font-weight: 600;
-            letter-spacing: 0.05em;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .replay-player-list h4.ct-header { color: var(--ct-color); }
-        .replay-player-list h4.t-header { color: var(--t-color); }
-
-        .replay-player-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            border-radius: var(--radius-sm);
-            margin-bottom: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .replay-player-item:hover { background: var(--bg-elevated); }
-        .replay-player-item.selected {
-            background: linear-gradient(135deg, rgba(0, 229, 255, 0.1), rgba(124, 77, 255, 0.1));
-            border: 1px solid rgba(0, 229, 255, 0.2);
-        }
-        .replay-player-item.dead { opacity: 0.4; }
-
-        .player-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-        }
-
-        .player-dot.ct { background: var(--ct-color); box-shadow: 0 0 8px var(--ct-glow); }
-        .player-dot.t { background: var(--t-color); box-shadow: 0 0 8px var(--t-glow); }
-
-        .player-health {
-            margin-left: auto;
-            font-size: 0.8rem;
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--text-muted);
-        }
-
-        /* Keyboard Shortcuts Panel */
-        .shortcuts-panel {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 20px;
-            font-size: 0.85rem;
-            z-index: 100;
-            display: none;
-            box-shadow: var(--shadow-lg);
-            backdrop-filter: blur(10px);
-        }
-
-        .shortcuts-panel.show { display: block; animation: fadeIn 0.2s ease; }
 
-        .shortcuts-panel h4 {
-            margin-bottom: 12px;
-            color: var(--text-primary);
-            font-weight: 600;
+        .rating-bar-container {
+            margin-bottom: 1rem;
         }
 
-        .shortcut-item {
+        .rating-bar-header {
             display: flex;
             justify-content: space-between;
-            gap: 24px;
-            margin-bottom: 8px;
-            color: var(--text-secondary);
-        }
-
-        .shortcut-key {
-            background: var(--bg-elevated);
-            padding: 4px 10px;
-            border-radius: var(--radius-sm);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.8rem;
-            color: var(--accent-primary);
-        }
-
-        /* Empty state */
-        .empty-state {
-            text-align: center;
-            padding: 48px 24px;
-            color: var(--text-muted);
-        }
-
-        .empty-state-icon {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 16px;
-            background: var(--bg-elevated);
-            border-radius: 50%;
-            display: flex;
             align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
-            .header h1 { font-size: 2.5rem; }
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
-            .players-grid { grid-template-columns: 1fr; }
-            .score-value { font-size: 3rem; }
-            .replay-viewer { flex-direction: column; }
-            .replay-sidebar { width: 100%; }
-            .tabs { gap: 4px; }
-            .tab-btn { padding: 10px 14px; font-size: 0.85rem; }
+        .rating-bar-label {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            font-weight: 500;
         }
+
+        .rating-bar-value {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .rating-bar-track {
+            position: relative;
+            height: 8px;
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .rating-bar-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .rating-bar-benchmark {
+            position: absolute;
+            top: -2px;
+            width: 2px;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 1px;
+        }
+
+        /* Rating bar colors by category */
+        .rating-bar-fill.aim { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+        .rating-bar-fill.utility { background: linear-gradient(90deg, #22c55e, #4ade80); }
+        .rating-bar-fill.impact { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .rating-bar-fill.kast { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+        .rating-bar-fill.opening { background: linear-gradient(90deg, #ef4444, #f87171); }
+        .rating-bar-fill.clutch { background: linear-gradient(90deg, #ec4899, #f472b6); }
+        .rating-bar-fill.trade { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+        .rating-bar-fill.adr { background: linear-gradient(90deg, #10b981, #34d399); }
+
+        /* Comparison mode - two bars side by side */
+        .rating-bar-comparison {
+            display: flex;
+            gap: 4px;
+            height: 8px;
+        }
+
+        .rating-bar-comparison .bar-a,
+        .rating-bar-comparison .bar-b {
+            flex: 1;
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .rating-bar-comparison .bar-a .fill {
+            background: linear-gradient(90deg, #4a90d9, #6ba6e6);
+        }
+
+        .rating-bar-comparison .bar-b .fill {
+            background: linear-gradient(90deg, #de9b35, #e8b55e);
+        }
+
+        /* Rating tier badges */
+        .rating-tier {
+            display: inline-block;
+            padding: 0.125rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .rating-tier.elite { background: rgba(234, 179, 8, 0.2); color: #fbbf24; }
+        .rating-tier.good { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .rating-tier.average { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+        .rating-tier.below { background: rgba(239, 68, 68, 0.2); color: #f87171; }
     </style>
 </head>
 <body>
@@ -1879,8 +1392,250 @@
             return html;
         }
 
-        // Render Heatmap Tab
-        function renderHeatmap(heatmapData, mapName) {
+        // ============================================
+        // Tab-specific Content Renderers
+        // ============================================
+        function renderPlayersContent(ctPlayers, tPlayers) {
+            const container = document.getElementById('players-display');
+            const placeholder = document.getElementById('players-placeholder');
+
+            placeholder.classList.add('hidden');
+            container.classList.remove('hidden');
+
+            container.innerHTML = `
+                <h3 class="text-lg font-semibold text-ct mb-4 flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-ct"></span> Counter-Terrorists
+                </h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+                    ${ctPlayers.map(p => renderDetailedPlayerCard(p)).join('')}
+                </div>
+
+                <h3 class="text-lg font-semibold text-t mb-4 flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-t"></span> Terrorists
+                </h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    ${tPlayers.map(p => renderDetailedPlayerCard(p)).join('')}
+                </div>
+            `;
+        }
+
+        // Rating Breakdown with comparative sliders
+        function renderRatingBreakdown(player) {
+            const s = player.stats || {};
+            const r = player.rating || {};
+            const adv = player.advanced || {};
+            const d = player.duels || {};
+            const c = player.clutches || {};
+
+            // Helper to get tier class based on value and thresholds
+            function getTier(value, thresholds) {
+                if (value >= thresholds.elite) return 'elite';
+                if (value >= thresholds.good) return 'good';
+                if (value >= thresholds.avg) return 'average';
+                return 'below';
+            }
+
+            // Helper to get tier label
+            function getTierLabel(value, thresholds) {
+                if (value >= thresholds.elite) return 'Elite';
+                if (value >= thresholds.good) return 'Good';
+                if (value >= thresholds.avg) return 'Average';
+                return 'Below Avg';
+            }
+
+            // Define metrics with their thresholds and benchmarks
+            const metrics = [
+                {
+                    key: 'adr',
+                    label: 'ADR',
+                    value: s.adr || 0,
+                    max: 150,
+                    benchmark: 70,
+                    thresholds: { elite: 90, good: 75, avg: 60 },
+                    colorClass: 'adr',
+                    tooltip: 'Average Damage per Round'
+                },
+                {
+                    key: 'aim',
+                    label: 'Aim Rating',
+                    value: r.aim_rating || 0,
+                    max: 100,
+                    benchmark: 50,
+                    thresholds: { elite: 70, good: 55, avg: 40 },
+                    colorClass: 'aim',
+                    tooltip: 'Composite aim score based on TTD, CP, HS%'
+                },
+                {
+                    key: 'utility',
+                    label: 'Utility Rating',
+                    value: r.utility_rating || 0,
+                    max: 100,
+                    benchmark: 50,
+                    thresholds: { elite: 70, good: 50, avg: 30 },
+                    colorClass: 'utility',
+                    tooltip: 'Utility effectiveness score'
+                },
+                {
+                    key: 'impact',
+                    label: 'Impact',
+                    value: (r.impact_rating || 0) * 100,
+                    max: 200,
+                    benchmark: 100,
+                    thresholds: { elite: 130, good: 110, avg: 90 },
+                    colorClass: 'impact',
+                    tooltip: 'Round-winning contribution'
+                },
+                {
+                    key: 'kast',
+                    label: 'KAST %',
+                    value: r.kast_percentage || 0,
+                    max: 100,
+                    benchmark: 70,
+                    thresholds: { elite: 80, good: 70, avg: 60 },
+                    colorClass: 'kast',
+                    tooltip: 'Kill/Assist/Survive/Trade percentage'
+                },
+                {
+                    key: 'opening',
+                    label: 'Opening Success',
+                    value: d.opening_win_rate || 0,
+                    max: 100,
+                    benchmark: 50,
+                    thresholds: { elite: 60, good: 50, avg: 40 },
+                    colorClass: 'opening',
+                    tooltip: 'Opening duel win rate'
+                },
+                {
+                    key: 'clutch',
+                    label: 'Clutch Win %',
+                    value: c.total_situations > 0 ? (c.total_wins / c.total_situations * 100) : 0,
+                    max: 100,
+                    benchmark: 30,
+                    thresholds: { elite: 40, good: 25, avg: 15 },
+                    colorClass: 'clutch',
+                    tooltip: 'Clutch situation win rate'
+                }
+            ];
+
+            return `
+                <div class="rating-breakdown">
+                    <div class="flex items-center justify-between mb-4">
+                        <h5 class="text-sm font-semibold text-cyan-400 uppercase tracking-wider">Rating Breakdown</h5>
+                        <span class="text-xs text-slate-500">Benchmark shown as line</span>
+                    </div>
+                    ${metrics.map(m => {
+                        const pct = Math.min(100, (m.value / m.max) * 100);
+                        const benchmarkPct = (m.benchmark / m.max) * 100;
+                        const tier = getTier(m.value, m.thresholds);
+                        const tierLabel = getTierLabel(m.value, m.thresholds);
+                        const displayValue = m.key === 'impact'
+                            ? formatNumber(m.value / 100, 2)
+                            : (m.key === 'adr' ? formatNumber(m.value, 0) : formatNumber(m.value, 1));
+                        const suffix = ['kast', 'opening', 'clutch'].includes(m.key) ? '%' : '';
+
+                        return `
+                            <div class="rating-bar-container" title="${m.tooltip}">
+                                <div class="rating-bar-header">
+                                    <span class="rating-bar-label">${m.label}</span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="rating-tier ${tier}">${tierLabel}</span>
+                                        <span class="rating-bar-value text-white">${displayValue}${suffix}</span>
+                                    </div>
+                                </div>
+                                <div class="rating-bar-track">
+                                    <div class="rating-bar-fill ${m.colorClass}" style="width: ${pct}%"></div>
+                                    <div class="rating-bar-benchmark" style="left: ${benchmarkPct}%" title="Benchmark: ${m.benchmark}"></div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        // Comparison Rating Breakdown for two players
+        function renderComparisonBreakdown(playerA, playerB) {
+            const sA = playerA.stats || {};
+            const rA = playerA.rating || {};
+            const dA = playerA.duels || {};
+            const cA = playerA.clutches || {};
+
+            const sB = playerB.stats || {};
+            const rB = playerB.rating || {};
+            const dB = playerB.duels || {};
+            const cB = playerB.clutches || {};
+
+            const metrics = [
+                { label: 'ADR', a: sA.adr || 0, b: sB.adr || 0, max: 150 },
+                { label: 'Aim Rating', a: rA.aim_rating || 0, b: rB.aim_rating || 0, max: 100 },
+                { label: 'Utility Rating', a: rA.utility_rating || 0, b: rB.utility_rating || 0, max: 100 },
+                { label: 'Impact', a: (rA.impact_rating || 0) * 100, b: (rB.impact_rating || 0) * 100, max: 200 },
+                { label: 'KAST %', a: rA.kast_percentage || 0, b: rB.kast_percentage || 0, max: 100 },
+                { label: 'Opening Win %', a: dA.opening_win_rate || 0, b: dB.opening_win_rate || 0, max: 100 },
+                { label: 'Clutch Win %',
+                    a: cA.total_situations > 0 ? (cA.total_wins / cA.total_situations * 100) : 0,
+                    b: cB.total_situations > 0 ? (cB.total_wins / cB.total_situations * 100) : 0,
+                    max: 100
+                }
+            ];
+
+            return `
+                <div class="rating-breakdown">
+                    <div class="flex items-center justify-between mb-4">
+                        <h5 class="text-sm font-semibold text-cyan-400 uppercase tracking-wider">Rating Comparison</h5>
+                        <div class="flex items-center gap-4 text-xs">
+                            <span class="flex items-center gap-1">
+                                <span class="w-3 h-3 rounded bg-ct"></span>
+                                ${esc(playerA.name)}
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="w-3 h-3 rounded bg-t"></span>
+                                ${esc(playerB.name)}
+                            </span>
+                        </div>
+                    </div>
+                    ${metrics.map(m => {
+                        const pctA = Math.min(100, (m.a / m.max) * 100);
+                        const pctB = Math.min(100, (m.b / m.max) * 100);
+                        const winner = m.a > m.b ? 'a' : m.b > m.a ? 'b' : 'tie';
+                        const isImpact = m.label === 'Impact';
+                        const valA = isImpact ? formatNumber(m.a / 100, 2) : formatNumber(m.a, 1);
+                        const valB = isImpact ? formatNumber(m.b / 100, 2) : formatNumber(m.b, 1);
+
+                        return `
+                            <div class="rating-bar-container">
+                                <div class="rating-bar-header">
+                                    <span class="rating-bar-label">${m.label}</span>
+                                    <div class="flex items-center gap-3 text-xs">
+                                        <span class="rating-bar-value ${winner === 'a' ? 'text-ct' : 'text-slate-400'}">${valA}</span>
+                                        <span class="text-slate-600">vs</span>
+                                        <span class="rating-bar-value ${winner === 'b' ? 'text-t' : 'text-slate-400'}">${valB}</span>
+                                    </div>
+                                </div>
+                                <div class="rating-bar-comparison">
+                                    <div class="bar-a">
+                                        <div class="fill absolute left-0 top-0 h-full rounded" style="width: ${pctA}%"></div>
+                                    </div>
+                                    <div class="bar-b">
+                                        <div class="fill absolute left-0 top-0 h-full rounded" style="width: ${pctB}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        function renderDetailedPlayerCard(player) {
+            const s = player.stats || {};
+            const r = player.rating || {};
+            const adv = player.advanced || {};
+            const util = player.utility || {};
+            const d = player.duels || {};
+            const c = player.clutches || {};
+            const mk = player.multi_kills || {};
+
             return `
                 <div class="heatmap-container">
                     <div class="section-header">
@@ -1889,20 +1644,55 @@
                         </div>
                         <h3 class="section-title">Position Heatmap - ${esc(mapName)}</h3>
                     </div>
-                    <div class="heatmap-controls">
-                        <label>
-                            <input type="checkbox" id="show-kills" checked>
-                            Show Kills (green)
-                        </label>
-                        <label>
-                            <input type="checkbox" id="show-deaths" checked>
-                            Show Deaths (red)
-                        </label>
+
+                    <!-- Utility -->
+                    <div class="mb-6">
+                        <h5 class="text-xs font-semibold text-green-400 uppercase tracking-wider mb-3">Utility Usage</h5>
+                        <div class="grid grid-cols-4 gap-2 text-center text-sm">
+                            <div>
+                                <p class="font-mono data-value text-white">${util.flashbangs_thrown || 0}</p>
+                                <p class="text-xs text-slate-500">Flashes</p>
+                            </div>
+                            <div>
+                                <p class="font-mono data-value text-white">${util.enemies_flashed || 0}</p>
+                                <p class="text-xs text-slate-500">Blinded</p>
+                            </div>
+                            <div>
+                                <p class="font-mono data-value text-white">${util.he_damage || 0}</p>
+                                <p class="text-xs text-slate-500">HE Dmg</p>
+                            </div>
+                            <div>
+                                <p class="font-mono data-value text-white">${util.molotov_damage || 0}</p>
+                                <p class="text-xs text-slate-500">Molly Dmg</p>
+                            </div>
+                        </div>
                     </div>
-                    <canvas id="heatmap-canvas" class="heatmap-canvas" width="800" height="800"></canvas>
-                    <p style="color: var(--text-muted); margin-top: 16px; font-size: 0.85rem; text-align: center;">
-                        ${(heatmapData.kill_positions?.length || 0)} kills, ${(heatmapData.death_positions?.length || 0)} deaths plotted
-                    </p>
+
+                    <!-- Duels & Clutches -->
+                    <div class="mb-6">
+                        <h5 class="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-3">Duels & Clutches</h5>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Opening Duels</span>
+                                <span class="font-mono data-value ${(d.opening_win_rate || 0) >= 50 ? 'text-green-400' : 'text-red-400'}">
+                                    ${d.opening_wins || 0}W/${d.opening_losses || 0}L
+                                </span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Clutches</span>
+                                <span class="font-mono data-value">${c.total_wins || 0}/${c.total_situations || 0}</span>
+                            </div>
+                            <div class="flex justify-between col-span-2">
+                                <span class="text-slate-500">Multi-Kills</span>
+                                <span class="font-mono data-value text-xs">
+                                    2k: ${mk.rounds_with_2k || 0} | 3k: ${mk.rounds_with_3k || 0} | 4k: ${mk.rounds_with_4k || 0} | 5k: ${mk.rounds_with_5k || 0}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rating Breakdown with Sliders -->
+                    ${renderRatingBreakdown(player)}
                 </div>
             `;
         }
@@ -2241,10 +2031,109 @@
                 item.classList.toggle('selected', item.dataset.player === replayState.selectedPlayer);
             });
 
-            const canvas = document.getElementById('replay-canvas');
-            if (canvas) {
-                drawReplayFrame(canvas.getContext('2d'), canvas.width, canvas.height);
-            }
+            // Store players globally for comparison
+            window.comparisonPlayers = players;
+
+            // Build player selection UI with radar chart
+            container.innerHTML = `
+                <!-- Player Selection -->
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mb-6">
+                    <h3 class="text-lg font-semibold text-white mb-4">Select Players to Compare</h3>
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Player A</label>
+                            <select id="compare-player-a" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500">
+                                <option value="">Select player...</option>
+                                ${players.map(p => `<option value="${p.id}">${esc(p.name)} (${p.team})</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="text-2xl font-bold text-slate-500 self-end pb-2">VS</div>
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Player B</label>
+                            <select id="compare-player-b" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500">
+                                <option value="">Select player...</option>
+                                ${players.map(p => `<option value="${p.id}">${esc(p.name)} (${p.team})</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Comparison Display Area -->
+                <div id="comparison-result" class="hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <!-- Radar Chart -->
+                        <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                            <h3 class="text-lg font-semibold text-white mb-4">Performance Radar</h3>
+                            <div class="relative" style="height: 350px;">
+                                <canvas id="compare-radar-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Rating Breakdown Comparison -->
+                        <div id="compare-rating-breakdown" class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                            <h3 class="text-lg font-semibold text-white mb-4">Rating Breakdown</h3>
+                            <!-- Filled by updateComparisonDisplay -->
+                        </div>
+                    </div>
+
+                    <!-- Stats Table (Full Width) -->
+                    <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Detailed Stats</h3>
+                        <div id="compare-stats-table"></div>
+                    </div>
+                </div>
+
+                <!-- Placeholder for when no players selected -->
+                <div id="comparison-placeholder-inner" class="bg-slate-800/50 rounded-xl border border-slate-700 p-12 text-center">
+                    <svg class="w-12 h-12 mx-auto text-slate-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                    <p class="text-slate-500">Select two different players above to compare</p>
+                </div>
+
+                <!-- Leaderboard -->
+                <div class="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden mt-6">
+                    <div class="px-6 py-4 border-b border-slate-700">
+                        <h3 class="text-lg font-semibold text-white">Match Leaderboard</h3>
+                    </div>
+                    <table class="w-full">
+                        <thead>
+                            <tr class="bg-slate-900/50 text-left">
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">#</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Player</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Team</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Rating</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">K</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">D</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">ADR</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-center">HS%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0)).map((p, i) => `
+                                <tr class="border-t border-slate-700/50 hover:bg-slate-700/20 cursor-pointer" onclick="selectPlayerForComparison('${p.id}')">
+                                    <td class="px-4 py-3 font-mono text-slate-500">${i + 1}</td>
+                                    <td class="px-4 py-3 font-semibold text-white">${esc(p.name)}</td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-0.5 rounded text-xs font-bold ${p.team === 'CT' ? 'bg-ct-bg text-ct' : 'bg-t-bg text-t'}">${p.team}</span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="font-mono data-value ${getRatingClass(p.rating?.hltv_rating)}">${formatNumber(p.rating?.hltv_rating, 2)}</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.kills || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.deaths || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.adr || 0}</td>
+                                    <td class="px-4 py-3 text-center font-mono">${p.stats?.headshot_pct || 0}%</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            // Add event listeners for comparison
+            document.getElementById('compare-player-a').addEventListener('change', updateComparison);
+            document.getElementById('compare-player-b').addEventListener('change', updateComparison);
         }
 
         // Toggle replay play/pause
@@ -2289,6 +2178,37 @@
             if (slider) {
                 slider.value = replayState.currentFrame;
             }
+
+            const playerA = window.comparisonPlayers.find(p => p.id === idA);
+            const playerB = window.comparisonPlayers.find(p => p.id === idB);
+
+            if (!playerA || !playerB) {
+                resultDiv.classList.add('hidden');
+                placeholderDiv.classList.remove('hidden');
+                return;
+            }
+
+            // Show results, hide placeholder
+            resultDiv.classList.remove('hidden');
+            placeholderDiv.classList.add('hidden');
+
+            // Get comparison stats
+            const comparison = getScopeggComparisonStats(playerA, playerB);
+
+            // Render radar chart
+            renderCompareRadarChart(comparison);
+
+            // Render rating breakdown comparison
+            const breakdownContainer = document.getElementById('compare-rating-breakdown');
+            if (breakdownContainer) {
+                breakdownContainer.innerHTML = `
+                    <h3 class="text-lg font-semibold text-white mb-4">Rating Breakdown</h3>
+                    ${renderComparisonBreakdown(playerA, playerB)}
+                `;
+            }
+
+            // Render stats table
+            renderCompareStatsTable(comparison);
         }
 
         // Draw a single replay frame

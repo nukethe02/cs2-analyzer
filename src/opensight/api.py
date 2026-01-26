@@ -13,14 +13,19 @@ Provides:
 - Community feedback system
 """
 
-import logging
+import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Any
 
-from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Query, Body
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 from pydantic import BaseModel, Field
+import uvicorn
 
 __version__ = "0.3.0"
 
@@ -147,9 +152,32 @@ class SharecodeCache:
         self._cache.clear()
 
 
-# Expose simple instances for tests and simple runtime usage
-job_store = JobStore()
-sharecode_cache = SharecodeCache()
+# Global share code cache
+sharecode_cache = ShareCodeCache(maxsize=1000, ttl_minutes=60)
+
+
+# =============================================================================
+# FastAPI Application Setup
+# =============================================================================
+
+app = FastAPI(
+    title="OpenSight API",
+    description="CS2 demo analyzer - professional-grade metrics including HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement",
+    version=__version__,
+)
+
+# Enable CORS for frontend JavaScript communication
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for HF Spaces
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Enable GZip compression for responses > 1KB
+# This significantly reduces bandwidth for large JSON responses
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 class ShareCodeRequest(BaseModel):
@@ -1220,11 +1248,184 @@ async def generate_replay_data(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Replay generation failed")
-        raise HTTPException(status_code=500, detail=f"Replay generation failed: {e!s}") from e
-    finally:
-        if tmp_path and tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Collaborative Analysis Endpoints
+# ============================================================================
+
+@app.post("/collab/session")
+async def create_collab_session(request: CollabSessionRequest):
+    """Create a new collaborative analysis session."""
+    try:
+        from opensight.collaboration import create_collaboration_session
+
+        session = create_collaboration_session(
+            demo_id=request.demo_id,
+            demo_name=request.demo_name,
+            map_name=request.map_name,
+            creator_id=request.creator_id,
+            creator_name=request.creator_name,
+            title=request.title or "",
+            description=request.description or "",
+            is_public=request.is_public or False,
+            password=request.password
+        )
+
+        return session
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/collab/join")
+async def join_collab_session(request: JoinSessionRequest):
+    """Join a collaborative session."""
+    try:
+        from opensight.collaboration import join_collaboration_session
+
+        result = join_collaboration_session(
+            session_id=request.session_id,
+            user_id=request.user_id,
+            username=request.username,
+            password=request.password
+        )
+
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/collab/leave/{session_id}/{user_id}")
+async def leave_collab_session(session_id: str, user_id: str):
+    """Leave a collaborative session."""
+    try:
+        from opensight.collaboration import get_manager
+
+        manager = get_manager()
+        success = manager.leave_session(session_id, user_id)
+
+        return {"status": "left" if success else "not_found"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/collab/annotate")
+async def add_collab_annotation(request: AnnotationRequest):
+    """Add an annotation to a collaborative session."""
+    try:
+        from opensight.collaboration import add_annotation
+
+        position = tuple(request.position) if request.position else None
+
+        result = add_annotation(
+            session_id=request.session_id,
+            user_id=request.user_id,
+            annotation_type=request.annotation_type,
+            category=request.category,
+            tick=request.tick,
+            round_num=request.round_num,
+            text=request.text or "",
+            target_player=request.target_player,
+            position=position,
+            drawing_data=request.drawing_data,
+            tags=request.tags,
+            is_private=request.is_private or False
+        )
+
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/collab/annotations/{session_id}/{user_id}")
+async def get_collab_annotations(session_id: str, user_id: str, round_num: Optional[int] = None):
+    """Get annotations from a collaborative session."""
+    try:
+        from opensight.collaboration import get_session_annotations
+
+        annotations = get_session_annotations(session_id, user_id, round_num)
+        return {"annotations": annotations}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/collab/sessions")
+async def list_collab_sessions(user_id: Optional[str] = None):
+    """List available collaborative sessions."""
+    try:
+        from opensight.collaboration import list_sessions
+
+        sessions = list_sessions(user_id)
+        return {"sessions": sessions}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/collab/session/{session_id}")
+async def get_collab_session(session_id: str):
+    """Get a collaborative session by ID."""
+    try:
+        from opensight.collaboration import get_manager
+
+        manager = get_manager()
+        session = manager.get_session(session_id)
+
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        return session.to_dict()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/collab/export/{session_id}")
+async def export_collab_session(session_id: str, format: str = "json"):
+    """Export collaborative session annotations."""
+    try:
+        from opensight.collaboration import export_session
+
+        content = export_session(session_id, format)
+
+        if not content:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        if format == "markdown":
+            return HTMLResponse(content=f"<pre>{content}</pre>")
+
+        return JSONResponse(content={"content": content})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+if __name__ == "__main__":
+    # Get port from environment (HF Spaces uses PORT env var)
+    port = int(os.environ.get("PORT", 7860))
+    # Bind to 0.0.0.0 to allow external access (required for containers)
+    uvicorn.run(app, host="0.0.0.0", port=port)
