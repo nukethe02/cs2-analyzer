@@ -200,6 +200,7 @@
         }
 
         .upload-zone {
+            display: block;
             border: 2px dashed var(--border);
             border-radius: var(--radius-lg);
             padding: 80px 32px;
@@ -1290,7 +1291,7 @@
 
     <main class="container">
         <section class="upload-section">
-            <div class="upload-zone" id="upload-zone">
+            <label class="upload-zone" id="upload-zone" for="demo-file">
                 <div class="upload-icon">
                     <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
@@ -1303,8 +1304,8 @@
                     <span class="format-tag">.dem.gz</span>
                     <span class="format-tag">up to 500MB</span>
                 </div>
-                <input type="file" id="demo-file" accept=".dem,.dem.gz,application/octet-stream,application/gzip">
-            </div>
+                <input type="file" id="demo-file" name="demo-file" accept=".dem,.dem.gz,application/octet-stream,application/gzip">
+            </label>
         </section>
 
         <div id="results" class="results"></div>
@@ -1354,17 +1355,10 @@
         console.log('Upload zone:', uploadZone);
         console.log('File input:', fileInput);
 
-        // Click to upload - with better error handling
-        uploadZone.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('Upload zone clicked');
-            if (fileInput) {
-                fileInput.value = ''; // Reset to allow re-selecting same file
-                fileInput.click();
-            } else {
-                console.error('File input element not found');
-            }
+        // Click handling - label's for attribute handles opening file picker natively
+        // We just need to reset value to allow re-selecting the same file
+        fileInput.addEventListener('click', () => {
+            fileInput.value = ''; // Reset to allow re-selecting same file
         });
 
         // Drag and drop
