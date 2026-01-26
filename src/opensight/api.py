@@ -13,6 +13,7 @@ Provides:
 - Community feedback system
 """
 
+import logging
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
