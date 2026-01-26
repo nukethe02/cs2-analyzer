@@ -778,6 +778,11 @@ class PlayerMatchStats:
     trade_kill_time_avg_ms: float = 0.0
     untraded_deaths: int = 0
 
+    # RWS (Round Win Shares) - ESEA style
+    rws: float = 0.0  # Average RWS across rounds won
+    damage_in_won_rounds: int = 0
+    rounds_won: int = 0
+
     # Derived properties
     @property
     def kd_ratio(self) -> float:
@@ -1277,6 +1282,9 @@ class DemoAnalyzer:
         # Calculate basic stats (always needed)
         self._calculate_basic_stats()
 
+        # Calculate RWS (Round Win Shares)
+        self._calculate_rws()
+
         # Initialize optimized metrics computer if using optimized implementations
         if self._use_optimized:
             self._metrics_computer = OptimizedMetricsComputer(self.data, use_cache=self._use_cache)
@@ -1473,6 +1481,121 @@ class DemoAnalyzer:
         logger.info(
             f"Basic stats calculated: {total_kills} total kills, {total_deaths} total deaths across {len(self._players)} players"
         )
+
+    def _calculate_rws(self) -> None:
+        """
+        Calculate RWS (Round Win Shares) - ESEA style metric.
+
+        RWS measures a player's contribution to rounds their team won.
+        Formula: For each won round, (player_damage / team_damage) * 100
+        Final RWS = average across all won rounds.
+
+        This rewards impactful damage in winning rounds.
+        """
+        damages_df = self.data.damages_df
+        rounds_data = self.data.game_rounds
+
+        if damages_df.empty or not rounds_data:
+            logger.info("Skipping RWS calculation - missing damage or round data")
+            return
+
+        # Find damage and round columns
+        dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+        round_col = self._find_col(damages_df, ["round_num", "round"])
+
+        if not dmg_att_col or not dmg_col or not round_col:
+            logger.info("Skipping RWS calculation - missing required columns")
+            return
+
+        # Get attacker team column
+        att_team_col = self._find_col(damages_df, ["attacker_side", "attacker_team"])
+
+        # Build dict of round winners
+        round_winners: dict[int, str] = {}
+        for round_info in rounds_data:
+            round_winners[round_info.round_num] = round_info.winner
+
+        # Track RWS contributions per player
+        from collections import defaultdict
+        player_rws_contributions: dict[int, list[float]] = defaultdict(list)
+        player_damage_in_won: dict[int, int] = defaultdict(int)
+        player_rounds_won: dict[int, int] = defaultdict(int)
+
+        # Group damage by round
+        for round_num, round_damages in damages_df.groupby(round_col):
+            round_num = safe_int(round_num)
+            if round_num not in round_winners:
+                continue
+
+            winning_side = round_winners[round_num]
+            if winning_side not in ["CT", "T"]:
+                continue
+
+            # Calculate team damage for this round
+            team_damage: dict[str, int] = {"CT": 0, "T": 0}
+            player_round_damage: dict[int, int] = defaultdict(int)
+
+            for _, dmg_row in round_damages.iterrows():
+                attacker_id = safe_int(dmg_row.get(dmg_att_col))
+                damage = safe_int(dmg_row.get(dmg_col))
+
+                if attacker_id == 0 or damage == 0:
+                    continue
+
+                # Determine attacker's team
+                attacker_team = "Unknown"
+                if att_team_col and att_team_col in dmg_row:
+                    attacker_team = self._normalize_side(dmg_row.get(att_team_col))
+                elif attacker_id in self._players:
+                    attacker_team = self._players[attacker_id].team
+
+                if attacker_team in ["CT", "T"]:
+                    team_damage[attacker_team] += damage
+                    if attacker_team == winning_side:
+                        player_round_damage[attacker_id] += damage
+
+            # Calculate RWS contribution for players on winning team
+            winning_team_total = team_damage[winning_side]
+            if winning_team_total > 0:
+                for player_id, player_dmg in player_round_damage.items():
+                    if player_id in self._players:
+                        rws_contribution = (player_dmg / winning_team_total) * 100
+                        player_rws_contributions[player_id].append(rws_contribution)
+                        player_damage_in_won[player_id] += player_dmg
+                        player_rounds_won[player_id] += 1
+
+        # Calculate average RWS for each player
+        for steam_id, player in self._players.items():
+            contributions = player_rws_contributions.get(steam_id, [])
+            if contributions:
+                player.rws = round(sum(contributions) / len(contributions), 2)
+            else:
+                player.rws = 0.0
+            player.damage_in_won_rounds = player_damage_in_won.get(steam_id, 0)
+            player.rounds_won = player_rounds_won.get(steam_id, 0)
+
+        total_rws = sum(p.rws for p in self._players.values())
+        logger.info(f"RWS calculated for {len(self._players)} players (total: {total_rws:.1f})")
+
+    def _normalize_side(self, value) -> str:
+        """Normalize team/side values to 'CT' or 'T'."""
+        if value is None:
+            return "Unknown"
+        if isinstance(value, str):
+            upper = value.upper()
+            if "CT" in upper or "COUNTER" in upper:
+                return "CT"
+            elif "T" in upper and "CT" not in upper:
+                return "T"
+            return value
+        elif isinstance(value, (int, float)):
+            val = int(value)
+            if val == 3:
+                return "CT"
+            elif val == 2:
+                return "T"
+        return "Unknown"
 
     def _calculate_multi_kills(self) -> None:
         """Calculate multi-kill rounds for each player."""

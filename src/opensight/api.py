@@ -281,6 +281,10 @@ def player_stats_to_dict(player: Any) -> dict:
         "he_damage": player.utility.he_damage,
         # Weapon breakdown
         "weapon_kills": player.weapon_kills,
+        # RWS (Round Win Shares) - ESEA style
+        "rws": player.rws,
+        "damage_in_won_rounds": player.damage_in_won_rounds,
+        "rounds_won": player.rounds_won,
     }
 
 
