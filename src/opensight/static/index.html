@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1601,8 +1602,9 @@
                     <button class="tab-btn" data-tab="timeline" title="Press 2">Round Timeline</button>
                     <button class="tab-btn" data-tab="matrix" title="Press 3">Kill Matrix</button>
                     <button class="tab-btn" data-tab="heatmap" title="Press 4">Heatmap</button>
-                    <button class="tab-btn" data-tab="coaching" title="Press 5">AI Coaching</button>
-                    <button class="tab-btn" data-tab="replay" title="Press 6">2D Replay</button>
+                    <button class="tab-btn" data-tab="statsgraph" title="Press 5">Stats Graph</button>
+                    <button class="tab-btn" data-tab="coaching" title="Press 6">AI Coaching</button>
+                    <button class="tab-btn" data-tab="replay" title="Press 7">2D Replay</button>
                 </div>
 
                 <div class="tab-content active" id="tab-overview">
@@ -1803,6 +1805,22 @@
                                 <div class="stat">
                                     <div class="stat-value ${r.utility_rating >= 60 ? 'good' : r.utility_rating < 30 ? 'bad' : ''}">${r.utility_rating || 0}</div>
                                     <div class="stat-label">Util</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value ${s['2k'] > 0 ? 'good' : ''}">${s['2k'] || 0}</div>
+                                    <div class="stat-label">2K</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value ${s['3k'] > 0 ? 'good' : ''}">${s['3k'] || 0}</div>
+                                    <div class="stat-label">3K</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-value ${s['4k'] > 0 ? 'good' : ''}">${s['4k'] || 0}</div>
+                                    <div class="stat-label">4K</div>
+                                </div>
+                                <div class="stat highlight">
+                                    <div class="stat-value ${s['5k'] > 0 ? 'good' : ''}" style="color: var(--accent-tertiary);">${s['5k'] || 0}</div>
+                                    <div class="stat-label">5K</div>
                                 </div>
                             </div>
                         </div>

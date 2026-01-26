@@ -510,17 +510,19 @@ class CachedAnalyzer:
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()
 
-        # Calculate RWS for all players
-        rws_data = {}
-        try:
-            from opensight.analysis.metrics import calculate_rws
-            rws_data = calculate_rws(demo_data)
-        except Exception as e:
-            logger.warning(f"RWS calculation failed: {e}")
+        # Calculate RWS using direct method (more reliable)
+        rws_data = self._calculate_rws_direct(demo_data)
+
+        # Calculate multi-kills (2K, 3K, 4K, 5K)
+        multikills = self._calculate_multikills(demo_data)
+
+        # Build timeline graph data
+        timeline_graph = self._build_timeline_graph_data(demo_data)
 
         # Build comprehensive player data
         players = {}
         for sid, p in analysis.players.items():
+            mk = multikills.get(sid, {"2k": 0, "3k": 0, "4k": 0, "5k": 0})
             players[str(sid)] = {
                 "name": p.name,
                 "team": p.team,
@@ -531,6 +533,10 @@ class CachedAnalyzer:
                     "adr": round(p.adr, 1) if p.adr else 0,
                     "headshot_pct": round(p.headshot_percentage, 1) if p.headshot_percentage else 0,
                     "kd_ratio": round(p.kills / max(1, p.deaths), 2),
+                    "2k": mk["2k"],
+                    "3k": mk["3k"],
+                    "4k": mk["4k"],
+                    "5k": mk["5k"],
                 },
                 "rating": {
                     "hltv_rating": round(p.hltv_rating, 2) if p.hltv_rating else 0,
@@ -565,7 +571,7 @@ class CachedAnalyzer:
                 "entry": self._get_entry_stats(p),
                 "trades": self._get_trade_stats(p),
                 "clutches": self._get_clutch_stats(p),
-                "rws": self._get_rws_for_player(sid, rws_data),
+                "rws": rws_data.get(sid, {"avg_rws": 0, "total_rws": 0, "rounds_won": 0, "rounds_played": 0, "damage_per_round": 0, "objective_completions": 0}),
             }
 
         # Build round timeline
@@ -605,6 +611,7 @@ class CachedAnalyzer:
             "heatmap_data": heatmap_data,
             "coaching": coaching,
             "tactical": tactical,
+            "timeline_graph": timeline_graph,
             "analyzed_at": datetime.now().isoformat(),
         }
 
@@ -740,6 +747,233 @@ class CachedAnalyzer:
             })
 
         return timeline
+
+    def _calculate_multikills(self, demo_data) -> dict[int, dict]:
+        """Calculate multi-kill counts (2K, 3K, 4K, 5K) per player per round."""
+        kills = getattr(demo_data, "kills", [])
+
+        # Count kills per player per round
+        player_round_kills: dict[int, dict[int, int]] = {}  # steam_id -> {round_num -> kill_count}
+
+        for kill in kills:
+            attacker_id = getattr(kill, "attacker_steamid", 0)
+            round_num = getattr(kill, "round_num", 0)
+
+            if attacker_id and round_num:
+                if attacker_id not in player_round_kills:
+                    player_round_kills[attacker_id] = {}
+                if round_num not in player_round_kills[attacker_id]:
+                    player_round_kills[attacker_id][round_num] = 0
+                player_round_kills[attacker_id][round_num] += 1
+
+        # Count 2K, 3K, 4K, 5K for each player
+        result: dict[int, dict] = {}
+        for steam_id, round_kills in player_round_kills.items():
+            counts = {"2k": 0, "3k": 0, "4k": 0, "5k": 0}
+            for _, kill_count in round_kills.items():
+                if kill_count == 2:
+                    counts["2k"] += 1
+                elif kill_count == 3:
+                    counts["3k"] += 1
+                elif kill_count == 4:
+                    counts["4k"] += 1
+                elif kill_count >= 5:
+                    counts["5k"] += 1
+            result[steam_id] = counts
+
+        return result
+
+    def _build_timeline_graph_data(self, demo_data) -> dict:
+        """Build round-by-round data for timeline graphs (kills, damage per round per player)."""
+        kills = getattr(demo_data, "kills", [])
+        damages = getattr(demo_data, "damages", [])
+        player_names = getattr(demo_data, "player_names", {})
+
+        # Initialize per-player round data
+        player_round_data: dict[int, dict[int, dict]] = {}  # steam_id -> {round_num -> {kills, damage}}
+
+        # Get max rounds
+        max_round = 0
+
+        # Count kills per player per round
+        for kill in kills:
+            attacker_id = getattr(kill, "attacker_steamid", 0)
+            round_num = getattr(kill, "round_num", 0)
+
+            if not attacker_id or not round_num:
+                continue
+
+            max_round = max(max_round, round_num)
+
+            if attacker_id not in player_round_data:
+                player_round_data[attacker_id] = {}
+            if round_num not in player_round_data[attacker_id]:
+                player_round_data[attacker_id][round_num] = {"kills": 0, "damage": 0}
+            player_round_data[attacker_id][round_num]["kills"] += 1
+
+        # Sum damage per player per round
+        for dmg in damages:
+            attacker_id = getattr(dmg, "attacker_steamid", 0)
+            round_num = getattr(dmg, "round_num", 0)
+            damage_val = getattr(dmg, "damage", 0)
+
+            if not attacker_id or not round_num:
+                continue
+
+            max_round = max(max_round, round_num)
+
+            if attacker_id not in player_round_data:
+                player_round_data[attacker_id] = {}
+            if round_num not in player_round_data[attacker_id]:
+                player_round_data[attacker_id][round_num] = {"kills": 0, "damage": 0}
+            player_round_data[attacker_id][round_num]["damage"] += damage_val
+
+        # Build cumulative data for graphs
+        players_timeline = []
+        for steam_id, round_data in player_round_data.items():
+            player_name = player_names.get(steam_id, f"Player {steam_id}")
+
+            cumulative_kills = 0
+            cumulative_damage = 0
+            rounds = []
+
+            for r in range(1, max_round + 1):
+                rd = round_data.get(r, {"kills": 0, "damage": 0})
+                cumulative_kills += rd["kills"]
+                cumulative_damage += rd["damage"]
+                rounds.append({
+                    "round": r,
+                    "kills": cumulative_kills,
+                    "damage": cumulative_damage,
+                    "round_kills": rd["kills"],
+                    "round_damage": rd["damage"],
+                })
+
+            players_timeline.append({
+                "steam_id": steam_id,
+                "name": player_name,
+                "rounds": rounds,
+            })
+
+        return {
+            "max_rounds": max_round,
+            "players": players_timeline,
+        }
+
+    def _calculate_rws_direct(self, demo_data) -> dict[int, dict]:
+        """Calculate RWS directly from demo data with better team handling."""
+        kills = getattr(demo_data, "kills", [])
+        damages = getattr(demo_data, "damages", [])
+        rounds = getattr(demo_data, "rounds", [])
+        player_names = getattr(demo_data, "player_names", {})
+
+        if not rounds or not kills:
+            return {}
+
+        # Build player teams from kills (more reliable than player_teams dict)
+        player_teams: dict[int, str] = {}
+        for kill in kills:
+            att_id = getattr(kill, "attacker_steamid", 0)
+            att_side = str(getattr(kill, "attacker_side", "")).upper()
+            vic_id = getattr(kill, "victim_steamid", 0)
+            vic_side = str(getattr(kill, "victim_side", "")).upper()
+
+            if att_id and "CT" in att_side:
+                player_teams[att_id] = "CT"
+            elif att_id and "T" in att_side:
+                player_teams[att_id] = "T"
+            if vic_id and "CT" in vic_side:
+                player_teams[vic_id] = "CT"
+            elif vic_id and "T" in vic_side:
+                player_teams[vic_id] = "T"
+
+        # Group damage by round
+        round_damages: dict[int, dict[int, int]] = {}  # round_num -> {steam_id -> damage}
+        for dmg in damages:
+            round_num = getattr(dmg, "round_num", 0)
+            attacker_id = getattr(dmg, "attacker_steamid", 0)
+            damage_val = getattr(dmg, "damage", 0)
+            attacker_side = str(getattr(dmg, "attacker_side", "")).upper()
+            victim_side = str(getattr(dmg, "victim_side", "")).upper()
+
+            # Only count damage to enemies
+            is_enemy_damage = (
+                ("CT" in attacker_side and "T" in victim_side and "CT" not in victim_side) or
+                ("T" in attacker_side and "CT" not in attacker_side and "CT" in victim_side)
+            )
+
+            if attacker_id and round_num and is_enemy_damage:
+                if round_num not in round_damages:
+                    round_damages[round_num] = {}
+                if attacker_id not in round_damages[round_num]:
+                    round_damages[round_num][attacker_id] = 0
+                round_damages[round_num][attacker_id] += damage_val
+
+        # Initialize player stats
+        player_stats: dict[int, dict] = {}
+        for pid in player_names:
+            player_stats[pid] = {
+                "rounds_played": 0,
+                "rounds_won": 0,
+                "total_rws": 0.0,
+                "total_damage": 0,
+            }
+
+        # Calculate RWS for each round
+        for round_info in rounds:
+            round_num = getattr(round_info, "round_num", 0)
+            winner = str(getattr(round_info, "winner", "")).upper()
+
+            if not winner or winner == "UNKNOWN":
+                continue
+
+            round_dmg = round_damages.get(round_num, {})
+
+            # Find winning players based on their side in this half
+            winning_players = []
+            for pid, team in player_teams.items():
+                if pid in player_stats:
+                    player_stats[pid]["rounds_played"] += 1
+
+                    # Check if player is on winning team
+                    if (winner == "CT" and team == "CT") or (winner == "T" and team == "T"):
+                        winning_players.append(pid)
+
+            if not winning_players:
+                continue
+
+            # Calculate total damage by winning team
+            winning_team_damage = sum(round_dmg.get(pid, 0) for pid in winning_players)
+
+            # Distribute 100 RWS among winning team based on damage
+            for pid in winning_players:
+                player_stats[pid]["rounds_won"] += 1
+                player_damage = round_dmg.get(pid, 0)
+                player_stats[pid]["total_damage"] += player_damage
+
+                if winning_team_damage > 0:
+                    damage_share = player_damage / winning_team_damage
+                    rws_this_round = damage_share * 100
+                else:
+                    # Equal share if no damage recorded
+                    rws_this_round = 100 / len(winning_players)
+
+                player_stats[pid]["total_rws"] += rws_this_round
+
+        # Build results
+        results = {}
+        for pid, stats in player_stats.items():
+            rounds_played = max(stats["rounds_played"], 1)
+            results[pid] = {
+                "avg_rws": round(stats["total_rws"] / rounds_played, 2),
+                "total_rws": round(stats["total_rws"], 1),
+                "rounds_won": stats["rounds_won"],
+                "rounds_played": stats["rounds_played"],
+                "damage_per_round": round(stats["total_damage"] / rounds_played, 1),
+                "objective_completions": 0,
+            }
+
+        return results
 
     def _build_kill_matrix(self, demo_data) -> list[dict]:
         """Build kill matrix showing who killed who."""
