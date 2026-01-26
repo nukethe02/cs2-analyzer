@@ -15,10 +15,10 @@ Features:
 from __future__ import annotations
 
 import logging
+from collections.abc import Generator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Generator, Optional
-import pandas as pd
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -131,7 +131,7 @@ class RoundChunk:
     ct_team: int  # Team ID for CT
     t_team: int  # Team ID for T
     winner: str  # "CT" or "T"
-    
+
     # Data collections
     player_snapshots: list[PlayerSnapshot] = field(default_factory=list)
     weapon_fires: list[WeaponFireContext] = field(default_factory=list)
@@ -169,23 +169,23 @@ class MetricCalculator:
         Entry frags are critical for round analysis - shows who gets first pick.
         """
         entry_stats = {}
-        
+
         # Group kills by round
         kills_by_round = {}
         for kill in kills:
             if kill.round_num not in kills_by_round:
                 kills_by_round[kill.round_num] = []
             kills_by_round[kill.round_num].append(kill)
-        
+
         # For each round, find first kill (entry frag)
         for round_num, round_kills in kills_by_round.items():
             if not round_kills:
                 continue
-            
+
             # Sort by tick to find first kill chronologically
             sorted_kills = sorted(round_kills, key=lambda k: k.tick)
             first_kill = sorted_kills[0]
-            
+
             # Entry frag is first kill if it happens in first 15 seconds
             if first_kill.time_in_round_seconds < 15:
                 attacker_id = first_kill.attacker_id
@@ -198,7 +198,7 @@ class MetricCalculator:
                     }
                 entry_stats[attacker_id]["entry_attempts"] += 1
                 entry_stats[attacker_id]["entry_kills"] += 1
-        
+
         # Track entry deaths (died in first 15 seconds without entry kill)
         for round_num, round_kills in kills_by_round.items():
             entry_kill_attacker = None
@@ -206,7 +206,7 @@ class MetricCalculator:
                 if kill.time_in_round_seconds < 15:
                     entry_kill_attacker = kill.attacker_id
                     break
-            
+
             # Deaths in first 15 seconds are entry deaths
             for kill in round_kills:
                 if kill.time_in_round_seconds < 15 and kill.attacker_id != entry_kill_attacker:
@@ -219,7 +219,7 @@ class MetricCalculator:
                             "entry_deaths": 0,
                         }
                     entry_stats[victim_id]["entry_deaths"] += 1
-        
+
         return entry_stats
 
     @staticmethod
@@ -230,14 +230,14 @@ class MetricCalculator:
         Trade kills show team coordination and survivor value.
         """
         trade_stats = {}
-        
+
         # Index kills by victim
         kills_by_victim = {}
         for kill in kills:
             if kill.victim_id not in kills_by_victim:
                 kills_by_victim[kill.victim_id] = []
             kills_by_victim[kill.victim_id].append(kill)
-        
+
         # For each death, check if teammate got revenge kill
         for victim_id, victim_kills in kills_by_victim.items():
             for kill in victim_kills:
@@ -247,7 +247,7 @@ class MetricCalculator:
                         other_kill.attacker_team == kill.victim_team and
                         other_kill.round_num == kill.round_num and
                         abs(other_kill.tick - kill.tick) <= trade_window_ticks):
-                        
+
                         # This is a trade kill
                         attacker_id = other_kill.attacker_id
                         if attacker_id not in trade_stats:
@@ -257,7 +257,7 @@ class MetricCalculator:
                                 "deaths_traded": 0,
                             }
                         trade_stats[attacker_id]["trade_kills"] += 1
-        
+
         return trade_stats
 
     @staticmethod
@@ -268,7 +268,7 @@ class MetricCalculator:
         This requires position analysis to determine visibility.
         """
         ttd_data = {}
-        
+
         # Group by attacker
         damages_by_attacker = {}
         for dmg in damages:
@@ -276,30 +276,30 @@ class MetricCalculator:
             if key not in damages_by_attacker:
                 damages_by_attacker[key] = []
             damages_by_attacker[key].append(dmg)
-        
+
         # Calculate TTD from distance and time
         for (attacker_id, round_num), dmg_list in damages_by_attacker.items():
             sorted_dmg = sorted(dmg_list, key=lambda d: d.tick)
             if not sorted_dmg:
                 continue
-            
+
             first_dmg = sorted_dmg[0]
             ttd_ms = (first_dmg.tick / 64.0) * 1000  # Convert to milliseconds (assuming 64 tick rate)
-            
+
             if attacker_id not in ttd_data:
                 ttd_data[attacker_id] = {
                     "name": first_dmg.attacker_name,
                     "ttd_values": [],
                 }
             ttd_data[attacker_id]["ttd_values"].append(ttd_ms)
-        
+
         # Calculate stats
         for attacker_id in ttd_data:
             values = ttd_data[attacker_id]["ttd_values"]
             ttd_data[attacker_id]["ttd_median_ms"] = float(np.median(values)) if values else 0.0
             ttd_data[attacker_id]["ttd_mean_ms"] = float(np.mean(values)) if values else 0.0
             ttd_data[attacker_id]["ttd_95th_ms"] = float(np.percentile(values, 95)) if values else 0.0
-        
+
         return ttd_data
 
     @staticmethod
@@ -310,29 +310,29 @@ class MetricCalculator:
         Angular difference = arctan(target_height / distance)
         """
         cp_data = {}
-        
+
         for kill in kills:
             # Calculate vector from attacker to victim
             dx = kill.victim_x - kill.attacker_x
             dy = kill.victim_y - kill.attacker_y
             dz = kill.victim_z - kill.attacker_z
-            
+
             distance = np.sqrt(dx**2 + dy**2 + dz**2)
             if distance == 0:
                 continue
-            
+
             # Calculate required angles to hit victim head
             horizontal_dist = np.sqrt(dx**2 + dy**2)
             required_yaw = np.degrees(np.arctan2(dy, dx))
             required_pitch = np.degrees(np.arctan2(dz + 1.4, horizontal_dist))  # +1.4 for head height
-            
+
             # Calculate error
             yaw_error = abs(kill.attacker_yaw - required_yaw)
             pitch_error = abs(kill.attacker_pitch - required_pitch)
-            
+
             # Angular distance (simplified)
             angular_error = np.sqrt(yaw_error**2 + pitch_error**2)
-            
+
             attacker_id = kill.attacker_id
             if attacker_id not in cp_data:
                 cp_data[attacker_id] = {
@@ -340,13 +340,13 @@ class MetricCalculator:
                     "cp_errors": [],
                 }
             cp_data[attacker_id]["cp_errors"].append(angular_error)
-        
+
         # Calculate stats
         for attacker_id in cp_data:
             errors = cp_data[attacker_id]["cp_errors"]
             cp_data[attacker_id]["cp_median_error_deg"] = float(np.median(errors)) if errors else 0.0
             cp_data[attacker_id]["cp_mean_error_deg"] = float(np.mean(errors)) if errors else 0.0
-        
+
         return cp_data
 
     @staticmethod
@@ -355,28 +355,28 @@ class MetricCalculator:
         Detect clutch situations (1v5, 1v4, 1v3, 1v2, 1v1) and success rates.
         """
         clutch_stats = {}
-        
+
         # Group snapshots by round
         snapshots_by_round = {}
         for snapshot in player_snapshots:
             if snapshot.round_num not in snapshots_by_round:
                 snapshots_by_round[snapshot.round_num] = []
             snapshots_by_round[snapshot.round_num].append(snapshot)
-        
+
         # Detect clutch situations
         for round_num, round_snapshots in snapshots_by_round.items():
             sorted_snapshots = sorted(round_snapshots, key=lambda s: s.tick)
-            
+
             for i, snapshot in enumerate(sorted_snapshots):
                 if not snapshot.is_alive:
                     continue
-                
+
                 # Count alive teammates and enemies
-                alive_teammates = sum(1 for s in sorted_snapshots[i:] 
+                alive_teammates = sum(1 for s in sorted_snapshots[i:]
                                     if s.team == snapshot.team and s.is_alive and s.tick == snapshot.tick)
-                alive_enemies = sum(1 for s in sorted_snapshots[i:] 
+                alive_enemies = sum(1 for s in sorted_snapshots[i:]
                                   if s.team != snapshot.team and s.is_alive and s.tick == snapshot.tick)
-                
+
                 # Clutch is 1vX situation
                 if alive_teammates == 1 and alive_enemies >= 2:
                     player_id = snapshot.steam_id
@@ -392,16 +392,16 @@ class MetricCalculator:
                             "v5_wins": 0,
                         }
                     clutch_stats[player_id]["clutch_attempts"] += 1
-                    
+
                     # Check if they won the clutch (killed all enemies)
-                    round_kills = [k for k in kills if k.round_num == round_num and 
+                    round_kills = [k for k in kills if k.round_num == round_num and
                                  k.attacker_id == player_id]
                     if len(round_kills) >= alive_enemies:
                         clutch_stats[player_id]["clutch_wins"] += 1
                         clutch_key = f"v{alive_enemies}_wins"
                         if clutch_key in clutch_stats[player_id]:
                             clutch_stats[player_id][clutch_key] += 1
-        
+
         return clutch_stats
 
 
@@ -464,7 +464,7 @@ class ChunkedDemoParser:
         # Filter kills, damages, etc. for this round
         chunk.kills = [k for k in demo_data.kills if k.round_num == chunk.round_num]
         chunk.damages = [d for d in getattr(demo_data, 'damages', []) if d.round_num == chunk.round_num]
-        chunk.weapon_fires = [w for w in getattr(demo_data, 'weapon_fires', []) 
+        chunk.weapon_fires = [w for w in getattr(demo_data, 'weapon_fires', [])
                              if w.round_num == chunk.round_num]
 
         logger.debug(f"Round {chunk.round_num}: {len(chunk.kills)} kills, "

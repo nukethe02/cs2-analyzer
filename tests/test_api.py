@@ -254,6 +254,6 @@ class TestStaticAssetCaching:
         """Root endpoint includes cache-control headers."""
         response = client.get("/")
         assert response.status_code == 200
-        # Check for cache-control header
+        # Check for cache-control header (no-cache for fresh content)
         assert "cache-control" in response.headers
-        assert "max-age" in response.headers["cache-control"]
+        assert "no-cache" in response.headers["cache-control"]

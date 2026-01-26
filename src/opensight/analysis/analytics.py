@@ -27,7 +27,7 @@ from opensight.core.constants import (
     IMPACT_COEFFICIENTS,
     TRADE_WINDOW_SECONDS,
 )
-from opensight.core.parser import DemoData, safe_float, safe_int, safe_str
+from opensight.core.parser import DemoData, safe_float, safe_int
 
 logger = logging.getLogger(__name__)
 
@@ -1533,7 +1533,7 @@ class DemoAnalyzer:
         This rewards impactful damage in winning rounds.
         """
         damages_df = self.data.damages_df
-        rounds_data = self.data.game_rounds
+        rounds_data = self.data.rounds
 
         if damages_df.empty or not rounds_data:
             logger.info("Skipping RWS calculation - missing damage or round data")

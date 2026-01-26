@@ -14,7 +14,6 @@ Provides:
 """
 
 import logging
-import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Any
@@ -24,7 +23,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
-import uvicorn
 
 __version__ = "0.3.0"
 
@@ -76,7 +74,61 @@ class Job:
     filename: str
     size: int
     status: str = JobStatus.PENDING.value
+    progress: int = 0
     result: dict | None = None
+    error: str | None = None
+
+
+class JobStore:
+    """In-memory job store for tracking analysis jobs."""
+
+    def __init__(self) -> None:
+        self._jobs: dict[str, Job] = {}
+
+    def create_job(self, filename: str, size: int) -> Job:
+        """Create a new job and return it."""
+        job_id = str(uuid.uuid4())
+        job = Job(job_id=job_id, filename=filename, size=size)
+        self._jobs[job_id] = job
+        return job
+
+    def get_job(self, job_id: str) -> Job | None:
+        """Get a job by ID."""
+        return self._jobs.get(job_id)
+
+    def update_job(
+        self,
+        job_id: str,
+        status: JobStatus | None = None,
+        progress: int | None = None,
+        result: dict | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Update job fields."""
+        job = self._jobs.get(job_id)
+        if job:
+            if status is not None:
+                job.status = status.value
+            if progress is not None:
+                job.progress = progress
+            if result is not None:
+                job.result = result
+            if error is not None:
+                job.error = error
+
+    def set_status(self, job_id: str, status: JobStatus) -> None:
+        """Set job status."""
+        job = self._jobs.get(job_id)
+        if job:
+            job.status = status.value
+
+    def list_jobs(self) -> list[Job]:
+        """List all jobs."""
+        return list(self._jobs.values())
+
+
+# Global job store
+job_store = JobStore()
 
 
 def player_stats_to_dict(player: Any) -> dict:
@@ -287,8 +339,8 @@ async def readiness() -> dict[str, Any]:
     # Check critical dependencies
     try:
         import demoparser2  # noqa: F401
-        import pandas  # noqa: F401
         import numpy  # noqa: F401
+        import pandas  # noqa: F401
 
         checks["dependencies"] = {"ok": True}
     except ImportError as e:
@@ -319,291 +371,6 @@ async def decode_share_code(request: ShareCodeRequest) -> dict[str, int]:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"Module not available: {e!s}") from e
-
-
-@app.post("/analyze")
-async def analyze_demo(
-    file: Annotated[UploadFile, File(...)],
-) -> JSONResponse:
-    """
-    Analyze an uploaded CS2 demo file.
-
-    This runs in a thread pool to avoid blocking the event loop.
-    """
-    try:
-        from opensight.parser import DemoParser
-        from opensight.analytics import DemoAnalyzer
-
-        job_store.update_job(job_id, status=JobStatus.PROCESSING, progress=10)
-        logger.info(f"Job {job_id}: Starting analysis of {filename}")
-
-        # Parse the demo
-        parser = DemoParser(tmp_path)
-        data = parser.parse()
-        # Log parsing progress for debugging
-        logger.info(f"Job {job_id}: Parsed {len(data.kills)} kills, {len(data.damages)} damages, {data.num_rounds} rounds")
-        job_store.update_job(job_id, progress=40)
-
-        # Run advanced analytics
-        analyzer = DemoAnalyzer(data)
-        analysis = analyzer.analyze()
-        job_store.update_job(job_id, progress=70)
-
-        # Build round-by-round data
-        rounds_data = []
-        for round_info in data.rounds:
-            round_kills = [k for k in data.kills if k.round_num == round_info.round_num]
-            rounds_data.append({
-                "round_num": round_info.round_num,
-                "winner": round_info.winner,
-                "reason": round_info.reason,
-                "ct_score": round_info.ct_score,
-                "t_score": round_info.t_score,
-                "kills": len(round_kills),
-                "round_type": round_info.round_type or "unknown",
-            })
-
-        # Build response
-        result = {
-            "demo_info": {
-                "map": analysis.map_name,
-                "duration_seconds": round(data.duration_seconds, 1),
-                "duration_minutes": round(data.duration_seconds / 60, 1),
-                "tick_rate": data.tick_rate,
-                "rounds": analysis.total_rounds,
-                "score": f"{analysis.team1_score} - {analysis.team2_score}",
-                "ct_score": analysis.team1_score,
-                "t_score": analysis.team2_score,
-                "player_count": len(analysis.players),
-                "total_kills": len(data.kills),
-                "total_damage_events": len(data.damages),
-                # Parsing metadata
-                "parser": "awpy",  # Using awpy library for robust parsing
-                "parse_mode": "comprehensive",  # awpy always parses comprehensively
-            },
-            "rounds": rounds_data,
-            "mvp": None,
-            "players": {}
-        }
-
-        # Add MVP
-        mvp = analysis.get_mvp()
-        if mvp:
-            result["mvp"] = {
-                "steam_id": str(mvp.steam_id),
-                "name": mvp.name,
-                "rating": mvp.hltv_rating,
-            }
-
-        job_store.update_job(job_id, progress=80)
-
-        # Add player stats with advanced metrics (sorted by rating)
-        for player in analysis.get_leaderboard():
-            steam_id = player.steam_id
-
-            # Build enhanced weapon stats from analysis
-            weapon_stats = []
-            player_weapon_stats = analysis.weapon_stats.get(player.name, [])
-            if player_weapon_stats:
-                # Use enhanced weapon stats if available
-                for ws in player_weapon_stats:
-                    weapon_stats.append({
-                        "weapon": ws.weapon,
-                        "kills": ws.kills,
-                        "headshots": ws.headshots,
-                        "headshot_pct": ws.headshot_percentage,
-                        "damage": ws.damage,
-                        "shots_fired": ws.shots_fired,
-                        "accuracy": ws.accuracy,
-                    })
-            else:
-                # Fallback to basic weapon kills
-                for weapon, count in sorted(player.weapon_kills.items(), key=lambda x: -x[1]):
-                    weapon_stats.append({"weapon": weapon, "kills": count})
-
-            result["players"][str(steam_id)] = {
-                "name": player.name,
-                "team": player.team,
-                "stats": {
-                    "kills": player.kills,
-                    "deaths": player.deaths,
-                    "assists": player.assists,
-                    "kd_ratio": player.kd_ratio,
-                    "kd_diff": player.kd_diff,
-                    "headshots": player.headshots,
-                    "headshot_pct": player.headshot_percentage,
-                    "total_damage": player.total_damage,
-                    "adr": player.adr,
-                },
-                "rating": {
-                    "hltv_rating": player.hltv_rating,
-                    "impact_rating": player.impact_rating,
-                    "kast_percentage": player.kast_percentage,
-                    "kills_per_round": player.kills_per_round,
-                    "deaths_per_round": player.deaths_per_round,
-                    "survival_rate": player.survival_rate,
-                    "aim_rating": player.aim_rating,
-                    "utility_rating": player.utility_rating,
-                    "entry_success_rate": player.entry_success_rate,
-                },
-                "duels": {
-                    "opening_attempts": player.opening_duels.attempts,
-                    "opening_wins": player.opening_duels.wins,
-                    "opening_losses": player.opening_duels.losses,
-                    "opening_win_rate": player.opening_duels.win_rate,
-                    "kills_traded": player.trades.kills_traded,
-                    "deaths_traded": player.trades.deaths_traded,
-                },
-                "clutches": {
-                    "total_situations": player.clutches.total_situations,
-                    "total_wins": player.clutches.total_wins,
-                    "1v1": {"attempts": player.clutches.situations_1v1, "wins": player.clutches.wins_1v1},
-                    "1v2": {"attempts": player.clutches.situations_1v2, "wins": player.clutches.wins_1v2},
-                    "1v3": {"attempts": player.clutches.situations_1v3, "wins": player.clutches.wins_1v3},
-                    "1v4": {"attempts": player.clutches.situations_1v4, "wins": player.clutches.wins_1v4},
-                    "1v5": {"attempts": player.clutches.situations_1v5, "wins": player.clutches.wins_1v5},
-                },
-                "multi_kills": {
-                    "rounds_with_2k": player.multi_kills.rounds_with_2k,
-                    "rounds_with_3k": player.multi_kills.rounds_with_3k,
-                    "rounds_with_4k": player.multi_kills.rounds_with_4k,
-                    "rounds_with_5k": player.multi_kills.rounds_with_5k,
-                },
-                "advanced": {
-                    "ttd_median_ms": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
-                    "ttd_mean_ms": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
-                    "ttd_samples": len(player.ttd_values),
-                    "prefire_kills": player.prefire_count,
-                    "cp_median_error_deg": round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None,
-                    "cp_mean_error_deg": round(player.cp_mean_error_deg, 1) if player.cp_mean_error_deg else None,
-                    "cp_samples": len(player.cp_values),
-                },
-                "detailed_accuracy": {
-                    "spotted_accuracy": player.detailed_accuracy.spotted_accuracy,
-                    "spray_accuracy": player.detailed_accuracy.spray_accuracy,
-                    "spray_headshot_rate": player.detailed_accuracy.spray_headshot_rate,
-                    "first_bullet_accuracy": player.detailed_accuracy.first_bullet_accuracy,
-                    "first_bullet_hs_rate": player.detailed_accuracy.first_bullet_hs_rate,
-                    "counter_strafe_rating": player.detailed_accuracy.counter_strafe_rating,
-                    "movement_accuracy_penalty": player.detailed_accuracy.movement_accuracy_penalty,
-                    "overall_accuracy": player.accuracy,
-                    "head_accuracy": player.head_hit_rate,
-                    "hs_kill_percentage": player.headshot_percentage,
-                },
-                "utility": {
-                    "flash_assists": player.utility.flash_assists,
-                    "flashbangs_thrown": player.utility.flashbangs_thrown,
-                    "enemies_flashed": player.utility.enemies_flashed,
-                    "teammates_flashed": player.utility.teammates_flashed,
-                    "enemies_flashed_per_flash": round(player.utility.enemies_flashed_per_flash, 2),
-                    "avg_blind_time": round(player.utility.avg_blind_time, 2),
-                    "he_thrown": player.utility.he_thrown,
-                    "he_damage": player.utility.he_damage,
-                    "he_team_damage": player.utility.he_team_damage,
-                    "he_damage_per_nade": round(player.utility.he_damage_per_nade, 1),
-                    "molotov_thrown": player.utility.molotov_thrown,
-                    "molotov_damage": player.utility.molotov_damage,
-                    "utility_quantity_rating": player.utility_quantity_rating,
-                    "utility_quality_rating": player.utility_quality_rating,
-                },
-                "side_stats": {
-                    "ct": {
-                        "kills": player.ct_stats.kills,
-                        "deaths": player.ct_stats.deaths,
-                        "kd_ratio": player.ct_stats.kd_ratio,
-                        "adr": player.ct_stats.adr,
-                        "rounds_played": player.ct_stats.rounds_played,
-                    },
-                    "t": {
-                        "kills": player.t_stats.kills,
-                        "deaths": player.t_stats.deaths,
-                        "kd_ratio": player.t_stats.kd_ratio,
-                        "adr": player.t_stats.adr,
-                        "rounds_played": player.t_stats.rounds_played,
-                    },
-                },
-                "mistakes": {
-                    "team_kills": player.mistakes.team_kills,
-                    "team_damage": player.mistakes.team_damage,
-                    "teammates_flashed": player.mistakes.teammates_flashed,
-                    "total_mistakes": player.mistakes.total_mistakes,
-                },
-                "economy": {
-                    "avg_equipment_value": round(player.avg_equipment_value, 0),
-                    "eco_rounds": player.eco_rounds,
-                    "force_rounds": player.force_rounds,
-                    "full_buy_rounds": player.full_buy_rounds,
-                    "damage_per_dollar": round(player.damage_per_dollar, 4) if player.damage_per_dollar else 0,
-                    "kills_per_dollar": round(player.kills_per_dollar, 6) if player.kills_per_dollar else 0,
-                },
-                "weapons": weapon_stats,
-            }
-
-        job_store.update_job(job_id, progress=90)
-
-        # Add enhanced match-level data
-        result["round_timeline"] = [
-            {
-                "round_num": r.round_num,
-                "winner": r.winner,
-                "win_reason": r.win_reason,
-                "ct_score": r.ct_score,
-                "t_score": r.t_score,
-                "first_kill": r.first_kill_player,
-                "first_death": r.first_death_player,
-            }
-            for r in analysis.round_timeline
-        ]
-
-        result["kill_matrix"] = [
-            {
-                "attacker": e.attacker_name,
-                "victim": e.victim_name,
-                "count": e.count,
-                "weapons": e.weapons,
-            }
-            for e in analysis.kill_matrix
-        ]
-
-        result["team_stats"] = {
-            "trade_rates": analysis.team_trade_rates,
-            "opening_rates": analysis.team_opening_rates,
-        }
-
-        # Position data for heatmaps (only first 500 to avoid huge response)
-        result["heatmap_data"] = {
-            "kill_positions": analysis.kill_positions[:500],
-            "death_positions": analysis.death_positions[:500],
-        }
-
-        # Grenade trajectory data for utility visualization (limit to 1000 positions)
-        result["grenade_data"] = {
-            "positions": analysis.grenade_positions[:1000],
-            "team_stats": analysis.grenade_team_stats,
-        }
-
-        # AI Coaching insights
-        result["coaching"] = analysis.coaching_insights
-
-        # Mark job as completed
-        job_store.update_job(job_id, status=JobStatus.COMPLETED, result=result, progress=100)
-        logger.info(f"Job {job_id}: Analysis complete - {len(result['players'])} players, {analysis.total_rounds} rounds")
-
-    except Exception as e:
-        # Log full traceback for debugging in production
-        tb_str = traceback.format_exc()
-        logger.exception(f"Job {job_id}: Analysis failed")
-        # Include traceback in error details for API response
-        error_detail = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{tb_str}"
-        job_store.update_job(job_id, status=JobStatus.FAILED, error=error_detail)
-
-    finally:
-        # Clean up temp file
-        if tmp_path and tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
 
 
 @app.post("/analyze", status_code=202)
@@ -1335,15 +1102,15 @@ async def get_player_metrics(steam_id: str, demo_id: str = Query(None)) -> dict:
     """
     try:
         from opensight.infra.cache import CacheManager
-        
+
         cache = CacheManager()
-        
+
         # If demo_id provided, get metrics from that analysis
         if demo_id:
             # Try to load from cache with demo_id
             # This is a simplified version - in production you'd look up the actual demo file
             pass
-        
+
         # Return structured metrics data
         return {
             "steam_id": steam_id,

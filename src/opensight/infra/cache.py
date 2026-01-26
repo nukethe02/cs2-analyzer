@@ -501,19 +501,19 @@ class CachedAnalyzer:
 
         # Run analysis
         logger.info(f"Analyzing {demo_path.name}")
-        from opensight.analysis.analytics import DemoAnalyzer, compute_kill_positions
-        from opensight.core.parser import DemoParser
+        from opensight.analysis.analytics import DemoAnalyzer
         from opensight.core.enhanced_parser import CoachingAnalysisEngine
+        from opensight.core.parser import DemoParser
 
         parser = DemoParser(demo_path)
         demo_data = parser.parse()
 
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()
-        
+
         # Calculate professional metrics using enhanced parser
         try:
-            logger.info(f"Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)")
+            logger.info("Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)")
             engine = CoachingAnalysisEngine()
             enhanced_metrics = engine.analyze_demo(demo_path)
         except Exception as e:
@@ -588,7 +588,7 @@ class CachedAnalyzer:
                 "clutches": self._get_clutch_stats(p),
                 "rws": rws_data.get(sid, {"avg_rws": 0, "total_rws": 0, "rounds_won": 0, "rounds_played": 0, "damage_per_round": 0, "objective_completions": 0}),
             }
-        
+
         # Merge enhanced metrics from professional parser
         if enhanced_metrics and "entry_frags" in enhanced_metrics:
             for steam_id, entry_data in enhanced_metrics.get("entry_frags", {}).items():
@@ -600,7 +600,7 @@ class CachedAnalyzer:
                         "entry_kills": entry_data.get("entry_kills", 0),
                         "entry_deaths": entry_data.get("entry_deaths", 0),
                     })
-        
+
         # Merge TTD metrics
         if enhanced_metrics and "ttd_metrics" in enhanced_metrics:
             for steam_id, ttd_data in enhanced_metrics.get("ttd_metrics", {}).items():
@@ -610,7 +610,7 @@ class CachedAnalyzer:
                         "ttd_mean_ms": ttd_data.get("ttd_mean_ms", 0),
                         "ttd_95th_ms": ttd_data.get("ttd_95th_ms", 0),
                     })
-        
+
         # Merge CP metrics
         if enhanced_metrics and "crosshair_placement" in enhanced_metrics:
             for steam_id, cp_data in enhanced_metrics.get("crosshair_placement", {}).items():
@@ -619,7 +619,7 @@ class CachedAnalyzer:
                         "cp_median_error_deg": cp_data.get("cp_median_error_deg", 0),
                         "cp_mean_error_deg": cp_data.get("cp_mean_error_deg", 0),
                     })
-        
+
         # Merge Trade Kill metrics
         if enhanced_metrics and "trade_kills" in enhanced_metrics:
             for steam_id, trade_data in enhanced_metrics.get("trade_kills", {}).items():
@@ -628,7 +628,7 @@ class CachedAnalyzer:
                         "trade_kills": trade_data.get("trade_kills", 0),
                         "deaths_traded": trade_data.get("deaths_traded", 0),
                     })
-        
+
         # Merge Clutch metrics
         if enhanced_metrics and "clutch_stats" in enhanced_metrics:
             for steam_id, clutch_data in enhanced_metrics.get("clutch_stats", {}).items():

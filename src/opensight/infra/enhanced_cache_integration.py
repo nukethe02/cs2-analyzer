@@ -7,6 +7,7 @@ comprehensive coaching metrics.
 
 import logging
 from pathlib import Path
+
 from opensight.core.enhanced_parser import CoachingAnalysisEngine
 
 logger = logging.getLogger(__name__)
@@ -26,11 +27,11 @@ def analyze_with_enhanced_metrics(demo_path: Path) -> dict:
         Comprehensive analysis dict ready for web display
     """
     logger.info(f"Starting enhanced analysis of {demo_path.name}")
-    
+
     engine = CoachingAnalysisEngine(demo_path)
     analysis_result = engine.analyze()
-    
+
     logger.info(f"Enhanced analysis complete: {analysis_result['total_rounds']} rounds, "
                f"{analysis_result['total_kills']} kills")
-    
+
     return analysis_result
