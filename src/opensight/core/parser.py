@@ -521,21 +521,35 @@ class DemoParser:
         # CORE EVENTS - Always parse these
         # ===========================================
 
-        # Parse kills WITH comprehensive data
+        # Parse kills WITH comprehensive data - enhanced for coaching metrics
         kills_df = self._parse_event_safe(
             parser,
             "player_death",
-            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z"],
-            other_props=["total_rounds_played"],
+            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y", "velocity_Z", "health", "armor_value"],
+            other_props=["total_rounds_played", "headshot"],
         )
         if kills_df.empty:
             # Fallback without player props
             kills_df = self._parse_event_safe(parser, "player_death")
-        logger.info(f"Parsed {len(kills_df)} kills. Columns: {list(kills_df.columns)[:15]}...")
+        logger.info(f"Parsed {len(kills_df)} kills with positional context. Columns: {list(kills_df.columns)[:20]}...")
 
-        # Parse damages with hitgroup data
-        damages_df = self._parse_event_safe(parser, "player_hurt")
-        logger.info(f"Parsed {len(damages_df)} damage events")
+        # Parse damages with full positional context for TTD calculation
+        damages_df = self._parse_event_safe(
+            parser,
+            "player_hurt",
+            player_props=["X", "Y", "Z", "health", "armor_value"],
+            other_props=["total_rounds_played", "hitgroup"],
+        )
+        logger.info(f"Parsed {len(damages_df)} damage events with position context")
+
+        # Parse weapon fires for spray analysis and accuracy metrics
+        weapon_fires_df = self._parse_event_safe(
+            parser,
+            "weapon_fire",
+            player_props=["X", "Y", "Z", "pitch", "yaw", "velocity_X", "velocity_Y"],
+            other_props=["total_rounds_played", "weapon", "inaccuracy"],
+        )
+        logger.info(f"Parsed {len(weapon_fires_df)} weapon fire events for spray analysis")
 
         # Parse round events
         round_end_df = self._parse_event_safe(parser, "round_end")
