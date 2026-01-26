@@ -1877,6 +1877,8 @@ class DemoAnalyzer:
         # Fallback: Original per-kill loop implementation
         logger.info("Using per-kill TTD computation (fallback)")
         damages_df = self.data.damages_df
+        logger.info(f"TTD computation: {len(damages_df)} damage events, {len(self.data.kills)} kills")
+        logger.debug(f"Damage columns available: {list(damages_df.columns)}")
 
         # Find the right column names
         def find_col(df, options):
@@ -1887,6 +1889,7 @@ class DemoAnalyzer:
 
         dmg_att_col = find_col(damages_df, ["attacker_steamid", "attacker_steam_id"])
         dmg_vic_col = find_col(damages_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
+        logger.info(f"TTD columns: attacker={dmg_att_col}, victim={dmg_vic_col}")
 
         if not dmg_att_col or not dmg_vic_col:
             logger.warning(f"Missing columns for TTD. Have: {list(damages_df.columns)}")
@@ -1945,7 +1948,13 @@ class DemoAnalyzer:
                 logger.debug(f"Error processing kill for TTD: {e}")
                 continue
 
-        logger.info(f"Computed TTD for {len(self._ttd_results)} engagements")
+        # Summary of TTD results per player
+        players_with_ttd = sum(1 for p in self._players.values() if p.ttd_values)
+        total_ttd_values = sum(len(p.ttd_values) for p in self._players.values())
+        logger.info(
+            f"Computed TTD for {len(self._ttd_results)} engagements, "
+            f"{players_with_ttd} players have TTD values ({total_ttd_values} total samples)"
+        )
 
     def _compute_crosshair_placement(self) -> None:
         """Compute crosshair placement error for each kill.
@@ -1971,6 +1980,16 @@ class DemoAnalyzer:
         logger.info("Using per-kill CP computation (fallback)")
 
         # First try using KillEvent objects directly (preferred - they have embedded position data)
+        # Count what data is available
+        kills_with_x = sum(1 for k in self.data.kills if k.attacker_x is not None)
+        kills_with_pitch = sum(1 for k in self.data.kills if k.attacker_pitch is not None)
+        kills_with_victim_x = sum(1 for k in self.data.kills if k.victim_x is not None)
+        logger.info(
+            f"CP data availability: {len(self.data.kills)} kills, "
+            f"{kills_with_x} with attacker_x, {kills_with_pitch} with pitch, "
+            f"{kills_with_victim_x} with victim_x"
+        )
+
         kills_with_pos = [
             k
             for k in self.data.kills

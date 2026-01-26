@@ -673,6 +673,13 @@ class DemoParser:
                     victim_x=safe_float(row.get("victim_X")) if "victim_X" in row else None,
                     victim_y=safe_float(row.get("victim_Y")) if "victim_Y" in row else None,
                     victim_z=safe_float(row.get("victim_Z")) if "victim_Z" in row else None,
+                    # Attacker view angles (needed for crosshair placement calculation)
+                    attacker_pitch=safe_float(
+                        row.get("attacker_pitch", row.get("attacker_view_pitch", row.get("attacker_viewX")))
+                    ),
+                    attacker_yaw=safe_float(
+                        row.get("attacker_yaw", row.get("attacker_view_yaw", row.get("attacker_viewY")))
+                    ),
                 )
                 kills.append(kill)
             except Exception as e:
