@@ -128,8 +128,12 @@ class CacheStats:
         return {
             "total_entries": self.total_entries,
             "total_size_mb": round(self.size_mb, 2),
-            "oldest_entry": self.oldest_entry.isoformat() if self.oldest_entry else None,
-            "newest_entry": self.newest_entry.isoformat() if self.newest_entry else None,
+            "oldest_entry": (
+                self.oldest_entry.isoformat() if self.oldest_entry else None
+            ),
+            "newest_entry": (
+                self.newest_entry.isoformat() if self.newest_entry else None
+            ),
             "hit_count": self.hit_count,
             "miss_count": self.miss_count,
             "hit_rate_pct": round(self.hit_rate, 1),
@@ -211,7 +215,8 @@ class DemoCache:
                 with open(self.index_path) as f:
                     data = json.load(f)
                 self._index = {
-                    k: CacheEntry.from_dict(v) for k, v in data.get("entries", {}).items()
+                    k: CacheEntry.from_dict(v)
+                    for k, v in data.get("entries", {}).items()
                 }
                 self._hit_count = data.get("hit_count", 0)
                 self._miss_count = data.get("miss_count", 0)
@@ -513,11 +518,15 @@ class CachedAnalyzer:
 
         # Calculate professional metrics using enhanced parser
         try:
-            logger.info("Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)")
+            logger.info(
+                "Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)"
+            )
             engine = CoachingAnalysisEngine(demo_path)
             enhanced_metrics = engine.analyze()
         except Exception as e:
-            logger.warning(f"Enhanced metrics calculation failed, using basic analysis only: {e}")
+            logger.warning(
+                f"Enhanced metrics calculation failed, using basic analysis only: {e}"
+            )
             enhanced_metrics = {}
 
         # Calculate RWS using direct method (more reliable)
@@ -541,7 +550,9 @@ class CachedAnalyzer:
                     "deaths": p.deaths,
                     "assists": p.assists,
                     "adr": round(p.adr, 1) if p.adr else 0,
-                    "headshot_pct": round(p.headshot_percentage, 1) if p.headshot_percentage else 0,
+                    "headshot_pct": (
+                        round(p.headshot_percentage, 1) if p.headshot_percentage else 0
+                    ),
                     "kd_ratio": round(p.kills / max(1, p.deaths), 2),
                     "2k": mk["2k"],
                     "3k": mk["3k"],
@@ -550,9 +561,13 @@ class CachedAnalyzer:
                 },
                 "rating": {
                     "hltv_rating": round(p.hltv_rating, 2) if p.hltv_rating else 0,
-                    "kast_percentage": round(p.kast_percentage, 1) if p.kast_percentage else 0,
+                    "kast_percentage": (
+                        round(p.kast_percentage, 1) if p.kast_percentage else 0
+                    ),
                     "aim_rating": round(p.aim_rating, 1) if p.aim_rating else 50,
-                    "utility_rating": round(p.utility_rating, 1) if p.utility_rating else 50,
+                    "utility_rating": (
+                        round(p.utility_rating, 1) if p.utility_rating else 50
+                    ),
                     "impact_rating": round(getattr(p, "impact_rating", None) or 0, 2),
                 },
                 "advanced": {
@@ -561,8 +576,12 @@ class CachedAnalyzer:
                     "ttd_mean_ms": round(getattr(p, "ttd_mean_ms", None) or 0, 1),
                     "ttd_95th_ms": round(getattr(p, "ttd_95th_ms", None) or 0, 1),
                     # From enhanced parser (CP - Crosshair Placement)
-                    "cp_median_error_deg": round(getattr(p, "cp_median_error_deg", None) or 0, 1),
-                    "cp_mean_error_deg": round(getattr(p, "cp_mean_error_deg", None) or 0, 1),
+                    "cp_median_error_deg": round(
+                        getattr(p, "cp_median_error_deg", None) or 0, 1
+                    ),
+                    "cp_mean_error_deg": round(
+                        getattr(p, "cp_mean_error_deg", None) or 0, 1
+                    ),
                     # Other advanced stats
                     "prefire_kills": getattr(p, "prefire_kills", None) or 0,
                     "opening_kills": getattr(p, "opening_kills", None) or 0,
@@ -630,12 +649,16 @@ class CachedAnalyzer:
 
         # Merge CP metrics
         if enhanced_metrics and "crosshair_placement" in enhanced_metrics:
-            for steam_id, cp_data in enhanced_metrics.get("crosshair_placement", {}).items():
+            for steam_id, cp_data in enhanced_metrics.get(
+                "crosshair_placement", {}
+            ).items():
                 sid_str = str(steam_id)
                 if sid_str in players:
                     players[sid_str]["advanced"].update(
                         {
-                            "cp_median_error_deg": cp_data.get("cp_median_error_deg", 0),
+                            "cp_median_error_deg": cp_data.get(
+                                "cp_median_error_deg", 0
+                            ),
                             "cp_mean_error_deg": cp_data.get("cp_mean_error_deg", 0),
                         }
                     )
@@ -654,7 +677,9 @@ class CachedAnalyzer:
 
         # Merge Clutch metrics (enhanced_parser uses "clutch_statistics")
         if enhanced_metrics and "clutch_statistics" in enhanced_metrics:
-            for steam_id, clutch_data in enhanced_metrics.get("clutch_statistics", {}).items():
+            for steam_id, clutch_data in enhanced_metrics.get(
+                "clutch_statistics", {}
+            ).items():
                 sid_str = str(steam_id)
                 if sid_str in players:
                     players[sid_str]["duels"].update(
@@ -695,7 +720,10 @@ class CachedAnalyzer:
         mvp = None
         if players:
             mvp_data = max(players.values(), key=lambda x: x["rating"]["hltv_rating"])
-            mvp = {"name": mvp_data["name"], "rating": mvp_data["rating"]["hltv_rating"]}
+            mvp = {
+                "name": mvp_data["name"],
+                "rating": mvp_data["rating"]["hltv_rating"],
+            }
 
         # Convert to dict for caching
         result = {
@@ -735,8 +763,12 @@ class CachedAnalyzer:
                 "entry_kills": wins,
                 "entry_deaths": losses,
                 "entry_diff": wins - losses,
-                "entry_attempts_pct": round(attempts / rounds * 100, 0) if rounds > 0 else 0,
-                "entry_success_pct": round(wins / attempts * 100, 0) if attempts > 0 else 0,
+                "entry_attempts_pct": (
+                    round(attempts / rounds * 100, 0) if rounds > 0 else 0
+                ),
+                "entry_success_pct": (
+                    round(wins / attempts * 100, 0) if attempts > 0 else 0
+                ),
             }
         return {
             "entry_attempts": 0,
@@ -871,8 +903,12 @@ class CachedAnalyzer:
                 round_kills[round_num]["t_kills"] += 1
 
             if round_kills[round_num]["first_kill"] is None:
-                round_kills[round_num]["first_kill"] = getattr(kill, "attacker_name", "Unknown")
-                round_kills[round_num]["first_death"] = getattr(kill, "victim_name", "Unknown")
+                round_kills[round_num]["first_kill"] = getattr(
+                    kill, "attacker_name", "Unknown"
+                )
+                round_kills[round_num]["first_death"] = getattr(
+                    kill, "victim_name", "Unknown"
+                )
 
         # Use actual round data if available, otherwise use analysis total_rounds
         total_rounds = (
@@ -883,7 +919,10 @@ class CachedAnalyzer:
 
         # Build timeline entries - ensure we have entries for all rounds
         for round_num in range(1, total_rounds + 1):
-            rd = round_kills.get(round_num, {"ct_kills": 0, "t_kills": 0, "first_kill": None, "first_death": None})
+            rd = round_kills.get(
+                round_num,
+                {"ct_kills": 0, "t_kills": 0, "first_kill": None, "first_death": None},
+            )
             # Get winner from rounds data if available
             winner = "CT" if rd["ct_kills"] > rd["t_kills"] else "T"
             for r in rounds_data:
@@ -895,9 +934,11 @@ class CachedAnalyzer:
                 {
                     "round_num": round_num,
                     "winner": winner,
-                    "win_reason": "Elimination"
-                    if abs(rd["ct_kills"] - rd["t_kills"]) >= 4
-                    else "Objective",
+                    "win_reason": (
+                        "Elimination"
+                        if abs(rd["ct_kills"] - rd["t_kills"]) >= 4
+                        else "Objective"
+                    ),
                     "first_kill": rd["first_kill"],
                     "first_death": rd["first_death"],
                     "ct_kills": rd["ct_kills"],
@@ -912,7 +953,9 @@ class CachedAnalyzer:
         kills = getattr(demo_data, "kills", [])
 
         # Count kills per player per round
-        player_round_kills: dict[int, dict[int, int]] = {}  # steam_id -> {round_num -> kill_count}
+        player_round_kills: dict[int, dict[int, int]] = (
+            {}
+        )  # steam_id -> {round_num -> kill_count}
 
         for kill in kills:
             attacker_id = getattr(kill, "attacker_steamid", 0)
@@ -978,9 +1021,9 @@ class CachedAnalyzer:
         has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
 
         # Initialize per-player round data
-        player_round_data: dict[
-            int, dict[int, dict]
-        ] = {}  # steam_id -> {round_num -> {kills, damage}}
+        player_round_data: dict[int, dict[int, dict]] = (
+            {}
+        )  # steam_id -> {round_num -> {kills, damage}}
 
         # Get max rounds from demo_data or round boundaries
         max_round = getattr(demo_data, "num_rounds", 0) or len(round_boundaries) or 1
@@ -1100,7 +1143,9 @@ class CachedAnalyzer:
                 player_teams[vic_id] = "T"
 
         # Group damage by round
-        round_damages: dict[int, dict[int, int]] = {}  # round_num -> {steam_id -> damage}
+        round_damages: dict[int, dict[int, int]] = (
+            {}
+        )  # round_num -> {steam_id -> damage}
         for dmg in damages:
             round_num = getattr(dmg, "round_num", 0)
             attacker_id = getattr(dmg, "attacker_steamid", 0)
@@ -1151,7 +1196,9 @@ class CachedAnalyzer:
                     player_stats[pid]["rounds_played"] += 1
 
                     # Check if player is on winning team
-                    if (winner == "CT" and team == "CT") or (winner == "T" and team == "T"):
+                    if (winner == "CT" and team == "CT") or (
+                        winner == "T" and team == "T"
+                    ):
                         winning_players.append(pid)
 
             if not winning_players:
@@ -1199,8 +1246,12 @@ class CachedAnalyzer:
         for kill in kills:
             attacker_id = getattr(kill, "attacker_steamid", 0)
             victim_id = getattr(kill, "victim_steamid", 0)
-            attacker_name = player_names.get(attacker_id, getattr(kill, "attacker_name", "Unknown"))
-            victim_name = player_names.get(victim_id, getattr(kill, "victim_name", "Unknown"))
+            attacker_name = player_names.get(
+                attacker_id, getattr(kill, "attacker_name", "Unknown")
+            )
+            victim_name = player_names.get(
+                victim_id, getattr(kill, "victim_name", "Unknown")
+            )
 
             key = (attacker_name, victim_name)
             matrix[key] = matrix.get(key, 0) + 1
@@ -1283,7 +1334,11 @@ class CachedAnalyzer:
             ay = getattr(kill, "attacker_y", None)
             if ax is not None and ay is not None:
                 az = getattr(kill, "attacker_z", 0) or 0
-                zone = get_zone_for_position(map_name, ax, ay, az) if has_zones else "Unknown"
+                zone = (
+                    get_zone_for_position(map_name, ax, ay, az)
+                    if has_zones
+                    else "Unknown"
+                )
                 kill_positions.append(
                     {
                         "x": ax,
@@ -1305,7 +1360,12 @@ class CachedAnalyzer:
 
                 # Update zone stats for kills
                 if zone not in zone_stats:
-                    zone_stats[zone] = {"kills": 0, "deaths": 0, "ct_kills": 0, "t_kills": 0}
+                    zone_stats[zone] = {
+                        "kills": 0,
+                        "deaths": 0,
+                        "ct_kills": 0,
+                        "t_kills": 0,
+                    }
                 zone_stats[zone]["kills"] += 1
                 if "CT" in attacker_side.upper():
                     zone_stats[zone]["ct_kills"] += 1
@@ -1318,7 +1378,11 @@ class CachedAnalyzer:
             if vx is not None and vy is not None:
                 vz = getattr(kill, "victim_z", 0) or 0
                 victim_side = getattr(kill, "victim_side", "") or ""
-                zone = get_zone_for_position(map_name, vx, vy, vz) if has_zones else "Unknown"
+                zone = (
+                    get_zone_for_position(map_name, vx, vy, vz)
+                    if has_zones
+                    else "Unknown"
+                )
                 death_positions.append(
                     {
                         "x": vx,
@@ -1338,7 +1402,12 @@ class CachedAnalyzer:
 
                 # Update zone stats for deaths
                 if zone not in zone_stats:
-                    zone_stats[zone] = {"kills": 0, "deaths": 0, "ct_kills": 0, "t_kills": 0}
+                    zone_stats[zone] = {
+                        "kills": 0,
+                        "deaths": 0,
+                        "ct_kills": 0,
+                        "t_kills": 0,
+                    }
                 zone_stats[zone]["deaths"] += 1
 
         # Calculate zone K/D ratios and percentages
@@ -1365,7 +1434,9 @@ class CachedAnalyzer:
             "zone_definitions": zone_definitions,
         }
 
-    def _generate_coaching_insights(self, demo_data, analysis, players: dict) -> list[dict]:
+    def _generate_coaching_insights(
+        self, demo_data, analysis, players: dict
+    ) -> list[dict]:
         """
         Generate comprehensive, data-driven coaching insights for each player.
 
@@ -1401,7 +1472,9 @@ class CachedAnalyzer:
             role, role_confidence = self._detect_role_detailed(player, match_stats)
 
             # Determine player identity/archetype (like Leetify's "The Cleanup")
-            identity = self._determine_player_identity(player, match_stats, top_performers)
+            identity = self._determine_player_identity(
+                player, match_stats, top_performers
+            )
 
             # ==========================================
             # AIM & MECHANICS INSIGHTS
@@ -1414,24 +1487,28 @@ class CachedAnalyzer:
                 avg_ttd = match_stats.get("avg_ttd", 350)
                 diff = ttd - avg_ttd
                 if diff > 50:
-                    insights.append({
-                        "type": "warning",
-                        "message": f"TTD {ttd:.0f}ms is {diff:.0f}ms slower than match average ({avg_ttd:.0f}ms) - practice pre-aiming common angles",
-                        "category": "Aim",
-                        "metric": "ttd_ms",
-                        "value": ttd,
-                        "benchmark": avg_ttd,
-                        "severity": "high" if diff > 100 else "medium",
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": f"TTD {ttd:.0f}ms is {diff:.0f}ms slower than match average ({avg_ttd:.0f}ms) - practice pre-aiming common angles",
+                            "category": "Aim",
+                            "metric": "ttd_ms",
+                            "value": ttd,
+                            "benchmark": avg_ttd,
+                            "severity": "high" if diff > 100 else "medium",
+                        }
+                    )
                 elif diff < -50:
-                    insights.append({
-                        "type": "positive",
-                        "message": f"Fast reactions: {ttd:.0f}ms TTD ({abs(diff):.0f}ms faster than match avg) - {ttd_rating}",
-                        "category": "Aim",
-                        "metric": "ttd_ms",
-                        "value": ttd,
-                        "benchmark": avg_ttd,
-                    })
+                    insights.append(
+                        {
+                            "type": "positive",
+                            "message": f"Fast reactions: {ttd:.0f}ms TTD ({abs(diff):.0f}ms faster than match avg) - {ttd_rating}",
+                            "category": "Aim",
+                            "metric": "ttd_ms",
+                            "value": ttd,
+                            "benchmark": avg_ttd,
+                        }
+                    )
 
             # Crosshair Placement (CP) - angle accuracy
             cp = advanced.get("cp_median_error_deg", 0)
@@ -1440,45 +1517,53 @@ class CachedAnalyzer:
                 avg_cp = match_stats.get("avg_cp", 8)
                 diff = cp - avg_cp
                 if cp > 10:
-                    insights.append({
-                        "type": "warning",
-                        "message": f"Crosshair placement: {cp:.1f}° error ({diff:+.1f}° vs avg). Pre-aim head level at common angles",
-                        "category": "Aim",
-                        "metric": "cp_error_deg",
-                        "value": cp,
-                        "benchmark": avg_cp,
-                        "severity": "high" if cp > 15 else "medium",
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": f"Crosshair placement: {cp:.1f}° error ({diff:+.1f}° vs avg). Pre-aim head level at common angles",
+                            "category": "Aim",
+                            "metric": "cp_error_deg",
+                            "value": cp,
+                            "benchmark": avg_cp,
+                            "severity": "high" if cp > 15 else "medium",
+                        }
+                    )
                 elif cp < 5:
-                    insights.append({
-                        "type": "positive",
-                        "message": f"Excellent crosshair placement: {cp:.1f}° error - {cp_rating}",
-                        "category": "Aim",
-                        "metric": "cp_error_deg",
-                        "value": cp,
-                    })
+                    insights.append(
+                        {
+                            "type": "positive",
+                            "message": f"Excellent crosshair placement: {cp:.1f}° error - {cp_rating}",
+                            "category": "Aim",
+                            "metric": "cp_error_deg",
+                            "value": cp,
+                        }
+                    )
 
             # Headshot percentage analysis
             hs_pct = stats.get("headshot_pct", 0)
             if hs_pct > 0:
                 avg_hs = match_stats.get("avg_hs_pct", 35)
                 if hs_pct >= 50:
-                    insights.append({
-                        "type": "positive",
-                        "message": f"Elite headshot %: {hs_pct:.0f}% ({hs_pct - avg_hs:+.0f}% vs match avg) - precision aiming",
-                        "category": "Aim",
-                        "metric": "headshot_pct",
-                        "value": hs_pct,
-                    })
+                    insights.append(
+                        {
+                            "type": "positive",
+                            "message": f"Elite headshot %: {hs_pct:.0f}% ({hs_pct - avg_hs:+.0f}% vs match avg) - precision aiming",
+                            "category": "Aim",
+                            "metric": "headshot_pct",
+                            "value": hs_pct,
+                        }
+                    )
                 elif hs_pct < 25:
-                    insights.append({
-                        "type": "warning",
-                        "message": f"Low HS%: {hs_pct:.0f}% (avg: {avg_hs:.0f}%). Focus on head-level crosshair, less spraying",
-                        "category": "Aim",
-                        "metric": "headshot_pct",
-                        "value": hs_pct,
-                        "benchmark": avg_hs,
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": f"Low HS%: {hs_pct:.0f}% (avg: {avg_hs:.0f}%). Focus on head-level crosshair, less spraying",
+                            "category": "Aim",
+                            "metric": "headshot_pct",
+                            "value": hs_pct,
+                            "benchmark": avg_hs,
+                        }
+                    )
 
             # ==========================================
             # OPENING DUEL / ENTRY INSIGHTS
@@ -1493,76 +1578,92 @@ class CachedAnalyzer:
                 avg_entry_success = match_stats.get("avg_entry_success", 50)
 
                 if entry_success < 35:
-                    insights.append({
-                        "type": "mistake",
-                        "message": f"Opening duels: {entry_success:.0f}% success ({entry_kills}W-{entry_deaths}L). Use utility before peeking or change entry spots",
-                        "category": "Entry",
-                        "metric": "opening_duel_success",
-                        "value": entry_success,
-                        "benchmark": avg_entry_success,
-                        "severity": "high",
-                    })
+                    insights.append(
+                        {
+                            "type": "mistake",
+                            "message": f"Opening duels: {entry_success:.0f}% success ({entry_kills}W-{entry_deaths}L). Use utility before peeking or change entry spots",
+                            "category": "Entry",
+                            "metric": "opening_duel_success",
+                            "value": entry_success,
+                            "benchmark": avg_entry_success,
+                            "severity": "high",
+                        }
+                    )
                 elif entry_success >= 65:
-                    insights.append({
-                        "type": "positive",
-                        "message": f"Dominant entry fragging: {entry_success:.0f}% ({entry_kills}W-{entry_deaths}L) - {entry_success - avg_entry_success:+.0f}% vs match avg",
-                        "category": "Entry",
-                        "metric": "opening_duel_success",
-                        "value": entry_success,
-                    })
+                    insights.append(
+                        {
+                            "type": "positive",
+                            "message": f"Dominant entry fragging: {entry_success:.0f}% ({entry_kills}W-{entry_deaths}L) - {entry_success - avg_entry_success:+.0f}% vs match avg",
+                            "category": "Entry",
+                            "metric": "opening_duel_success",
+                            "value": entry_success,
+                        }
+                    )
 
                 # Entry attempt rate analysis
                 entry_rate = entry.get("entry_attempts_pct", 0)
                 if role == "entry" and entry_rate < 20:
-                    insights.append({
-                        "type": "warning",
-                        "message": f"Low entry rate for entry role: {entry_rate:.0f}% of rounds. Lead more site takes with utility",
-                        "category": "Role",
-                        "metric": "entry_attempt_rate",
-                        "value": entry_rate,
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": f"Low entry rate for entry role: {entry_rate:.0f}% of rounds. Lead more site takes with utility",
+                            "category": "Role",
+                            "metric": "entry_attempt_rate",
+                            "value": entry_rate,
+                        }
+                    )
 
             # ==========================================
             # TRADE KILL INSIGHTS
             # ==========================================
 
             trade_kills = trades.get("trade_kills", 0) or duels.get("trade_kills", 0)
-            deaths_traded = trades.get("deaths_traded", 0) or duels.get("traded_deaths", 0)
+            deaths_traded = trades.get("deaths_traded", 0) or duels.get(
+                "traded_deaths", 0
+            )
             total_deaths = stats.get("deaths", 1)
 
-            trade_rate = (deaths_traded / max(1, total_deaths)) * 100 if total_deaths > 0 else 0
+            trade_rate = (
+                (deaths_traded / max(1, total_deaths)) * 100 if total_deaths > 0 else 0
+            )
             avg_trade_rate = match_stats.get("avg_trade_rate", 40)
 
             # Find best trader on team for comparison
             best_trader = top_performers.get("trade_kills", {})
 
             if trade_kills >= 5:
-                insights.append({
-                    "type": "positive",
-                    "message": f"Strong trader: {trade_kills} trade kills - reliable teammate support",
-                    "category": "Trading",
-                    "metric": "trade_kills",
-                    "value": trade_kills,
-                })
+                insights.append(
+                    {
+                        "type": "positive",
+                        "message": f"Strong trader: {trade_kills} trade kills - reliable teammate support",
+                        "category": "Trading",
+                        "metric": "trade_kills",
+                        "value": trade_kills,
+                    }
+                )
 
             if total_deaths >= 8 and trade_rate < 30:
                 best_trader_name = best_trader.get("name", "teammate")
-                insights.append({
-                    "type": "warning",
-                    "message": f"Only {trade_rate:.0f}% of deaths traded ({deaths_traded}/{total_deaths}). Stay closer to teammates, especially {best_trader_name}",
-                    "category": "Trading",
-                    "metric": "deaths_traded_rate",
-                    "value": trade_rate,
-                    "benchmark": avg_trade_rate,
-                    "severity": "medium",
-                })
+                insights.append(
+                    {
+                        "type": "warning",
+                        "message": f"Only {trade_rate:.0f}% of deaths traded ({deaths_traded}/{total_deaths}). Stay closer to teammates, especially {best_trader_name}",
+                        "category": "Trading",
+                        "metric": "deaths_traded_rate",
+                        "value": trade_rate,
+                        "benchmark": avg_trade_rate,
+                        "severity": "medium",
+                    }
+                )
 
             # ==========================================
             # CLUTCH INSIGHTS
             # ==========================================
 
             clutch_wins = clutches.get("clutch_wins", 0) or duels.get("clutch_wins", 0)
-            clutch_attempts = clutches.get("clutch_wins", 0) + clutches.get("clutch_losses", 0)
+            clutch_attempts = clutches.get("clutch_wins", 0) + clutches.get(
+                "clutch_losses", 0
+            )
             if clutch_attempts == 0:
                 clutch_attempts = duels.get("clutch_attempts", 0)
 
@@ -1572,33 +1673,43 @@ class CachedAnalyzer:
                     clutch_pct = (clutch_wins / clutch_attempts) * 100
 
                 # Check for impressive clutches (1v3, 1v4, 1v5)
-                v3_plus = clutches.get("v3_wins", 0) + clutches.get("v4_wins", 0) + clutches.get("v5_wins", 0)
+                v3_plus = (
+                    clutches.get("v3_wins", 0)
+                    + clutches.get("v4_wins", 0)
+                    + clutches.get("v5_wins", 0)
+                )
 
                 if v3_plus >= 1:
-                    insights.append({
-                        "type": "positive",
-                        "message": f"Clutch master: Won 1v3+ situations {v3_plus} time(s) - ice cold under pressure",
-                        "category": "Clutch",
-                        "metric": "difficult_clutches",
-                        "value": v3_plus,
-                    })
+                    insights.append(
+                        {
+                            "type": "positive",
+                            "message": f"Clutch master: Won 1v3+ situations {v3_plus} time(s) - ice cold under pressure",
+                            "category": "Clutch",
+                            "metric": "difficult_clutches",
+                            "value": v3_plus,
+                        }
+                    )
                 elif clutch_pct >= 40 and clutch_attempts >= 3:
-                    insights.append({
-                        "type": "positive",
-                        "message": f"Reliable clutcher: {clutch_pct:.0f}% success rate ({clutch_wins}/{clutch_attempts})",
-                        "category": "Clutch",
-                        "metric": "clutch_success",
-                        "value": clutch_pct,
-                    })
+                    insights.append(
+                        {
+                            "type": "positive",
+                            "message": f"Reliable clutcher: {clutch_pct:.0f}% success rate ({clutch_wins}/{clutch_attempts})",
+                            "category": "Clutch",
+                            "metric": "clutch_success",
+                            "value": clutch_pct,
+                        }
+                    )
                 elif clutch_pct < 20 and clutch_attempts >= 4:
-                    insights.append({
-                        "type": "warning",
-                        "message": f"Clutch struggles: {clutch_pct:.0f}% ({clutch_wins}/{clutch_attempts}). Play for info, use utility to isolate fights",
-                        "category": "Clutch",
-                        "metric": "clutch_success",
-                        "value": clutch_pct,
-                        "severity": "medium",
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": f"Clutch struggles: {clutch_pct:.0f}% ({clutch_wins}/{clutch_attempts}). Play for info, use utility to isolate fights",
+                            "category": "Clutch",
+                            "metric": "clutch_success",
+                            "value": clutch_pct,
+                            "severity": "medium",
+                        }
+                    )
 
             # ==========================================
             # UTILITY USAGE INSIGHTS
@@ -1620,41 +1731,49 @@ class CachedAnalyzer:
             if flashes > 0:
                 flash_effectiveness = (enemies_flashed / max(1, flashes)) * 100
                 if flash_effectiveness < 30 and flashes >= 5:
-                    insights.append({
-                        "type": "warning",
-                        "message": f"Flash effectiveness: {flash_effectiveness:.0f}% ({enemies_flashed} blinds from {flashes} flashes). Learn pop-flashes for common angles",
-                        "category": "Utility",
-                        "metric": "flash_effectiveness",
-                        "value": flash_effectiveness,
-                        "severity": "medium",
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": f"Flash effectiveness: {flash_effectiveness:.0f}% ({enemies_flashed} blinds from {flashes} flashes). Learn pop-flashes for common angles",
+                            "category": "Utility",
+                            "metric": "flash_effectiveness",
+                            "value": flash_effectiveness,
+                            "severity": "medium",
+                        }
+                    )
                 elif flash_effectiveness >= 60 and flash_assists >= 2:
-                    insights.append({
-                        "type": "positive",
-                        "message": f"Quality flashbangs: {enemies_flashed} enemies blinded, {flash_assists} flash assists - great support play",
-                        "category": "Utility",
-                        "metric": "flash_effectiveness",
-                        "value": flash_effectiveness,
-                    })
+                    insights.append(
+                        {
+                            "type": "positive",
+                            "message": f"Quality flashbangs: {enemies_flashed} enemies blinded, {flash_assists} flash assists - great support play",
+                            "category": "Utility",
+                            "metric": "flash_effectiveness",
+                            "value": flash_effectiveness,
+                        }
+                    )
 
             if util_per_round < 1.5 and rounds_played >= 15:
-                insights.append({
-                    "type": "warning",
-                    "message": f"Low utility usage: {util_per_round:.1f}/round (avg: {avg_util_per_round:.1f}). Buy and use more grenades",
-                    "category": "Utility",
-                    "metric": "utility_per_round",
-                    "value": util_per_round,
-                    "benchmark": avg_util_per_round,
-                })
+                insights.append(
+                    {
+                        "type": "warning",
+                        "message": f"Low utility usage: {util_per_round:.1f}/round (avg: {avg_util_per_round:.1f}). Buy and use more grenades",
+                        "category": "Utility",
+                        "metric": "utility_per_round",
+                        "value": util_per_round,
+                        "benchmark": avg_util_per_round,
+                    }
+                )
 
             if he_damage >= 150:
-                insights.append({
-                    "type": "positive",
-                    "message": f"Effective HE grenades: {he_damage} damage total - valuable chip damage",
-                    "category": "Utility",
-                    "metric": "he_damage",
-                    "value": he_damage,
-                })
+                insights.append(
+                    {
+                        "type": "positive",
+                        "message": f"Effective HE grenades: {he_damage} damage total - valuable chip damage",
+                        "category": "Utility",
+                        "metric": "he_damage",
+                        "value": he_damage,
+                    }
+                )
 
             # ==========================================
             # IMPACT & DAMAGE INSIGHTS
@@ -1670,50 +1789,60 @@ class CachedAnalyzer:
             multikills = stats.get("3k", 0) + stats.get("4k", 0) + stats.get("5k", 0)
 
             if adr >= 90:
-                insights.append({
-                    "type": "positive",
-                    "message": f"High impact: {adr:.0f} ADR ({adr - avg_adr:+.0f} vs avg) - consistent round damage",
-                    "category": "Impact",
-                    "metric": "adr",
-                    "value": adr,
-                })
+                insights.append(
+                    {
+                        "type": "positive",
+                        "message": f"High impact: {adr:.0f} ADR ({adr - avg_adr:+.0f} vs avg) - consistent round damage",
+                        "category": "Impact",
+                        "metric": "adr",
+                        "value": adr,
+                    }
+                )
             elif adr < 60:
-                insights.append({
-                    "type": "warning",
-                    "message": f"Low ADR: {adr:.0f} (avg: {avg_adr:.0f}). Find more engagements, use utility to create opportunities",
-                    "category": "Impact",
-                    "metric": "adr",
-                    "value": adr,
-                    "benchmark": avg_adr,
-                    "severity": "high" if adr < 50 else "medium",
-                })
+                insights.append(
+                    {
+                        "type": "warning",
+                        "message": f"Low ADR: {adr:.0f} (avg: {avg_adr:.0f}). Find more engagements, use utility to create opportunities",
+                        "category": "Impact",
+                        "metric": "adr",
+                        "value": adr,
+                        "benchmark": avg_adr,
+                        "severity": "high" if adr < 50 else "medium",
+                    }
+                )
 
             if multikills >= 3:
-                insights.append({
-                    "type": "positive",
-                    "message": f"Round-winning plays: {multikills} multi-kills (3K+) - clutch performer in key rounds",
-                    "category": "Impact",
-                    "metric": "multikills",
-                    "value": multikills,
-                })
+                insights.append(
+                    {
+                        "type": "positive",
+                        "message": f"Round-winning plays: {multikills} multi-kills (3K+) - clutch performer in key rounds",
+                        "category": "Impact",
+                        "metric": "multikills",
+                        "value": multikills,
+                    }
+                )
 
             if kast < 55 and rounds_played >= 15:
-                insights.append({
-                    "type": "warning",
-                    "message": f"Low KAST: {kast:.0f}% - dying without impact too often. Focus on trading and staying alive",
-                    "category": "Consistency",
-                    "metric": "kast",
-                    "value": kast,
-                    "severity": "high",
-                })
+                insights.append(
+                    {
+                        "type": "warning",
+                        "message": f"Low KAST: {kast:.0f}% - dying without impact too often. Focus on trading and staying alive",
+                        "category": "Consistency",
+                        "metric": "kast",
+                        "value": kast,
+                        "severity": "high",
+                    }
+                )
             elif kast >= 80:
-                insights.append({
-                    "type": "positive",
-                    "message": f"Exceptional consistency: {kast:.0f}% KAST - contributing in nearly every round",
-                    "category": "Consistency",
-                    "metric": "kast",
-                    "value": kast,
-                })
+                insights.append(
+                    {
+                        "type": "positive",
+                        "message": f"Exceptional consistency: {kast:.0f}% KAST - contributing in nearly every round",
+                        "category": "Consistency",
+                        "metric": "kast",
+                        "value": kast,
+                    }
+                )
 
             # ==========================================
             # RWS (Round Win Share) INSIGHTS
@@ -1722,21 +1851,25 @@ class CachedAnalyzer:
             avg_rws = rws.get("avg_rws", 0)
             if avg_rws > 0:
                 if avg_rws >= 12:
-                    insights.append({
-                        "type": "positive",
-                        "message": f"High impact in won rounds: {avg_rws:.1f} RWS - key contributor to team victories",
-                        "category": "Impact",
-                        "metric": "rws",
-                        "value": avg_rws,
-                    })
+                    insights.append(
+                        {
+                            "type": "positive",
+                            "message": f"High impact in won rounds: {avg_rws:.1f} RWS - key contributor to team victories",
+                            "category": "Impact",
+                            "metric": "rws",
+                            "value": avg_rws,
+                        }
+                    )
                 elif avg_rws < 6:
-                    insights.append({
-                        "type": "warning",
-                        "message": f"Low RWS: {avg_rws:.1f} - limited impact in rounds your team wins. Be more aggressive in won rounds",
-                        "category": "Impact",
-                        "metric": "rws",
-                        "value": avg_rws,
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": f"Low RWS: {avg_rws:.1f} - limited impact in rounds your team wins. Be more aggressive in won rounds",
+                            "category": "Impact",
+                            "metric": "rws",
+                            "value": avg_rws,
+                        }
+                    )
 
             # ==========================================
             # ROLE-SPECIFIC INSIGHTS
@@ -1744,28 +1877,34 @@ class CachedAnalyzer:
 
             if role == "entry":
                 if entry_success < 45 and entry_attempts >= 4:
-                    insights.append({
-                        "type": "warning",
-                        "message": f"Entry role struggling ({entry_success:.0f}% success). Coordinate utility with teammates before taking fights",
-                        "category": "Role",
-                        "severity": "medium",
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": f"Entry role struggling ({entry_success:.0f}% success). Coordinate utility with teammates before taking fights",
+                            "category": "Role",
+                            "severity": "medium",
+                        }
+                    )
             elif role == "support":
                 if flash_assists < 2 and enemies_flashed < 5:
-                    insights.append({
-                        "type": "warning",
-                        "message": "Support role needs more flash impact. Focus on enabling teammates with utility",
-                        "category": "Role",
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": "Support role needs more flash impact. Focus on enabling teammates with utility",
+                            "category": "Role",
+                        }
+                    )
             elif role == "awp":
                 awp_kd = kd_ratio  # Simplified - ideally would track AWP-specific K/D
                 if awp_kd < 1.0:
-                    insights.append({
-                        "type": "warning",
-                        "message": "AWPer dying too often - hold angles, avoid aggressive peeks. $4750 value at risk each death",
-                        "category": "Role",
-                        "severity": "high",
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": "AWPer dying too often - hold angles, avoid aggressive peeks. $4750 value at risk each death",
+                            "category": "Role",
+                            "severity": "high",
+                        }
+                    )
 
             # ==========================================
             # SORT AND PRIORITIZE INSIGHTS
@@ -1775,45 +1914,53 @@ class CachedAnalyzer:
             type_priority = {"mistake": 0, "warning": 1, "positive": 2}
             severity_priority = {"high": 0, "medium": 1, "low": 2}
 
-            insights.sort(key=lambda x: (
-                type_priority.get(x.get("type"), 2),
-                severity_priority.get(x.get("severity", "low"), 2)
-            ))
+            insights.sort(
+                key=lambda x: (
+                    type_priority.get(x.get("type"), 2),
+                    severity_priority.get(x.get("severity", "low"), 2),
+                )
+            )
 
             # Ensure at least one insight
             if not insights:
                 if hltv >= 1.0:
-                    insights.append({
-                        "type": "positive",
-                        "message": f"Solid match performance: {hltv:.2f} rating, {kast:.0f}% KAST",
-                        "category": "Overall",
-                    })
+                    insights.append(
+                        {
+                            "type": "positive",
+                            "message": f"Solid match performance: {hltv:.2f} rating, {kast:.0f}% KAST",
+                            "category": "Overall",
+                        }
+                    )
                 else:
-                    insights.append({
-                        "type": "warning",
-                        "message": f"Below average match ({hltv:.2f} rating). Focus on survival and trading with teammates",
-                        "category": "Overall",
-                    })
+                    insights.append(
+                        {
+                            "type": "warning",
+                            "message": f"Below average match ({hltv:.2f} rating). Focus on survival and trading with teammates",
+                            "category": "Overall",
+                        }
+                    )
 
-            coaching.append({
-                "player_name": name,
-                "steam_id": steam_id,
-                "role": role,
-                "role_confidence": role_confidence,
-                "identity": identity,
-                "stats_summary": {
-                    "rating": round(hltv, 2),
-                    "adr": round(adr, 0),
-                    "kast": round(kast, 0),
-                    "kd": round(kd_ratio, 2),
-                    "ttd_ms": round(advanced.get("ttd_median_ms", 0), 0),
-                    "cp_deg": round(advanced.get("cp_median_error_deg", 0), 1),
-                    "entry_success": round(entry_success, 0),
-                    "trade_rate": round(trade_rate, 0),
-                    "clutch_pct": round(clutches.get("clutch_success_pct", 0), 0),
-                },
-                "insights": insights[:8],  # Top 8 insights per player
-            })
+            coaching.append(
+                {
+                    "player_name": name,
+                    "steam_id": steam_id,
+                    "role": role,
+                    "role_confidence": role_confidence,
+                    "identity": identity,
+                    "stats_summary": {
+                        "rating": round(hltv, 2),
+                        "adr": round(adr, 0),
+                        "kast": round(kast, 0),
+                        "kd": round(kd_ratio, 2),
+                        "ttd_ms": round(advanced.get("ttd_median_ms", 0), 0),
+                        "cp_deg": round(advanced.get("cp_median_error_deg", 0), 1),
+                        "entry_success": round(entry_success, 0),
+                        "trade_rate": round(trade_rate, 0),
+                        "clutch_pct": round(clutches.get("clutch_success_pct", 0), 0),
+                    },
+                    "insights": insights[:8],  # Top 8 insights per player
+                }
+            )
 
         return coaching
 
@@ -1853,17 +2000,21 @@ class CachedAnalyzer:
                 entry_success_values.append(entry_success)
 
             deaths = p.get("stats", {}).get("deaths", 0)
-            traded = p.get("trades", {}).get("deaths_traded", 0) or p.get("duels", {}).get("traded_deaths", 0)
+            traded = p.get("trades", {}).get("deaths_traded", 0) or p.get(
+                "duels", {}
+            ).get("traded_deaths", 0)
             if deaths >= 5:
                 trade_rates.append((traded / deaths) * 100)
 
             util = p.get("utility", {})
-            total_util = sum([
-                util.get("flashbangs_thrown", 0),
-                util.get("smokes_thrown", 0),
-                util.get("he_thrown", 0),
-                util.get("molotovs_thrown", 0),
-            ])
+            total_util = sum(
+                [
+                    util.get("flashbangs_thrown", 0),
+                    util.get("smokes_thrown", 0),
+                    util.get("he_thrown", 0),
+                    util.get("molotovs_thrown", 0),
+                ]
+            )
             rounds = p.get("rws", {}).get("rounds_played", 0) or 30
             if rounds > 0:
                 util_per_round_values.append(total_util / rounds)
@@ -1873,9 +2024,19 @@ class CachedAnalyzer:
             "avg_cp": sum(cp_values) / len(cp_values) if cp_values else 8,
             "avg_adr": sum(adr_values) / len(adr_values) if adr_values else 75,
             "avg_hs_pct": sum(hs_values) / len(hs_values) if hs_values else 35,
-            "avg_entry_success": sum(entry_success_values) / len(entry_success_values) if entry_success_values else 50,
-            "avg_trade_rate": sum(trade_rates) / len(trade_rates) if trade_rates else 40,
-            "avg_util_per_round": sum(util_per_round_values) / len(util_per_round_values) if util_per_round_values else 2.5,
+            "avg_entry_success": (
+                sum(entry_success_values) / len(entry_success_values)
+                if entry_success_values
+                else 50
+            ),
+            "avg_trade_rate": (
+                sum(trade_rates) / len(trade_rates) if trade_rates else 40
+            ),
+            "avg_util_per_round": (
+                sum(util_per_round_values) / len(util_per_round_values)
+                if util_per_round_values
+                else 2.5
+            ),
         }
 
     def _find_top_performers(self, players: dict) -> dict:
@@ -1885,7 +2046,9 @@ class CachedAnalyzer:
         # Best trader
         best_trade_kills = 0
         for sid, p in players.items():
-            tk = p.get("trades", {}).get("trade_kills", 0) or p.get("duels", {}).get("trade_kills", 0)
+            tk = p.get("trades", {}).get("trade_kills", 0) or p.get("duels", {}).get(
+                "trade_kills", 0
+            )
             if tk > best_trade_kills:
                 best_trade_kills = tk
                 top["trade_kills"] = {"steam_id": sid, "name": p["name"], "value": tk}
@@ -1903,10 +2066,16 @@ class CachedAnalyzer:
         best_clutch_pct = 0
         for sid, p in players.items():
             clutch_pct = p.get("clutches", {}).get("clutch_success_pct", 0)
-            clutch_attempts = p.get("clutches", {}).get("clutch_wins", 0) + p.get("clutches", {}).get("clutch_losses", 0)
+            clutch_attempts = p.get("clutches", {}).get("clutch_wins", 0) + p.get(
+                "clutches", {}
+            ).get("clutch_losses", 0)
             if clutch_attempts >= 2 and clutch_pct > best_clutch_pct:
                 best_clutch_pct = clutch_pct
-                top["clutch"] = {"steam_id": sid, "name": p["name"], "value": clutch_pct}
+                top["clutch"] = {
+                    "steam_id": sid,
+                    "name": p["name"],
+                    "value": clutch_pct,
+                }
 
         # Best aim (lowest CP error)
         best_cp = 999
@@ -2016,7 +2185,9 @@ class CachedAnalyzer:
 
         return best_role, confidence
 
-    def _determine_player_identity(self, player: dict, match_stats: dict, top_performers: dict) -> dict:
+    def _determine_player_identity(
+        self, player: dict, match_stats: dict, top_performers: dict
+    ) -> dict:
         """
         Determine player identity/archetype like Leetify's system.
         Returns identity name and top stats.
@@ -2040,22 +2211,32 @@ class CachedAnalyzer:
         # Entry kills
         entry_kills = entry.get("entry_kills", 0)
         if entry_kills >= 5:
-            notable_stats.append(("entry_fragger", entry_kills, f"{entry_kills} Opening Kills"))
+            notable_stats.append(
+                ("entry_fragger", entry_kills, f"{entry_kills} Opening Kills")
+            )
 
         # Clutches
         clutch_wins = clutches.get("clutch_wins", 0)
         if clutch_wins >= 2:
-            notable_stats.append(("clutch_player", clutch_wins, f"{clutch_wins} Clutches Won"))
+            notable_stats.append(
+                ("clutch_player", clutch_wins, f"{clutch_wins} Clutches Won")
+            )
 
         # Trade kills
-        trade_kills = trades.get("trade_kills", 0) or player.get("duels", {}).get("trade_kills", 0)
+        trade_kills = trades.get("trade_kills", 0) or player.get("duels", {}).get(
+            "trade_kills", 0
+        )
         if trade_kills >= 5:
-            notable_stats.append(("team_player", trade_kills, f"{trade_kills} Trade Kills"))
+            notable_stats.append(
+                ("team_player", trade_kills, f"{trade_kills} Trade Kills")
+            )
 
         # Flash assists
         flash_assists = utility.get("flash_assists", 0)
         if flash_assists >= 3:
-            notable_stats.append(("support_master", flash_assists, f"{flash_assists} Flash Assists"))
+            notable_stats.append(
+                ("support_master", flash_assists, f"{flash_assists} Flash Assists")
+            )
 
         # HS%
         hs_pct = stats.get("headshot_pct", 0)
@@ -2065,7 +2246,9 @@ class CachedAnalyzer:
         # Multi-kills
         multikills = stats.get("3k", 0) + stats.get("4k", 0) + stats.get("5k", 0)
         if multikills >= 3:
-            notable_stats.append(("round_winner", multikills, f"{multikills} Multi-kills"))
+            notable_stats.append(
+                ("round_winner", multikills, f"{multikills} Multi-kills")
+            )
 
         # KAST
         kast = rating.get("kast_percentage", 0)
@@ -2103,7 +2286,9 @@ class CachedAnalyzer:
             top_identity = notable_stats[0][0]
             return {
                 "name": identity_names.get(top_identity, "The Player"),
-                "top_stats": [{"label": s[2], "category": s[0]} for s in notable_stats[:5]],
+                "top_stats": [
+                    {"label": s[2], "category": s[0]} for s in notable_stats[:5]
+                ],
             }
         else:
             return {
@@ -2150,7 +2335,9 @@ class CachedAnalyzer:
             logger.warning(f"Tactical analysis failed: {e}")
             return {
                 "key_insights": ["Demo analysis complete"],
-                "team_recommendations": ["Review round-by-round for specific improvements"],
+                "team_recommendations": [
+                    "Review round-by-round for specific improvements"
+                ],
             }
 
 

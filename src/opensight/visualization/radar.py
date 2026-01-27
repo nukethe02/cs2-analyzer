@@ -881,7 +881,9 @@ class RadarDataGenerator:
                             {
                                 "x": round(pos.x, 1),
                                 "y": round(pos.y, 1),
-                                "player": player_names.get(kill.attacker_steamid, "Unknown"),
+                                "player": player_names.get(
+                                    kill.attacker_steamid, "Unknown"
+                                ),
                                 "weapon": kill.weapon,
                                 "headshot": kill.headshot,
                             }
@@ -899,7 +901,9 @@ class RadarDataGenerator:
                             {
                                 "x": round(pos.x, 1),
                                 "y": round(pos.y, 1),
-                                "player": player_names.get(kill.victim_steamid, "Unknown"),
+                                "player": player_names.get(
+                                    kill.victim_steamid, "Unknown"
+                                ),
                             }
                         )
 
@@ -949,7 +953,9 @@ class RadarDataGenerator:
                             "type": grenade.grenade_type,
                             "x": round(pos.x, 1),
                             "y": round(pos.y, 1),
-                            "thrower": player_names.get(grenade.thrower_steamid, "Unknown"),
+                            "thrower": player_names.get(
+                                grenade.thrower_steamid, "Unknown"
+                            ),
                             "round": grenade.round_num,
                             "tick": grenade.tick,
                         }
