@@ -1879,7 +1879,13 @@ class DemoAnalyzer:
         if hasattr(self.data, "player_teams"):
             for steam_id, team_num in self.data.player_teams.items():
                 if steam_id not in player_team_lookup:
-                    player_team_lookup[steam_id] = "CT" if team_num == 3 else "T" if team_num == 2 else "Unknown"
+                    player_team_lookup[steam_id] = (
+                        "CT"
+                        if team_num == 3
+                        else "T"
+                        if team_num == 2
+                        else "Unknown"
+                    )
 
         # Check if we have team column or can use fallback
         use_team_column = bool(self._vic_side_col)
@@ -2420,9 +2426,30 @@ class DemoAnalyzer:
 
             # Check various column name patterns
             pos_patterns = [
-                ["attacker_X", "attacker_Y", "attacker_Z", "victim_X", "victim_Y", "victim_Z"],
-                ["attacker_x", "attacker_y", "attacker_z", "victim_x", "victim_y", "victim_z"],
-                ["attacker_X", "attacker_Y", "attacker_Z", "user_X", "user_Y", "user_Z"],
+                [
+                    "attacker_X",
+                    "attacker_Y",
+                    "attacker_Z",
+                    "victim_X",
+                    "victim_Y",
+                    "victim_Z",
+                ],
+                [
+                    "attacker_x",
+                    "attacker_y",
+                    "attacker_z",
+                    "victim_x",
+                    "victim_y",
+                    "victim_z",
+                ],
+                [
+                    "attacker_X",
+                    "attacker_Y",
+                    "attacker_Z",
+                    "user_X",
+                    "user_Y",
+                    "user_Z",
+                ],
             ]
             angle_patterns = [
                 ["attacker_pitch", "attacker_yaw"],

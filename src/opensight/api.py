@@ -154,17 +154,19 @@ def player_stats_to_dict(player: Any) -> dict:
         "kills_per_round": player.kills_per_round,
         "deaths_per_round": player.deaths_per_round,
         # TTD (Time to Damage)
-        "ttd_median_ms": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
+        "ttd_median_ms": (
+            round(player.ttd_median_ms, 1) if player.ttd_median_ms else None
+        ),
         "ttd_mean_ms": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
         "ttd_samples": len(player.ttd_values),
         "prefire_count": player.prefire_count,
         # Crosshair Placement
-        "cp_median_error_deg": round(player.cp_median_error_deg, 1)
-        if player.cp_median_error_deg
-        else None,
-        "cp_mean_error_deg": round(player.cp_mean_error_deg, 1)
-        if player.cp_mean_error_deg
-        else None,
+        "cp_median_error_deg": (
+            round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None
+        ),
+        "cp_mean_error_deg": (
+            round(player.cp_mean_error_deg, 1) if player.cp_mean_error_deg else None
+        ),
         "cp_samples": len(player.cp_values),
         # Opening duels
         "opening_duel_wins": player.opening_duels.wins,
@@ -225,8 +227,12 @@ def build_player_response(player: Any) -> dict:
         "impact_rating": round(player.impact_rating, 2),
         "hltv_rating": round(player.hltv_rating, 2),
         # Advanced metrics - TTD and CP
-        "ttd_median_ms": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
-        "cp_median_error": round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None,
+        "ttd_median_ms": (
+            round(player.ttd_median_ms, 1) if player.ttd_median_ms else None
+        ),
+        "cp_median_error": (
+            round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None
+        ),
         # Opening duels (nested)
         "opening_duels": {
             "attempts": player.opening_duels.attempts,
@@ -478,7 +484,8 @@ async def analyze_demo(file: UploadFile = File(...)):
 
         if file_size_bytes > MAX_FILE_SIZE_BYTES:
             raise HTTPException(
-                status_code=413, detail=(f"File too large: {file_size_bytes / (1024 * 1024):.1f}MB")
+                status_code=413,
+                detail=f"File too large: {file_size_bytes / (1024 * 1024):.1f}MB",
             )
 
         if file_size_bytes == 0:
@@ -569,7 +576,9 @@ async def download_job_result(job_id: str):
 async def list_jobs() -> dict[str, Any]:
     jobs = job_store.list_jobs()
     return {
-        "jobs": [{"job_id": j.job_id, "status": j.status, "filename": j.filename} for j in jobs]
+        "jobs": [
+            {"job_id": j.job_id, "status": j.status, "filename": j.filename} for j in jobs
+        ]
     }
 
 

@@ -876,6 +876,11 @@ class CachedAnalyzer:
 
         # Use actual round data if available, otherwise use analysis total_rounds
         total_rounds = getattr(analysis, "total_rounds", 0) or len(round_boundaries) or len(round_kills)
+        total_rounds = (
+            getattr(analysis, "total_rounds", 0)
+            or len(round_boundaries)
+            or len(round_kills)
+        )
 
         # Build timeline entries - ensure we have entries for all rounds
         for round_num in range(1, total_rounds + 1):
@@ -1107,7 +1112,11 @@ class CachedAnalyzer:
             # Only count damage to enemies
             is_enemy_damage = (
                 "CT" in attacker_side and "T" in victim_side and "CT" not in victim_side
-            ) or ("T" in attacker_side and "CT" not in attacker_side and "CT" in victim_side)
+            ) or (
+                "T" in attacker_side
+                and "CT" not in attacker_side
+                and "CT" in victim_side
+            )
 
             if attacker_id and round_num and is_enemy_damage:
                 if round_num not in round_damages:
