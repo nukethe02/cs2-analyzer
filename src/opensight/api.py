@@ -154,9 +154,7 @@ def player_stats_to_dict(player: Any) -> dict:
         "kills_per_round": player.kills_per_round,
         "deaths_per_round": player.deaths_per_round,
         # TTD (Time to Damage)
-        "ttd_median_ms": (
-            round(player.ttd_median_ms, 1) if player.ttd_median_ms else None
-        ),
+        "ttd_median_ms": (round(player.ttd_median_ms, 1) if player.ttd_median_ms else None),
         "ttd_mean_ms": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
         "ttd_samples": len(player.ttd_values),
         "prefire_count": player.prefire_count,
@@ -227,9 +225,7 @@ def build_player_response(player: Any) -> dict:
         "impact_rating": round(player.impact_rating, 2),
         "hltv_rating": round(player.hltv_rating, 2),
         # Advanced metrics - TTD and CP
-        "ttd_median_ms": (
-            round(player.ttd_median_ms, 1) if player.ttd_median_ms else None
-        ),
+        "ttd_median_ms": (round(player.ttd_median_ms, 1) if player.ttd_median_ms else None),
         "cp_median_error": (
             round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None
         ),
@@ -372,9 +368,7 @@ class RadarRequest(BaseModel):
     """Request model for radar coordinate transformation."""
 
     map_name: str
-    positions: list[dict[str, float]] = Field(
-        ..., description="List of {x, y, z} game coordinates"
-    )
+    positions: list[dict[str, float]] = Field(..., description="List of {x, y, z} game coordinates")
 
 
 # Get the static files directory
@@ -469,9 +463,7 @@ async def decode_share_code(request: ShareCodeRequest) -> dict[str, int]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except ImportError as e:
-        raise HTTPException(
-            status_code=500, detail=f"Module not available: {e!s}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Module not available: {e!s}") from e
 
 
 @app.post("/analyze", status_code=202)
@@ -550,9 +542,7 @@ async def analyze_demo(file: UploadFile = File(...)):
 
             import threading
 
-            threading.Thread(
-                target=_process_job, args=(job.job_id, demo_path), daemon=True
-            ).start()
+            threading.Thread(target=_process_job, args=(job.job_id, demo_path), daemon=True).start()
         except Exception:
             # If we fail to start the worker, mark job failed
             job_store.set_status(job.job_id, JobStatus.FAILED)
@@ -571,9 +561,7 @@ async def analyze_demo(file: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.exception("Failed to queue analysis job")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to queue job: {e!s}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to queue job: {e!s}") from e
 
 
 @app.get("/analyze/{job_id}")
@@ -603,10 +591,7 @@ async def download_job_result(job_id: str):
 async def list_jobs() -> dict[str, Any]:
     jobs = job_store.list_jobs()
     return {
-        "jobs": [
-            {"job_id": j.job_id, "status": j.status, "filename": j.filename}
-            for j in jobs
-        ]
+        "jobs": [{"job_id": j.job_id, "status": j.status, "filename": j.filename} for j in jobs]
     }
 
 
@@ -632,12 +617,8 @@ async def about() -> dict[str, Any]:
                 "hltv_rating": (
                     "HLTV 2.0 Rating - industry standard performance metric (1.0 = average)"
                 ),
-                "impact_rating": (
-                    "Impact component - measures round-winning contributions"
-                ),
-                "kast_percentage": (
-                    "KAST% - rounds with Kill, Assist, Survived, or Traded"
-                ),
+                "impact_rating": ("Impact component - measures round-winning contributions"),
+                "kast_percentage": ("KAST% - rounds with Kill, Assist, Survived, or Traded"),
                 "aim_rating": (
                     "Leetify-style Aim Rating (0-100, 50 = average) - based on TTD, CP, HS%"
                 ),
@@ -675,9 +656,7 @@ async def about() -> dict[str, Any]:
                 "opening_wins": "First kills of the round won",
                 "opening_losses": "First deaths of the round",
                 "kills_traded": "Times you avenged a teammate within 5 seconds",
-                "deaths_traded": (
-                    "Times a teammate avenged your death within 5 seconds"
-                ),
+                "deaths_traded": ("Times a teammate avenged your death within 5 seconds"),
             },
             "utility": {
                 "flash_assists": "Kills on enemies you flashed",
@@ -690,9 +669,7 @@ async def about() -> dict[str, Any]:
                 "he_damage": "Total HE grenade damage to enemies",
                 "he_damage_per_nade": "Average damage per HE grenade",
                 "molotov_damage": "Total molotov/incendiary damage",
-                "utility_quantity_rating": (
-                    "How much utility thrown vs expected (3/round)"
-                ),
+                "utility_quantity_rating": ("How much utility thrown vs expected (3/round)"),
                 "utility_quality_rating": "Flash/HE effectiveness composite",
             },
             "side_stats": {
@@ -763,9 +740,7 @@ async def about() -> dict[str, Any]:
             "leetify": (
                 "Aim Rating, Utility Rating, and detailed flash stats follow Leetify methodology"
             ),
-            "scope_gg": (
-                "Mistakes tracking and side-based stats follow Scope.gg methodology"
-            ),
+            "scope_gg": ("Mistakes tracking and side-based stats follow Scope.gg methodology"),
             "hltv": "HLTV 2.0 Rating formula and KAST% calculation",
         },
         # API optimization notes for clients
@@ -825,9 +800,7 @@ async def get_map_info(map_name: str) -> dict[str, Any]:
             "has_multiple_levels": metadata.z_cutoff is not None,
         }
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Radar module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"Radar module not available: {e}") from e
 
 
 @app.post("/radar/transform")
@@ -857,9 +830,7 @@ async def transform_coordinates(request: RadarRequest) -> dict[str, Any]:
             "positions": results,
         }
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Radar module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"Radar module not available: {e}") from e
 
 
 # =============================================================================
@@ -878,9 +849,7 @@ async def get_hltv_rankings(
         client = HLTVClient()
         return {"rankings": client.get_world_rankings(top_n)}
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"HLTV module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}") from e
 
 
 @app.get("/hltv/map/{map_name}")
@@ -894,9 +863,7 @@ async def get_hltv_map_stats(map_name: str) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail=f"No stats for map: {map_name}")
         return stats
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"HLTV module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}") from e
 
 
 @app.get("/hltv/player/search")
@@ -910,9 +877,7 @@ async def search_hltv_player(
         client = HLTVClient()
         return {"results": client.search_player(nickname)}
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"HLTV module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}") from e
 
 
 @app.post("/hltv/enrich")
@@ -925,9 +890,7 @@ async def enrich_analysis(
 
         return enrich_match_analysis(analysis_data)
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"HLTV module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}") from e
 
 
 # =============================================================================
@@ -952,9 +915,7 @@ async def get_cache_stats() -> dict[str, Any]:
 
         return stats_wrapped
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Cache module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}") from e
 
 
 @app.post("/cache/clear")
@@ -973,9 +934,7 @@ async def clear_cache() -> dict[str, str]:
 
         return {"status": "ok", "message": "Cache cleared"}
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Cache module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}") from e
 
 
 # =============================================================================
@@ -993,9 +952,7 @@ async def submit_feedback(request: FeedbackRequest) -> dict[str, Any]:
 
         db = FeedbackDatabase()
         metadata: dict[str, Any] = (
-            {"correction_value": request.correction_value}
-            if request.correction_value
-            else {}
+            {"correction_value": request.correction_value} if request.correction_value else {}
         )
         feedback = FeedbackEntry(
             id=None,
@@ -1011,9 +968,7 @@ async def submit_feedback(request: FeedbackRequest) -> dict[str, Any]:
         entry_id = db.add_feedback(feedback)
         return {"status": "ok", "feedback_id": entry_id}
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Feedback module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}") from e
 
 
 @app.post("/feedback/coaching")
@@ -1040,9 +995,7 @@ async def submit_coaching_feedback(
         entry_id = db.add_coaching_feedback(feedback)
         return {"status": "ok", "feedback_id": entry_id}
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Feedback module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}") from e
 
 
 @app.get("/feedback/stats")
@@ -1054,9 +1007,7 @@ async def get_feedback_stats() -> Any:
         db = FeedbackDatabase()
         return db.get_stats()
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Feedback module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}") from e
 
 
 # =============================================================================
@@ -1093,9 +1044,7 @@ async def get_parallel_status() -> dict[str, Any]:
 @app.post("/replay/generate")
 async def generate_replay_data(
     file: Annotated[UploadFile, File(...)],
-    sample_rate: Annotated[
-        int, Query(ge=1, le=128, description="Extract every Nth tick")
-    ] = 16,
+    sample_rate: Annotated[int, Query(ge=1, le=128, description="Extract every Nth tick")] = 16,
 ) -> dict[str, Any]:
     """
     Generate 2D replay data from a demo file.
@@ -1109,18 +1058,14 @@ async def generate_replay_data(
 
     filename_lower = file.filename.lower()
     if not filename_lower.endswith(ALLOWED_EXTENSIONS):
-        raise HTTPException(
-            status_code=400, detail="File must be a .dem or .dem.gz file"
-        )
+        raise HTTPException(status_code=400, detail="File must be a .dem or .dem.gz file")
 
     try:
         from opensight.core.parser import DemoParser
         from opensight.visualization.radar import CoordinateTransformer
         from opensight.visualization.replay import ReplayGenerator
     except ImportError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Replay module not available: {e}"
-        ) from e
+        raise HTTPException(status_code=503, detail=f"Replay module not available: {e}") from e
 
     tmp_path = None
     try:
@@ -1186,9 +1131,7 @@ async def generate_replay_data(
                 )
 
             if frame.bomb:
-                bomb_pos = transformer.game_to_radar(
-                    frame.bomb.x, frame.bomb.y, frame.bomb.z
-                )
+                bomb_pos = transformer.game_to_radar(frame.bomb.x, frame.bomb.y, frame.bomb.z)
                 bomb_state = (
                     frame.bomb.state.value
                     if hasattr(frame.bomb.state, "value")
@@ -1225,9 +1168,7 @@ async def generate_replay_data(
         raise
     except Exception as e:
         logger.exception("Replay generation failed")
-        raise HTTPException(
-            status_code=500, detail=f"Replay generation failed: {e!s}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Replay generation failed: {e!s}") from e
     finally:
         if tmp_path and tmp_path.exists():
             try:
@@ -1303,6 +1244,4 @@ async def get_player_metrics(steam_id: str, demo_id: str = Query(None)) -> dict:
         }
     except Exception as e:
         logger.exception("Failed to retrieve player metrics")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve metrics: {e!s}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve metrics: {e!s}") from e

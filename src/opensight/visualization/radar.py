@@ -613,9 +613,7 @@ def _point_in_polygon(x: float, y: float, polygon: list[list[float]]) -> bool:
     return inside
 
 
-def get_zone_for_position(
-    map_name: str, x: float, y: float, z: float | None = None
-) -> str:
+def get_zone_for_position(map_name: str, x: float, y: float, z: float | None = None) -> str:
     """
     Determine which zone a position is in.
 
@@ -882,9 +880,7 @@ class RadarDataGenerator:
                             {
                                 "x": round(pos.x, 1),
                                 "y": round(pos.y, 1),
-                                "player": player_names.get(
-                                    kill.attacker_steamid, "Unknown"
-                                ),
+                                "player": player_names.get(kill.attacker_steamid, "Unknown"),
                                 "weapon": kill.weapon,
                                 "headshot": kill.headshot,
                             }
@@ -902,9 +898,7 @@ class RadarDataGenerator:
                             {
                                 "x": round(pos.x, 1),
                                 "y": round(pos.y, 1),
-                                "player": player_names.get(
-                                    kill.victim_steamid, "Unknown"
-                                ),
+                                "player": player_names.get(kill.victim_steamid, "Unknown"),
                             }
                         )
 
@@ -954,9 +948,7 @@ class RadarDataGenerator:
                             "type": grenade.grenade_type,
                             "x": round(pos.x, 1),
                             "y": round(pos.y, 1),
-                            "thrower": player_names.get(
-                                grenade.thrower_steamid, "Unknown"
-                            ),
+                            "thrower": player_names.get(grenade.thrower_steamid, "Unknown"),
                             "round": grenade.round_num,
                             "tick": grenade.tick,
                         }
