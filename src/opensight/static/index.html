@@ -416,6 +416,43 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
 
+        /* Heatmap Filter Styles */
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 4px;
+        }
+
+        .filter-btn {
+            padding: 6px 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #94a3b8;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .filter-btn:hover {
+            background: #334155;
+            color: #e2e8f0;
+        }
+
+        .filter-btn.active {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .zone-stat-item:hover {
+            background: #334155 !important;
+        }
+
         /* Match Header */
         .match-header {
             background: var(--bg-card);
@@ -2513,19 +2550,125 @@
             if (!heatmapData || Object.keys(heatmapData).length === 0) {
                 return `
                     <div class="text-center py-12 text-gray-400">
-                        <div class="text-4xl mb-4">🗺️</div>
+                        <div class="text-4xl mb-4"></div>
                         <p class="text-lg">Heatmap data not available</p>
-                        <p class="text-sm mt-2">Position tracking requires tick-level parsing</p>
+                        <p class="text-sm mt-2">Position tracking requires kill events</p>
                     </div>
                 `;
             }
 
+            const kills = heatmapData.kill_positions || [];
+            const deaths = heatmapData.death_positions || [];
+
+            // Get unique players for filter dropdown
+            const players = [...new Set([
+                ...kills.map(k => k.player_name),
+                ...deaths.map(d => d.player_name)
+            ])].filter(p => p && p !== 'Unknown').sort();
+
             return `
-                <div class="bg-surface rounded-lg p-6">
-                    <h3 class="text-lg font-semibold text-white mb-4">Position Heatmap - ${esc(mapName || 'Unknown Map')}</h3>
-                    <div class="text-center py-8 text-gray-400">
-                        <p>Heatmap visualization coming soon</p>
-                        <p class="text-sm mt-2">Kill positions: ${Object.keys(heatmapData.kills || {}).length || 0} tracked</p>
+                <div class="heatmap-wrapper" style="display: flex; gap: 24px; flex-wrap: wrap;">
+                    <!-- Main Map Area -->
+                    <div class="heatmap-main" style="flex: 1; min-width: 500px;">
+                        <div class="heatmap-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 class="text-lg font-semibold text-white">Map Zones - ${esc(mapName || 'Unknown Map')}</h3>
+                            <div class="heatmap-stats" style="display: flex; gap: 16px; font-size: 0.85rem;">
+                                <span style="color: #10b981;">${kills.length} Kills</span>
+                                <span style="color: #ef4444;">${deaths.length} Deaths</span>
+                            </div>
+                        </div>
+
+                        <!-- Filter Controls -->
+                        <div class="heatmap-filters" style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; padding: 12px; background: rgba(30, 41, 59, 0.5); border-radius: 8px;">
+                            <!-- Side Filter -->
+                            <div class="filter-group">
+                                <label style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Side</label>
+                                <div class="btn-group" data-filter="side">
+                                    <button class="filter-btn active" data-value="all">All</button>
+                                    <button class="filter-btn" data-value="CT" style="color: #5c9cff;">CT</button>
+                                    <button class="filter-btn" data-value="T" style="color: #ffb347;">T</button>
+                                </div>
+                            </div>
+
+                            <!-- Phase Filter -->
+                            <div class="filter-group">
+                                <label style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Phase</label>
+                                <div class="btn-group" data-filter="phase">
+                                    <button class="filter-btn active" data-value="all">All</button>
+                                    <button class="filter-btn" data-value="pre_plant">Pre-plant</button>
+                                    <button class="filter-btn" data-value="post_plant">Post-plant</button>
+                                </div>
+                            </div>
+
+                            <!-- Economy Filter -->
+                            <div class="filter-group">
+                                <label style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Economy</label>
+                                <div class="btn-group" data-filter="round_type">
+                                    <button class="filter-btn active" data-value="all">All</button>
+                                    <button class="filter-btn" data-value="pistol">Pistol</button>
+                                    <button class="filter-btn" data-value="eco">Eco</button>
+                                    <button class="filter-btn" data-value="force">Force</button>
+                                    <button class="filter-btn" data-value="full_buy">Full Buy</button>
+                                </div>
+                            </div>
+
+                            <!-- Player Filter -->
+                            <div class="filter-group">
+                                <label style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Player</label>
+                                <select id="heatmap-player-filter" style="padding: 6px 12px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.8rem;">
+                                    <option value="all">All Players</option>
+                                    ${players.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('')}
+                                </select>
+                            </div>
+
+                            <!-- Toggle Visibility -->
+                            <div class="filter-group" style="margin-left: auto;">
+                                <label style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Show</label>
+                                <div style="display: flex; gap: 12px;">
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; color: #e2e8f0;">
+                                        <input type="checkbox" id="show-kills" checked style="accent-color: #10b981;">
+                                        Kills
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; color: #e2e8f0;">
+                                        <input type="checkbox" id="show-deaths" checked style="accent-color: #ef4444;">
+                                        Deaths
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; color: #e2e8f0;">
+                                        <input type="checkbox" id="show-zones" checked>
+                                        Zones
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Canvas Container -->
+                        <div class="heatmap-canvas-container" style="position: relative; background: #0d0d12; border-radius: 12px; overflow: hidden; border: 1px solid #334155;">
+                            <canvas id="heatmap-canvas" width="800" height="800" style="width: 100%; max-width: 800px; display: block; margin: 0 auto;"></canvas>
+                            <div id="heatmap-tooltip" style="display: none; position: absolute; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; pointer-events: none; z-index: 100; color: #e2e8f0;"></div>
+                        </div>
+
+                        <!-- Legend -->
+                        <div class="heatmap-legend" style="display: flex; justify-content: center; gap: 24px; margin-top: 16px; padding: 12px; background: rgba(30, 41, 59, 0.5); border-radius: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 0.75rem; color: #94a3b8;">Zone K/D:</span>
+                                <span style="display: inline-block; width: 20px; height: 20px; background: rgba(239, 68, 68, 0.4); border-radius: 4px;"></span>
+                                <span style="font-size: 0.75rem; color: #94a3b8;">Bad (&lt;0.8)</span>
+                                <span style="display: inline-block; width: 20px; height: 20px; background: rgba(234, 179, 8, 0.4); border-radius: 4px;"></span>
+                                <span style="font-size: 0.75rem; color: #94a3b8;">Average</span>
+                                <span style="display: inline-block; width: 20px; height: 20px; background: rgba(16, 185, 129, 0.4); border-radius: 4px;"></span>
+                                <span style="font-size: 0.75rem; color: #94a3b8;">Good (&gt;1.2)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Zone Stats Sidebar -->
+                    <div class="heatmap-sidebar" style="width: 280px; min-width: 280px;">
+                        <div style="background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155;">
+                            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; color: #e2e8f0;">Zone Performance</h4>
+                            <div id="zone-stats-list" style="max-height: 600px; overflow-y: auto;">
+                                <p style="color: #94a3b8; font-size: 0.85rem;">Click a zone to see details</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -2836,37 +2979,106 @@
             `;
         }
 
-        // Initialize Heatmap Canvas
+        // Initialize Heatmap Canvas with full zone support
         function initHeatmap(heatmapData) {
             const canvas = document.getElementById('heatmap-canvas');
             if (!canvas) return;
 
             const ctx = canvas.getContext('2d');
-            const kills = heatmapData.kill_positions || [];
-            const deaths = heatmapData.death_positions || [];
+            const mapName = (heatmapData.map_name || '').toLowerCase();
+            const allKills = heatmapData.kill_positions || [];
+            const allDeaths = heatmapData.death_positions || [];
+            const zoneStats = heatmapData.zone_stats || {};
+            const zoneDefs = heatmapData.zone_definitions || {};
 
-            // Find bounds
-            const allX = [...kills.map(p => p.x), ...deaths.map(p => p.x)].filter(v => v != null);
-            const allY = [...kills.map(p => p.y), ...deaths.map(p => p.y)].filter(v => v != null);
+            // Filter state
+            let filters = { side: 'all', phase: 'all', round_type: 'all', player: 'all' };
+            let selectedZone = null;
+            let radarImage = null;
 
-            if (!allX.length || !allY.length) {
-                ctx.fillStyle = '#6b7280';
-                ctx.font = '16px Inter, sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('No position data available for this map', 400, 400);
-                return;
+            // Map coordinate transformation parameters
+            const mapParams = {
+                'de_dust2': { pos_x: -2476, pos_y: 3239, scale: 4.4 },
+                'de_mirage': { pos_x: -3230, pos_y: 1713, scale: 5.0 },
+                'de_inferno': { pos_x: -2087, pos_y: 3870, scale: 4.9 },
+                'de_nuke': { pos_x: -3453, pos_y: 2887, scale: 7.0 },
+                'de_overpass': { pos_x: -4831, pos_y: 1781, scale: 5.2 },
+                'de_vertigo': { pos_x: -3168, pos_y: 1762, scale: 4.0 },
+                'de_ancient': { pos_x: -2953, pos_y: 2164, scale: 5.0 },
+                'de_anubis': { pos_x: -2796, pos_y: 3328, scale: 5.22 },
+            };
+
+            const radarUrls = {
+                'de_dust2': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png',
+                'de_mirage': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png',
+                'de_inferno': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png',
+                'de_nuke': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png',
+                'de_overpass': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png',
+                'de_vertigo': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png',
+                'de_ancient': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png',
+                'de_anubis': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png',
+            };
+
+            const params = mapParams[mapName] || { pos_x: -3000, pos_y: 3000, scale: 5.0 };
+
+            // Load radar image
+            const radarUrl = radarUrls[mapName];
+            if (radarUrl) {
+                radarImage = new Image();
+                radarImage.crossOrigin = 'anonymous';
+                radarImage.onload = () => draw();
+                radarImage.onerror = () => { radarImage = null; draw(); };
+                radarImage.src = radarUrl;
             }
 
-            const minX = Math.min(...allX), maxX = Math.max(...allX);
-            const minY = Math.min(...allY), maxY = Math.max(...allY);
-            const rangeX = maxX - minX || 1;
-            const rangeY = maxY - minY || 1;
+            // Convert game coordinates to canvas coordinates
+            function gameToCanvas(x, y) {
+                const pixelX = (x - params.pos_x) / params.scale;
+                const pixelY = (params.pos_y - y) / params.scale;
+                const scaleX = canvas.width / 1024;
+                const scaleY = canvas.height / 1024;
+                return {
+                    x: Math.max(0, Math.min(canvas.width, pixelX * scaleX)),
+                    y: Math.max(0, Math.min(canvas.height, pixelY * scaleY))
+                };
+            }
 
-            function draw() {
-                ctx.fillStyle = '#0d0d12';
-                ctx.fillRect(0, 0, 800, 800);
+            // Filter positions based on current filters
+            function filterPositions(positions) {
+                return positions.filter(p => {
+                    if (filters.side !== 'all' && p.side && !p.side.toUpperCase().includes(filters.side)) return false;
+                    if (filters.phase !== 'all' && p.phase !== filters.phase) return false;
+                    if (filters.round_type !== 'all' && p.round_type !== filters.round_type) return false;
+                    if (filters.player !== 'all' && p.player_name !== filters.player) return false;
+                    return true;
+                });
+            }
 
-                // Draw grid
+            // Compute zone stats from filtered data
+            function computeFilteredZoneStats(kills, deaths) {
+                const stats = {};
+                const totalKills = kills.length;
+                for (const k of kills) {
+                    const zone = k.zone || 'Unknown';
+                    if (!stats[zone]) stats[zone] = { kills: 0, deaths: 0, ct_kills: 0, t_kills: 0 };
+                    stats[zone].kills++;
+                    if (k.side && k.side.toUpperCase().includes('CT')) stats[zone].ct_kills++;
+                    else stats[zone].t_kills++;
+                }
+                for (const d of deaths) {
+                    const zone = d.zone || 'Unknown';
+                    if (!stats[zone]) stats[zone] = { kills: 0, deaths: 0, ct_kills: 0, t_kills: 0 };
+                    stats[zone].deaths++;
+                }
+                for (const [zone, s] of Object.entries(stats)) {
+                    s.kd_ratio = s.deaths > 0 ? (s.kills / s.deaths) : s.kills;
+                    s.kill_pct = totalKills > 0 ? Math.round(s.kills / totalKills * 100) : 0;
+                }
+                return stats;
+            }
+
+            // Draw grid background
+            function drawGrid() {
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
                 ctx.lineWidth = 1;
                 for (let i = 0; i <= 10; i++) {
@@ -2879,64 +3091,252 @@
                     ctx.lineTo(800, i * 80);
                     ctx.stroke();
                 }
+            }
 
-                const showKills = document.getElementById('show-kills')?.checked ?? true;
-                const showDeaths = document.getElementById('show-deaths')?.checked ?? true;
+            // Draw a kill/death marker
+            function drawMarker(x, y, type, data) {
+                const color = type === 'kill' ? '16, 185, 129' : '239, 68, 68';
+                const highlight = selectedZone && data.zone === selectedZone;
+                const radius = highlight ? 14 : 10;
 
-                // Draw deaths (red)
-                if (showDeaths) {
-                    for (const pos of deaths) {
-                        if (pos.x == null || pos.y == null) continue;
-                        const x = ((pos.x - minX) / rangeX) * 750 + 25;
-                        const y = 800 - (((pos.y - minY) / rangeY) * 750 + 25);
+                // Glow effect
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+                gradient.addColorStop(0, `rgba(${color}, ${highlight ? 1 : 0.8})`);
+                gradient.addColorStop(1, `rgba(${color}, 0)`);
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
 
-                        // Glow effect
-                        const gradient = ctx.createRadialGradient(x, y, 0, x, y, 12);
-                        gradient.addColorStop(0, 'rgba(239, 68, 68, 0.8)');
-                        gradient.addColorStop(1, 'rgba(239, 68, 68, 0)');
-                        ctx.fillStyle = gradient;
-                        ctx.beginPath();
-                        ctx.arc(x, y, 12, 0, Math.PI * 2);
-                        ctx.fill();
+                // Core dot
+                ctx.fillStyle = `rgba(${color}, 1)`;
+                ctx.beginPath();
+                ctx.arc(x, y, highlight ? 5 : 3, 0, Math.PI * 2);
+                ctx.fill();
 
-                        // Core dot
-                        ctx.fillStyle = 'rgba(239, 68, 68, 1)';
-                        ctx.beginPath();
-                        ctx.arc(x, y, 4, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
+                // Headshot indicator for kills
+                if (type === 'kill' && data.headshot) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 6, 0, Math.PI * 2);
+                    ctx.stroke();
                 }
+            }
 
-                // Draw kills (green)
-                if (showKills) {
-                    for (const pos of kills) {
-                        if (pos.x == null || pos.y == null) continue;
-                        const x = ((pos.x - minX) / rangeX) * 750 + 25;
-                        const y = 800 - (((pos.y - minY) / rangeY) * 750 + 25);
+            // Draw zone polygons
+            function drawZones(stats) {
+                for (const [zoneName, zoneDef] of Object.entries(zoneDefs)) {
+                    const zs = stats[zoneName];
+                    if (!zoneDef.bounds || zoneDef.bounds.length < 3) continue;
 
-                        // Glow effect
-                        const gradient = ctx.createRadialGradient(x, y, 0, x, y, 12);
-                        gradient.addColorStop(0, 'rgba(16, 185, 129, 0.8)');
-                        gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
-                        ctx.fillStyle = gradient;
-                        ctx.beginPath();
-                        ctx.arc(x, y, 12, 0, Math.PI * 2);
-                        ctx.fill();
+                    // Calculate color based on K/D ratio
+                    const kd = zs ? zs.kd_ratio : 1;
+                    let fillColor;
+                    if (kd < 0.8) fillColor = 'rgba(239, 68, 68, 0.25)';
+                    else if (kd < 1.2) fillColor = 'rgba(234, 179, 8, 0.2)';
+                    else fillColor = 'rgba(16, 185, 129, 0.25)';
 
-                        // Core dot
-                        ctx.fillStyle = 'rgba(16, 185, 129, 1)';
-                        ctx.beginPath();
-                        ctx.arc(x, y, 4, 0, Math.PI * 2);
-                        ctx.fill();
+                    // Highlight selected zone
+                    if (selectedZone === zoneName) {
+                        fillColor = fillColor.replace('0.25', '0.5').replace('0.2', '0.4');
+                    }
+
+                    // Draw polygon
+                    ctx.beginPath();
+                    const firstPoint = gameToCanvas(zoneDef.bounds[0][0], zoneDef.bounds[0][1]);
+                    ctx.moveTo(firstPoint.x, firstPoint.y);
+                    for (let i = 1; i < zoneDef.bounds.length; i++) {
+                        const point = gameToCanvas(zoneDef.bounds[i][0], zoneDef.bounds[i][1]);
+                        ctx.lineTo(point.x, point.y);
+                    }
+                    ctx.closePath();
+                    ctx.fillStyle = fillColor;
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    // Draw zone label with kill %
+                    if (zs && zs.kill_pct > 0) {
+                        const center = getPolygonCenter(zoneDef.bounds);
+                        const canvasCenter = gameToCanvas(center.x, center.y);
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                        ctx.font = '11px Inter, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(`${zs.kill_pct}%`, canvasCenter.x, canvasCenter.y - 5);
+                        ctx.font = '9px Inter, sans-serif';
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                        ctx.fillText(zoneName.length > 12 ? zoneName.substring(0, 10) + '..' : zoneName, canvasCenter.x, canvasCenter.y + 8);
                     }
                 }
             }
 
-            draw();
+            function getPolygonCenter(bounds) {
+                let sumX = 0, sumY = 0;
+                for (const [x, y] of bounds) { sumX += x; sumY += y; }
+                return { x: sumX / bounds.length, y: sumY / bounds.length };
+            }
 
-            // Event listeners for checkboxes
+            // Update zone stats panel
+            function updateZoneStatsPanel(stats) {
+                const panel = document.getElementById('zone-stats-list');
+                if (!panel) return;
+
+                const sortedZones = Object.entries(stats)
+                    .filter(([z, s]) => s.kills > 0 || s.deaths > 0)
+                    .sort((a, b) => b[1].kill_pct - a[1].kill_pct);
+
+                if (sortedZones.length === 0) {
+                    panel.innerHTML = '<p style="color: #94a3b8; font-size: 0.85rem;">No data for current filters</p>';
+                    return;
+                }
+
+                panel.innerHTML = sortedZones.map(([zone, s]) => {
+                    const kdColor = s.kd_ratio >= 1.2 ? '#10b981' : s.kd_ratio >= 0.8 ? '#f59e0b' : '#ef4444';
+                    const isSelected = selectedZone === zone;
+                    return `
+                        <div class="zone-stat-item" data-zone="${esc(zone)}"
+                             style="padding: 10px; margin-bottom: 8px; background: ${isSelected ? '#334155' : '#0f172a'};
+                                    border-radius: 6px; cursor: pointer; border: 1px solid ${isSelected ? '#00e5ff' : 'transparent'};">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: 500; color: #e2e8f0;">${esc(zone)}</span>
+                                <span style="font-size: 0.8rem; color: ${kdColor};">${s.kd_ratio.toFixed(2)} K/D</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">
+                                <span>${s.kill_pct}% of kills</span>
+                                <span style="color: #10b981;">${s.kills}K</span>
+                                <span style="color: #ef4444;">${s.deaths}D</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Add click handlers to zone items
+                panel.querySelectorAll('.zone-stat-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const zone = item.dataset.zone;
+                        selectedZone = selectedZone === zone ? null : zone;
+                        draw();
+                    });
+                });
+            }
+
+            // Main draw function
+            function draw() {
+                // Clear canvas
+                ctx.fillStyle = '#0d0d12';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Draw radar background or grid
+                if (radarImage && radarImage.complete) {
+                    ctx.globalAlpha = 0.6;
+                    ctx.drawImage(radarImage, 0, 0, canvas.width, canvas.height);
+                    ctx.globalAlpha = 1.0;
+                } else {
+                    drawGrid();
+                }
+
+                // Apply filters
+                const kills = filterPositions(allKills);
+                const deaths = filterPositions(allDeaths);
+
+                // Compute filtered zone stats
+                const filteredStats = computeFilteredZoneStats(kills, deaths);
+
+                // Draw zone overlays if enabled
+                const showZones = document.getElementById('show-zones')?.checked ?? true;
+                if (showZones && Object.keys(zoneDefs).length > 0) {
+                    drawZones(filteredStats);
+                }
+
+                // Draw deaths first (below kills)
+                const showDeaths = document.getElementById('show-deaths')?.checked ?? true;
+                if (showDeaths) {
+                    for (const pos of deaths) {
+                        if (pos.x == null || pos.y == null) continue;
+                        const canvasPos = gameToCanvas(pos.x, pos.y);
+                        drawMarker(canvasPos.x, canvasPos.y, 'death', pos);
+                    }
+                }
+
+                // Draw kills on top
+                const showKills = document.getElementById('show-kills')?.checked ?? true;
+                if (showKills) {
+                    for (const pos of kills) {
+                        if (pos.x == null || pos.y == null) continue;
+                        const canvasPos = gameToCanvas(pos.x, pos.y);
+                        drawMarker(canvasPos.x, canvasPos.y, 'kill', pos);
+                    }
+                }
+
+                // Update zone stats panel
+                updateZoneStatsPanel(filteredStats);
+            }
+
+            // Point in polygon check for click detection
+            function pointInPolygon(x, y, polygon) {
+                let inside = false;
+                for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                    const xi = polygon[i][0], yi = polygon[i][1];
+                    const xj = polygon[j][0], yj = polygon[j][1];
+                    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+                        inside = !inside;
+                    }
+                }
+                return inside;
+            }
+
+            // Set up filter event listeners
+            document.querySelectorAll('[data-filter]').forEach(group => {
+                const filterType = group.dataset.filter;
+                group.querySelectorAll('.filter-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        group.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        filters[filterType] = btn.dataset.value;
+                        draw();
+                    });
+                });
+            });
+
+            document.getElementById('heatmap-player-filter')?.addEventListener('change', (e) => {
+                filters.player = e.target.value;
+                draw();
+            });
+
             document.getElementById('show-kills')?.addEventListener('change', draw);
             document.getElementById('show-deaths')?.addEventListener('change', draw);
+            document.getElementById('show-zones')?.addEventListener('change', draw);
+
+            // Canvas click handler for zone selection
+            canvas.addEventListener('click', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const canvasX = (e.clientX - rect.left) * scaleX;
+                const canvasY = (e.clientY - rect.top) * scaleY;
+
+                // Convert canvas coords back to game coords
+                const gameX = canvasX / (canvas.width / 1024) * params.scale + params.pos_x;
+                const gameY = params.pos_y - canvasY / (canvas.height / 1024) * params.scale;
+
+                // Find which zone was clicked
+                for (const [zoneName, zoneDef] of Object.entries(zoneDefs)) {
+                    if (zoneDef.bounds && pointInPolygon(gameX, gameY, zoneDef.bounds)) {
+                        selectedZone = selectedZone === zoneName ? null : zoneName;
+                        draw();
+                        return;
+                    }
+                }
+
+                // Clicked outside all zones
+                selectedZone = null;
+                draw();
+            });
+
+            // Initial draw
+            draw();
         }
 
         // Render Stats Graph Tab (Timeline like Leetify)
