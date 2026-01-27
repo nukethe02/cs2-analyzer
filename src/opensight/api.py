@@ -198,6 +198,79 @@ def player_stats_to_dict(player: Any) -> dict:
     }
 
 
+def build_player_response(player: Any) -> dict:
+    """Build comprehensive player response with all metrics.
+
+    This function provides a structured response format suitable for
+    frontend consumption, with nested objects for complex stats.
+    """
+    return {
+        "name": player.name,
+        "team": player.team,
+        "steam_id": str(player.steam_id),
+        # Basic stats
+        "kills": player.kills,
+        "deaths": player.deaths,
+        "assists": player.assists,
+        "headshots": player.headshots,
+        # Per-round metrics
+        "kpr": round(player.kills_per_round, 2),
+        "dpr": round(player.deaths_per_round, 2),
+        "apr": round(player.assists_per_round, 2),
+        "adr": round(player.adr, 1),
+        # Percentages
+        "hs_percentage": round(player.headshot_percentage, 1),
+        "kast_percentage": round(player.kast_percentage, 1),
+        # Ratings
+        "impact_rating": round(player.impact_rating, 2),
+        "hltv_rating": round(player.hltv_rating, 2),
+        # Advanced metrics - TTD and CP
+        "ttd_median_ms": round(player.ttd_median_ms, 1) if player.ttd_median_ms else None,
+        "cp_median_error": round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None,
+        # Opening duels (nested)
+        "opening_duels": {
+            "attempts": player.opening_duels.attempts,
+            "wins": player.opening_duels.wins,
+            "losses": player.opening_duels.losses,
+            "win_rate": round(player.opening_duels.win_rate, 1),
+        },
+        # Trades (nested)
+        "trades": {
+            "kills_traded": player.trades.kills_traded,
+            "deaths_traded": player.trades.deaths_traded,
+            "trade_rate": round(player.trades.trade_rate, 1),
+        },
+        # Clutches (nested with breakdown)
+        "clutches": {
+            "attempts": player.clutches.total_situations,
+            "wins": player.clutches.total_wins,
+            "win_rate": round(player.clutches.win_rate, 1),
+            "1v1": {"attempts": player.clutches.v1_attempts, "wins": player.clutches.v1_wins},
+            "1v2": {"attempts": player.clutches.v2_attempts, "wins": player.clutches.v2_wins},
+            "1v3": {"attempts": player.clutches.v3_attempts, "wins": player.clutches.v3_wins},
+            "1v4": {"attempts": player.clutches.v4_attempts, "wins": player.clutches.v4_wins},
+            "1v5": {"attempts": player.clutches.v5_attempts, "wins": player.clutches.v5_wins},
+        },
+        # Utility (nested)
+        "utility": {
+            "damage": player.utility.he_damage + player.utility.molotov_damage,
+            "enemies_flashed": player.utility.enemies_flashed,
+            "flash_assists": player.utility.flash_assists,
+            "flashbangs_thrown": player.utility.flashbangs_thrown,
+            "he_thrown": player.utility.he_thrown,
+            "molotovs_thrown": player.utility.molotovs_thrown,
+            "smokes_thrown": player.utility.smokes_thrown,
+        },
+        # Multi-kills
+        "multi_kills": {
+            "2k": player.multi_kills.rounds_with_2k,
+            "3k": player.multi_kills.rounds_with_3k,
+            "4k": player.multi_kills.rounds_with_4k,
+            "5k": player.multi_kills.rounds_with_5k,
+        },
+    }
+
+
 class SharecodeCache:
     def __init__(self, maxsize: int = 1024) -> None:
         self._cache: dict[str, dict] = {}
