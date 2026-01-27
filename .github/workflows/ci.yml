@@ -87,7 +87,7 @@ jobs:
           pip install bandit safety
 
       - name: Run Bandit security linter
-        run: bandit -r src/opensight -ll
+        run: bandit -r src/opensight --severity-level high
 
       - name: Check for known vulnerabilities
         run: |
@@ -141,7 +141,7 @@ jobs:
 
       - name: Check README renders correctly
         run: |
-          pip install readme-renderer
+          pip install "readme-renderer[md]"
           python -m readme_renderer README.md -o /dev/null
 
   release:

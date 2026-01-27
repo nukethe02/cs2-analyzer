@@ -212,7 +212,7 @@ class HLTVCache:
 
     def _get_cache_path(self, key: str) -> Path:
         """Get cache file path for a key."""
-        hash_key = hashlib.md5(key.encode()).hexdigest()
+        hash_key = hashlib.md5(key.encode(), usedforsecurity=False).hexdigest()
         return self.cache_dir / f"{hash_key}.json"
 
     def get(self, key: str) -> dict | None:

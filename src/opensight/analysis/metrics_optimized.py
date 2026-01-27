@@ -535,10 +535,10 @@ class MetricsCacheManager:
         try:
             if not demo_path.exists():
                 # Fallback for test scenarios
-                return hashlib.md5(str(demo_path).encode()).hexdigest()[:16]
+                return hashlib.md5(str(demo_path).encode(), usedforsecurity=False).hexdigest()[:16]
 
             stat = demo_path.stat()
-            hasher = hashlib.md5()
+            hasher = hashlib.md5(usedforsecurity=False)
             hasher.update(str(stat.st_size).encode())
             hasher.update(str(stat.st_mtime).encode())
 
@@ -553,7 +553,7 @@ class MetricsCacheManager:
             return hasher.hexdigest()[:16]
         except OSError as e:
             logger.debug(f"Could not compute demo hash: {e}")
-            return hashlib.md5(str(demo_path).encode()).hexdigest()[:16]
+            return hashlib.md5(str(demo_path).encode(), usedforsecurity=False).hexdigest()[:16]
 
     def get_cache(self, demo_path: Path) -> MetricsCache | None:
         """Get cached metrics for a demo file."""

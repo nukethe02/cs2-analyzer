@@ -287,7 +287,7 @@ class HLTVClient:
         Returns:
             Player data if found
         """
-        cache_key = f"search_{hashlib.md5(name.encode()).hexdigest()[:8]}"
+        cache_key = f"search_{hashlib.md5(name.encode(), usedforsecurity=False).hexdigest()[:8]}"
         cached = self._get_cached(cache_key)
         if cached:
             return cached
@@ -377,7 +377,7 @@ class HLTVClient:
         Returns:
             Team statistics
         """
-        cache_key = f"team_{hashlib.md5(team_name.encode()).hexdigest()[:8]}"
+        cache_key = f"team_{hashlib.md5(team_name.encode(), usedforsecurity=False).hexdigest()[:8]}"
         cached = self._get_cached(cache_key)
         if cached:
             return cached

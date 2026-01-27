@@ -540,7 +540,8 @@ class PlaybookGenerator:
         """Get or create a playbook for a team."""
         if team_name not in self.playbooks:
             playbook_path = (
-                self.data_dir / f"playbook_{hashlib.md5(team_name.encode()).hexdigest()[:8]}.json"
+                self.data_dir
+                / f"playbook_{hashlib.md5(team_name.encode(), usedforsecurity=False).hexdigest()[:8]}.json"
             )
             if playbook_path.exists():
                 try:
@@ -559,7 +560,7 @@ class PlaybookGenerator:
         self.playbooks[playbook.team_name] = playbook
         playbook_path = (
             self.data_dir
-            / f"playbook_{hashlib.md5(playbook.team_name.encode()).hexdigest()[:8]}.json"
+            / f"playbook_{hashlib.md5(playbook.team_name.encode(), usedforsecurity=False).hexdigest()[:8]}.json"
         )
         try:
             with open(playbook_path, "w") as f:
@@ -571,7 +572,8 @@ class PlaybookGenerator:
         """Create a new empty playbook."""
         return Playbook(
             playbook_id=hashlib.md5(
-                f"{team_name}_{datetime.now().isoformat()}".encode()
+                f"{team_name}_{datetime.now().isoformat()}".encode(),
+                usedforsecurity=False,
             ).hexdigest()[:12],
             team_name=team_name,
             created_at=datetime.now().isoformat(),
@@ -771,9 +773,9 @@ class PlaybookGenerator:
             )
 
         play = Play(
-            play_id=hashlib.md5(f"{demo_id}_{round_data.get('round_num', 0)}".encode()).hexdigest()[
-                :8
-            ],
+            play_id=hashlib.md5(
+                f"{demo_id}_{round_data.get('round_num', 0)}".encode(), usedforsecurity=False
+            ).hexdigest()[:8],
             name=f"{play_type.value.title()} {target_site.value}",
             play_type=play_type,
             side=Side.T,
@@ -840,7 +842,9 @@ class PlaybookGenerator:
                     b_players += 1
 
         setup = DefaultSetup(
-            setup_id=hashlib.md5(f"{map_name}_{a_players}_{b_players}".encode()).hexdigest()[:8],
+            setup_id=hashlib.md5(
+                f"{map_name}_{a_players}_{b_players}".encode(), usedforsecurity=False
+            ).hexdigest()[:8],
             name=f"{a_players}A-{b_players}B Setup",
             map_name=map_name,
             positions=player_positions,
@@ -894,7 +898,9 @@ class PlaybookGenerator:
             return None
 
         protocol = RetakeProtocol(
-            protocol_id=hashlib.md5(f"{map_name}_{site.value}_retake".encode()).hexdigest()[:8],
+            protocol_id=hashlib.md5(
+                f"{map_name}_{site.value}_retake".encode(), usedforsecurity=False
+            ).hexdigest()[:8],
             name=f"{site.value} Site Retake",
             map_name=map_name,
             site=site,
