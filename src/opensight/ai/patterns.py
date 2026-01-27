@@ -945,7 +945,9 @@ class PatternAggregator:
             description, root_cause, suggestions = self._get_coaching_info(mistake_type)
 
             pattern = RecurringPattern(
-                pattern_id=hashlib.md5(f"{steamid}_{mistake_type_str}".encode()).hexdigest()[:12],
+                pattern_id=hashlib.md5(
+                    f"{steamid}_{mistake_type_str}".encode(), usedforsecurity=False
+                ).hexdigest()[:12],
                 mistake_type=mistake_type,
                 category=category,
                 frequency=len(instances),

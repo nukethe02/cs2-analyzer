@@ -40,7 +40,9 @@ class DemoAnalysisTask:
 
     def __post_init__(self):
         if not self.task_id:
-            self.task_id = hashlib.md5(str(self.demo_path).encode()).hexdigest()[:12]
+            self.task_id = hashlib.md5(
+                str(self.demo_path).encode(), usedforsecurity=False
+            ).hexdigest()[:12]
 
 
 @dataclass

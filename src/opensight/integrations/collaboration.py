@@ -524,7 +524,8 @@ class CollaborationManager:
         """
         self._session_counter += 1
         session_id = hashlib.md5(
-            f"{demo_id}_{creator_id}_{datetime.now().isoformat()}".encode()
+            f"{demo_id}_{creator_id}_{datetime.now().isoformat()}".encode(),
+            usedforsecurity=False,
         ).hexdigest()[:12]
 
         password_hash = None
@@ -706,7 +707,8 @@ class CollaborationManager:
             return None
 
         annotation_id = hashlib.md5(
-            f"{session_id}_{user_id}_{tick}_{datetime.now().isoformat()}".encode()
+            f"{session_id}_{user_id}_{tick}_{datetime.now().isoformat()}".encode(),
+            usedforsecurity=False,
         ).hexdigest()[:10]
 
         annotation = Annotation(
@@ -846,7 +848,8 @@ class CollaborationManager:
 
         reply = {
             "reply_id": hashlib.md5(
-                f"{annotation_id}_{user_id}_{time.time()}".encode()
+                f"{annotation_id}_{user_id}_{time.time()}".encode(),
+                usedforsecurity=False,
             ).hexdigest()[:8],
             "user_id": user_id,
             "username": user.username,
@@ -895,9 +898,9 @@ class CollaborationManager:
         mentions = re.findall(r"@(\w+)", text)
 
         message = ChatMessage(
-            message_id=hashlib.md5(f"{session_id}_{user_id}_{time.time()}".encode()).hexdigest()[
-                :10
-            ],
+            message_id=hashlib.md5(
+                f"{session_id}_{user_id}_{time.time()}".encode(), usedforsecurity=False
+            ).hexdigest()[:10],
             user_id=user_id,
             username=user.username,
             text=text,
@@ -1056,7 +1059,7 @@ class CollaborationManager:
             "#e67e22",
             "#34495e",
         ]
-        hash_val = int(hashlib.md5(user_id.encode()).hexdigest()[:8], 16)
+        hash_val = int(hashlib.md5(user_id.encode(), usedforsecurity=False).hexdigest()[:8], 16)
         return colors[hash_val % len(colors)]
 
     def export_annotations(self, session_id: str, format: str = "json") -> str | None:

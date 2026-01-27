@@ -1315,9 +1315,9 @@ class CoachingSessionManager:
         """Create a new coaching session."""
         from datetime import datetime
 
-        session_id = hashlib.md5(f"{steamid}_{datetime.now().isoformat()}".encode()).hexdigest()[
-            :12
-        ]
+        session_id = hashlib.md5(
+            f"{steamid}_{datetime.now().isoformat()}".encode(), usedforsecurity=False
+        ).hexdigest()[:12]
         session = CoachingSession(
             session_id=session_id, steamid=steamid, started_at=datetime.now().isoformat()
         )

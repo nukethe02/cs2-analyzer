@@ -277,7 +277,7 @@ class TestDemoParser:
 
         # Patch awpy import and disable demoparser2 so awpy is used
         with patch("opensight.core.parser.DEMOPARSER2_AVAILABLE", False):
-            with patch("opensight.core.parser._check_awpy_available", return_value=True):
+            with patch("opensight.core.parser.AWPY_AVAILABLE", True):
                 with patch.dict("sys.modules", {"awpy": mock_awpy}):
                     parser = DemoParser(demo_file)
                     result1 = parser.parse()
@@ -320,7 +320,7 @@ class TestParseDemoFunction:
 
         # Patch awpy import and disable demoparser2 so awpy is used
         with patch("opensight.core.parser.DEMOPARSER2_AVAILABLE", False):
-            with patch("opensight.core.parser._check_awpy_available", return_value=True):
+            with patch("opensight.core.parser.AWPY_AVAILABLE", True):
                 with patch.dict("sys.modules", {"awpy": mock_awpy}):
                     result = parse_demo(demo_file)
                     assert result.map_name == "de_mirage"

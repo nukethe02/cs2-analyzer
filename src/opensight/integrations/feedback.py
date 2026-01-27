@@ -522,7 +522,7 @@ class FeedbackCollector:
         """Generate anonymous user ID based on session."""
         import uuid
 
-        return hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()[:12]
+        return hashlib.md5(str(uuid.uuid4()).encode(), usedforsecurity=False).hexdigest()[:12]
 
     def submit_rating(
         self,

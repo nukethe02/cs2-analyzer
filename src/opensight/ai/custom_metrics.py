@@ -509,7 +509,8 @@ class CustomMetricBuilder:
 
         # Generate ID
         metric_id = hashlib.md5(
-            f"{name}_{formula}_{datetime.now().isoformat()}".encode()
+            f"{name}_{formula}_{datetime.now().isoformat()}".encode(),
+            usedforsecurity=False,
         ).hexdigest()[:12]
 
         # Validate formula
