@@ -1763,6 +1763,12 @@
             return mapName.replace(/^(de_|cs_)/i, '').replace(/^\w/, c => c.toUpperCase());
         }
 
+        // Format number with specified decimal places
+        function formatNumber(value, decimals = 1) {
+            if (value === null || value === undefined || isNaN(value)) return '0';
+            return Number(value).toFixed(decimals);
+        }
+
         // Parse team value to proper CT/T string
         function parseTeam(team) {
             if (!team) return 'Unknown';
