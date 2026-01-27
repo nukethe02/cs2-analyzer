@@ -119,6 +119,531 @@ FALLBACK_RADAR_URLS = {
     "de_inferno": "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_inferno.png",
 }
 
+# ============================================================================
+# MAP ZONE DEFINITIONS - Named areas with polygon boundaries
+# Coordinates are in game units (not radar pixels)
+# Each zone: {"bounds": [[x1,y1], [x2,y2], ...], "type": "bombsite|route|spawn|mid|choke|position"}
+# ============================================================================
+
+MAP_ZONES: dict[str, dict[str, dict]] = {
+    "de_dust2": {
+        "T Spawn": {
+            "bounds": [[-710, -1780], [540, -1780], [540, -2820], [-710, -2820]],
+            "type": "spawn",
+        },
+        "CT Spawn": {
+            "bounds": [[800, 2430], [1850, 2430], [1850, 3120], [800, 3120]],
+            "type": "spawn",
+        },
+        "Long A": {
+            "bounds": [[180, -510], [1380, -510], [1380, 280], [180, 280]],
+            "type": "route",
+        },
+        "Long Doors": {
+            "bounds": [[-100, -510], [180, -510], [180, -100], [-100, -100]],
+            "type": "choke",
+        },
+        "A Site": {
+            "bounds": [[670, 1510], [1480, 1510], [1480, 2430], [670, 2430]],
+            "type": "bombsite",
+        },
+        "A Ramp": {
+            "bounds": [[470, 280], [1050, 280], [1050, 1510], [470, 1510]],
+            "type": "route",
+        },
+        "Short A": {
+            "bounds": [[-1350, 1550], [-650, 1550], [-650, 2250], [-1350, 2250]],
+            "type": "route",
+        },
+        "Catwalk": {
+            "bounds": [[-650, 1550], [470, 1550], [470, 2250], [-650, 2250]],
+            "type": "route",
+        },
+        "Mid": {
+            "bounds": [[-1480, -20], [-400, -20], [-400, 1200], [-1480, 1200]],
+            "type": "mid",
+        },
+        "Mid Doors": {
+            "bounds": [[-1480, -580], [-400, -580], [-400, -20], [-1480, -20]],
+            "type": "choke",
+        },
+        "Lower Tunnels": {
+            "bounds": [[-2040, -1180], [-1480, -1180], [-1480, -580], [-2040, -580]],
+            "type": "route",
+        },
+        "Upper Tunnels": {
+            "bounds": [[-1900, 280], [-1500, 280], [-1500, 960], [-1900, 960]],
+            "type": "route",
+        },
+        "B Site": {
+            "bounds": [[-2350, 1200], [-1500, 1200], [-1500, 2480], [-2350, 2480]],
+            "type": "bombsite",
+        },
+        "B Window": {
+            "bounds": [[-1500, 1700], [-1150, 1700], [-1150, 2150], [-1500, 2150]],
+            "type": "position",
+        },
+        "Pit": {
+            "bounds": [[1480, 750], [1900, 750], [1900, 1510], [1480, 1510]],
+            "type": "position",
+        },
+        "Goose": {
+            "bounds": [[1480, 2430], [1900, 2430], [1900, 2850], [1480, 2850]],
+            "type": "position",
+        },
+    },
+    "de_mirage": {
+        "T Spawn": {
+            "bounds": [[-2900, -2200], [-2100, -2200], [-2100, -1500], [-2900, -1500]],
+            "type": "spawn",
+        },
+        "CT Spawn": {
+            "bounds": [[600, 1100], [1400, 1100], [1400, 1700], [600, 1700]],
+            "type": "spawn",
+        },
+        "A Site": {
+            "bounds": [[-400, 800], [600, 800], [600, 1600], [-400, 1600]],
+            "type": "bombsite",
+        },
+        "A Ramp": {
+            "bounds": [[-1200, 400], [-400, 400], [-400, 1000], [-1200, 1000]],
+            "type": "route",
+        },
+        "Palace": {
+            "bounds": [[-1800, 600], [-1200, 600], [-1200, 1200], [-1800, 1200]],
+            "type": "route",
+        },
+        "Tetris": {
+            "bounds": [[-400, 300], [200, 300], [200, 800], [-400, 800]],
+            "type": "position",
+        },
+        "Jungle": {
+            "bounds": [[200, 300], [800, 300], [800, 800], [200, 800]],
+            "type": "position",
+        },
+        "Connector": {
+            "bounds": [[200, -400], [800, -400], [800, 300], [200, 300]],
+            "type": "route",
+        },
+        "Mid": {
+            "bounds": [[-600, -1000], [200, -1000], [200, -200], [-600, -200]],
+            "type": "mid",
+        },
+        "Top Mid": {
+            "bounds": [[-1200, -1200], [-600, -1200], [-600, -600], [-1200, -600]],
+            "type": "mid",
+        },
+        "Underpass": {
+            "bounds": [[200, -1200], [800, -1200], [800, -600], [200, -600]],
+            "type": "route",
+        },
+        "B Short": {
+            "bounds": [[-1200, -600], [-600, -600], [-600, -200], [-1200, -200]],
+            "type": "route",
+        },
+        "B Site": {
+            "bounds": [[-2200, -800], [-1400, -800], [-1400, 0], [-2200, 0]],
+            "type": "bombsite",
+        },
+        "B Apartments": {
+            "bounds": [[-2800, -1200], [-2200, -1200], [-2200, -400], [-2800, -400]],
+            "type": "route",
+        },
+        "Market": {
+            "bounds": [[800, -200], [1400, -200], [1400, 400], [800, 400]],
+            "type": "route",
+        },
+        "Window": {
+            "bounds": [[600, 400], [1000, 400], [1000, 800], [600, 800]],
+            "type": "position",
+        },
+    },
+    "de_ancient": {
+        "T Spawn": {
+            "bounds": [[-1800, -600], [-1200, -600], [-1200, 0], [-1800, 0]],
+            "type": "spawn",
+        },
+        "CT Spawn": {
+            "bounds": [[700, 300], [1400, 300], [1400, 900], [700, 900]],
+            "type": "spawn",
+        },
+        "A Site": {
+            "bounds": [[-500, 750], [250, 750], [250, 1350], [-500, 1350]],
+            "type": "bombsite",
+        },
+        "A Main": {
+            "bounds": [[-1200, 250], [-500, 250], [-500, 750], [-1200, 750]],
+            "type": "route",
+        },
+        "Donut": {
+            "bounds": [[-500, -200], [200, -200], [200, 250], [-500, 250]],
+            "type": "route",
+        },
+        "Mid": {
+            "bounds": [[-200, -700], [600, -700], [600, -200], [-200, -200]],
+            "type": "mid",
+        },
+        "B Site": {
+            "bounds": [[900, -400], [1600, -400], [1600, 300], [900, 300]],
+            "type": "bombsite",
+        },
+        "B Main": {
+            "bounds": [[600, -1100], [1200, -1100], [1200, -400], [600, -400]],
+            "type": "route",
+        },
+        "Cave": {
+            "bounds": [[200, 750], [700, 750], [700, 1200], [200, 1200]],
+            "type": "route",
+        },
+        "Temple": {
+            "bounds": [[-1200, -200], [-500, -200], [-500, 250], [-1200, 250]],
+            "type": "route",
+        },
+        "Ramp": {
+            "bounds": [[200, -200], [600, -200], [600, 300], [200, 300]],
+            "type": "route",
+        },
+        "Water": {
+            "bounds": [[-200, -1100], [400, -1100], [400, -700], [-200, -700]],
+            "type": "route",
+        },
+    },
+    "de_inferno": {
+        "T Spawn": {
+            "bounds": [[-400, -1400], [400, -1400], [400, -800], [-400, -800]],
+            "type": "spawn",
+        },
+        "CT Spawn": {
+            "bounds": [[2000, 1400], [2700, 1400], [2700, 2000], [2000, 2000]],
+            "type": "spawn",
+        },
+        "A Site": {
+            "bounds": [[1700, 200], [2400, 200], [2400, 900], [1700, 900]],
+            "type": "bombsite",
+        },
+        "A Long": {
+            "bounds": [[1200, -200], [1800, -200], [1800, 400], [1200, 400]],
+            "type": "route",
+        },
+        "Apartments": {
+            "bounds": [[600, 0], [1200, 0], [1200, 600], [600, 600]],
+            "type": "route",
+        },
+        "Pit": {
+            "bounds": [[2400, 200], [2900, 200], [2900, 700], [2400, 700]],
+            "type": "position",
+        },
+        "Library": {
+            "bounds": [[1700, 900], [2200, 900], [2200, 1400], [1700, 1400]],
+            "type": "position",
+        },
+        "Arch": {
+            "bounds": [[1200, 900], [1700, 900], [1700, 1400], [1200, 1400]],
+            "type": "route",
+        },
+        "Mid": {
+            "bounds": [[400, -600], [1000, -600], [1000, 0], [400, 0]],
+            "type": "mid",
+        },
+        "Top Mid": {
+            "bounds": [[-200, -600], [400, -600], [400, 0], [-200, 0]],
+            "type": "mid",
+        },
+        "Banana": {
+            "bounds": [[-800, 600], [-200, 600], [-200, 1400], [-800, 1400]],
+            "type": "route",
+        },
+        "B Site": {
+            "bounds": [[-1200, 1800], [-400, 1800], [-400, 2600], [-1200, 2600]],
+            "type": "bombsite",
+        },
+        "CT": {
+            "bounds": [[1000, 1400], [1600, 1400], [1600, 2000], [1000, 2000]],
+            "type": "route",
+        },
+        "Second Mid": {
+            "bounds": [[400, 0], [1000, 0], [1000, 600], [400, 600]],
+            "type": "mid",
+        },
+    },
+    "de_anubis": {
+        "T Spawn": {
+            "bounds": [[-2400, -200], [-1600, -200], [-1600, 600], [-2400, 600]],
+            "type": "spawn",
+        },
+        "CT Spawn": {
+            "bounds": [[1000, 1200], [1800, 1200], [1800, 2000], [1000, 2000]],
+            "type": "spawn",
+        },
+        "A Site": {
+            "bounds": [[-400, 1400], [400, 1400], [400, 2200], [-400, 2200]],
+            "type": "bombsite",
+        },
+        "A Main": {
+            "bounds": [[-1200, 800], [-400, 800], [-400, 1400], [-1200, 1400]],
+            "type": "route",
+        },
+        "A Long": {
+            "bounds": [[-1800, 600], [-1200, 600], [-1200, 1200], [-1800, 1200]],
+            "type": "route",
+        },
+        "Mid": {
+            "bounds": [[-600, 0], [200, 0], [200, 800], [-600, 800]],
+            "type": "mid",
+        },
+        "Connector": {
+            "bounds": [[200, 400], [800, 400], [800, 1000], [200, 1000]],
+            "type": "route",
+        },
+        "B Site": {
+            "bounds": [[800, -400], [1600, -400], [1600, 400], [800, 400]],
+            "type": "bombsite",
+        },
+        "B Main": {
+            "bounds": [[-200, -800], [600, -800], [600, -200], [-200, -200]],
+            "type": "route",
+        },
+        "Canal": {
+            "bounds": [[600, -1200], [1200, -1200], [1200, -600], [600, -600]],
+            "type": "route",
+        },
+        "Palace": {
+            "bounds": [[400, 1000], [1000, 1000], [1000, 1600], [400, 1600]],
+            "type": "route",
+        },
+        "Water": {
+            "bounds": [[-1200, 0], [-600, 0], [-600, 600], [-1200, 600]],
+            "type": "route",
+        },
+    },
+    "de_nuke": {
+        "T Spawn": {
+            "bounds": [[-1800, -1600], [-1000, -1600], [-1000, -800], [-1800, -800]],
+            "type": "spawn",
+        },
+        "CT Spawn": {
+            "bounds": [[400, -400], [1200, -400], [1200, 400], [400, 400]],
+            "type": "spawn",
+        },
+        "A Site": {
+            "bounds": [[-800, 400], [200, 400], [200, 1200], [-800, 1200]],
+            "type": "bombsite",
+        },
+        "Hut": {
+            "bounds": [[-1200, 800], [-800, 800], [-800, 1200], [-1200, 1200]],
+            "type": "position",
+        },
+        "Heaven": {
+            "bounds": [[-400, 1200], [400, 1200], [400, 1800], [-400, 1800]],
+            "type": "position",
+        },
+        "Outside": {
+            "bounds": [[-2200, -400], [-1400, -400], [-1400, 400], [-2200, 400]],
+            "type": "route",
+        },
+        "Secret": {
+            "bounds": [[-2200, 400], [-1400, 400], [-1400, 1200], [-2200, 1200]],
+            "type": "route",
+        },
+        "Ramp": {
+            "bounds": [[-400, -400], [200, -400], [200, 400], [-400, 400]],
+            "type": "route",
+        },
+        "B Site": {
+            "bounds": [[-800, 400], [200, 400], [200, 1200], [-800, 1200]],
+            "type": "bombsite",
+        },
+        "Lobby": {
+            "bounds": [[-600, -800], [200, -800], [200, -200], [-600, -200]],
+            "type": "route",
+        },
+        "Squeaky": {
+            "bounds": [[-1000, 0], [-600, 0], [-600, 400], [-1000, 400]],
+            "type": "choke",
+        },
+    },
+    "de_vertigo": {
+        "T Spawn": {
+            "bounds": [[-2000, -800], [-1200, -800], [-1200, 0], [-2000, 0]],
+            "type": "spawn",
+        },
+        "CT Spawn": {
+            "bounds": [[200, 600], [1000, 600], [1000, 1400], [200, 1400]],
+            "type": "spawn",
+        },
+        "A Site": {
+            "bounds": [[-600, 800], [200, 800], [200, 1600], [-600, 1600]],
+            "type": "bombsite",
+        },
+        "A Ramp": {
+            "bounds": [[-1200, 400], [-600, 400], [-600, 1000], [-1200, 1000]],
+            "type": "route",
+        },
+        "Mid": {
+            "bounds": [[-800, -200], [0, -200], [0, 600], [-800, 600]],
+            "type": "mid",
+        },
+        "B Site": {
+            "bounds": [[-1800, 400], [-1200, 400], [-1200, 1200], [-1800, 1200]],
+            "type": "bombsite",
+        },
+        "B Stairs": {
+            "bounds": [[-1400, -200], [-800, -200], [-800, 400], [-1400, 400]],
+            "type": "route",
+        },
+        "Generator": {
+            "bounds": [[0, 0], [600, 0], [600, 600], [0, 600]],
+            "type": "position",
+        },
+        "Elevator": {
+            "bounds": [[-400, -600], [200, -600], [200, -200], [-400, -200]],
+            "type": "route",
+        },
+        "Scaffolding": {
+            "bounds": [[-600, 1200], [0, 1200], [0, 1800], [-600, 1800]],
+            "type": "route",
+        },
+    },
+    "de_overpass": {
+        "T Spawn": {
+            "bounds": [[-3800, -2600], [-3000, -2600], [-3000, -1800], [-3800, -1800]],
+            "type": "spawn",
+        },
+        "CT Spawn": {
+            "bounds": [[-1800, 400], [-1000, 400], [-1000, 1200], [-1800, 1200]],
+            "type": "spawn",
+        },
+        "A Site": {
+            "bounds": [[-2200, -400], [-1400, -400], [-1400, 400], [-2200, 400]],
+            "type": "bombsite",
+        },
+        "A Long": {
+            "bounds": [[-3000, -1200], [-2200, -1200], [-2200, -400], [-3000, -400]],
+            "type": "route",
+        },
+        "Toilets": {
+            "bounds": [[-1400, -800], [-800, -800], [-800, -200], [-1400, -200]],
+            "type": "route",
+        },
+        "Party": {
+            "bounds": [[-2600, 0], [-2000, 0], [-2000, 600], [-2600, 600]],
+            "type": "position",
+        },
+        "Connector": {
+            "bounds": [[-2800, -1800], [-2200, -1800], [-2200, -1200], [-2800, -1200]],
+            "type": "route",
+        },
+        "B Site": {
+            "bounds": [[-3400, -800], [-2600, -800], [-2600, 0], [-3400, 0]],
+            "type": "bombsite",
+        },
+        "B Short": {
+            "bounds": [[-2800, -1200], [-2200, -1200], [-2200, -600], [-2800, -600]],
+            "type": "route",
+        },
+        "Monster": {
+            "bounds": [[-3800, -1000], [-3200, -1000], [-3200, -400], [-3800, -400]],
+            "type": "route",
+        },
+        "Water": {
+            "bounds": [[-3000, 0], [-2400, 0], [-2400, 600], [-3000, 600]],
+            "type": "route",
+        },
+        "Heaven": {
+            "bounds": [[-1800, -200], [-1200, -200], [-1200, 400], [-1800, 400]],
+            "type": "position",
+        },
+    },
+}
+
+
+def _point_in_polygon(x: float, y: float, polygon: list[list[float]]) -> bool:
+    """
+    Check if a point is inside a polygon using ray casting algorithm.
+
+    Args:
+        x: Point X coordinate
+        y: Point Y coordinate
+        polygon: List of [x, y] vertices defining the polygon
+
+    Returns:
+        True if point is inside the polygon
+    """
+    n = len(polygon)
+    if n < 3:
+        return False
+
+    inside = False
+    p1x, p1y = polygon[0]
+
+    for i in range(1, n + 1):
+        p2x, p2y = polygon[i % n]
+        if y > min(p1y, p2y):
+            if y <= max(p1y, p2y):
+                if x <= max(p1x, p2x):
+                    if p1y != p2y:
+                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                    if p1x == p2x or x <= xinters:
+                        inside = not inside
+        p1x, p1y = p2x, p2y
+
+    return inside
+
+
+def get_zone_for_position(
+    map_name: str, x: float, y: float, z: float | None = None
+) -> str:
+    """
+    Determine which zone a position is in.
+
+    Args:
+        map_name: Internal map name (e.g., "de_dust2")
+        x: Game X coordinate
+        y: Game Y coordinate
+        z: Game Z coordinate (for multi-level maps like Nuke/Vertigo)
+
+    Returns:
+        Zone name or "Unknown" if not in any defined zone
+    """
+    map_name = map_name.lower()
+    if map_name not in MAP_ZONES:
+        return "Unknown"
+
+    zones = MAP_ZONES[map_name]
+
+    for zone_name, zone_def in zones.items():
+        bounds = zone_def.get("bounds", [])
+        if len(bounds) < 3:
+            continue
+
+        if _point_in_polygon(x, y, bounds):
+            return zone_name
+
+    return "Unknown"
+
+
+def classify_round_economy(equipment_value: int, is_pistol_round: bool) -> str:
+    """
+    Classify round type based on equipment value.
+
+    Args:
+        equipment_value: Total equipment value for the team/player
+        is_pistol_round: Whether this is round 1 or 13
+
+    Returns:
+        Round type: 'pistol', 'eco', 'semi_eco', 'force', or 'full_buy'
+    """
+    if is_pistol_round:
+        return "pistol"
+    if equipment_value < 5000:
+        return "eco"
+    elif equipment_value < 10000:
+        return "semi_eco"
+    elif equipment_value < 20000:
+        return "force"
+    else:
+        return "full_buy"
+
 
 @dataclass
 class RadarPosition:

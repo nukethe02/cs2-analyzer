@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 # Trade window in milliseconds (standard is 5 seconds)
 TRADE_WINDOW_MS = 5000
+# Trade window in ticks (5 seconds at 64 tick rate)
+TRADE_WINDOW_TICKS = 320
 # Clutch scenarios
 CLUTCH_SCENARIOS = ["1v1", "1v2", "1v3", "1v4", "1v5"]
 
@@ -260,6 +262,21 @@ class CombatAnalyzer:
     def _ticks_to_ms(self, ticks: int) -> float:
         """Convert ticks to milliseconds."""
         return (ticks / self.tick_rate) * 1000
+
+    def _same_team(self, player1_id: int, player2_id: int) -> bool:
+        """Check if two players are on the same team."""
+        team1 = self.data.player_teams.get(player1_id, 0)
+        team2 = self.data.player_teams.get(player2_id, 0)
+        return team1 == team2 and team1 != 0
+
+    def _get_side(self, player_id: int, round_num: int = 0) -> str:
+        """Get the side (CT/T) for a player."""
+        team = self.data.player_teams.get(player_id, 0)
+        if team == 2:
+            return "T"
+        elif team == 3:
+            return "CT"
+        return "Unknown"
 
     def _analyze_trades(
         self,

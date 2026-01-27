@@ -89,7 +89,7 @@ src/opensight/
 
 ## Code Style
 
-- Python 3.10+ with type hints on all function parameters
+- Python 3.11+ with type hints on all function parameters
 - Use dataclasses for data structures
 - Detailed docstrings on public functions
 - Named exports preferred, avoid wildcard imports

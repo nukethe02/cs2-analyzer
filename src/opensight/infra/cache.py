@@ -600,12 +600,14 @@ class CachedAnalyzer:
             }
 
         # Merge enhanced metrics from professional parser
+        # NOTE: enhanced_metrics use integer steam IDs, but players dict uses string keys
         if enhanced_metrics and "entry_frags" in enhanced_metrics:
             for steam_id, entry_data in enhanced_metrics.get("entry_frags", {}).items():
-                if steam_id in players:
-                    if "entry" not in players[steam_id]:
-                        players[steam_id]["entry"] = {}
-                    players[steam_id]["entry"].update(
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    if "entry" not in players[sid_str]:
+                        players[sid_str]["entry"] = {}
+                    players[sid_str]["entry"].update(
                         {
                             "entry_attempts": entry_data.get("entry_attempts", 0),
                             "entry_kills": entry_data.get("entry_kills", 0),
@@ -616,8 +618,9 @@ class CachedAnalyzer:
         # Merge TTD metrics
         if enhanced_metrics and "ttd_metrics" in enhanced_metrics:
             for steam_id, ttd_data in enhanced_metrics.get("ttd_metrics", {}).items():
-                if steam_id in players:
-                    players[steam_id]["advanced"].update(
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    players[sid_str]["advanced"].update(
                         {
                             "ttd_median_ms": ttd_data.get("ttd_median_ms", 0),
                             "ttd_mean_ms": ttd_data.get("ttd_mean_ms", 0),
@@ -628,8 +631,9 @@ class CachedAnalyzer:
         # Merge CP metrics
         if enhanced_metrics and "crosshair_placement" in enhanced_metrics:
             for steam_id, cp_data in enhanced_metrics.get("crosshair_placement", {}).items():
-                if steam_id in players:
-                    players[steam_id]["advanced"].update(
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    players[sid_str]["advanced"].update(
                         {
                             "cp_median_error_deg": cp_data.get("cp_median_error_deg", 0),
                             "cp_mean_error_deg": cp_data.get("cp_mean_error_deg", 0),
@@ -639,28 +643,30 @@ class CachedAnalyzer:
         # Merge Trade Kill metrics
         if enhanced_metrics and "trade_kills" in enhanced_metrics:
             for steam_id, trade_data in enhanced_metrics.get("trade_kills", {}).items():
-                if steam_id in players:
-                    players[steam_id]["duels"].update(
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    players[sid_str]["duels"].update(
                         {
                             "trade_kills": trade_data.get("trade_kills", 0),
                             "deaths_traded": trade_data.get("deaths_traded", 0),
                         }
                     )
 
-        # Merge Clutch metrics
-        if enhanced_metrics and "clutch_stats" in enhanced_metrics:
-            for steam_id, clutch_data in enhanced_metrics.get("clutch_stats", {}).items():
-                if steam_id in players:
-                    players[steam_id]["duels"].update(
+        # Merge Clutch metrics (enhanced_parser uses "clutch_statistics")
+        if enhanced_metrics and "clutch_statistics" in enhanced_metrics:
+            for steam_id, clutch_data in enhanced_metrics.get("clutch_statistics", {}).items():
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    players[sid_str]["duels"].update(
                         {
                             "clutch_wins": clutch_data.get("clutch_wins", 0),
                             "clutch_attempts": clutch_data.get("clutch_attempts", 0),
                         }
                     )
                     # Add breakdown by variant
-                    if "clutches" not in players[steam_id]:
-                        players[steam_id]["clutches"] = {}
-                    players[steam_id]["clutches"].update(
+                    if "clutches" not in players[sid_str]:
+                        players[sid_str]["clutches"] = {}
+                    players[sid_str]["clutches"].update(
                         {
                             "v1_wins": clutch_data.get("v1_wins", 0),
                             "v2_wins": clutch_data.get("v2_wins", 0),
@@ -810,11 +816,46 @@ class CachedAnalyzer:
         """Build round-by-round timeline data."""
         timeline = []
         kills = getattr(demo_data, "kills", [])
+        rounds_data = getattr(demo_data, "rounds", [])
+
+        # Build round boundaries for tick-based inference
+        round_boundaries = []
+        for r in rounds_data:
+            round_num = getattr(r, "round_num", 0)
+            start_tick = getattr(r, "start_tick", 0)
+            end_tick = getattr(r, "end_tick", 0)
+            if round_num and end_tick > 0:
+                round_boundaries.append((round_num, start_tick, end_tick))
+        round_boundaries.sort(key=lambda x: x[1])
+
+        def infer_round(tick: int) -> int:
+            """Infer round number from tick."""
+            for rn, st, et in round_boundaries:
+                if st <= tick <= et:
+                    return rn
+            if round_boundaries:
+                for rn, st, et in reversed(round_boundaries):
+                    if tick > et:
+                        return rn
+                return 1
+            return 1
+
+        # Check if kills have valid round data
+        has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
 
         # Group kills by round
         round_kills = {}
         for kill in kills:
             round_num = getattr(kill, "round_num", 0)
+
+            # Infer round from tick if needed
+            if round_num == 0:
+                if round_boundaries and not has_round_data:
+                    tick = getattr(kill, "tick", 0)
+                    round_num = infer_round(tick)
+                else:
+                    round_num = 1
+
             if round_num not in round_kills:
                 round_kills[round_num] = {
                     "ct_kills": 0,
@@ -833,10 +874,19 @@ class CachedAnalyzer:
                 round_kills[round_num]["first_kill"] = getattr(kill, "attacker_name", "Unknown")
                 round_kills[round_num]["first_death"] = getattr(kill, "victim_name", "Unknown")
 
-        # Build timeline entries
-        for round_num in sorted(round_kills.keys()):
-            rd = round_kills[round_num]
+        # Use actual round data if available, otherwise use analysis total_rounds
+        total_rounds = getattr(analysis, "total_rounds", 0) or len(round_boundaries) or len(round_kills)
+
+        # Build timeline entries - ensure we have entries for all rounds
+        for round_num in range(1, total_rounds + 1):
+            rd = round_kills.get(round_num, {"ct_kills": 0, "t_kills": 0, "first_kill": None, "first_death": None})
+            # Get winner from rounds data if available
             winner = "CT" if rd["ct_kills"] > rd["t_kills"] else "T"
+            for r in rounds_data:
+                if getattr(r, "round_num", 0) == round_num:
+                    winner = getattr(r, "winner", winner)
+                    break
+
             timeline.append(
                 {
                     "round_num": round_num,
@@ -893,22 +943,60 @@ class CachedAnalyzer:
         kills = getattr(demo_data, "kills", [])
         damages = getattr(demo_data, "damages", [])
         player_names = getattr(demo_data, "player_names", {})
+        rounds = getattr(demo_data, "rounds", [])
+
+        # Build round boundaries from round events (for inferring round_num from tick)
+        round_boundaries = []  # List of (round_num, start_tick, end_tick)
+        for r in rounds:
+            round_num = getattr(r, "round_num", 0)
+            start_tick = getattr(r, "start_tick", 0)
+            end_tick = getattr(r, "end_tick", 0)
+            if round_num and end_tick > 0:
+                round_boundaries.append((round_num, start_tick, end_tick))
+        round_boundaries.sort(key=lambda x: x[1])  # Sort by start_tick
+
+        def infer_round_from_tick(tick: int) -> int:
+            """Infer round number from tick using round boundaries."""
+            for round_num, start_tick, end_tick in round_boundaries:
+                if start_tick <= tick <= end_tick:
+                    return round_num
+            # If no match, estimate based on position in sorted boundaries
+            if round_boundaries:
+                # Use the last round if tick is after all boundaries
+                for round_num, start_tick, end_tick in reversed(round_boundaries):
+                    if tick > end_tick:
+                        return round_num
+                # Use round 1 if tick is before all boundaries
+                return 1
+            return 1  # Fallback
+
+        # Check if kills have valid round data
+        has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
 
         # Initialize per-player round data
         player_round_data: dict[
             int, dict[int, dict]
         ] = {}  # steam_id -> {round_num -> {kills, damage}}
 
-        # Get max rounds
-        max_round = 0
+        # Get max rounds from demo_data or round boundaries
+        max_round = getattr(demo_data, "num_rounds", 0) or len(round_boundaries) or 1
 
         # Count kills per player per round
         for kill in kills:
             attacker_id = getattr(kill, "attacker_steamid", 0)
             round_num = getattr(kill, "round_num", 0)
 
-            if not attacker_id or not round_num:
+            # Skip kills without attacker_id
+            if not attacker_id:
                 continue
+
+            # If no round_num, try to infer from tick using round boundaries
+            if round_num == 0:
+                if round_boundaries and not has_round_data:
+                    tick = getattr(kill, "tick", 0)
+                    round_num = infer_round_from_tick(tick)
+                else:
+                    round_num = 1  # Fallback to round 1
 
             max_round = max(max_round, round_num)
 
@@ -924,8 +1012,17 @@ class CachedAnalyzer:
             round_num = getattr(dmg, "round_num", 0)
             damage_val = getattr(dmg, "damage", 0)
 
-            if not attacker_id or not round_num:
+            # Skip damages without attacker_id
+            if not attacker_id:
                 continue
+
+            # If no round_num, try to infer from tick using round boundaries
+            if round_num == 0:
+                if round_boundaries and not has_round_data:
+                    tick = getattr(dmg, "tick", 0)
+                    round_num = infer_round_from_tick(tick)
+                else:
+                    round_num = 1  # Fallback to round 1
 
             max_round = max(max_round, round_num)
 
@@ -1103,30 +1200,171 @@ class CachedAnalyzer:
         return [{"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()]
 
     def _build_heatmap_data(self, demo_data) -> dict:
-        """Build position data for heatmap visualization."""
+        """Build comprehensive position data for heatmap visualization.
+
+        Includes zone detection, side info, phase (pre/post plant), and economy context.
+        """
         kills = getattr(demo_data, "kills", [])
+        rounds = getattr(demo_data, "rounds", [])
+        player_names = getattr(demo_data, "player_names", {})
+        map_name = getattr(demo_data, "map_name", "").lower()
+
+        # Build round lookup for bomb plant and economy data
+        round_info = {}
+        for r in rounds:
+            round_num = getattr(r, "round_num", 0)
+            round_info[round_num] = {
+                "bomb_plant_tick": getattr(r, "bomb_plant_tick", None),
+                "bomb_site": getattr(r, "bomb_site", ""),
+                "ct_equipment": getattr(r, "ct_equipment_value", 0),
+                "t_equipment": getattr(r, "t_equipment_value", 0),
+                "round_type": getattr(r, "round_type", ""),
+            }
+
+        # Import zone detection function
+        try:
+            from opensight.visualization.radar import (
+                MAP_ZONES,
+                classify_round_economy,
+                get_zone_for_position,
+            )
+
+            has_zones = map_name in MAP_ZONES
+        except ImportError:
+            has_zones = False
+
+            def get_zone_for_position(m, x, y, z=None):
+                return "Unknown"
+
+            def classify_round_economy(eq, is_pistol):
+                return "unknown"
 
         kill_positions = []
         death_positions = []
+        zone_stats: dict[str, dict] = {}
 
         for kill in kills:
+            round_num = getattr(kill, "round_num", 0)
+            tick = getattr(kill, "tick", 0)
+            r_info = round_info.get(round_num, {})
+
+            # Determine phase (pre-plant vs post-plant)
+            bomb_plant_tick = r_info.get("bomb_plant_tick")
+            phase = "pre_plant"
+            if bomb_plant_tick and tick >= bomb_plant_tick:
+                phase = "post_plant"
+
+            # Determine economy round type
+            attacker_side = getattr(kill, "attacker_side", "") or ""
+            is_pistol = round_num in [1, 13]
+            eq_value = r_info.get(
+                "t_equipment" if "T" in attacker_side.upper() else "ct_equipment", 0
+            )
+            stored_round_type = r_info.get("round_type", "")
+            if stored_round_type:
+                round_type = stored_round_type
+            elif has_zones:
+                round_type = classify_round_economy(eq_value, is_pistol)
+            else:
+                round_type = "pistol" if is_pistol else "unknown"
+
             # Kill position (attacker)
             ax = getattr(kill, "attacker_x", None)
             ay = getattr(kill, "attacker_y", None)
             if ax is not None and ay is not None:
-                kill_positions.append({"x": ax, "y": ay, "z": getattr(kill, "attacker_z", 0)})
+                az = getattr(kill, "attacker_z", 0) or 0
+                zone = get_zone_for_position(map_name, ax, ay, az) if has_zones else "Unknown"
+                kill_positions.append({
+                    "x": ax,
+                    "y": ay,
+                    "z": az,
+                    "zone": zone,
+                    "side": attacker_side,
+                    "phase": phase,
+                    "round_type": round_type,
+                    "round_num": round_num,
+                    "player_name": player_names.get(getattr(kill, "attacker_steamid", 0), "Unknown"),
+                    "player_steamid": getattr(kill, "attacker_steamid", 0),
+                    "weapon": getattr(kill, "weapon", ""),
+                    "headshot": getattr(kill, "headshot", False),
+                })
+
+                # Update zone stats for kills
+                if zone not in zone_stats:
+                    zone_stats[zone] = {"kills": 0, "deaths": 0, "ct_kills": 0, "t_kills": 0}
+                zone_stats[zone]["kills"] += 1
+                if "CT" in attacker_side.upper():
+                    zone_stats[zone]["ct_kills"] += 1
+                else:
+                    zone_stats[zone]["t_kills"] += 1
 
             # Death position (victim)
             vx = getattr(kill, "victim_x", None)
             vy = getattr(kill, "victim_y", None)
             if vx is not None and vy is not None:
-                death_positions.append({"x": vx, "y": vy, "z": getattr(kill, "victim_z", 0)})
+                vz = getattr(kill, "victim_z", 0) or 0
+                victim_side = getattr(kill, "victim_side", "") or ""
+                zone = get_zone_for_position(map_name, vx, vy, vz) if has_zones else "Unknown"
+                death_positions.append({
+                    "x": vx,
+                    "y": vy,
+                    "z": vz,
+                    "zone": zone,
+                    "side": victim_side,
+                    "phase": phase,
+                    "round_type": round_type,
+                    "round_num": round_num,
+                    "player_name": player_names.get(getattr(kill, "victim_steamid", 0), "Unknown"),
+                    "player_steamid": getattr(kill, "victim_steamid", 0),
+                })
 
-        return {"kill_positions": kill_positions, "death_positions": death_positions}
+                # Update zone stats for deaths
+                if zone not in zone_stats:
+                    zone_stats[zone] = {"kills": 0, "deaths": 0, "ct_kills": 0, "t_kills": 0}
+                zone_stats[zone]["deaths"] += 1
+
+        # Calculate zone K/D ratios and percentages
+        total_kills = len(kill_positions)
+        for zone, stats in zone_stats.items():
+            k = stats["kills"]
+            d = stats["deaths"]
+            stats["kd_ratio"] = round(k / max(d, 1), 2)
+            stats["kill_pct"] = round(k / max(total_kills, 1) * 100, 1)
+
+        # Get zone definitions for frontend if available
+        zone_definitions = {}
+        if has_zones:
+            try:
+                zone_definitions = MAP_ZONES.get(map_name, {})
+            except Exception:
+                pass
+
+        return {
+            "map_name": map_name,
+            "kill_positions": kill_positions,
+            "death_positions": death_positions,
+            "zone_stats": zone_stats,
+            "zone_definitions": zone_definitions,
+        }
 
     def _generate_coaching_insights(self, demo_data, analysis, players: dict) -> list[dict]:
-        """Generate coaching insights for each player."""
+        """
+        Generate comprehensive, data-driven coaching insights for each player.
+
+        Inspired by Leetify's detailed coaching system, this provides:
+        - Specific metrics with actual numbers and comparisons
+        - Role-specific analysis
+        - Comparative insights vs teammates and match averages
+        - Player identity/archetype detection
+        - Actionable improvement recommendations
+        """
         coaching = []
+
+        # Calculate match-wide statistics for comparison
+        match_stats = self._calculate_match_averages(players)
+
+        # Find top performers in each category for comparative insights
+        top_performers = self._find_top_performers(players)
 
         for steam_id, player in players.items():
             insights = []
@@ -1136,133 +1374,724 @@ class CachedAnalyzer:
             advanced = player["advanced"]
             utility = player["utility"]
             duels = player["duels"]
+            entry = player.get("entry", {})
+            trades = player.get("trades", {})
+            clutches = player.get("clutches", {})
+            rws = player.get("rws", {})
 
-            # Role detection
-            role = self._detect_role(player)
+            # Detect role with more detail
+            role, role_confidence = self._detect_role_detailed(player, match_stats)
 
-            # Analyze strengths
-            if rating["hltv_rating"] >= 1.2:
-                insights.append(
-                    {
+            # Determine player identity/archetype (like Leetify's "The Cleanup")
+            identity = self._determine_player_identity(player, match_stats, top_performers)
+
+            # ==========================================
+            # AIM & MECHANICS INSIGHTS
+            # ==========================================
+
+            # Time to Damage (TTD) - reaction time analysis
+            ttd = advanced.get("ttd_median_ms", 0)
+            if ttd > 0:
+                ttd_rating = self._get_ttd_rating(ttd)
+                avg_ttd = match_stats.get("avg_ttd", 350)
+                diff = ttd - avg_ttd
+                if diff > 50:
+                    insights.append({
+                        "type": "warning",
+                        "message": f"TTD {ttd:.0f}ms is {diff:.0f}ms slower than match average ({avg_ttd:.0f}ms) - practice pre-aiming common angles",
+                        "category": "Aim",
+                        "metric": "ttd_ms",
+                        "value": ttd,
+                        "benchmark": avg_ttd,
+                        "severity": "high" if diff > 100 else "medium",
+                    })
+                elif diff < -50:
+                    insights.append({
                         "type": "positive",
-                        "message": f"Outstanding performance with {rating['hltv_rating']:.2f} rating - carrying the team",
-                        "category": "Performance",
-                    }
-                )
-            if stats["adr"] >= 90:
-                insights.append(
-                    {
+                        "message": f"Fast reactions: {ttd:.0f}ms TTD ({abs(diff):.0f}ms faster than match avg) - {ttd_rating}",
+                        "category": "Aim",
+                        "metric": "ttd_ms",
+                        "value": ttd,
+                        "benchmark": avg_ttd,
+                    })
+
+            # Crosshair Placement (CP) - angle accuracy
+            cp = advanced.get("cp_median_error_deg", 0)
+            if cp > 0:
+                cp_rating = self._get_cp_rating(cp)
+                avg_cp = match_stats.get("avg_cp", 8)
+                diff = cp - avg_cp
+                if cp > 10:
+                    insights.append({
+                        "type": "warning",
+                        "message": f"Crosshair placement: {cp:.1f}° error ({diff:+.1f}° vs avg). Pre-aim head level at common angles",
+                        "category": "Aim",
+                        "metric": "cp_error_deg",
+                        "value": cp,
+                        "benchmark": avg_cp,
+                        "severity": "high" if cp > 15 else "medium",
+                    })
+                elif cp < 5:
+                    insights.append({
                         "type": "positive",
-                        "message": f"Excellent damage output ({stats['adr']} ADR) - consistent impact every round",
-                        "category": "Damage",
-                    }
-                )
-            if advanced["opening_kills"] >= 5:
-                insights.append(
-                    {
+                        "message": f"Excellent crosshair placement: {cp:.1f}° error - {cp_rating}",
+                        "category": "Aim",
+                        "metric": "cp_error_deg",
+                        "value": cp,
+                    })
+
+            # Headshot percentage analysis
+            hs_pct = stats.get("headshot_pct", 0)
+            if hs_pct > 0:
+                avg_hs = match_stats.get("avg_hs_pct", 35)
+                if hs_pct >= 50:
+                    insights.append({
                         "type": "positive",
-                        "message": f"{advanced['opening_kills']} opening kills - strong entry fragging",
+                        "message": f"Elite headshot %: {hs_pct:.0f}% ({hs_pct - avg_hs:+.0f}% vs match avg) - precision aiming",
+                        "category": "Aim",
+                        "metric": "headshot_pct",
+                        "value": hs_pct,
+                    })
+                elif hs_pct < 25:
+                    insights.append({
+                        "type": "warning",
+                        "message": f"Low HS%: {hs_pct:.0f}% (avg: {avg_hs:.0f}%). Focus on head-level crosshair, less spraying",
+                        "category": "Aim",
+                        "metric": "headshot_pct",
+                        "value": hs_pct,
+                        "benchmark": avg_hs,
+                    })
+
+            # ==========================================
+            # OPENING DUEL / ENTRY INSIGHTS
+            # ==========================================
+
+            entry_attempts = entry.get("entry_attempts", 0)
+            entry_kills = entry.get("entry_kills", 0)
+            entry_deaths = entry.get("entry_deaths", 0)
+            entry_success = entry.get("entry_success_pct", 0)
+
+            if entry_attempts >= 3:
+                avg_entry_success = match_stats.get("avg_entry_success", 50)
+
+                if entry_success < 35:
+                    insights.append({
+                        "type": "mistake",
+                        "message": f"Opening duels: {entry_success:.0f}% success ({entry_kills}W-{entry_deaths}L). Use utility before peeking or change entry spots",
                         "category": "Entry",
-                    }
-                )
-            if rating["kast_percentage"] >= 80:
-                insights.append(
-                    {
+                        "metric": "opening_duel_success",
+                        "value": entry_success,
+                        "benchmark": avg_entry_success,
+                        "severity": "high",
+                    })
+                elif entry_success >= 65:
+                    insights.append({
                         "type": "positive",
-                        "message": f"{rating['kast_percentage']:.0f}% KAST - almost always contributing to rounds",
-                        "category": "Consistency",
-                    }
-                )
+                        "message": f"Dominant entry fragging: {entry_success:.0f}% ({entry_kills}W-{entry_deaths}L) - {entry_success - avg_entry_success:+.0f}% vs match avg",
+                        "category": "Entry",
+                        "metric": "opening_duel_success",
+                        "value": entry_success,
+                    })
 
-            # Analyze weaknesses
-            if stats["deaths"] > stats["kills"] + 5:
-                insights.append(
-                    {
-                        "type": "mistake",
-                        "message": f"Dying too often ({stats['deaths']} deaths) - consider safer positioning",
-                        "category": "Positioning",
-                    }
-                )
-            if advanced["ttd_median_ms"] > 400:
-                insights.append(
-                    {
+                # Entry attempt rate analysis
+                entry_rate = entry.get("entry_attempts_pct", 0)
+                if role == "entry" and entry_rate < 20:
+                    insights.append({
                         "type": "warning",
-                        "message": f"Slow reaction time ({advanced['ttd_median_ms']:.0f}ms TTD) - work on pre-aiming angles",
-                        "category": "Mechanics",
-                    }
-                )
-            if advanced["cp_median_error_deg"] > 15:
-                insights.append(
-                    {
-                        "type": "warning",
-                        "message": f"Crosshair placement needs work ({advanced['cp_median_error_deg']:.1f}° error) - pre-aim common spots",
-                        "category": "Mechanics",
-                    }
-                )
-            if utility["flashbangs_thrown"] < 3:
-                insights.append(
-                    {
-                        "type": "warning",
-                        "message": "Low utility usage - buy and throw more flashes for team support",
-                        "category": "Utility",
-                    }
-                )
-            if duels["traded_deaths"] > duels["trade_kills"] + 2:
-                insights.append(
-                    {
-                        "type": "warning",
-                        "message": "Not getting traded when dying - stay closer to teammates",
-                        "category": "Teamplay",
-                    }
-                )
-
-            # Role-specific advice
-            if role == "entry" and advanced["opening_kills"] < 3:
-                insights.append(
-                    {
-                        "type": "warning",
-                        "message": "As entry, focus on getting more opening kills with flash support",
+                        "message": f"Low entry rate for entry role: {entry_rate:.0f}% of rounds. Lead more site takes with utility",
                         "category": "Role",
-                    }
-                )
-            if role == "awp" and stats["deaths"] > stats["kills"]:
-                insights.append(
-                    {
-                        "type": "mistake",
-                        "message": "Dying with AWP too often - $4750 lost each time. Hold angles, don't peek",
-                        "category": "Economy",
-                    }
-                )
+                        "metric": "entry_attempt_rate",
+                        "value": entry_rate,
+                    })
 
-            # Add at least one insight
+            # ==========================================
+            # TRADE KILL INSIGHTS
+            # ==========================================
+
+            trade_kills = trades.get("trade_kills", 0) or duels.get("trade_kills", 0)
+            deaths_traded = trades.get("deaths_traded", 0) or duels.get("traded_deaths", 0)
+            total_deaths = stats.get("deaths", 1)
+
+            trade_rate = (deaths_traded / max(1, total_deaths)) * 100 if total_deaths > 0 else 0
+            avg_trade_rate = match_stats.get("avg_trade_rate", 40)
+
+            # Find best trader on team for comparison
+            best_trader = top_performers.get("trade_kills", {})
+
+            if trade_kills >= 5:
+                insights.append({
+                    "type": "positive",
+                    "message": f"Strong trader: {trade_kills} trade kills - reliable teammate support",
+                    "category": "Trading",
+                    "metric": "trade_kills",
+                    "value": trade_kills,
+                })
+
+            if total_deaths >= 8 and trade_rate < 30:
+                best_trader_name = best_trader.get("name", "teammate")
+                insights.append({
+                    "type": "warning",
+                    "message": f"Only {trade_rate:.0f}% of deaths traded ({deaths_traded}/{total_deaths}). Stay closer to teammates, especially {best_trader_name}",
+                    "category": "Trading",
+                    "metric": "deaths_traded_rate",
+                    "value": trade_rate,
+                    "benchmark": avg_trade_rate,
+                    "severity": "medium",
+                })
+
+            # ==========================================
+            # CLUTCH INSIGHTS
+            # ==========================================
+
+            clutch_wins = clutches.get("clutch_wins", 0) or duels.get("clutch_wins", 0)
+            clutch_attempts = clutches.get("clutch_wins", 0) + clutches.get("clutch_losses", 0)
+            if clutch_attempts == 0:
+                clutch_attempts = duels.get("clutch_attempts", 0)
+
+            if clutch_attempts >= 3:
+                clutch_pct = clutches.get("clutch_success_pct", 0)
+                if clutch_pct == 0 and clutch_attempts > 0:
+                    clutch_pct = (clutch_wins / clutch_attempts) * 100
+
+                # Check for impressive clutches (1v3, 1v4, 1v5)
+                v3_plus = clutches.get("v3_wins", 0) + clutches.get("v4_wins", 0) + clutches.get("v5_wins", 0)
+
+                if v3_plus >= 1:
+                    insights.append({
+                        "type": "positive",
+                        "message": f"Clutch master: Won 1v3+ situations {v3_plus} time(s) - ice cold under pressure",
+                        "category": "Clutch",
+                        "metric": "difficult_clutches",
+                        "value": v3_plus,
+                    })
+                elif clutch_pct >= 40 and clutch_attempts >= 3:
+                    insights.append({
+                        "type": "positive",
+                        "message": f"Reliable clutcher: {clutch_pct:.0f}% success rate ({clutch_wins}/{clutch_attempts})",
+                        "category": "Clutch",
+                        "metric": "clutch_success",
+                        "value": clutch_pct,
+                    })
+                elif clutch_pct < 20 and clutch_attempts >= 4:
+                    insights.append({
+                        "type": "warning",
+                        "message": f"Clutch struggles: {clutch_pct:.0f}% ({clutch_wins}/{clutch_attempts}). Play for info, use utility to isolate fights",
+                        "category": "Clutch",
+                        "metric": "clutch_success",
+                        "value": clutch_pct,
+                        "severity": "medium",
+                    })
+
+            # ==========================================
+            # UTILITY USAGE INSIGHTS
+            # ==========================================
+
+            flashes = utility.get("flashbangs_thrown", 0)
+            smokes = utility.get("smokes_thrown", 0)
+            he_thrown = utility.get("he_thrown", 0)
+            molotovs = utility.get("molotovs_thrown", 0)
+            total_util = flashes + smokes + he_thrown + molotovs
+            enemies_flashed = utility.get("enemies_flashed", 0)
+            flash_assists = utility.get("flash_assists", 0)
+            he_damage = utility.get("he_damage", 0)
+
+            rounds_played = rws.get("rounds_played", 0) or 30  # Approximate if missing
+            util_per_round = total_util / max(1, rounds_played)
+            avg_util_per_round = match_stats.get("avg_util_per_round", 2.5)
+
+            if flashes > 0:
+                flash_effectiveness = (enemies_flashed / max(1, flashes)) * 100
+                if flash_effectiveness < 30 and flashes >= 5:
+                    insights.append({
+                        "type": "warning",
+                        "message": f"Flash effectiveness: {flash_effectiveness:.0f}% ({enemies_flashed} blinds from {flashes} flashes). Learn pop-flashes for common angles",
+                        "category": "Utility",
+                        "metric": "flash_effectiveness",
+                        "value": flash_effectiveness,
+                        "severity": "medium",
+                    })
+                elif flash_effectiveness >= 60 and flash_assists >= 2:
+                    insights.append({
+                        "type": "positive",
+                        "message": f"Quality flashbangs: {enemies_flashed} enemies blinded, {flash_assists} flash assists - great support play",
+                        "category": "Utility",
+                        "metric": "flash_effectiveness",
+                        "value": flash_effectiveness,
+                    })
+
+            if util_per_round < 1.5 and rounds_played >= 15:
+                insights.append({
+                    "type": "warning",
+                    "message": f"Low utility usage: {util_per_round:.1f}/round (avg: {avg_util_per_round:.1f}). Buy and use more grenades",
+                    "category": "Utility",
+                    "metric": "utility_per_round",
+                    "value": util_per_round,
+                    "benchmark": avg_util_per_round,
+                })
+
+            if he_damage >= 150:
+                insights.append({
+                    "type": "positive",
+                    "message": f"Effective HE grenades: {he_damage} damage total - valuable chip damage",
+                    "category": "Utility",
+                    "metric": "he_damage",
+                    "value": he_damage,
+                })
+
+            # ==========================================
+            # IMPACT & DAMAGE INSIGHTS
+            # ==========================================
+
+            adr = stats.get("adr", 0)
+            avg_adr = match_stats.get("avg_adr", 75)
+            kast = rating.get("kast_percentage", 0)
+            hltv = rating.get("hltv_rating", 0)
+            kd_ratio = stats.get("kd_ratio", 1)
+
+            # Multi-kill analysis
+            multikills = stats.get("3k", 0) + stats.get("4k", 0) + stats.get("5k", 0)
+
+            if adr >= 90:
+                insights.append({
+                    "type": "positive",
+                    "message": f"High impact: {adr:.0f} ADR ({adr - avg_adr:+.0f} vs avg) - consistent round damage",
+                    "category": "Impact",
+                    "metric": "adr",
+                    "value": adr,
+                })
+            elif adr < 60:
+                insights.append({
+                    "type": "warning",
+                    "message": f"Low ADR: {adr:.0f} (avg: {avg_adr:.0f}). Find more engagements, use utility to create opportunities",
+                    "category": "Impact",
+                    "metric": "adr",
+                    "value": adr,
+                    "benchmark": avg_adr,
+                    "severity": "high" if adr < 50 else "medium",
+                })
+
+            if multikills >= 3:
+                insights.append({
+                    "type": "positive",
+                    "message": f"Round-winning plays: {multikills} multi-kills (3K+) - clutch performer in key rounds",
+                    "category": "Impact",
+                    "metric": "multikills",
+                    "value": multikills,
+                })
+
+            if kast < 55 and rounds_played >= 15:
+                insights.append({
+                    "type": "warning",
+                    "message": f"Low KAST: {kast:.0f}% - dying without impact too often. Focus on trading and staying alive",
+                    "category": "Consistency",
+                    "metric": "kast",
+                    "value": kast,
+                    "severity": "high",
+                })
+            elif kast >= 80:
+                insights.append({
+                    "type": "positive",
+                    "message": f"Exceptional consistency: {kast:.0f}% KAST - contributing in nearly every round",
+                    "category": "Consistency",
+                    "metric": "kast",
+                    "value": kast,
+                })
+
+            # ==========================================
+            # RWS (Round Win Share) INSIGHTS
+            # ==========================================
+
+            avg_rws = rws.get("avg_rws", 0)
+            if avg_rws > 0:
+                if avg_rws >= 12:
+                    insights.append({
+                        "type": "positive",
+                        "message": f"High impact in won rounds: {avg_rws:.1f} RWS - key contributor to team victories",
+                        "category": "Impact",
+                        "metric": "rws",
+                        "value": avg_rws,
+                    })
+                elif avg_rws < 6:
+                    insights.append({
+                        "type": "warning",
+                        "message": f"Low RWS: {avg_rws:.1f} - limited impact in rounds your team wins. Be more aggressive in won rounds",
+                        "category": "Impact",
+                        "metric": "rws",
+                        "value": avg_rws,
+                    })
+
+            # ==========================================
+            # ROLE-SPECIFIC INSIGHTS
+            # ==========================================
+
+            if role == "entry":
+                if entry_success < 45 and entry_attempts >= 4:
+                    insights.append({
+                        "type": "warning",
+                        "message": f"Entry role struggling ({entry_success:.0f}% success). Coordinate utility with teammates before taking fights",
+                        "category": "Role",
+                        "severity": "medium",
+                    })
+            elif role == "support":
+                if flash_assists < 2 and enemies_flashed < 5:
+                    insights.append({
+                        "type": "warning",
+                        "message": "Support role needs more flash impact. Focus on enabling teammates with utility",
+                        "category": "Role",
+                    })
+            elif role == "awp":
+                awp_kd = kd_ratio  # Simplified - ideally would track AWP-specific K/D
+                if awp_kd < 1.0:
+                    insights.append({
+                        "type": "warning",
+                        "message": "AWPer dying too often - hold angles, avoid aggressive peeks. $4750 value at risk each death",
+                        "category": "Role",
+                        "severity": "high",
+                    })
+
+            # ==========================================
+            # SORT AND PRIORITIZE INSIGHTS
+            # ==========================================
+
+            # Sort by severity and type (mistakes first, then warnings, then positives)
+            type_priority = {"mistake": 0, "warning": 1, "positive": 2}
+            severity_priority = {"high": 0, "medium": 1, "low": 2}
+
+            insights.sort(key=lambda x: (
+                type_priority.get(x.get("type"), 2),
+                severity_priority.get(x.get("severity", "low"), 2)
+            ))
+
+            # Ensure at least one insight
             if not insights:
-                if rating["hltv_rating"] >= 1.0:
-                    insights.append(
-                        {
-                            "type": "positive",
-                            "message": "Solid performance overall - keep up the consistency",
-                            "category": "General",
-                        }
-                    )
+                if hltv >= 1.0:
+                    insights.append({
+                        "type": "positive",
+                        "message": f"Solid match performance: {hltv:.2f} rating, {kast:.0f}% KAST",
+                        "category": "Overall",
+                    })
                 else:
-                    insights.append(
-                        {
-                            "type": "warning",
-                            "message": "Focus on staying alive and trading with teammates",
-                            "category": "General",
-                        }
-                    )
+                    insights.append({
+                        "type": "warning",
+                        "message": f"Below average match ({hltv:.2f} rating). Focus on survival and trading with teammates",
+                        "category": "Overall",
+                    })
 
-            coaching.append(
-                {
-                    "player_name": name,
-                    "steam_id": steam_id,
-                    "role": role,
-                    "insights": insights[:5],  # Top 5 insights per player
-                }
-            )
+            coaching.append({
+                "player_name": name,
+                "steam_id": steam_id,
+                "role": role,
+                "role_confidence": role_confidence,
+                "identity": identity,
+                "stats_summary": {
+                    "rating": round(hltv, 2),
+                    "adr": round(adr, 0),
+                    "kast": round(kast, 0),
+                    "kd": round(kd_ratio, 2),
+                    "ttd_ms": round(advanced.get("ttd_median_ms", 0), 0),
+                    "cp_deg": round(advanced.get("cp_median_error_deg", 0), 1),
+                    "entry_success": round(entry_success, 0),
+                    "trade_rate": round(trade_rate, 0),
+                    "clutch_pct": round(clutches.get("clutch_success_pct", 0), 0),
+                },
+                "insights": insights[:8],  # Top 8 insights per player
+            })
 
         return coaching
+
+    def _calculate_match_averages(self, players: dict) -> dict:
+        """Calculate match-wide statistics for comparison benchmarks."""
+        if not players:
+            return {}
+
+        ttd_values = []
+        cp_values = []
+        adr_values = []
+        hs_values = []
+        entry_success_values = []
+        trade_rates = []
+        util_per_round_values = []
+
+        for p in players.values():
+            ttd = p.get("advanced", {}).get("ttd_median_ms", 0)
+            if ttd > 0:
+                ttd_values.append(ttd)
+
+            cp = p.get("advanced", {}).get("cp_median_error_deg", 0)
+            if cp > 0:
+                cp_values.append(cp)
+
+            adr = p.get("stats", {}).get("adr", 0)
+            if adr > 0:
+                adr_values.append(adr)
+
+            hs = p.get("stats", {}).get("headshot_pct", 0)
+            if hs > 0:
+                hs_values.append(hs)
+
+            entry_success = p.get("entry", {}).get("entry_success_pct", 0)
+            entry_attempts = p.get("entry", {}).get("entry_attempts", 0)
+            if entry_attempts >= 2:
+                entry_success_values.append(entry_success)
+
+            deaths = p.get("stats", {}).get("deaths", 0)
+            traded = p.get("trades", {}).get("deaths_traded", 0) or p.get("duels", {}).get("traded_deaths", 0)
+            if deaths >= 5:
+                trade_rates.append((traded / deaths) * 100)
+
+            util = p.get("utility", {})
+            total_util = sum([
+                util.get("flashbangs_thrown", 0),
+                util.get("smokes_thrown", 0),
+                util.get("he_thrown", 0),
+                util.get("molotovs_thrown", 0),
+            ])
+            rounds = p.get("rws", {}).get("rounds_played", 0) or 30
+            if rounds > 0:
+                util_per_round_values.append(total_util / rounds)
+
+        return {
+            "avg_ttd": sum(ttd_values) / len(ttd_values) if ttd_values else 350,
+            "avg_cp": sum(cp_values) / len(cp_values) if cp_values else 8,
+            "avg_adr": sum(adr_values) / len(adr_values) if adr_values else 75,
+            "avg_hs_pct": sum(hs_values) / len(hs_values) if hs_values else 35,
+            "avg_entry_success": sum(entry_success_values) / len(entry_success_values) if entry_success_values else 50,
+            "avg_trade_rate": sum(trade_rates) / len(trade_rates) if trade_rates else 40,
+            "avg_util_per_round": sum(util_per_round_values) / len(util_per_round_values) if util_per_round_values else 2.5,
+        }
+
+    def _find_top_performers(self, players: dict) -> dict:
+        """Find top performers in each stat category for comparative insights."""
+        top = {}
+
+        # Best trader
+        best_trade_kills = 0
+        for sid, p in players.items():
+            tk = p.get("trades", {}).get("trade_kills", 0) or p.get("duels", {}).get("trade_kills", 0)
+            if tk > best_trade_kills:
+                best_trade_kills = tk
+                top["trade_kills"] = {"steam_id": sid, "name": p["name"], "value": tk}
+
+        # Best entry
+        best_entry_pct = 0
+        for sid, p in players.items():
+            entry_pct = p.get("entry", {}).get("entry_success_pct", 0)
+            entry_attempts = p.get("entry", {}).get("entry_attempts", 0)
+            if entry_attempts >= 3 and entry_pct > best_entry_pct:
+                best_entry_pct = entry_pct
+                top["entry"] = {"steam_id": sid, "name": p["name"], "value": entry_pct}
+
+        # Best clutcher
+        best_clutch_pct = 0
+        for sid, p in players.items():
+            clutch_pct = p.get("clutches", {}).get("clutch_success_pct", 0)
+            clutch_attempts = p.get("clutches", {}).get("clutch_wins", 0) + p.get("clutches", {}).get("clutch_losses", 0)
+            if clutch_attempts >= 2 and clutch_pct > best_clutch_pct:
+                best_clutch_pct = clutch_pct
+                top["clutch"] = {"steam_id": sid, "name": p["name"], "value": clutch_pct}
+
+        # Best aim (lowest CP error)
+        best_cp = 999
+        for sid, p in players.items():
+            cp = p.get("advanced", {}).get("cp_median_error_deg", 0)
+            if 0 < cp < best_cp:
+                best_cp = cp
+                top["aim"] = {"steam_id": sid, "name": p["name"], "value": cp}
+
+        return top
+
+    def _get_ttd_rating(self, ttd_ms: float) -> str:
+        """Get descriptive rating for TTD (Time to Damage)."""
+        if ttd_ms < 200:
+            return "Elite reaction time"
+        elif ttd_ms < 300:
+            return "Fast reactions"
+        elif ttd_ms < 400:
+            return "Average reactions"
+        elif ttd_ms < 500:
+            return "Slow reactions"
+        else:
+            return "Very slow - needs work"
+
+    def _get_cp_rating(self, cp_deg: float) -> str:
+        """Get descriptive rating for Crosshair Placement."""
+        if cp_deg < 3:
+            return "Pro-level placement"
+        elif cp_deg < 6:
+            return "Excellent placement"
+        elif cp_deg < 10:
+            return "Good placement"
+        elif cp_deg < 15:
+            return "Average placement"
+        else:
+            return "Needs improvement"
+
+    def _detect_role_detailed(self, player: dict, match_stats: dict) -> tuple[str, str]:
+        """
+        Detect player role with confidence level.
+        Returns (role, confidence) where confidence is 'high', 'medium', or 'low'.
+        """
+        advanced = player.get("advanced", {})
+        utility = player.get("utility", {})
+        stats = player.get("stats", {})
+        entry = player.get("entry", {})
+
+        opening_kills = advanced.get("opening_kills", 0)
+        entry_attempts = entry.get("entry_attempts", 0)
+        flashes_thrown = utility.get("flashbangs_thrown", 0)
+        smokes_thrown = utility.get("smokes_thrown", 0)
+        kills = stats.get("kills", 0)
+        hs_pct = stats.get("headshot_pct", 0)
+
+        # Score each role
+        scores = {
+            "entry": 0,
+            "support": 0,
+            "rifler": 0,
+            "awp": 0,
+            "lurker": 0,
+            "flex": 0,
+        }
+
+        # Entry scoring
+        if entry_attempts >= 5:
+            scores["entry"] += 3
+        elif entry_attempts >= 3:
+            scores["entry"] += 2
+        if opening_kills >= 5:
+            scores["entry"] += 2
+        elif opening_kills >= 3:
+            scores["entry"] += 1
+
+        # Support scoring
+        if flashes_thrown >= 10:
+            scores["support"] += 3
+        elif flashes_thrown >= 6:
+            scores["support"] += 2
+        if smokes_thrown >= 8:
+            scores["support"] += 2
+        if utility.get("flash_assists", 0) >= 3:
+            scores["support"] += 2
+
+        # Rifler scoring
+        if kills >= 20 and hs_pct >= 45:
+            scores["rifler"] += 3
+        elif kills >= 15 and hs_pct >= 40:
+            scores["rifler"] += 2
+
+        # AWP scoring (would need weapon data for accuracy)
+        # For now, low entry + high kills might indicate AWP
+        if kills >= 15 and entry_attempts <= 2:
+            scores["awp"] += 1
+
+        # Find highest score
+        best_role = max(scores, key=scores.get)
+        best_score = scores[best_role]
+
+        if best_score >= 4:
+            confidence = "high"
+        elif best_score >= 2:
+            confidence = "medium"
+        else:
+            best_role = "flex"
+            confidence = "low"
+
+        return best_role, confidence
+
+    def _determine_player_identity(self, player: dict, match_stats: dict, top_performers: dict) -> dict:
+        """
+        Determine player identity/archetype like Leetify's system.
+        Returns identity name and top stats.
+        """
+        stats = player.get("stats", {})
+        advanced = player.get("advanced", {})
+        rating = player.get("rating", {})
+        entry = player.get("entry", {})
+        utility = player.get("utility", {})
+        clutches = player.get("clutches", {})
+        trades = player.get("trades", {})
+
+        # Collect notable stats
+        notable_stats = []
+
+        # ADR
+        adr = stats.get("adr", 0)
+        if adr >= 85:
+            notable_stats.append(("damage_dealer", adr, f"{adr:.0f} ADR"))
+
+        # Entry kills
+        entry_kills = entry.get("entry_kills", 0)
+        if entry_kills >= 5:
+            notable_stats.append(("entry_fragger", entry_kills, f"{entry_kills} Opening Kills"))
+
+        # Clutches
+        clutch_wins = clutches.get("clutch_wins", 0)
+        if clutch_wins >= 2:
+            notable_stats.append(("clutch_player", clutch_wins, f"{clutch_wins} Clutches Won"))
+
+        # Trade kills
+        trade_kills = trades.get("trade_kills", 0) or player.get("duels", {}).get("trade_kills", 0)
+        if trade_kills >= 5:
+            notable_stats.append(("team_player", trade_kills, f"{trade_kills} Trade Kills"))
+
+        # Flash assists
+        flash_assists = utility.get("flash_assists", 0)
+        if flash_assists >= 3:
+            notable_stats.append(("support_master", flash_assists, f"{flash_assists} Flash Assists"))
+
+        # HS%
+        hs_pct = stats.get("headshot_pct", 0)
+        if hs_pct >= 50:
+            notable_stats.append(("headshot_machine", hs_pct, f"{hs_pct:.0f}% HS"))
+
+        # Multi-kills
+        multikills = stats.get("3k", 0) + stats.get("4k", 0) + stats.get("5k", 0)
+        if multikills >= 3:
+            notable_stats.append(("round_winner", multikills, f"{multikills} Multi-kills"))
+
+        # KAST
+        kast = rating.get("kast_percentage", 0)
+        if kast >= 80:
+            notable_stats.append(("consistent", kast, f"{kast:.0f}% KAST"))
+
+        # TTD (lower is better)
+        ttd = advanced.get("ttd_median_ms", 0)
+        if 0 < ttd < 250:
+            notable_stats.append(("fast_reactions", 1000 - ttd, f"{ttd:.0f}ms TTD"))
+
+        # CP (lower is better)
+        cp = advanced.get("cp_median_error_deg", 0)
+        if 0 < cp < 5:
+            notable_stats.append(("precise_aim", 100 - cp, f"{cp:.1f}° CP"))
+
+        # Sort by value (highest first) and pick top identity
+        notable_stats.sort(key=lambda x: x[1], reverse=True)
+
+        # Identity mapping
+        identity_names = {
+            "damage_dealer": "The Damage Dealer",
+            "entry_fragger": "The Entry Fragger",
+            "clutch_player": "The Clutch Master",
+            "team_player": "The Team Player",
+            "support_master": "The Support",
+            "headshot_machine": "The Headshot Machine",
+            "round_winner": "The Round Winner",
+            "consistent": "The Consistent One",
+            "fast_reactions": "The Reactor",
+            "precise_aim": "The Precise",
+        }
+
+        if notable_stats:
+            top_identity = notable_stats[0][0]
+            return {
+                "name": identity_names.get(top_identity, "The Player"),
+                "top_stats": [{"label": s[2], "category": s[0]} for s in notable_stats[:5]],
+            }
+        else:
+            return {
+                "name": "The Contributor",
+                "top_stats": [],
+            }
 
     def _detect_role(self, player: dict) -> str:
         """Detect player role from stats."""
