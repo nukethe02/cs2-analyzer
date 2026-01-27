@@ -652,9 +652,9 @@ class CachedAnalyzer:
                         }
                     )
 
-        # Merge Clutch metrics
-        if enhanced_metrics and "clutch_stats" in enhanced_metrics:
-            for steam_id, clutch_data in enhanced_metrics.get("clutch_stats", {}).items():
+        # Merge Clutch metrics (enhanced_parser uses "clutch_statistics")
+        if enhanced_metrics and "clutch_statistics" in enhanced_metrics:
+            for steam_id, clutch_data in enhanced_metrics.get("clutch_statistics", {}).items():
                 sid_str = str(steam_id)
                 if sid_str in players:
                     players[sid_str]["duels"].update(
@@ -1200,26 +1200,152 @@ class CachedAnalyzer:
         return [{"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()]
 
     def _build_heatmap_data(self, demo_data) -> dict:
-        """Build position data for heatmap visualization."""
+        """Build comprehensive position data for heatmap visualization.
+
+        Includes zone detection, side info, phase (pre/post plant), and economy context.
+        """
         kills = getattr(demo_data, "kills", [])
+        rounds = getattr(demo_data, "rounds", [])
+        player_names = getattr(demo_data, "player_names", {})
+        map_name = getattr(demo_data, "map_name", "").lower()
+
+        # Build round lookup for bomb plant and economy data
+        round_info = {}
+        for r in rounds:
+            round_num = getattr(r, "round_num", 0)
+            round_info[round_num] = {
+                "bomb_plant_tick": getattr(r, "bomb_plant_tick", None),
+                "bomb_site": getattr(r, "bomb_site", ""),
+                "ct_equipment": getattr(r, "ct_equipment_value", 0),
+                "t_equipment": getattr(r, "t_equipment_value", 0),
+                "round_type": getattr(r, "round_type", ""),
+            }
+
+        # Import zone detection function
+        try:
+            from opensight.visualization.radar import (
+                MAP_ZONES,
+                classify_round_economy,
+                get_zone_for_position,
+            )
+
+            has_zones = map_name in MAP_ZONES
+        except ImportError:
+            has_zones = False
+
+            def get_zone_for_position(m, x, y, z=None):
+                return "Unknown"
+
+            def classify_round_economy(eq, is_pistol):
+                return "unknown"
 
         kill_positions = []
         death_positions = []
+        zone_stats: dict[str, dict] = {}
 
         for kill in kills:
+            round_num = getattr(kill, "round_num", 0)
+            tick = getattr(kill, "tick", 0)
+            r_info = round_info.get(round_num, {})
+
+            # Determine phase (pre-plant vs post-plant)
+            bomb_plant_tick = r_info.get("bomb_plant_tick")
+            phase = "pre_plant"
+            if bomb_plant_tick and tick >= bomb_plant_tick:
+                phase = "post_plant"
+
+            # Determine economy round type
+            attacker_side = getattr(kill, "attacker_side", "") or ""
+            is_pistol = round_num in [1, 13]
+            eq_value = r_info.get(
+                "t_equipment" if "T" in attacker_side.upper() else "ct_equipment", 0
+            )
+            stored_round_type = r_info.get("round_type", "")
+            if stored_round_type:
+                round_type = stored_round_type
+            elif has_zones:
+                round_type = classify_round_economy(eq_value, is_pistol)
+            else:
+                round_type = "pistol" if is_pistol else "unknown"
+
             # Kill position (attacker)
             ax = getattr(kill, "attacker_x", None)
             ay = getattr(kill, "attacker_y", None)
             if ax is not None and ay is not None:
-                kill_positions.append({"x": ax, "y": ay, "z": getattr(kill, "attacker_z", 0)})
+                az = getattr(kill, "attacker_z", 0) or 0
+                zone = get_zone_for_position(map_name, ax, ay, az) if has_zones else "Unknown"
+                kill_positions.append({
+                    "x": ax,
+                    "y": ay,
+                    "z": az,
+                    "zone": zone,
+                    "side": attacker_side,
+                    "phase": phase,
+                    "round_type": round_type,
+                    "round_num": round_num,
+                    "player_name": player_names.get(getattr(kill, "attacker_steamid", 0), "Unknown"),
+                    "player_steamid": getattr(kill, "attacker_steamid", 0),
+                    "weapon": getattr(kill, "weapon", ""),
+                    "headshot": getattr(kill, "headshot", False),
+                })
+
+                # Update zone stats for kills
+                if zone not in zone_stats:
+                    zone_stats[zone] = {"kills": 0, "deaths": 0, "ct_kills": 0, "t_kills": 0}
+                zone_stats[zone]["kills"] += 1
+                if "CT" in attacker_side.upper():
+                    zone_stats[zone]["ct_kills"] += 1
+                else:
+                    zone_stats[zone]["t_kills"] += 1
 
             # Death position (victim)
             vx = getattr(kill, "victim_x", None)
             vy = getattr(kill, "victim_y", None)
             if vx is not None and vy is not None:
-                death_positions.append({"x": vx, "y": vy, "z": getattr(kill, "victim_z", 0)})
+                vz = getattr(kill, "victim_z", 0) or 0
+                victim_side = getattr(kill, "victim_side", "") or ""
+                zone = get_zone_for_position(map_name, vx, vy, vz) if has_zones else "Unknown"
+                death_positions.append({
+                    "x": vx,
+                    "y": vy,
+                    "z": vz,
+                    "zone": zone,
+                    "side": victim_side,
+                    "phase": phase,
+                    "round_type": round_type,
+                    "round_num": round_num,
+                    "player_name": player_names.get(getattr(kill, "victim_steamid", 0), "Unknown"),
+                    "player_steamid": getattr(kill, "victim_steamid", 0),
+                })
 
-        return {"kill_positions": kill_positions, "death_positions": death_positions}
+                # Update zone stats for deaths
+                if zone not in zone_stats:
+                    zone_stats[zone] = {"kills": 0, "deaths": 0, "ct_kills": 0, "t_kills": 0}
+                zone_stats[zone]["deaths"] += 1
+
+        # Calculate zone K/D ratios and percentages
+        total_kills = len(kill_positions)
+        for zone, stats in zone_stats.items():
+            k = stats["kills"]
+            d = stats["deaths"]
+            stats["kd_ratio"] = round(k / max(d, 1), 2)
+            stats["kill_pct"] = round(k / max(total_kills, 1) * 100, 1)
+
+        # Get zone definitions for frontend if available
+        zone_definitions = {}
+        if has_zones:
+            try:
+                zone_definitions = MAP_ZONES.get(map_name, {})
+            except Exception:
+                pass
+
+        return {
+            "map_name": map_name,
+            "kill_positions": kill_positions,
+            "death_positions": death_positions,
+            "zone_stats": zone_stats,
+            "zone_definitions": zone_definitions,
+        }
 
     def _generate_coaching_insights(self, demo_data, analysis, players: dict) -> list[dict]:
         """
