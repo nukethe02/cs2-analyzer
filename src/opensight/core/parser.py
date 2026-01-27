@@ -150,6 +150,8 @@ class KillEvent:
     victim_z: float | None = None
     # Distance
     distance: float | None = None
+    # Time in round (seconds from freeze time end)
+    time_in_round_seconds: float | None = None
 
 
 @dataclass
