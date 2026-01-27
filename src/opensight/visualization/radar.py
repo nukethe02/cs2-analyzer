@@ -55,7 +55,7 @@ MAP_DATA = {
         "scale": 4.9,
         "radar_url": (
             "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png"
-        ),one,
+        ),
     },
     "de_nuke": {
         "name": "Nuke",
@@ -65,7 +65,8 @@ MAP_DATA = {
         "radar_url": (
             "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png"
         ),
-        "z_cutoff": -
+        "z_cutoff": -495,
+    },
     "de_overpass": {
         "name": "Overpass",
         "pos_x": -4831,
@@ -76,6 +77,7 @@ MAP_DATA = {
         ),
         "z_cutoff": None,
     },
+    "de_vertigo": {
         "name": "Vertigo",
         "pos_x": -3168,
         "pos_y": 1762,
@@ -85,7 +87,8 @@ MAP_DATA = {
         ),
         "z_cutoff": 11700,  # Split between floors
     },
-    "de_ancient": {ent",
+    "de_ancient": {
+        "name": "Ancient",
         "pos_x": -2953,
         "pos_y": 2164,
         "scale": 5.0,
@@ -95,7 +98,8 @@ MAP_DATA = {
         "z_cutoff": None,
     },
     "de_anubis": {
-        "name": "Anub6,
+        "name": "Anubis",
+        "pos_x": -2796,
         "pos_y": 3328,
         "scale": 5.22,
         "radar_url": (
@@ -105,7 +109,8 @@ MAP_DATA = {
     },
     "cs_office": {
         "name": "Office",
-        "pos_x": -183,
+        "pos_x": -1838,
+        "pos_y": 1858,
         "scale": 4.1,
         "radar_url": (
             "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/cs_office_radar.png"
@@ -115,7 +120,8 @@ MAP_DATA = {
     "cs_italy": {
         "name": "Italy",
         "pos_x": -2647,
-        "pos_y": 2592
+        "pos_y": 2592,
+        "scale": 4.6,
         "radar_url": (
             "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/cs_italy_radar.png"
         ),
@@ -125,7 +131,8 @@ MAP_DATA = {
 
 # Fallback radar URLs (alternative sources)
 FALLBACK_RADAR_URLS = {
-    "de_dust2": (githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_dust2.png"
+    "de_dust2": (
+        "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_dust2.png"
     ),
     "de_mirage": (
         "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_mirage.png"
