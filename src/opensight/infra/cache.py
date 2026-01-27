@@ -818,96 +818,207 @@ class CachedAnalyzer:
         }
 
     def _build_round_timeline(self, demo_data, analysis) -> list[dict]:
-        """Build round-by-round timeline data."""
+        """Build round-by-round timeline data with detailed events."""
         timeline = []
         kills = getattr(demo_data, "kills", [])
         rounds_data = getattr(demo_data, "rounds", [])
+        player_names = getattr(demo_data, "player_names", {})
 
         # Build round boundaries for tick-based inference
-        round_boundaries = []
+        round_boundaries = {}  # round_num -> (start_tick, end_tick)
+        round_info = {}  # round_num -> round data
         for r in rounds_data:
             round_num = getattr(r, "round_num", 0)
             start_tick = getattr(r, "start_tick", 0)
             end_tick = getattr(r, "end_tick", 0)
-            if round_num and end_tick > 0:
-                round_boundaries.append((round_num, start_tick, end_tick))
-        round_boundaries.sort(key=lambda x: x[1])
+            if round_num:
+                round_boundaries[round_num] = (start_tick, end_tick)
+                round_info[round_num] = r
 
         def infer_round(tick: int) -> int:
             """Infer round number from tick."""
-            for rn, st, et in round_boundaries:
+            for rn, (st, et) in round_boundaries.items():
                 if st <= tick <= et:
                     return rn
+            # Fallback: find closest round
             if round_boundaries:
-                for rn, _st, et in reversed(round_boundaries):
+                for rn in sorted(round_boundaries.keys(), reverse=True):
+                    st, et = round_boundaries[rn]
                     if tick > et:
                         return rn
                 return 1
             return 1
 
+        def tick_to_round_time(tick: int, round_start: int) -> float:
+            """Convert tick to seconds from round start."""
+            tick_rate = 64  # CS2 default
+            return max(0, (tick - round_start) / tick_rate)
+
         # Check if kills have valid round data
         has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
 
-        # Group kills by round
-        round_kills = {}
+        # Group kills and events by round
+        round_events: dict[int, list] = {}
+        round_stats: dict[int, dict] = {}
+
         for kill in kills:
             round_num = getattr(kill, "round_num", 0)
+            tick = getattr(kill, "tick", 0)
 
             # Infer round from tick if needed
             if round_num == 0:
                 if round_boundaries and not has_round_data:
-                    tick = getattr(kill, "tick", 0)
                     round_num = infer_round(tick)
                 else:
                     round_num = 1
 
-            if round_num not in round_kills:
-                round_kills[round_num] = {
-                    "ct_kills": 0,
-                    "t_kills": 0,
-                    "first_kill": None,
-                    "first_death": None,
-                }
+            if round_num not in round_events:
+                round_events[round_num] = []
+                round_stats[round_num] = {"ct_kills": 0, "t_kills": 0}
 
+            # Get round start tick for time calculation
+            round_start = round_boundaries.get(round_num, (0, 0))[0]
+            time_seconds = tick_to_round_time(tick, round_start)
+
+            attacker_name = getattr(kill, "attacker_name", "") or player_names.get(
+                getattr(kill, "attacker_steamid", 0), "Unknown"
+            )
+            victim_name = getattr(kill, "victim_name", "") or player_names.get(
+                getattr(kill, "victim_steamid", 0), "Unknown"
+            )
             attacker_side = str(getattr(kill, "attacker_side", "")).upper()
-            if "CT" in attacker_side:
-                round_kills[round_num]["ct_kills"] += 1
-            else:
-                round_kills[round_num]["t_kills"] += 1
+            victim_side = str(getattr(kill, "victim_side", "")).upper()
 
-            if round_kills[round_num]["first_kill"] is None:
-                round_kills[round_num]["first_kill"] = getattr(kill, "attacker_name", "Unknown")
-                round_kills[round_num]["first_death"] = getattr(kill, "victim_name", "Unknown")
+            # Normalize team names
+            attacker_team = "CT" if "CT" in attacker_side else "T"
+            victim_team = "CT" if "CT" in victim_side else "T"
+
+            # Track kill counts
+            if attacker_team == "CT":
+                round_stats[round_num]["ct_kills"] += 1
+            else:
+                round_stats[round_num]["t_kills"] += 1
+
+            # Create kill event
+            round_events[round_num].append(
+                {
+                    "tick": tick,
+                    "time_seconds": round(time_seconds, 1),
+                    "type": "kill",
+                    "killer": attacker_name,
+                    "killer_team": attacker_team,
+                    "victim": victim_name,
+                    "victim_team": victim_team,
+                    "weapon": getattr(kill, "weapon", "unknown"),
+                    "headshot": bool(getattr(kill, "headshot", False)),
+                    "is_first_kill": len(round_events[round_num]) == 0,
+                }
+            )
+
+        # Add bomb events from round data
+        for round_num, r in round_info.items():
+            if round_num not in round_events:
+                round_events[round_num] = []
+                round_stats[round_num] = {"ct_kills": 0, "t_kills": 0}
+
+            round_start = round_boundaries.get(round_num, (0, 0))[0]
+
+            # Check for bomb plant
+            bomb_plant_tick = getattr(r, "bomb_plant_tick", None)
+            if bomb_plant_tick:
+                time_seconds = tick_to_round_time(bomb_plant_tick, round_start)
+                round_events[round_num].append(
+                    {
+                        "tick": bomb_plant_tick,
+                        "time_seconds": round(time_seconds, 1),
+                        "type": "bomb_plant",
+                        "player": getattr(r, "bomb_planter", "Unknown"),
+                        "site": getattr(r, "bomb_site", "?"),
+                    }
+                )
+
+            # Check for bomb defuse
+            win_reason = str(getattr(r, "win_reason", "")).lower()
+            if "defuse" in win_reason:
+                defuse_tick = getattr(r, "end_tick", 0)
+                time_seconds = tick_to_round_time(defuse_tick, round_start)
+                round_events[round_num].append(
+                    {
+                        "tick": defuse_tick,
+                        "time_seconds": round(time_seconds, 1),
+                        "type": "bomb_defuse",
+                        "player": getattr(r, "bomb_defuser", "Unknown"),
+                    }
+                )
+
+            # Check for bomb explosion
+            if "explod" in win_reason:
+                explode_tick = getattr(r, "end_tick", 0)
+                time_seconds = tick_to_round_time(explode_tick, round_start)
+                round_events[round_num].append(
+                    {
+                        "tick": explode_tick,
+                        "time_seconds": round(time_seconds, 1),
+                        "type": "bomb_explode",
+                    }
+                )
 
         # Use actual round data if available, otherwise use analysis total_rounds
         total_rounds = (
-            getattr(analysis, "total_rounds", 0) or len(round_boundaries) or len(round_kills)
+            getattr(analysis, "total_rounds", 0) or len(round_boundaries) or len(round_events) or 30
         )
 
-        # Build timeline entries - ensure we have entries for all rounds
+        # Build timeline entries for all rounds
         for round_num in range(1, total_rounds + 1):
-            rd = round_kills.get(
-                round_num,
-                {"ct_kills": 0, "t_kills": 0, "first_kill": None, "first_death": None},
-            )
+            events = round_events.get(round_num, [])
+            stats = round_stats.get(round_num, {"ct_kills": 0, "t_kills": 0})
+
+            # Sort events by tick
+            events.sort(key=lambda e: e.get("tick", 0))
+
+            # Mark first kill
+            kill_events = [e for e in events if e.get("type") == "kill"]
+            if kill_events:
+                kill_events[0]["is_first_kill"] = True
+                for e in kill_events[1:]:
+                    e["is_first_kill"] = False
+
             # Get winner from rounds data if available
-            winner = "CT" if rd["ct_kills"] > rd["t_kills"] else "T"
-            for r in rounds_data:
-                if getattr(r, "round_num", 0) == round_num:
-                    winner = getattr(r, "winner", winner)
-                    break
+            winner = "CT" if stats["ct_kills"] > stats["t_kills"] else "T"
+            win_reason = "Elimination"
+            round_type = "full_buy"
+
+            if round_num in round_info:
+                r = round_info[round_num]
+                winner = str(getattr(r, "winner", winner)).upper()
+                if "CT" not in winner and "T" not in winner:
+                    winner = "CT" if stats["ct_kills"] > stats["t_kills"] else "T"
+                win_reason = getattr(r, "win_reason", win_reason) or win_reason
+
+            # Determine round type
+            if round_num in [1, 13]:
+                round_type = "pistol"
+            elif stats["ct_kills"] + stats["t_kills"] <= 2:
+                round_type = "eco"
+
+            # Get first kill/death info
+            first_kill = None
+            first_death = None
+            if kill_events:
+                first_kill = kill_events[0].get("killer")
+                first_death = kill_events[0].get("victim")
 
             timeline.append(
                 {
                     "round_num": round_num,
+                    "round_type": round_type,
                     "winner": winner,
-                    "win_reason": (
-                        "Elimination" if abs(rd["ct_kills"] - rd["t_kills"]) >= 4 else "Objective"
-                    ),
-                    "first_kill": rd["first_kill"],
-                    "first_death": rd["first_death"],
-                    "ct_kills": rd["ct_kills"],
-                    "t_kills": rd["t_kills"],
+                    "win_reason": win_reason,
+                    "first_kill": first_kill,
+                    "first_death": first_death,
+                    "ct_kills": stats["ct_kills"],
+                    "t_kills": stats["t_kills"],
+                    "events": events,
                 }
             )
 

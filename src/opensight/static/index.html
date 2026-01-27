@@ -1483,6 +1483,284 @@
                 grid-template-columns: repeat(3, 1fr);
             }
         }
+
+        /* Timeline Styles */
+        .timeline-container {
+            padding: 20px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+        }
+
+        .timeline {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .round-box {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .round-box:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .round-box.ct-win {
+            background: var(--ct-bg);
+            border-color: var(--ct-color);
+            color: var(--ct-color);
+        }
+
+        .round-box.ct-win:hover {
+            box-shadow: 0 0 12px var(--ct-glow);
+        }
+
+        .round-box.t-win {
+            background: var(--t-bg);
+            border-color: var(--t-color);
+            color: var(--t-color);
+        }
+
+        .round-box.t-win:hover {
+            box-shadow: 0 0 12px var(--t-glow);
+        }
+
+        .round-box.half-marker {
+            width: 20px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: default;
+        }
+
+        .round-box.half-marker:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+
+        /* Matrix Table Styles */
+        .matrix-container {
+            padding: 20px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            overflow-x: auto;
+        }
+
+        .matrix-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .matrix-table th,
+        .matrix-table td {
+            padding: 8px 12px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .matrix-table th {
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .matrix-table td {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+        }
+
+        .matrix-table td.killer {
+            color: var(--warning);
+            font-weight: 500;
+        }
+
+        .matrix-table td.highlight {
+            background: var(--danger-bg);
+            color: var(--danger);
+            font-weight: 700;
+        }
+
+        /* Timeline Overview */
+        .timeline-overview {
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* Timeline Details */
+        .timeline-details {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .round-detail {
+            background: var(--bg-card);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .round-detail.highlight {
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .round-detail-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 16px;
+            background: var(--bg-elevated);
+            border-left: 3px solid var(--border);
+        }
+
+        .round-detail-header.ct-win {
+            border-left-color: var(--ct-color);
+            background: linear-gradient(90deg, var(--ct-bg), var(--bg-elevated));
+        }
+
+        .round-detail-header.t-win {
+            border-left-color: var(--t-color);
+            background: linear-gradient(90deg, var(--t-bg), var(--bg-elevated));
+        }
+
+        .round-detail-num {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        .round-detail-type {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            background: var(--bg-card);
+            border-radius: 4px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .round-detail-winner {
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+
+        .round-detail-score {
+            margin-left: auto;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .round-detail-events {
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .event-empty {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+            padding: 8px;
+        }
+
+        .timeline-event {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            font-size: 0.8rem;
+        }
+
+        .event-time {
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            min-width: 40px;
+        }
+
+        .event-icon {
+            font-size: 1rem;
+        }
+
+        .event-player {
+            font-weight: 600;
+        }
+
+        .event-player.ct-player {
+            color: var(--ct-color);
+        }
+
+        .event-player.t-player {
+            color: var(--t-color);
+        }
+
+        .event-weapon {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+
+        .event-text {
+            color: var(--text-secondary);
+        }
+
+        .event-tag {
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-left: auto;
+        }
+
+        .event-tag.first-kill {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+        }
+
+        .kill-event {
+            border-left: 2px solid var(--warning);
+        }
+
+        .bomb-event {
+            border-left: 2px solid var(--danger);
+            background: var(--danger-bg);
+        }
     </style>
 </head>
 <body>
@@ -2485,24 +2763,132 @@
                 `;
             }
 
-            let html = '<div class="timeline-container"><div class="timeline">';
+            // Round overview bar
+            let html = '<div class="timeline-container">';
+            html += '<div class="timeline-overview"><div class="timeline">';
 
             for (const round of timeline) {
                 const isCtWin = round.winner === 'CT';
                 const isTWin = round.winner === 'T';
                 const cls = isCtWin ? 'ct-win' : isTWin ? 't-win' : '';
-                const title = `Round ${round.round_num}: ${round.winner} wins (${round.win_reason})\nFirst kill: ${round.first_kill || 'Unknown'}\nFirst death: ${round.first_death || 'Unknown'}`;
+                const eventCount = (round.events || []).length;
+                const title = `Round ${round.round_num}: ${round.winner} wins (${round.win_reason})\nFirst kill: ${round.first_kill || 'Unknown'}\nFirst death: ${round.first_death || 'Unknown'}\nEvents: ${eventCount}`;
 
-                // Add half marker after round 12
                 if (round.round_num === 13) {
                     html += '<div class="round-box half-marker">|</div>';
                 }
 
-                html += `<div class="round-box ${cls}" title="${esc(title)}">${round.round_num}</div>`;
+                html += `<div class="round-box ${cls}" title="${esc(title)}" onclick="toggleRoundDetails(${round.round_num})">${round.round_num}</div>`;
+            }
+
+            html += '</div></div>';
+
+            // Detailed round events
+            html += '<div class="timeline-details">';
+
+            for (const round of timeline) {
+                const isCtWin = round.winner === 'CT';
+                const winClass = isCtWin ? 'ct-win' : 't-win';
+                const winColor = isCtWin ? 'var(--ct-color)' : 'var(--t-color)';
+                const events = round.events || [];
+                const roundType = round.round_type || 'full_buy';
+                const roundTypeLabel = roundType === 'pistol' ? 'Pistol' : roundType === 'eco' ? 'Eco' : roundType === 'force' ? 'Force' : 'Full Buy';
+
+                html += `<div class="round-detail" id="round-detail-${round.round_num}">`;
+                html += `<div class="round-detail-header ${winClass}">`;
+                html += `<span class="round-detail-num">Round ${round.round_num}</span>`;
+                html += `<span class="round-detail-type">${roundTypeLabel}</span>`;
+                html += `<span class="round-detail-winner" style="color: ${winColor}">${round.winner} WIN</span>`;
+                html += `<span class="round-detail-score">${round.ct_kills || 0} CT kills / ${round.t_kills || 0} T kills</span>`;
+                html += '</div>';
+
+                if (events.length === 0) {
+                    html += '<div class="round-detail-events"><div class="event-empty">No detailed events available</div></div>';
+                } else {
+                    html += '<div class="round-detail-events">';
+                    for (const event of events) {
+                        html += renderTimelineEvent(event);
+                    }
+                    html += '</div>';
+                }
+
+                html += '</div>';
             }
 
             html += '</div></div>';
             return html;
+        }
+
+        function renderTimelineEvent(event) {
+            const time = formatEventTime(event.time_seconds);
+
+            if (event.type === 'kill') {
+                const hsIcon = event.headshot ? ' 🎯' : '';
+                const firstTag = event.is_first_kill ? '<span class="event-tag first-kill">FIRST</span>' : '';
+                const killerClass = event.killer_team === 'CT' ? 'ct-player' : 't-player';
+                const victimClass = event.victim_team === 'CT' ? 'ct-player' : 't-player';
+
+                return `
+                    <div class="timeline-event kill-event">
+                        <span class="event-time">${time}</span>
+                        <span class="event-icon">🔫</span>
+                        <span class="event-player ${killerClass}">${esc(event.killer || 'Unknown')}</span>
+                        <span class="event-weapon">─[${esc(event.weapon || '?')}${hsIcon}]─▶</span>
+                        <span class="event-player ${victimClass}">${esc(event.victim || 'Unknown')}</span>
+                        ${firstTag}
+                    </div>
+                `;
+            }
+
+            if (event.type === 'bomb_plant') {
+                return `
+                    <div class="timeline-event bomb-event">
+                        <span class="event-time">${time}</span>
+                        <span class="event-icon">💣</span>
+                        <span class="event-text">${esc(event.player || 'Unknown')} planted at ${event.site || '?'}</span>
+                    </div>
+                `;
+            }
+
+            if (event.type === 'bomb_defuse') {
+                return `
+                    <div class="timeline-event bomb-event">
+                        <span class="event-time">${time}</span>
+                        <span class="event-icon">🔧</span>
+                        <span class="event-text">${esc(event.player || 'Unknown')} defused the bomb</span>
+                    </div>
+                `;
+            }
+
+            if (event.type === 'bomb_explode') {
+                return `
+                    <div class="timeline-event bomb-event">
+                        <span class="event-time">${time}</span>
+                        <span class="event-icon">💥</span>
+                        <span class="event-text">Bomb exploded</span>
+                    </div>
+                `;
+            }
+
+            return '';
+        }
+
+        function formatEventTime(seconds) {
+            if (!seconds && seconds !== 0) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function toggleRoundDetails(roundNum) {
+            // Toggle visibility of all round details or scroll to specific round
+            const details = document.querySelectorAll('.round-detail');
+            const target = document.getElementById(`round-detail-${roundNum}`);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.classList.add('highlight');
+                setTimeout(() => target.classList.remove('highlight'), 1500);
+            }
         }
 
         // Render Kill Matrix Tab
