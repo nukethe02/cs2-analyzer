@@ -268,6 +268,16 @@ class TradeStats:
 
 
 @dataclass
+class ClutchEvent:
+    """Individual clutch event details."""
+
+    round_number: int
+    type: str  # "1v1", "1v2", "1v3", "1v4", "1v5"
+    outcome: str  # "WON", "LOST", "SAVED"
+    enemies_killed: int = 0
+
+
+@dataclass
 class ClutchStats:
     """Clutch situation statistics - 1vX scenarios where player is last alive.
 
@@ -292,6 +302,7 @@ class ClutchStats:
     v4_wins: int = 0
     v5_attempts: int = 0
     v5_wins: int = 0
+    clutches: list["ClutchEvent"] = field(default_factory=list)
 
     @property
     def win_rate(self) -> float:
@@ -1870,14 +1881,15 @@ class DemoAnalyzer:
         - total_situations: Total 1vX clutch attempts
         - total_wins: Clutches won (determined by round outcome)
         - Per-scenario tracking (1v1, 1v2, etc.) with wins and attempts
+        - Individual clutch events with round_number, type, and outcome
         """
         kills_df = self.data.kills_df
         if kills_df.empty or not self._round_col or not self._vic_id_col:
             logger.info("Skipping clutch detection - missing required columns")
             return
 
-        # Build player team lookup from player data for fallback
-        player_team_lookup = {}
+        # Build player team lookup from player data
+        player_team_lookup: dict[int, str] = {}
         for steam_id, player in self._players.items():
             player_team_lookup[steam_id] = player.team
         # Also add from data.player_teams if available
@@ -1895,27 +1907,43 @@ class DemoAnalyzer:
             return
 
         # Build round winner lookup from rounds data
-        round_winners = {}
+        round_winners: dict[int, str] = {}
         for round_info in self.data.rounds:
             round_winners[round_info.round_num] = round_info.winner
+
+        # Get all unique players per team
+        ct_players = {sid for sid, p in self._players.items() if p.team == "CT"}
+        t_players = {sid for sid, p in self._players.items() if p.team == "T"}
 
         total_clutch_situations = 0
         total_clutch_wins = 0
 
         for round_num in kills_df[self._round_col].unique():
-            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
-            if len(round_kills) < 4:  # Need at least 4 deaths for a 1vX situation
-                continue
+            round_num_int = int(round_num)
+            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values(
+                "tick"
+            )
 
             # Get round winner (CT or T)
-            round_winner = round_winners.get(int(round_num), "Unknown")
+            round_winner = round_winners.get(round_num_int, "Unknown")
 
-            # Track deaths in order for each team using normalized team values
-            ct_deaths = []
-            t_deaths = []
+            # Initialize alive sets for this round - start with all players alive
+            ct_alive = ct_players.copy()
+            t_alive = t_players.copy()
 
+            # Skip rounds with no players on either side
+            if not ct_alive or not t_alive:
+                continue
+
+            # Track if we've already detected a clutch this round (one per side max)
+            clutch_detected: dict[str, bool] = {"CT": False, "T": False}
+            clutch_info: dict[str, dict[str, Any]] = {}
+
+            # Process deaths in tick order to track alive status
             for _, kill in round_kills.iterrows():
                 victim_id = safe_int(kill.get(self._vic_id_col))
+                if not victim_id:
+                    continue
 
                 # Get victim team - prefer column, fallback to lookup
                 if use_team_column:
@@ -1923,83 +1951,97 @@ class DemoAnalyzer:
                 else:
                     victim_side = player_team_lookup.get(victim_id, "Unknown")
 
+                # Remove victim from alive set
                 if victim_side == "CT":
-                    ct_deaths.append(victim_id)
+                    ct_alive.discard(victim_id)
                 elif victim_side == "T":
-                    t_deaths.append(victim_id)
+                    t_alive.discard(victim_id)
 
-            # Detect clutch situations for each side
-            for side, deaths, _enemy_deaths in [
-                ("CT", ct_deaths, t_deaths),
-                ("T", t_deaths, ct_deaths),
-            ]:
-                if len(deaths) < 4:  # Need 4+ teammates dead for 1vX (5-player team)
+                # Check for clutch situation after each death
+                # CT clutch: 1 CT alive, 1+ T alive, not already detected
+                if (
+                    len(ct_alive) == 1
+                    and len(t_alive) >= 1
+                    and not clutch_detected["CT"]
+                ):
+                    clutch_detected["CT"] = True
+                    clutcher_id = next(iter(ct_alive))
+                    clutch_info["CT"] = {
+                        "clutcher_id": clutcher_id,
+                        "enemies_at_start": len(t_alive),
+                        "clutcher_died": False,
+                    }
+
+                # T clutch: 1 T alive, 1+ CT alive, not already detected
+                if (
+                    len(t_alive) == 1
+                    and len(ct_alive) >= 1
+                    and not clutch_detected["T"]
+                ):
+                    clutch_detected["T"] = True
+                    clutcher_id = next(iter(t_alive))
+                    clutch_info["T"] = {
+                        "clutcher_id": clutcher_id,
+                        "enemies_at_start": len(ct_alive),
+                        "clutcher_died": False,
+                    }
+
+                # Check if a clutcher just died
+                for _side, info in clutch_info.items():
+                    if info.get("clutcher_id") == victim_id:
+                        info["clutcher_died"] = True
+
+            # Process detected clutches
+            for side, info in clutch_info.items():
+                clutcher_id = info["clutcher_id"]
+                enemies_at_start = info["enemies_at_start"]
+                clutcher_died = info["clutcher_died"]
+
+                if clutcher_id not in self._players:
                     continue
 
-                # Find players on this team using exact match after normalization
-                team_players = [sid for sid, p in self._players.items() if p.team == side]
+                player = self._players[clutcher_id]
 
-                # Allow teams with 4-5 players (some demos may have disconnects)
-                if len(team_players) < 4 or len(team_players) > 5:
-                    continue
+                # Determine outcome: WON, LOST, or SAVED
+                # WON: Clutcher's team won the round
+                # LOST: Clutcher died
+                # SAVED: Clutcher survived but team lost (time/bomb)
+                if round_winner == side:
+                    outcome = "WON"
+                    clutch_won = True
+                elif clutcher_died:
+                    outcome = "LOST"
+                    clutch_won = False
+                else:
+                    outcome = "SAVED"
+                    clutch_won = False
 
-                # Count enemy deaths that happened BEFORE 4th teammate death
-                # We look at kill order in the DataFrame
-                fourth_death_idx = -1
-                current_ct_deaths = 0
-                current_t_deaths = 0
-
-                for i, (_, kill) in enumerate(round_kills.iterrows()):
-                    vic_id = safe_int(kill.get(self._vic_id_col))
+                # Count enemies killed during clutch
+                enemies_killed = 0
+                enemy_side = "T" if side == "CT" else "CT"
+                for _, kill in round_kills.iterrows():
+                    attacker_id = (
+                        safe_int(kill.get(self._att_id_col)) if self._att_id_col else 0
+                    )
                     if use_team_column:
-                        victim_side_norm = self._normalize_team(kill.get(self._vic_side_col))
+                        vic_side = self._normalize_team(kill.get(self._vic_side_col))
                     else:
-                        victim_side_norm = player_team_lookup.get(vic_id, "Unknown")
-                    if victim_side_norm == "CT":
-                        current_ct_deaths += 1
-                        if side == "CT" and current_ct_deaths == 4:
-                            fourth_death_idx = i
-                            break
-                    elif victim_side_norm == "T":
-                        current_t_deaths += 1
-                        if side == "T" and current_t_deaths == 4:
-                            fourth_death_idx = i
-                            break
+                        vic_id = safe_int(kill.get(self._vic_id_col))
+                        vic_side = player_team_lookup.get(vic_id, "Unknown")
+                    if attacker_id == clutcher_id and vic_side == enemy_side:
+                        enemies_killed += 1
 
-                if fourth_death_idx < 0:
-                    continue
+                # Create clutch type string
+                clutch_type = f"1v{enemies_at_start}"
 
-                # Count enemies alive when 4th teammate died
-                if side == "CT":
-                    enemies_alive = 5 - current_t_deaths
-                else:
-                    enemies_alive = 5 - current_ct_deaths
-
-                if enemies_alive < 1 or enemies_alive > 5:
-                    continue
-
-                # Find the survivor (player on this team not in first 4 deaths)
-                first_four_dead = deaths[:4]
-                survivor_id = None
-                for player_id in team_players:
-                    if player_id not in first_four_dead:
-                        survivor_id = player_id
-                        break
-
-                if survivor_id is None or survivor_id not in self._players:
-                    continue
-
-                player = self._players[survivor_id]
-
-                # Determine if clutch was won
-                # If round_winner is known, use it directly
-                # Otherwise infer from death counts (if 5 enemies died, clutcher's team won)
-                if round_winner in ("CT", "T"):
-                    clutch_won = round_winner == side
-                else:
-                    # Infer winner: if all 5 enemies died, the clutcher won
-                    enemy_deaths_in_round = len(t_deaths) if side == "CT" else len(ct_deaths)
-                    clutch_won = enemy_deaths_in_round >= 5
+                # Create clutch event
+                clutch_event = ClutchEvent(
+                    round_number=round_num_int,
+                    type=clutch_type,
+                    outcome=outcome,
+                    enemies_killed=enemies_killed,
+                )
+                player.clutches.clutches.append(clutch_event)
 
                 # Update totals
                 player.clutches.total_situations += 1
@@ -2009,23 +2051,23 @@ class DemoAnalyzer:
                     total_clutch_wins += 1
 
                 # Update per-scenario stats
-                if enemies_alive == 1:
+                if enemies_at_start == 1:
                     player.clutches.v1_attempts += 1
                     if clutch_won:
                         player.clutches.v1_wins += 1
-                elif enemies_alive == 2:
+                elif enemies_at_start == 2:
                     player.clutches.v2_attempts += 1
                     if clutch_won:
                         player.clutches.v2_wins += 1
-                elif enemies_alive == 3:
+                elif enemies_at_start == 3:
                     player.clutches.v3_attempts += 1
                     if clutch_won:
                         player.clutches.v3_wins += 1
-                elif enemies_alive == 4:
+                elif enemies_at_start == 4:
                     player.clutches.v4_attempts += 1
                     if clutch_won:
                         player.clutches.v4_wins += 1
-                elif enemies_alive == 5:
+                elif enemies_at_start >= 5:
                     player.clutches.v5_attempts += 1
                     if clutch_won:
                         player.clutches.v5_wins += 1

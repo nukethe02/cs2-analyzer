@@ -267,6 +267,15 @@ def build_player_response(player: Any) -> dict:
                 "attempts": player.clutches.v5_attempts,
                 "wins": player.clutches.v5_wins,
             },
+            "details": [
+                {
+                    "round_number": c.round_number,
+                    "type": c.type,
+                    "outcome": c.outcome,
+                    "enemies_killed": c.enemies_killed,
+                }
+                for c in player.clutches.clutches
+            ],
         },
         # Utility (nested)
         "utility": {
