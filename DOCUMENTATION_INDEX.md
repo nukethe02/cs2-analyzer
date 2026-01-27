@@ -287,7 +287,7 @@ Root directory:
 | Professional metrics | 5 |
 | Performance: 500MB demo | 30-60 seconds |
 | Memory for 500MB | <100MB peak |
-| Supported languages | Python 3.10+ |
+| Supported languages | Python 3.11+ |
 
 ---
 

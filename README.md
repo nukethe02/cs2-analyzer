@@ -40,7 +40,7 @@ pip install -e ".[dev]"
 
 ### Requirements
 
-- Python 3.10+
+- Python 3.11+
 - [demoparser2](https://github.com/LaihoE/demoparser) - Rust-backed parser for CS2 demos
 - [awpy](https://github.com/pnxenopoulos/awpy) - Geometric calculations (optional, for advanced visibility checks)
 
