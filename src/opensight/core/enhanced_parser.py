@@ -322,6 +322,11 @@ class MetricCalculator:
         return trade_stats
 
     @staticmethod
+    def _get_damage_attacker_id(dmg) -> int:
+        """Safely get attacker ID from a damage object."""
+        return getattr(dmg, "attacker_id", getattr(dmg, "attacker_steamid", 0))
+
+    @staticmethod
     def calculate_ttd(damages: list[DamageContext]) -> dict[int, dict]:
         """
         Calculate Time To Damage (TTD) - ticks from first seeing enemy to dealing damage.
@@ -333,7 +338,8 @@ class MetricCalculator:
         # Group by attacker
         damages_by_attacker = {}
         for dmg in damages:
-            key = (dmg.attacker_id, dmg.round_num)
+            attacker_id = MetricCalculator._get_damage_attacker_id(dmg)
+            key = (attacker_id, dmg.round_num)
             if key not in damages_by_attacker:
                 damages_by_attacker[key] = []
             damages_by_attacker[key].append(dmg)
@@ -351,7 +357,7 @@ class MetricCalculator:
 
             if attacker_id not in ttd_data:
                 ttd_data[attacker_id] = {
-                    "name": first_dmg.attacker_name,
+                    "name": getattr(first_dmg, "attacker_name", "Unknown"),
                     "ttd_values": [],
                 }
             ttd_data[attacker_id]["ttd_values"].append(ttd_ms)
