@@ -212,13 +212,9 @@ class OpeningDuelStats:
     losses: int = 0
     attempts: int = 0
     # Entry-specific tracking
-    entry_ttd_values: list = None  # TTD values for entry kills specifically
+    entry_ttd_values: list[float] = field(default_factory=list)
     t_side_entries: int = 0  # Entry kills while on T side (aggressive)
     ct_side_entries: int = 0  # Entry kills while on CT side (defensive)
-
-    def __post_init__(self):
-        if self.entry_ttd_values is None:
-            self.entry_ttd_values = []
 
     @property
     def win_rate(self) -> float:
@@ -1855,7 +1851,7 @@ class DemoAnalyzer:
                         (damages_df[dmg_att_col].astype(float) == float(attacker_id))
                         & (damages_df[dmg_vic_col].astype(float) == float(victim_id))
                         & (damages_df["tick"] <= kill_tick)
-                    ].sort_values("tick")
+                    ].sort_values(by="tick")
 
                     if not entry_damages.empty:
                         first_dmg_tick = safe_int(entry_damages.iloc[0]["tick"])
@@ -1926,7 +1922,7 @@ class DemoAnalyzer:
         for round_num in kills_df[self._round_col].unique():
             round_kills = (
                 kills_df[kills_df[self._round_col] == round_num]
-                .sort_values("tick")
+                .sort_values(by="tick")
                 .reset_index(drop=True)
             )
 
@@ -2244,16 +2240,16 @@ class DemoAnalyzer:
             for round_num in kills_df[self._round_col].unique():
                 round_kills = kills_df[
                     kills_df[self._round_col] == round_num
-                ].sort_values("tick")
+                ].sort_values(by="tick")
                 traded_players = set()
 
                 for _idx, death in round_kills.iterrows():
-                    victim_id = int(death.get(self._vic_id_col, 0))
+                    victim_id = safe_int(death.get(self._vic_id_col), default=0)
                     if not victim_id:
                         continue
 
                     death_tick = safe_int(death.get("tick"))
-                    killer_id = int(death.get(self._att_id_col, 0))
+                    killer_id = safe_int(death.get(self._att_id_col), default=0)
                     victim_team = player_teams.get(victim_id, "")
 
                     if not killer_id or not victim_team:
@@ -2269,7 +2265,7 @@ class DemoAnalyzer:
                     if self._att_side_col in round_kills.columns:
                         potential_trades = round_kills[trade_mask]
                         for _, trade_kill in potential_trades.iterrows():
-                            trader_id = int(trade_kill.get(self._att_id_col, 0))
+                            trader_id = safe_int(trade_kill.get(self._att_id_col), default=0)
                             trader_team = player_teams.get(trader_id, "")
                             if trader_team == victim_team:
                                 traded_players.add(victim_id)
@@ -2848,14 +2844,16 @@ class DemoAnalyzer:
         df = kills_df.copy()
         df["_att_x"] = pd.to_numeric(df[att_x_col], errors="coerce")
         df["_att_y"] = pd.to_numeric(df[att_y_col], errors="coerce")
-        df["_att_z"] = (
-            pd.to_numeric(df.get(att_z_col, 0), errors="coerce").fillna(0) + EYE_HEIGHT
-        )
+        if att_z_col and att_z_col in df.columns:
+            df["_att_z"] = pd.to_numeric(df[att_z_col], errors="coerce").fillna(0) + EYE_HEIGHT
+        else:
+            df["_att_z"] = float(EYE_HEIGHT)
         df["_vic_x"] = pd.to_numeric(df[vic_x_col], errors="coerce")
         df["_vic_y"] = pd.to_numeric(df[vic_y_col], errors="coerce")
-        df["_vic_z"] = (
-            pd.to_numeric(df.get(vic_z_col, 0), errors="coerce").fillna(0) + EYE_HEIGHT
-        )
+        if vic_z_col and vic_z_col in df.columns:
+            df["_vic_z"] = pd.to_numeric(df[vic_z_col], errors="coerce").fillna(0) + EYE_HEIGHT
+        else:
+            df["_vic_z"] = float(EYE_HEIGHT)
         df["_pitch"] = pd.to_numeric(df["attacker_pitch"], errors="coerce").fillna(0)
         df["_yaw"] = pd.to_numeric(df["attacker_yaw"], errors="coerce").fillna(0)
 
@@ -3668,7 +3666,7 @@ class DemoAnalyzer:
                 ):
                     round_kills = kills_df[kills_df[self._round_col] == round_num]
                     if not round_kills.empty:
-                        round_kills = round_kills.sort_values("tick")
+                        round_kills = round_kills.sort_values(by="tick")
                         first = round_kills.iloc[0]
                         att_id = safe_int(first.get(self._att_id_col))
                         vic_id = safe_int(first.get(self._vic_id_col))
@@ -4908,7 +4906,7 @@ def calculate_player_metrics(match_data: DemoData) -> dict[str, PlayerMetrics]:
                             damages_df[dmg_round_col].fillna(-1) == kill_round
                         )
 
-                    relevant_damages = damages_df[dmg_mask].sort_values("tick")
+                    relevant_damages = damages_df[dmg_mask].sort_values(by="tick")
 
                     if relevant_damages.empty:
                         continue  # No damage found before kill

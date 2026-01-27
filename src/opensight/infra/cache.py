@@ -1293,11 +1293,16 @@ class CachedAnalyzer:
             has_zones = map_name in MAP_ZONES
         except ImportError:
             has_zones = False
+            MAP_ZONES: dict = {}  # type: ignore[no-redef]
 
-            def get_zone_for_position(m, x, y, z=None):
+            def get_zone_for_position(
+                map_name: str, x: float, y: float, z: float | None = None
+            ) -> str:
+                _ = map_name, x, y, z  # Unused in fallback
                 return "Unknown"
 
-            def classify_round_economy(eq, is_pistol):
+            def classify_round_economy(equipment_value: int, is_pistol_round: bool) -> str:
+                _ = equipment_value, is_pistol_round  # Unused in fallback
                 return "unknown"
 
         kill_positions = []
@@ -1307,23 +1312,24 @@ class CachedAnalyzer:
         for kill in kills:
             round_num = getattr(kill, "round_num", 0)
             tick = getattr(kill, "tick", 0)
-            r_info = round_info.get(round_num, {})
+            r_info = round_info.get(round_num, {})  # type: ignore[arg-type]
 
             # Determine phase (pre-plant vs post-plant)
-            bomb_plant_tick = r_info.get("bomb_plant_tick")
+            bomb_plant_tick = r_info.get("bomb_plant_tick", 0)  # type: ignore[union-attr]
             phase = "pre_plant"
-            if bomb_plant_tick and tick >= bomb_plant_tick:
+            if bomb_plant_tick and tick >= int(bomb_plant_tick or 0):  # type: ignore[arg-type]
                 phase = "post_plant"
 
             # Determine economy round type
             attacker_side = getattr(kill, "attacker_side", "") or ""
             is_pistol = round_num in [1, 13]
-            eq_value = r_info.get(
-                "t_equipment" if "T" in attacker_side.upper() else "ct_equipment", 0
-            )
-            stored_round_type = r_info.get("round_type", "")
+            eq_key = "t_equipment" if "T" in attacker_side.upper() else "ct_equipment"
+            eq_raw = r_info.get(eq_key, 0)  # type: ignore[union-attr]
+            eq_value = int(eq_raw) if eq_raw else 0  # type: ignore[arg-type]
+            round_type_raw = r_info.get("round_type", "")  # type: ignore[union-attr]
+            stored_round_type = str(round_type_raw) if round_type_raw else ""  # type: ignore[arg-type]
             if stored_round_type:
-                round_type = stored_round_type
+                round_type = str(stored_round_type)
             elif has_zones:
                 round_type = classify_round_economy(eq_value, is_pistol)
             else:
