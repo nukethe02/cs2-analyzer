@@ -302,7 +302,10 @@ sharecode_cache = SharecodeCache(maxsize=1000)
 
 app = FastAPI(
     title="OpenSight API",
-    description="CS2 demo analyzer - professional-grade metrics including HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement",
+    description=(
+        "CS2 demo analyzer - professional-grade metrics including "
+        "HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement"
+    ),
     version=__version__,
 )
 

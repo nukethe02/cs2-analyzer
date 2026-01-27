@@ -2222,7 +2222,11 @@ class DemoAnalyzer:
 
         # Use kills list if available, otherwise fall back to kills_df
         kills_source = self.data.kills
-        use_df_fallback = not kills_source and hasattr(self.data, "kills_df") and not self.data.kills_df.empty
+        use_df_fallback = (
+            not kills_source
+            and hasattr(self.data, "kills_df")
+            and not self.data.kills_df.empty
+        )
 
         if use_df_fallback:
             logger.info("Using kills_df for TTD computation (kills list empty)")

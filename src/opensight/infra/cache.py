@@ -875,7 +875,9 @@ class CachedAnalyzer:
                 round_kills[round_num]["first_death"] = getattr(kill, "victim_name", "Unknown")
 
         # Use actual round data if available, otherwise use analysis total_rounds
-        total_rounds = getattr(analysis, "total_rounds", 0) or len(round_boundaries) or len(round_kills)
+        total_rounds = (
+            getattr(analysis, "total_rounds", 0) or len(round_boundaries) or len(round_kills)
+        )
         total_rounds = (
             getattr(analysis, "total_rounds", 0)
             or len(round_boundaries)
