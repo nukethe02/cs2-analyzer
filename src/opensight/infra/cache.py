@@ -834,7 +834,7 @@ class CachedAnalyzer:
                 if st <= tick <= et:
                     return rn
             if round_boundaries:
-                for rn, st, et in reversed(round_boundaries):
+                for rn, _st, et in reversed(round_boundaries):
                     if tick > et:
                         return rn
                 return 1
@@ -963,7 +963,7 @@ class CachedAnalyzer:
             # If no match, estimate based on position in sorted boundaries
             if round_boundaries:
                 # Use the last round if tick is after all boundaries
-                for round_num, start_tick, end_tick in reversed(round_boundaries):
+                for round_num, _start_tick, end_tick in reversed(round_boundaries):
                     if tick > end_tick:
                         return round_num
                 # Use round 1 if tick is before all boundaries
@@ -1325,7 +1325,7 @@ class CachedAnalyzer:
 
         # Calculate zone K/D ratios and percentages
         total_kills = len(kill_positions)
-        for zone, stats in zone_stats.items():
+        for _zone, stats in zone_stats.items():
             k = stats["kills"]
             d = stats["deaths"]
             stats["kd_ratio"] = round(k / max(d, 1), 2)
