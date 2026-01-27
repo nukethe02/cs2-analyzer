@@ -1068,7 +1068,25 @@ class DemoParser:
         vic_id = self._find_column(kills_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
         vic_name = self._find_column(kills_df, ["user_name", "victim_name"])
         vic_team = self._find_column(kills_df, ["user_team_name", "victim_side", "victim_team"])
-        round_col = self._find_column(kills_df, ["total_rounds_played", "round", "round_num"])
+        # Find round column - try many variations as demoparser2 may use different names
+        round_col = self._find_column(
+            kills_df,
+            [
+                "total_rounds_played",
+                "round",
+                "round_num",
+                "round_number",
+                "roundNum",
+                "RoundNum",
+            ],
+        )
+        # Log for debugging if round column not found
+        if not round_col:
+            logger.warning(
+                f"Round column not found in kills_df. Available columns: {list(kills_df.columns)}"
+            )
+        else:
+            logger.debug(f"Using round column: {round_col}")
 
         # Attacker position columns (demoparser2 prefixes with attacker_ or player_)
         att_x = self._find_column(kills_df, ["attacker_X", "attacker_x", "X", "x"])
