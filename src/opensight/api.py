@@ -288,7 +288,7 @@ async def root() -> HTMLResponse:
     html_file = STATIC_DIR / "index.html"
     if html_file.exists():
         return HTMLResponse(
-            content=html_file.read_text(),
+            content=html_file.read_text(encoding="utf-8"),
             status_code=200,
             headers={"cache-control": "no-cache, no-store, must-revalidate"},
         )

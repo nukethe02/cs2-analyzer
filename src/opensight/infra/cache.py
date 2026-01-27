@@ -600,12 +600,14 @@ class CachedAnalyzer:
             }
 
         # Merge enhanced metrics from professional parser
+        # NOTE: enhanced_metrics use integer steam IDs, but players dict uses string keys
         if enhanced_metrics and "entry_frags" in enhanced_metrics:
             for steam_id, entry_data in enhanced_metrics.get("entry_frags", {}).items():
-                if steam_id in players:
-                    if "entry" not in players[steam_id]:
-                        players[steam_id]["entry"] = {}
-                    players[steam_id]["entry"].update(
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    if "entry" not in players[sid_str]:
+                        players[sid_str]["entry"] = {}
+                    players[sid_str]["entry"].update(
                         {
                             "entry_attempts": entry_data.get("entry_attempts", 0),
                             "entry_kills": entry_data.get("entry_kills", 0),
@@ -616,8 +618,9 @@ class CachedAnalyzer:
         # Merge TTD metrics
         if enhanced_metrics and "ttd_metrics" in enhanced_metrics:
             for steam_id, ttd_data in enhanced_metrics.get("ttd_metrics", {}).items():
-                if steam_id in players:
-                    players[steam_id]["advanced"].update(
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    players[sid_str]["advanced"].update(
                         {
                             "ttd_median_ms": ttd_data.get("ttd_median_ms", 0),
                             "ttd_mean_ms": ttd_data.get("ttd_mean_ms", 0),
@@ -628,8 +631,9 @@ class CachedAnalyzer:
         # Merge CP metrics
         if enhanced_metrics and "crosshair_placement" in enhanced_metrics:
             for steam_id, cp_data in enhanced_metrics.get("crosshair_placement", {}).items():
-                if steam_id in players:
-                    players[steam_id]["advanced"].update(
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    players[sid_str]["advanced"].update(
                         {
                             "cp_median_error_deg": cp_data.get("cp_median_error_deg", 0),
                             "cp_mean_error_deg": cp_data.get("cp_mean_error_deg", 0),
@@ -639,8 +643,9 @@ class CachedAnalyzer:
         # Merge Trade Kill metrics
         if enhanced_metrics and "trade_kills" in enhanced_metrics:
             for steam_id, trade_data in enhanced_metrics.get("trade_kills", {}).items():
-                if steam_id in players:
-                    players[steam_id]["duels"].update(
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    players[sid_str]["duels"].update(
                         {
                             "trade_kills": trade_data.get("trade_kills", 0),
                             "deaths_traded": trade_data.get("deaths_traded", 0),
@@ -650,17 +655,18 @@ class CachedAnalyzer:
         # Merge Clutch metrics
         if enhanced_metrics and "clutch_stats" in enhanced_metrics:
             for steam_id, clutch_data in enhanced_metrics.get("clutch_stats", {}).items():
-                if steam_id in players:
-                    players[steam_id]["duels"].update(
+                sid_str = str(steam_id)
+                if sid_str in players:
+                    players[sid_str]["duels"].update(
                         {
                             "clutch_wins": clutch_data.get("clutch_wins", 0),
                             "clutch_attempts": clutch_data.get("clutch_attempts", 0),
                         }
                     )
                     # Add breakdown by variant
-                    if "clutches" not in players[steam_id]:
-                        players[steam_id]["clutches"] = {}
-                    players[steam_id]["clutches"].update(
+                    if "clutches" not in players[sid_str]:
+                        players[sid_str]["clutches"] = {}
+                    players[sid_str]["clutches"].update(
                         {
                             "v1_wins": clutch_data.get("v1_wins", 0),
                             "v2_wins": clutch_data.get("v2_wins", 0),
