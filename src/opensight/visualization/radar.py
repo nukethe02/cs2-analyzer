@@ -35,7 +35,8 @@ MAP_DATA = {
         "pos_x": -2476,
         "pos_y": 3239,
         "scale": 4.4,
-        "radar_url": raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png"
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png"
         ),
         "z_cutoff": None,  # No vertical split
     },
@@ -44,7 +45,8 @@ MAP_DATA = {
         "pos_x": -3230,
         "pos_y": 1713,
         "scale": 5.0,
-        "radar_url":
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png"
         ),
         "z_cutoff": None,
     },
