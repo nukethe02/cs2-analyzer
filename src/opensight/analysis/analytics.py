@@ -1867,8 +1867,24 @@ class DemoAnalyzer:
         - Per-scenario tracking (1v1, 1v2, etc.) with wins and attempts
         """
         kills_df = self.data.kills_df
-        if kills_df.empty or not self._round_col or not self._vic_id_col or not self._vic_side_col:
-            logger.info("Skipping clutch detection - missing columns")
+        if kills_df.empty or not self._round_col or not self._vic_id_col:
+            logger.info("Skipping clutch detection - missing required columns")
+            return
+
+        # Build player team lookup from player data for fallback
+        player_team_lookup = {}
+        for steam_id, player in self._players.items():
+            player_team_lookup[steam_id] = player.team
+        # Also add from data.player_teams if available
+        if hasattr(self.data, "player_teams"):
+            for steam_id, team_num in self.data.player_teams.items():
+                if steam_id not in player_team_lookup:
+                    player_team_lookup[steam_id] = "CT" if team_num == 3 else "T" if team_num == 2 else "Unknown"
+
+        # Check if we have team column or can use fallback
+        use_team_column = bool(self._vic_side_col)
+        if not use_team_column and not player_team_lookup:
+            logger.info("Skipping clutch detection - no team data available")
             return
 
         # Build round winner lookup from rounds data
@@ -1893,7 +1909,12 @@ class DemoAnalyzer:
 
             for _, kill in round_kills.iterrows():
                 victim_id = safe_int(kill.get(self._vic_id_col))
-                victim_side = self._normalize_team(kill.get(self._vic_side_col))
+
+                # Get victim team - prefer column, fallback to lookup
+                if use_team_column:
+                    victim_side = self._normalize_team(kill.get(self._vic_side_col))
+                else:
+                    victim_side = player_team_lookup.get(victim_id, "Unknown")
 
                 if victim_side == "CT":
                     ct_deaths.append(victim_id)
@@ -1922,7 +1943,11 @@ class DemoAnalyzer:
                 current_t_deaths = 0
 
                 for i, (_, kill) in enumerate(round_kills.iterrows()):
-                    victim_side_norm = self._normalize_team(kill.get(self._vic_side_col))
+                    vic_id = safe_int(kill.get(self._vic_id_col))
+                    if use_team_column:
+                        victim_side_norm = self._normalize_team(kill.get(self._vic_side_col))
+                    else:
+                        victim_side_norm = player_team_lookup.get(vic_id, "Unknown")
                     if victim_side_norm == "CT":
                         current_ct_deaths += 1
                         if side == "CT" and current_ct_deaths == 4:
@@ -1958,7 +1983,16 @@ class DemoAnalyzer:
                     continue
 
                 player = self._players[survivor_id]
-                clutch_won = round_winner == side
+
+                # Determine if clutch was won
+                # If round_winner is known, use it directly
+                # Otherwise infer from death counts (if 5 enemies died, clutcher's team won)
+                if round_winner in ("CT", "T"):
+                    clutch_won = round_winner == side
+                else:
+                    # Infer winner: if all 5 enemies died, the clutcher won
+                    enemy_deaths_in_round = len(t_deaths) if side == "CT" else len(ct_deaths)
+                    clutch_won = enemy_deaths_in_round >= 5
 
                 # Update totals
                 player.clutches.total_situations += 1
@@ -2104,8 +2138,17 @@ class DemoAnalyzer:
 
     def _compute_ttd(self) -> None:
         """Compute Time to Damage for each kill with optimized indexing."""
-        if self.data.damages_df.empty or not self.data.kills:
-            logger.warning("No damage or kill data for TTD computation")
+        # Check for damage data
+        if self.data.damages_df.empty:
+            logger.warning("No damage data for TTD computation")
+            return
+
+        # Check for kill data - either kills list or kills_df
+        has_kills = bool(self.data.kills) or (
+            hasattr(self.data, "kills_df") and not self.data.kills_df.empty
+        )
+        if not has_kills:
+            logger.warning("No kill data for TTD computation")
             return
 
         # Use optimized vectorized implementation if available
@@ -2171,73 +2214,150 @@ class DemoAnalyzer:
         # Process kills using cached damage lookups
         raw_ttd_values: dict[int, list[float]] = {}  # For outlier removal later
 
-        for kill in self.data.kills:
-            try:
-                att_id = kill.attacker_steamid
-                vic_id = kill.victim_steamid
-                kill_tick = kill.tick
-                round_num = kill.round_num
+        # Use kills list if available, otherwise fall back to kills_df
+        kills_source = self.data.kills
+        use_df_fallback = not kills_source and hasattr(self.data, "kills_df") and not self.data.kills_df.empty
 
-                if not att_id or not vic_id or kill_tick <= 0:
-                    continue
+        if use_df_fallback:
+            logger.info("Using kills_df for TTD computation (kills list empty)")
+            kills_df = self.data.kills_df
+            kill_att_col = self._find_col(kills_df, self.ATT_ID_COLS)
+            kill_vic_col = self._find_col(kills_df, self.VIC_ID_COLS)
 
-                # Use cached damage lookup
-                cache_key = (att_id, vic_id)
-                damage_ticks = damage_cache.get(cache_key, [])
+            if kill_att_col and kill_vic_col and "tick" in kills_df.columns:
+                for _, row in kills_df.iterrows():
+                    try:
+                        att_id = safe_int(row.get(kill_att_col))
+                        vic_id = safe_int(row.get(kill_vic_col))
+                        kill_tick = safe_int(row.get("tick"))
+                        round_num = safe_int(row.get("round_num", row.get("round", 0)))
 
-                if not damage_ticks:
-                    continue
+                        if not att_id or not vic_id or kill_tick <= 0:
+                            continue
 
-                # Find first damage tick before kill using binary search
-                first_dmg_tick = None
-                for tick in damage_ticks:
-                    if tick <= kill_tick:
-                        first_dmg_tick = tick
-                        break  # Already sorted, first match is earliest
+                        cache_key = (att_id, vic_id)
+                        damage_ticks = damage_cache.get(cache_key, [])
 
-                if first_dmg_tick is None:
-                    continue
+                        if not damage_ticks:
+                            continue
 
-                ttd_ticks = kill_tick - first_dmg_tick
-                ttd_ms = ttd_ticks * self.MS_PER_TICK
+                        first_dmg_tick = None
+                        for tick in damage_ticks:
+                            if tick <= kill_tick:
+                                first_dmg_tick = tick
+                                break
 
-                # Validate TTD value (filter out invalid/negative values)
-                if ttd_ms < 0 or ttd_ms > 5000:  # Max 5 seconds is reasonable
-                    continue
+                        if first_dmg_tick is None:
+                            continue
 
-                is_prefire = ttd_ms <= self.TTD_MIN_MS
+                        ttd_ticks = kill_tick - first_dmg_tick
+                        ttd_ms = ttd_ticks * self.MS_PER_TICK
 
-                # Account for wallbangs/through-smoke kills (may have higher TTD)
-                getattr(kill, "penetrated", False)
-                getattr(kill, "thrusmoke", False)
+                        if ttd_ms < 0 or ttd_ms > 5000:
+                            continue
 
-                # Store raw values for later outlier removal
-                if att_id not in raw_ttd_values:
-                    raw_ttd_values[att_id] = []
+                        is_prefire = ttd_ms <= self.TTD_MIN_MS
 
-                if not is_prefire and ttd_ms <= self.TTD_MAX_MS:
-                    raw_ttd_values[att_id].append(ttd_ms)
-                elif is_prefire and att_id in self._players:
-                    self._players[att_id].prefire_count += 1
+                        if att_id not in raw_ttd_values:
+                            raw_ttd_values[att_id] = []
 
-                self._ttd_results.append(
-                    TTDResult(
-                        tick_spotted=first_dmg_tick,
-                        tick_damage=kill_tick,
-                        ttd_ticks=ttd_ticks,
-                        ttd_ms=ttd_ms,
-                        attacker_steamid=att_id,
-                        victim_steamid=vic_id,
-                        weapon=kill.weapon,
-                        headshot=kill.headshot,
-                        is_prefire=is_prefire,
-                        round_num=round_num,
+                        if not is_prefire and ttd_ms <= self.TTD_MAX_MS:
+                            raw_ttd_values[att_id].append(ttd_ms)
+                        elif is_prefire and att_id in self._players:
+                            self._players[att_id].prefire_count += 1
+
+                        self._ttd_results.append(
+                            TTDResult(
+                                tick_spotted=first_dmg_tick,
+                                tick_damage=kill_tick,
+                                ttd_ticks=ttd_ticks,
+                                ttd_ms=ttd_ms,
+                                attacker_steamid=att_id,
+                                victim_steamid=vic_id,
+                                weapon=str(row.get("weapon", "unknown")),
+                                headshot=bool(row.get("headshot", False)),
+                                is_prefire=is_prefire,
+                                round_num=round_num,
+                            )
+                        )
+                    except Exception as e:
+                        logger.debug(f"Error processing kill row for TTD: {e}")
+                        continue
+        else:
+            # Original path using kills list
+            for kill in self.data.kills:
+                try:
+                    att_id = kill.attacker_steamid
+                    vic_id = kill.victim_steamid
+                    kill_tick = kill.tick
+                    round_num = kill.round_num
+
+                    if not att_id or not vic_id or kill_tick <= 0:
+                        continue
+
+                    # Use cached damage lookup
+                    cache_key = (att_id, vic_id)
+                    damage_ticks = damage_cache.get(cache_key, [])
+
+                    if not damage_ticks:
+                        continue
+
+                    # Find first damage tick before kill using binary search
+                    first_dmg_tick = None
+                    for tick in damage_ticks:
+                        if tick <= kill_tick:
+                            first_dmg_tick = tick
+                            break  # Already sorted, first match is earliest
+
+                    if first_dmg_tick is None:
+                        continue
+
+                    ttd_ticks = kill_tick - first_dmg_tick
+                    ttd_ms = ttd_ticks * self.MS_PER_TICK
+
+                    # Validate TTD value (filter out invalid/negative values)
+                    if ttd_ms < 0 or ttd_ms > 5000:  # Max 5 seconds is reasonable
+                        continue
+
+                    is_prefire = ttd_ms <= self.TTD_MIN_MS
+
+                    # Account for wallbangs/through-smoke kills (may have higher TTD)
+                    getattr(kill, "penetrated", False)
+                    getattr(kill, "thrusmoke", False)
+
+                    # Store raw values for later outlier removal
+                    if att_id not in raw_ttd_values:
+                        raw_ttd_values[att_id] = []
+
+                    if not is_prefire and ttd_ms <= self.TTD_MAX_MS:
+                        raw_ttd_values[att_id].append(ttd_ms)
+                    elif is_prefire and att_id in self._players:
+                        self._players[att_id].prefire_count += 1
+
+                    self._ttd_results.append(
+                        TTDResult(
+                            tick_spotted=first_dmg_tick,
+                            tick_damage=kill_tick,
+                            ttd_ticks=ttd_ticks,
+                            ttd_ms=ttd_ms,
+                            attacker_steamid=att_id,
+                            victim_steamid=vic_id,
+                            weapon=kill.weapon,
+                            headshot=kill.headshot,
+                            is_prefire=is_prefire,
+                            round_num=round_num,
+                        )
                     )
-                )
 
-            except Exception as e:
-                logger.debug(f"Error processing kill for TTD: {e}")
-                continue
+                except Exception as e:
+                    logger.debug(f"Error processing kill for TTD: {e}")
+                    continue
+
+        # CRITICAL: Transfer raw_ttd_values to player stats
+        # This was missing - causing TTD to show 0ms for all players
+        for att_id, values in raw_ttd_values.items():
+            if att_id in self._players and values:
+                self._players[att_id].ttd_values = values
 
         # Summary of TTD results per player
         players_with_ttd = sum(1 for p in self._players.values() if p.ttd_values)
@@ -2504,15 +2624,20 @@ class DemoAnalyzer:
         df["_pitch"] = pd.to_numeric(df["attacker_pitch"], errors="coerce").fillna(0)
         df["_yaw"] = pd.to_numeric(df["attacker_yaw"], errors="coerce").fillna(0)
 
-        # Filter out invalid positions
+        # Filter out invalid positions - require all notna and at least some non-zero positions
         valid_mask = (
             df["_att_x"].notna()
             & df["_att_y"].notna()
             & df["_vic_x"].notna()
             & df["_vic_y"].notna()
-            & (df["_att_x"].abs() > 0.001)
-            | (df["_att_y"].abs() > 0.001) & (df["_vic_x"].abs() > 0.001)
-            | (df["_vic_y"].abs() > 0.001)
+            & (
+                (df["_att_x"].abs() > 0.001)
+                | (df["_att_y"].abs() > 0.001)
+            )
+            & (
+                (df["_vic_x"].abs() > 0.001)
+                | (df["_vic_y"].abs() > 0.001)
+            )
         )
         df = df[valid_mask]
 
