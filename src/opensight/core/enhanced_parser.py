@@ -327,49 +327,88 @@ class MetricCalculator:
         return getattr(dmg, "attacker_id", getattr(dmg, "attacker_steamid", 0))
 
     @staticmethod
-    def calculate_ttd(damages: list[DamageContext]) -> dict[int, dict]:
-        """
-        Calculate Time To Damage (TTD) - ticks from first seeing enemy to dealing damage.
+    def _get_damage_victim_id(dmg) -> int:
+        """Safely get victim ID from a damage object."""
+        return getattr(
+            dmg, "victim_id", getattr(dmg, "victim_steamid", getattr(dmg, "user_steamid", 0))
+        )
 
-        This requires position analysis to determine visibility.
+    @staticmethod
+    def calculate_ttd(kills: list, damages: list, tick_rate: int = 64) -> dict[int, dict]:
+        """
+        Calculate Time To Damage (TTD) - time from first damage to kill.
+
+        TTD measures how long it takes a player to secure kills after dealing initial damage.
+        Lower TTD = faster reactions/better aim.
+
+        Args:
+            kills: List of kill events
+            damages: List of damage events
+            tick_rate: Server tick rate (default 64)
+
+        Returns:
+            Dict mapping player IDs to TTD statistics
         """
         ttd_data = {}
+        ms_per_tick = 1000 / tick_rate
 
-        # Group by attacker
-        damages_by_attacker = {}
+        if not kills or not damages:
+            return ttd_data
+
+        # Build damage lookup: (attacker_id, victim_id, round_num) -> [ticks]
+        damage_lookup = {}
         for dmg in damages:
             attacker_id = MetricCalculator._get_damage_attacker_id(dmg)
-            key = (attacker_id, dmg.round_num)
-            if key not in damages_by_attacker:
-                damages_by_attacker[key] = []
-            damages_by_attacker[key].append(dmg)
+            victim_id = MetricCalculator._get_damage_victim_id(dmg)
+            round_num = getattr(dmg, "round_num", 0)
+            key = (attacker_id, victim_id, round_num)
+            if key not in damage_lookup:
+                damage_lookup[key] = []
+            damage_lookup[key].append(dmg.tick)
 
-        # Calculate TTD from distance and time
-        for (attacker_id, _round_num), dmg_list in damages_by_attacker.items():
-            sorted_dmg = sorted(dmg_list, key=lambda d: d.tick)
-            if not sorted_dmg:
+        # For each kill, find the first damage from attacker to victim in the same round
+        for kill in kills:
+            attacker_id = MetricCalculator._get_attacker_id(kill)
+            victim_id = MetricCalculator._get_victim_id(kill)
+            round_num = getattr(kill, "round_num", 0)
+            kill_tick = getattr(kill, "tick", 0)
+            attacker_name = getattr(kill, "attacker_name", "Unknown")
+
+            key = (attacker_id, victim_id, round_num)
+            if key not in damage_lookup:
                 continue
 
-            first_dmg = sorted_dmg[0]
-            ttd_ms = (
-                first_dmg.tick / 64.0
-            ) * 1000  # Convert to milliseconds (assuming 64 tick rate)
+            # Find first damage before or at kill tick
+            damage_ticks = [t for t in damage_lookup[key] if t <= kill_tick]
+            if not damage_ticks:
+                continue
+
+            first_damage_tick = min(damage_ticks)
+            ttd_ticks = kill_tick - first_damage_tick
+            ttd_ms = ttd_ticks * ms_per_tick
+
+            # Filter: valid TTD range (50ms - 5000ms)
+            if ttd_ms < 50 or ttd_ms > 5000:
+                continue
 
             if attacker_id not in ttd_data:
                 ttd_data[attacker_id] = {
-                    "name": getattr(first_dmg, "attacker_name", "Unknown"),
+                    "name": attacker_name,
                     "ttd_values": [],
                 }
             ttd_data[attacker_id]["ttd_values"].append(ttd_ms)
 
-        # Calculate stats
+        # Calculate statistics for each player
         for attacker_id in ttd_data:
             values = ttd_data[attacker_id]["ttd_values"]
-            ttd_data[attacker_id]["ttd_median_ms"] = float(np.median(values)) if values else 0.0
-            ttd_data[attacker_id]["ttd_mean_ms"] = float(np.mean(values)) if values else 0.0
-            ttd_data[attacker_id]["ttd_95th_ms"] = (
-                float(np.percentile(values, 95)) if values else 0.0
-            )
+            if values:
+                ttd_data[attacker_id]["ttd_median_ms"] = float(np.median(values))
+                ttd_data[attacker_id]["ttd_mean_ms"] = float(np.mean(values))
+                ttd_data[attacker_id]["ttd_95th_ms"] = float(np.percentile(values, 95))
+            else:
+                ttd_data[attacker_id]["ttd_median_ms"] = 0.0
+                ttd_data[attacker_id]["ttd_mean_ms"] = 0.0
+                ttd_data[attacker_id]["ttd_95th_ms"] = 0.0
 
         return ttd_data
 
@@ -451,66 +490,144 @@ class MetricCalculator:
         return cp_data
 
     @staticmethod
-    def calculate_clutch_stats(
-        kills: list[KillContext], player_snapshots: list[PlayerSnapshot]
-    ) -> dict[int, dict]:
+    def calculate_clutch_stats(kills: list, player_snapshots: list = None) -> dict[int, dict]:
         """
         Detect clutch situations (1v5, 1v4, 1v3, 1v2, 1v1) and success rates.
+
+        Uses kill sequence analysis to detect when a player was in a 1vX situation.
+        A clutch is detected when all teammates died before a player got their last kill(s)
+        in a round, leaving them alone against multiple enemies.
         """
         clutch_stats = {}
 
-        # Group snapshots by round
-        snapshots_by_round = {}
-        for snapshot in player_snapshots:
-            if snapshot.round_num not in snapshots_by_round:
-                snapshots_by_round[snapshot.round_num] = []
-            snapshots_by_round[snapshot.round_num].append(snapshot)
+        if not kills:
+            return clutch_stats
 
-        # Detect clutch situations
-        for round_num, round_snapshots in snapshots_by_round.items():
-            sorted_snapshots = sorted(round_snapshots, key=lambda s: s.tick)
+        # Group kills by round
+        kills_by_round = {}
+        for kill in kills:
+            round_num = getattr(kill, "round_num", 0)
+            if round_num not in kills_by_round:
+                kills_by_round[round_num] = []
+            kills_by_round[round_num].append(kill)
 
-            for i, snapshot in enumerate(sorted_snapshots):
-                if not snapshot.is_alive:
-                    continue
+        # Analyze each round for clutch situations
+        for round_num, round_kills in kills_by_round.items():
+            if len(round_kills) < 2:
+                continue
 
-                # Count alive teammates and enemies
-                alive_teammates = sum(
-                    1
-                    for s in sorted_snapshots[i:]
-                    if s.team == snapshot.team and s.is_alive and s.tick == snapshot.tick
-                )
-                alive_enemies = sum(
-                    1
-                    for s in sorted_snapshots[i:]
-                    if s.team != snapshot.team and s.is_alive and s.tick == snapshot.tick
-                )
+            # Sort kills by tick
+            sorted_kills = sorted(round_kills, key=lambda k: getattr(k, "tick", 0))
 
-                # Clutch is 1vX situation
-                if alive_teammates == 1 and alive_enemies >= 2:
-                    player_id = snapshot.steam_id
-                    if player_id not in clutch_stats:
-                        clutch_stats[player_id] = {
-                            "name": snapshot.name,
-                            "clutch_wins": 0,
-                            "clutch_attempts": 0,
-                            "v1_wins": 0,
-                            "v2_wins": 0,
-                            "v3_wins": 0,
-                            "v4_wins": 0,
-                            "v5_wins": 0,
-                        }
-                    clutch_stats[player_id]["clutch_attempts"] += 1
+            # Track alive players on each side (start with 5 each)
+            # Team mapping: use the first kill to determine team IDs
+            team_alive = {}  # team_id -> set of player_ids
+            player_teams = {}  # player_id -> team_id
 
-                    # Check if they won the clutch (killed all enemies)
-                    round_kills = [
-                        k for k in kills if k.round_num == round_num and k.attacker_id == player_id
-                    ]
-                    if len(round_kills) >= alive_enemies:
-                        clutch_stats[player_id]["clutch_wins"] += 1
-                        clutch_key = f"v{alive_enemies}_wins"
-                        if clutch_key in clutch_stats[player_id]:
-                            clutch_stats[player_id][clutch_key] += 1
+            # Build player team mapping from kills
+            for kill in sorted_kills:
+                attacker_id = MetricCalculator._get_attacker_id(kill)
+                victim_id = MetricCalculator._get_victim_id(kill)
+                attacker_team = MetricCalculator._get_attacker_team(kill)
+                victim_team = MetricCalculator._get_victim_team(kill)
+                attacker_name = getattr(kill, "attacker_name", "Unknown")
+                victim_name = getattr(kill, "victim_name", "Unknown")
+
+                if attacker_team:
+                    player_teams[attacker_id] = (attacker_team, attacker_name)
+                if victim_team:
+                    player_teams[victim_id] = (victim_team, victim_name)
+
+            # Initialize team alive counts
+            for player_id, (team_id, _) in player_teams.items():
+                if team_id not in team_alive:
+                    team_alive[team_id] = set()
+                team_alive[team_id].add(player_id)
+
+            # Process kills in order
+            for i, kill in enumerate(sorted_kills):
+                attacker_id = MetricCalculator._get_attacker_id(kill)
+                victim_id = MetricCalculator._get_victim_id(kill)
+                attacker_team = MetricCalculator._get_attacker_team(kill)
+                victim_team = MetricCalculator._get_victim_team(kill)
+                attacker_name = getattr(kill, "attacker_name", "Unknown")
+
+                # Remove victim from alive set
+                if victim_team in team_alive and victim_id in team_alive[victim_team]:
+                    team_alive[victim_team].discard(victim_id)
+
+                # Check if attacker is now in a 1vX situation
+                if attacker_team in team_alive:
+                    attacker_teammates_alive = len(team_alive[attacker_team])
+                    enemies_alive = sum(
+                        len(players) for t, players in team_alive.items() if t != attacker_team
+                    )
+
+                    # 1vX situation: only the attacker alive, multiple enemies
+                    if attacker_teammates_alive == 1 and enemies_alive >= 1:
+                        if attacker_id not in clutch_stats:
+                            clutch_stats[attacker_id] = {
+                                "name": attacker_name,
+                                "clutch_wins": 0,
+                                "clutch_attempts": 0,
+                                "v1_wins": 0,
+                                "v2_wins": 0,
+                                "v3_wins": 0,
+                                "v4_wins": 0,
+                                "v5_wins": 0,
+                            }
+
+                        # This counts as a clutch attempt if enemies >= 2 (or 1v1)
+                        clutch_type = enemies_alive + 1  # +1 for the one just killed
+                        if clutch_type >= 2:
+                            # Check if this is a new clutch situation or continuation
+                            remaining_kills = sorted_kills[i + 1 :]
+                            attacker_kills_remaining = [
+                                k
+                                for k in remaining_kills
+                                if MetricCalculator._get_attacker_id(k) == attacker_id
+                            ]
+                            attacker_deaths_remaining = [
+                                k
+                                for k in remaining_kills
+                                if MetricCalculator._get_victim_id(k) == attacker_id
+                            ]
+
+                            # Only count as attempt once per round per player
+                            # Check if we've already counted this round for this player
+                            round_key = f"round_{round_num}"
+                            if round_key not in clutch_stats[attacker_id]:
+                                clutch_stats[attacker_id][round_key] = True
+                                clutch_stats[attacker_id]["clutch_attempts"] += 1
+
+                                # Did they win? (killed all enemies without dying)
+                                if len(attacker_kills_remaining) >= enemies_alive:
+                                    # Check they didn't die before killing all
+                                    first_death_tick = (
+                                        min(
+                                            getattr(k, "tick", float("inf"))
+                                            for k in attacker_deaths_remaining
+                                        )
+                                        if attacker_deaths_remaining
+                                        else float("inf")
+                                    )
+                                    kills_before_death = [
+                                        k
+                                        for k in attacker_kills_remaining
+                                        if getattr(k, "tick", 0) < first_death_tick
+                                    ]
+
+                                    if len(kills_before_death) >= enemies_alive:
+                                        clutch_stats[attacker_id]["clutch_wins"] += 1
+                                        clutch_key = f"v{min(clutch_type, 5)}_wins"
+                                        if clutch_key in clutch_stats[attacker_id]:
+                                            clutch_stats[attacker_id][clutch_key] += 1
+
+        # Clean up internal tracking keys
+        for player_id in clutch_stats:
+            clutch_stats[player_id] = {
+                k: v for k, v in clutch_stats[player_id].items() if not k.startswith("round_")
+            }
 
         return clutch_stats
 
@@ -632,9 +749,9 @@ class CoachingAnalysisEngine:
         # Calculate professional metrics
         entry_stats = self.calculator.calculate_entry_frags(all_kills)
         trade_stats = self.calculator.calculate_trade_kills(all_kills)
-        ttd_stats = self.calculator.calculate_ttd(all_damages)
+        ttd_stats = self.calculator.calculate_ttd(all_kills, all_damages)
         cp_stats = self.calculator.calculate_crosshair_placement(all_kills)
-        clutch_stats = self.calculator.calculate_clutch_stats(all_kills, all_snapshots)
+        clutch_stats = self.calculator.calculate_clutch_stats(all_kills)
 
         return {
             "total_rounds": len(round_summaries),
