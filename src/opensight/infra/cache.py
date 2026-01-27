@@ -876,9 +876,6 @@ class CachedAnalyzer:
 
         # Use actual round data if available, otherwise use analysis total_rounds
         total_rounds = (
-            getattr(analysis, "total_rounds", 0) or len(round_boundaries) or len(round_kills)
-        )
-        total_rounds = (
             getattr(analysis, "total_rounds", 0)
             or len(round_boundaries)
             or len(round_kills)
@@ -1208,7 +1205,9 @@ class CachedAnalyzer:
             key = (attacker_name, victim_name)
             matrix[key] = matrix.get(key, 0) + 1
 
-        return [{"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()]
+        return [
+            {"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()
+        ]
 
     def _build_heatmap_data(self, demo_data) -> dict:
         """Build comprehensive position data for heatmap visualization.
@@ -1285,20 +1284,24 @@ class CachedAnalyzer:
             if ax is not None and ay is not None:
                 az = getattr(kill, "attacker_z", 0) or 0
                 zone = get_zone_for_position(map_name, ax, ay, az) if has_zones else "Unknown"
-                kill_positions.append({
-                    "x": ax,
-                    "y": ay,
-                    "z": az,
-                    "zone": zone,
-                    "side": attacker_side,
-                    "phase": phase,
-                    "round_type": round_type,
-                    "round_num": round_num,
-                    "player_name": player_names.get(getattr(kill, "attacker_steamid", 0), "Unknown"),
-                    "player_steamid": getattr(kill, "attacker_steamid", 0),
-                    "weapon": getattr(kill, "weapon", ""),
-                    "headshot": getattr(kill, "headshot", False),
-                })
+                kill_positions.append(
+                    {
+                        "x": ax,
+                        "y": ay,
+                        "z": az,
+                        "zone": zone,
+                        "side": attacker_side,
+                        "phase": phase,
+                        "round_type": round_type,
+                        "round_num": round_num,
+                        "player_name": player_names.get(
+                            getattr(kill, "attacker_steamid", 0), "Unknown"
+                        ),
+                        "player_steamid": getattr(kill, "attacker_steamid", 0),
+                        "weapon": getattr(kill, "weapon", ""),
+                        "headshot": getattr(kill, "headshot", False),
+                    }
+                )
 
                 # Update zone stats for kills
                 if zone not in zone_stats:
@@ -1316,18 +1319,22 @@ class CachedAnalyzer:
                 vz = getattr(kill, "victim_z", 0) or 0
                 victim_side = getattr(kill, "victim_side", "") or ""
                 zone = get_zone_for_position(map_name, vx, vy, vz) if has_zones else "Unknown"
-                death_positions.append({
-                    "x": vx,
-                    "y": vy,
-                    "z": vz,
-                    "zone": zone,
-                    "side": victim_side,
-                    "phase": phase,
-                    "round_type": round_type,
-                    "round_num": round_num,
-                    "player_name": player_names.get(getattr(kill, "victim_steamid", 0), "Unknown"),
-                    "player_steamid": getattr(kill, "victim_steamid", 0),
-                })
+                death_positions.append(
+                    {
+                        "x": vx,
+                        "y": vy,
+                        "z": vz,
+                        "zone": zone,
+                        "side": victim_side,
+                        "phase": phase,
+                        "round_type": round_type,
+                        "round_num": round_num,
+                        "player_name": player_names.get(
+                            getattr(kill, "victim_steamid", 0), "Unknown"
+                        ),
+                        "player_steamid": getattr(kill, "victim_steamid", 0),
+                    }
+                )
 
                 # Update zone stats for deaths
                 if zone not in zone_stats:

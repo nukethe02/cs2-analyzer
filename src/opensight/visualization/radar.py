@@ -35,7 +35,8 @@ MAP_DATA = {
         "pos_x": -2476,
         "pos_y": 3239,
         "scale": 4.4,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png",
+        "radar_url": raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png"
+        ),
         "z_cutoff": None,  # No vertical split
     },
     "de_mirage": {
@@ -43,7 +44,8 @@ MAP_DATA = {
         "pos_x": -3230,
         "pos_y": 1713,
         "scale": 5.0,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png",
+        "radar_url":
+        ),
         "z_cutoff": None,
     },
     "de_inferno": {
@@ -51,76 +53,87 @@ MAP_DATA = {
         "pos_x": -2087,
         "pos_y": 3870,
         "scale": 4.9,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png",
-        "z_cutoff": None,
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png"
+        ),one,
     },
     "de_nuke": {
         "name": "Nuke",
         "pos_x": -3453,
         "pos_y": 2887,
         "scale": 7.0,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png",
-        "z_cutoff": -495,  # Split between upper and lower
-    },
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png"
+        ),
+        "z_cutoff": -
     "de_overpass": {
         "name": "Overpass",
         "pos_x": -4831,
         "pos_y": 1781,
         "scale": 5.2,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png",
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png"
+        ),
         "z_cutoff": None,
     },
-    "de_vertigo": {
         "name": "Vertigo",
         "pos_x": -3168,
         "pos_y": 1762,
         "scale": 4.0,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png",
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png"
+        ),
         "z_cutoff": 11700,  # Split between floors
     },
-    "de_ancient": {
-        "name": "Ancient",
+    "de_ancient": {ent",
         "pos_x": -2953,
         "pos_y": 2164,
         "scale": 5.0,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png",
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png"
+        ),
         "z_cutoff": None,
     },
     "de_anubis": {
-        "name": "Anubis",
-        "pos_x": -2796,
+        "name": "Anub6,
         "pos_y": 3328,
         "scale": 5.22,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png",
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png"
+        ),
         "z_cutoff": None,
     },
     "cs_office": {
         "name": "Office",
-        "pos_x": -1838,
-        "pos_y": 1858,
+        "pos_x": -183,
         "scale": 4.1,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/cs_office_radar.png",
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/cs_office_radar.png"
+        ),
         "z_cutoff": None,
     },
     "cs_italy": {
         "name": "Italy",
         "pos_x": -2647,
-        "pos_y": 2592,
-        "scale": 4.6,
-        "radar_url": "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/cs_italy_radar.png",
+        "pos_y": 2592
+        "radar_url": (
+            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/cs_italy_radar.png"
+        ),
         "z_cutoff": None,
     },
 }
 
 # Fallback radar URLs (alternative sources)
 FALLBACK_RADAR_URLS = {
-    "de_dust2": "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_dust2.png",
-    "de_mirage": "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_mirage.png",
-    "de_inferno": "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_inferno.png",
+    "de_dust2": (githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_dust2.png"
+    ),
+    "de_mirage": (
+        "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_mirage.png"
+    ),
+    "de_inferno": (
+        "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_inferno.png"
+    ),
 }
-
-# ============================================================================
-# MAP ZONE DEFINITIONS - Named areas with polygon boundaries
 # Coordinates are in game units (not radar pixels)
 # Each zone: {"bounds": [[x1,y1], [x2,y2], ...], "type": "bombsite|route|spawn|mid|choke|position"}
 # ============================================================================
