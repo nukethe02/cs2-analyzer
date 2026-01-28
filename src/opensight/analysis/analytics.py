@@ -1907,7 +1907,7 @@ class DemoAnalyzer:
             entry_kill = round_kills.iloc[0]
             entry_kill_victim_id = safe_int(entry_kill.get(self._vic_id_col))
             entry_kill_attacker_id = safe_int(entry_kill.get(self._att_id_col))
-            entry_kill_tick = safe_int(entry_kill.get("tick"))
+            _entry_kill_tick = safe_int(entry_kill.get("tick"))
 
             # Use sliding window approach for efficiency
             for _i, kill in round_kills.iterrows():

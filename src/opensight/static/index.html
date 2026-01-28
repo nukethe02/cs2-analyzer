@@ -2084,6 +2084,20 @@
 
         // Render results
         function renderResults(data) {
+            // DEBUG: Log timeline data received from API
+            console.log('[DEBUG] renderResults called with data:', data);
+            const timeline = data.round_timeline || [];
+            console.log('[DEBUG] round_timeline length:', timeline.length);
+            if (timeline.length > 0) {
+                console.log('[DEBUG] First round:', timeline[0]);
+                const totalEvents = timeline.reduce((sum, r) => sum + (r.events?.length || 0), 0);
+                console.log('[DEBUG] Total events across all rounds:', totalEvents);
+                // Log first 3 rounds in detail
+                timeline.slice(0, 3).forEach(r => {
+                    console.log(`[DEBUG] Round ${r.round_num}: ${r.events?.length || 0} events`, r.events);
+                });
+            }
+
             const info = data.demo_info || {};
             const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
 
@@ -2752,7 +2766,15 @@
             return renderTeamSection(team1, 'Team 1') + renderTeamSection(team2, 'Team 2');
         }
         function renderTimeline(timeline) {
+            // DEBUG: Log what renderTimeline receives
+            console.log('[DEBUG] renderTimeline called with', timeline.length, 'rounds');
+            if (timeline.length > 0) {
+                const totalEvents = timeline.reduce((sum, r) => sum + (r.events?.length || 0), 0);
+                console.log('[DEBUG] renderTimeline: Total events:', totalEvents);
+            }
+
             if (!timeline.length) {
+                console.log('[DEBUG] renderTimeline: No timeline data, showing empty state');
                 return `
                     <div class="timeline-container">
                         <div class="empty-state">

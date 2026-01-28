@@ -128,8 +128,12 @@ class CacheStats:
         return {
             "total_entries": self.total_entries,
             "total_size_mb": round(self.size_mb, 2),
-            "oldest_entry": (self.oldest_entry.isoformat() if self.oldest_entry else None),
-            "newest_entry": (self.newest_entry.isoformat() if self.newest_entry else None),
+            "oldest_entry": (
+                self.oldest_entry.isoformat() if self.oldest_entry else None
+            ),
+            "newest_entry": (
+                self.newest_entry.isoformat() if self.newest_entry else None
+            ),
             "hit_count": self.hit_count,
             "miss_count": self.miss_count,
             "hit_rate_pct": round(self.hit_rate, 1),
@@ -211,7 +215,8 @@ class DemoCache:
                 with open(self.index_path) as f:
                     data = json.load(f)
                 self._index = {
-                    k: CacheEntry.from_dict(v) for k, v in data.get("entries", {}).items()
+                    k: CacheEntry.from_dict(v)
+                    for k, v in data.get("entries", {}).items()
                 }
                 self._hit_count = data.get("hit_count", 0)
                 self._miss_count = data.get("miss_count", 0)
@@ -513,11 +518,15 @@ class CachedAnalyzer:
 
         # Calculate professional metrics using enhanced parser
         try:
-            logger.info("Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)")
+            logger.info(
+                "Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)"
+            )
             engine = CoachingAnalysisEngine(demo_path)
             enhanced_metrics = engine.analyze()
         except Exception as e:
-            logger.warning(f"Enhanced metrics calculation failed, using basic analysis only: {e}")
+            logger.warning(
+                f"Enhanced metrics calculation failed, using basic analysis only: {e}"
+            )
             enhanced_metrics = {}
 
         # Calculate RWS using direct method (more reliable)
@@ -552,9 +561,13 @@ class CachedAnalyzer:
                 },
                 "rating": {
                     "hltv_rating": round(p.hltv_rating, 2) if p.hltv_rating else 0,
-                    "kast_percentage": (round(p.kast_percentage, 1) if p.kast_percentage else 0),
+                    "kast_percentage": (
+                        round(p.kast_percentage, 1) if p.kast_percentage else 0
+                    ),
                     "aim_rating": round(p.aim_rating, 1) if p.aim_rating else 50,
-                    "utility_rating": (round(p.utility_rating, 1) if p.utility_rating else 50),
+                    "utility_rating": (
+                        round(p.utility_rating, 1) if p.utility_rating else 50
+                    ),
                     "impact_rating": round(getattr(p, "impact_rating", None) or 0, 2),
                 },
                 "advanced": {
@@ -563,21 +576,31 @@ class CachedAnalyzer:
                     "ttd_mean_ms": round(getattr(p, "ttd_mean_ms", None) or 0, 1),
                     "ttd_95th_ms": round(getattr(p, "ttd_95th_ms", None) or 0, 1),
                     # From enhanced parser (CP - Crosshair Placement)
-                    "cp_median_error_deg": round(getattr(p, "cp_median_error_deg", None) or 0, 1),
-                    "cp_mean_error_deg": round(getattr(p, "cp_mean_error_deg", None) or 0, 1),
+                    "cp_median_error_deg": round(
+                        getattr(p, "cp_median_error_deg", None) or 0, 1
+                    ),
+                    "cp_mean_error_deg": round(
+                        getattr(p, "cp_mean_error_deg", None) or 0, 1
+                    ),
                     # Other advanced stats
                     "prefire_kills": getattr(p, "prefire_kills", None) or 0,
                     "opening_kills": getattr(p, "opening_kills", None) or 0,
                     "opening_deaths": getattr(p, "opening_deaths", None) or 0,
                 },
                 "utility": {
-                    "flashbangs_thrown": getattr(p, "flashbangs_thrown", None) or 0,
-                    "smokes_thrown": getattr(p, "smokes_thrown", None) or 0,
-                    "he_thrown": getattr(p, "he_thrown", None) or 0,
-                    "molotovs_thrown": getattr(p, "molotovs_thrown", None) or 0,
-                    "flash_assists": getattr(p, "flash_assists", None) or 0,
-                    "enemies_flashed": getattr(p, "enemies_flashed", None) or 0,
-                    "he_damage": getattr(p, "he_damage", None) or 0,
+                    "flashbangs_thrown": (
+                        p.utility.flashbangs_thrown if p.utility else 0
+                    ),
+                    "smokes_thrown": p.utility.smokes_thrown if p.utility else 0,
+                    "he_thrown": p.utility.he_thrown if p.utility else 0,
+                    "molotovs_thrown": p.utility.molotovs_thrown if p.utility else 0,
+                    "flash_assists": p.utility.flash_assists if p.utility else 0,
+                    "enemies_flashed": p.utility.enemies_flashed if p.utility else 0,
+                    "teammates_flashed": (
+                        p.utility.teammates_flashed if p.utility else 0
+                    ),
+                    "he_damage": p.utility.he_damage if p.utility else 0,
+                    "molotov_damage": p.utility.molotov_damage if p.utility else 0,
                 },
                 "duels": {
                     "trade_kills": getattr(p, "trade_kills", None) or 0,
@@ -632,12 +655,16 @@ class CachedAnalyzer:
 
         # Merge CP metrics
         if enhanced_metrics and "crosshair_placement" in enhanced_metrics:
-            for steam_id, cp_data in enhanced_metrics.get("crosshair_placement", {}).items():
+            for steam_id, cp_data in enhanced_metrics.get(
+                "crosshair_placement", {}
+            ).items():
                 sid_str = str(steam_id)
                 if sid_str in players:
                     players[sid_str]["advanced"].update(
                         {
-                            "cp_median_error_deg": cp_data.get("cp_median_error_deg", 0),
+                            "cp_median_error_deg": cp_data.get(
+                                "cp_median_error_deg", 0
+                            ),
                             "cp_mean_error_deg": cp_data.get("cp_mean_error_deg", 0),
                         }
                     )
@@ -656,7 +683,9 @@ class CachedAnalyzer:
 
         # Merge Clutch metrics (enhanced_parser uses "clutch_statistics")
         if enhanced_metrics and "clutch_statistics" in enhanced_metrics:
-            for steam_id, clutch_data in enhanced_metrics.get("clutch_statistics", {}).items():
+            for steam_id, clutch_data in enhanced_metrics.get(
+                "clutch_statistics", {}
+            ).items():
                 sid_str = str(steam_id)
                 if sid_str in players:
                     players[sid_str]["duels"].update(
@@ -680,6 +709,17 @@ class CachedAnalyzer:
 
         # Build round timeline
         round_timeline = self._build_round_timeline(demo_data, analysis)
+
+        # DEBUG: Log timeline details
+        logger.info(f"[DEBUG] round_timeline length: {len(round_timeline)}")
+        if round_timeline:
+            sample_round = round_timeline[0]
+            logger.info(f"[DEBUG] Sample round keys: {list(sample_round.keys())}")
+            logger.info(f"[DEBUG] Sample round events count: {len(sample_round.get('events', []))}")
+            # Log first 3 rounds' event counts
+            for i, r in enumerate(round_timeline[:3]):
+                events = r.get('events', [])
+                logger.info(f"[DEBUG] Round {r.get('round_num')}: {len(events)} events")
 
         # Build kill matrix
         kill_matrix = self._build_kill_matrix(demo_data)
@@ -740,8 +780,12 @@ class CachedAnalyzer:
                 "entry_kills": wins,
                 "entry_deaths": losses,
                 "entry_diff": wins - losses,
-                "entry_attempts_pct": (round(attempts / rounds * 100, 0) if rounds > 0 else 0),
-                "entry_success_pct": (round(wins / attempts * 100, 0) if attempts > 0 else 0),
+                "entry_attempts_pct": (
+                    round(attempts / rounds * 100, 0) if rounds > 0 else 0
+                ),
+                "entry_success_pct": (
+                    round(wins / attempts * 100, 0) if attempts > 0 else 0
+                ),
             }
         return {
             "entry_attempts": 0,
@@ -759,8 +803,8 @@ class CachedAnalyzer:
             return {
                 "trade_kills": getattr(trades, "kills_traded", 0) or 0,
                 "deaths_traded": getattr(trades, "deaths_traded", 0) or 0,
-                "traded_entry_kills": 0,  # Would need additional tracking
-                "traded_entry_deaths": 0,  # Would need additional tracking
+                "traded_entry_kills": getattr(trades, "traded_entry_kills", 0) or 0,
+                "traded_entry_deaths": getattr(trades, "traded_entry_deaths", 0) or 0,
             }
         return {
             "trade_kills": 0,
@@ -970,7 +1014,10 @@ class CachedAnalyzer:
 
         # Use actual round data if available, otherwise use analysis total_rounds
         total_rounds = (
-            getattr(analysis, "total_rounds", 0) or len(round_boundaries) or len(round_events) or 30
+            getattr(analysis, "total_rounds", 0)
+            or len(round_boundaries)
+            or len(round_events)
+            or 30
         )
 
         # Build timeline entries for all rounds
@@ -1042,7 +1089,9 @@ class CachedAnalyzer:
         kills = getattr(demo_data, "kills", [])
 
         # Count kills per player per round
-        player_round_kills: dict[int, dict[int, int]] = {}  # steam_id -> {round_num -> kill_count}
+        player_round_kills: dict[int, dict[int, int]] = (
+            {}
+        )  # steam_id -> {round_num -> kill_count}
 
         for kill in kills:
             attacker_id = getattr(kill, "attacker_steamid", 0)
@@ -1108,9 +1157,9 @@ class CachedAnalyzer:
         has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
 
         # Initialize per-player round data
-        player_round_data: dict[
-            int, dict[int, dict]
-        ] = {}  # steam_id -> {round_num -> {kills, damage}}
+        player_round_data: dict[int, dict[int, dict]] = (
+            {}
+        )  # steam_id -> {round_num -> {kills, damage}}
 
         # Get max rounds from demo_data or round boundaries
         max_round = getattr(demo_data, "num_rounds", 0) or len(round_boundaries) or 1
@@ -1230,7 +1279,9 @@ class CachedAnalyzer:
                 player_teams[vic_id] = "T"
 
         # Group damage by round
-        round_damages: dict[int, dict[int, int]] = {}  # round_num -> {steam_id -> damage}
+        round_damages: dict[int, dict[int, int]] = (
+            {}
+        )  # round_num -> {steam_id -> damage}
         for dmg in damages:
             round_num = getattr(dmg, "round_num", 0)
             attacker_id = getattr(dmg, "attacker_steamid", 0)
@@ -1241,7 +1292,11 @@ class CachedAnalyzer:
             # Only count damage to enemies
             is_enemy_damage = (
                 "CT" in attacker_side and "T" in victim_side and "CT" not in victim_side
-            ) or ("T" in attacker_side and "CT" not in attacker_side and "CT" in victim_side)
+            ) or (
+                "T" in attacker_side
+                and "CT" not in attacker_side
+                and "CT" in victim_side
+            )
 
             if attacker_id and round_num and is_enemy_damage:
                 if round_num not in round_damages:
@@ -1277,7 +1332,9 @@ class CachedAnalyzer:
                     player_stats[pid]["rounds_played"] += 1
 
                     # Check if player is on winning team
-                    if (winner == "CT" and team == "CT") or (winner == "T" and team == "T"):
+                    if (winner == "CT" and team == "CT") or (
+                        winner == "T" and team == "T"
+                    ):
                         winning_players.append(pid)
 
             if not winning_players:
@@ -1325,13 +1382,19 @@ class CachedAnalyzer:
         for kill in kills:
             attacker_id = getattr(kill, "attacker_steamid", 0)
             victim_id = getattr(kill, "victim_steamid", 0)
-            attacker_name = player_names.get(attacker_id, getattr(kill, "attacker_name", "Unknown"))
-            victim_name = player_names.get(victim_id, getattr(kill, "victim_name", "Unknown"))
+            attacker_name = player_names.get(
+                attacker_id, getattr(kill, "attacker_name", "Unknown")
+            )
+            victim_name = player_names.get(
+                victim_id, getattr(kill, "victim_name", "Unknown")
+            )
 
             key = (attacker_name, victim_name)
             matrix[key] = matrix.get(key, 0) + 1
 
-        return [{"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()]
+        return [
+            {"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()
+        ]
 
     def _build_heatmap_data(self, demo_data) -> dict:
         """Build comprehensive position data for heatmap visualization.
@@ -1374,7 +1437,9 @@ class CachedAnalyzer:
                 _ = map_name, x, y, z  # Unused in fallback
                 return "Unknown"
 
-            def classify_round_economy(equipment_value: int, is_pistol_round: bool) -> str:
+            def classify_round_economy(
+                equipment_value: int, is_pistol_round: bool
+            ) -> str:
                 _ = equipment_value, is_pistol_round  # Unused in fallback
                 return "unknown"
 
@@ -1413,7 +1478,11 @@ class CachedAnalyzer:
             ay = getattr(kill, "attacker_y", None)
             if ax is not None and ay is not None:
                 az = getattr(kill, "attacker_z", 0) or 0
-                zone = get_zone_for_position(map_name, ax, ay, az) if has_zones else "Unknown"
+                zone = (
+                    get_zone_for_position(map_name, ax, ay, az)
+                    if has_zones
+                    else "Unknown"
+                )
                 kill_positions.append(
                     {
                         "x": ax,
@@ -1453,7 +1522,11 @@ class CachedAnalyzer:
             if vx is not None and vy is not None:
                 vz = getattr(kill, "victim_z", 0) or 0
                 victim_side = getattr(kill, "victim_side", "") or ""
-                zone = get_zone_for_position(map_name, vx, vy, vz) if has_zones else "Unknown"
+                zone = (
+                    get_zone_for_position(map_name, vx, vy, vz)
+                    if has_zones
+                    else "Unknown"
+                )
                 death_positions.append(
                     {
                         "x": vx,
@@ -1505,7 +1578,9 @@ class CachedAnalyzer:
             "zone_definitions": zone_definitions,
         }
 
-    def _generate_coaching_insights(self, demo_data, analysis, players: dict) -> list[dict]:
+    def _generate_coaching_insights(
+        self, demo_data, analysis, players: dict
+    ) -> list[dict]:
         """
         Generate comprehensive, data-driven coaching insights for each player.
 
@@ -1541,7 +1616,9 @@ class CachedAnalyzer:
             role, role_confidence = self._detect_role_detailed(player, match_stats)
 
             # Determine player identity/archetype (like Leetify's "The Cleanup")
-            identity = self._determine_player_identity(player, match_stats, top_performers)
+            identity = self._determine_player_identity(
+                player, match_stats, top_performers
+            )
 
             # ==========================================
             # AIM & MECHANICS INSIGHTS
@@ -1685,10 +1762,14 @@ class CachedAnalyzer:
             # ==========================================
 
             trade_kills = trades.get("trade_kills", 0) or duels.get("trade_kills", 0)
-            deaths_traded = trades.get("deaths_traded", 0) or duels.get("traded_deaths", 0)
+            deaths_traded = trades.get("deaths_traded", 0) or duels.get(
+                "traded_deaths", 0
+            )
             total_deaths = stats.get("deaths", 1)
 
-            trade_rate = (deaths_traded / max(1, total_deaths)) * 100 if total_deaths > 0 else 0
+            trade_rate = (
+                (deaths_traded / max(1, total_deaths)) * 100 if total_deaths > 0 else 0
+            )
             avg_trade_rate = match_stats.get("avg_trade_rate", 40)
 
             # Find best trader on team for comparison
@@ -1724,7 +1805,9 @@ class CachedAnalyzer:
             # ==========================================
 
             clutch_wins = clutches.get("clutch_wins", 0) or duels.get("clutch_wins", 0)
-            clutch_attempts = clutches.get("clutch_wins", 0) + clutches.get("clutch_losses", 0)
+            clutch_attempts = clutches.get("clutch_wins", 0) + clutches.get(
+                "clutch_losses", 0
+            )
             if clutch_attempts == 0:
                 clutch_attempts = duels.get("clutch_attempts", 0)
 
@@ -2061,9 +2144,9 @@ class CachedAnalyzer:
                 entry_success_values.append(entry_success)
 
             deaths = p.get("stats", {}).get("deaths", 0)
-            traded = p.get("trades", {}).get("deaths_traded", 0) or p.get("duels", {}).get(
-                "traded_deaths", 0
-            )
+            traded = p.get("trades", {}).get("deaths_traded", 0) or p.get(
+                "duels", {}
+            ).get("traded_deaths", 0)
             if deaths >= 5:
                 trade_rates.append((traded / deaths) * 100)
 
@@ -2090,7 +2173,9 @@ class CachedAnalyzer:
                 if entry_success_values
                 else 50
             ),
-            "avg_trade_rate": (sum(trade_rates) / len(trade_rates) if trade_rates else 40),
+            "avg_trade_rate": (
+                sum(trade_rates) / len(trade_rates) if trade_rates else 40
+            ),
             "avg_util_per_round": (
                 sum(util_per_round_values) / len(util_per_round_values)
                 if util_per_round_values
@@ -2270,17 +2355,25 @@ class CachedAnalyzer:
         # Entry kills
         entry_kills = entry.get("entry_kills", 0)
         if entry_kills >= 5:
-            notable_stats.append(("entry_fragger", entry_kills, f"{entry_kills} Opening Kills"))
+            notable_stats.append(
+                ("entry_fragger", entry_kills, f"{entry_kills} Opening Kills")
+            )
 
         # Clutches
         clutch_wins = clutches.get("clutch_wins", 0)
         if clutch_wins >= 2:
-            notable_stats.append(("clutch_player", clutch_wins, f"{clutch_wins} Clutches Won"))
+            notable_stats.append(
+                ("clutch_player", clutch_wins, f"{clutch_wins} Clutches Won")
+            )
 
         # Trade kills
-        trade_kills = trades.get("trade_kills", 0) or player.get("duels", {}).get("trade_kills", 0)
+        trade_kills = trades.get("trade_kills", 0) or player.get("duels", {}).get(
+            "trade_kills", 0
+        )
         if trade_kills >= 5:
-            notable_stats.append(("team_player", trade_kills, f"{trade_kills} Trade Kills"))
+            notable_stats.append(
+                ("team_player", trade_kills, f"{trade_kills} Trade Kills")
+            )
 
         # Flash assists
         flash_assists = utility.get("flash_assists", 0)
@@ -2297,7 +2390,9 @@ class CachedAnalyzer:
         # Multi-kills
         multikills = stats.get("3k", 0) + stats.get("4k", 0) + stats.get("5k", 0)
         if multikills >= 3:
-            notable_stats.append(("round_winner", multikills, f"{multikills} Multi-kills"))
+            notable_stats.append(
+                ("round_winner", multikills, f"{multikills} Multi-kills")
+            )
 
         # KAST
         kast = rating.get("kast_percentage", 0)
@@ -2335,7 +2430,9 @@ class CachedAnalyzer:
             top_identity = notable_stats[0][0]
             return {
                 "name": identity_names.get(top_identity, "The Player"),
-                "top_stats": [{"label": s[2], "category": s[0]} for s in notable_stats[:5]],
+                "top_stats": [
+                    {"label": s[2], "category": s[0]} for s in notable_stats[:5]
+                ],
             }
         else:
             return {
@@ -2382,7 +2479,9 @@ class CachedAnalyzer:
             logger.warning(f"Tactical analysis failed: {e}")
             return {
                 "key_insights": ["Demo analysis complete"],
-                "team_recommendations": ["Review round-by-round for specific improvements"],
+                "team_recommendations": [
+                    "Review round-by-round for specific improvements"
+                ],
             }
 
 

@@ -533,6 +533,17 @@ async def analyze_demo(file: UploadFile = File(...)):
                     from opensight.infra.cache import analyze_with_cache
 
                     result = analyze_with_cache(demo_path)
+
+                    # DEBUG: Log timeline data before storing result
+                    timeline = result.get("round_timeline", [])
+                    logger.info(f"[DEBUG] API: round_timeline has {len(timeline)} rounds")
+                    if timeline:
+                        total_events = sum(len(r.get("events", [])) for r in timeline)
+                        logger.info(f"[DEBUG] API: Total events across all rounds: {total_events}")
+                        for i, r in enumerate(timeline[:3]):
+                            events = r.get("events", [])
+                            logger.info(f"[DEBUG] API: Round {r.get('round_num')}: {len(events)} events")
+
                     j = job_store.get_job(jid)
                     if j:
                         j.result = result
@@ -593,7 +604,16 @@ async def download_job_result(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status != JobStatus.COMPLETED.value:
         raise HTTPException(status_code=400, detail="Job not completed")
-    return JSONResponse(content=job.result or {})
+
+    # DEBUG: Log what we're sending to frontend
+    result = job.result or {}
+    timeline = result.get("round_timeline", [])
+    logger.info(f"[DEBUG] Download endpoint: Sending {len(timeline)} rounds in timeline")
+    if timeline:
+        total_events = sum(len(r.get("events", [])) for r in timeline)
+        logger.info(f"[DEBUG] Download endpoint: Total events: {total_events}")
+
+    return JSONResponse(content=result)
 
 
 @app.get("/jobs")
