@@ -542,7 +542,9 @@ async def analyze_demo(file: UploadFile = File(...)):
                         logger.info(f"[DEBUG] API: Total events across all rounds: {total_events}")
                         for _i, r in enumerate(timeline[:3]):
                             events = r.get("events", [])
-                            logger.info(f"[DEBUG] API: Round {r.get('round_num')}: {len(events)} events")
+                            logger.info(
+                                f"[DEBUG] API: Round {r.get('round_num')}: {len(events)} events"
+                            )
 
                     j = job_store.get_job(jid)
                     if j:

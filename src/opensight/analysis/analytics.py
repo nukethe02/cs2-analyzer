@@ -1568,11 +1568,15 @@ class DemoAnalyzer:
         round_col = self._find_col(damages_df, ["round_num", "round"])
 
         if not dmg_att_col or not dmg_col or not round_col:
-            logger.info(f"Skipping RWS calculation - missing columns. att={dmg_att_col}, dmg={dmg_col}, round={round_col}")
+            logger.info(
+                f"Skipping RWS calculation - missing columns. att={dmg_att_col}, dmg={dmg_col}, round={round_col}"
+            )
             return
 
         # Get attacker team column (check DataFrame columns, not row)
-        att_team_col = self._find_col(damages_df, ["attacker_side", "attacker_team", "attacker_team_name"])
+        att_team_col = self._find_col(
+            damages_df, ["attacker_side", "attacker_team", "attacker_team_name"]
+        )
         has_team_col = att_team_col is not None and att_team_col in damages_df.columns
 
         # Build dict of round winners from rounds data
@@ -1593,7 +1597,9 @@ class DemoAnalyzer:
         if hasattr(self.data, "player_teams"):
             for steam_id, team_num in self.data.player_teams.items():
                 if steam_id not in player_starting_team:
-                    player_starting_team[steam_id] = "CT" if team_num == 3 else "T" if team_num == 2 else "Unknown"
+                    player_starting_team[steam_id] = (
+                        "CT" if team_num == 3 else "T" if team_num == 2 else "Unknown"
+                    )
 
         def get_player_team_for_round(player_id: int, round_num: int) -> str:
             """Get player's team for a specific round, handling halftime swap."""
@@ -1629,14 +1635,30 @@ class DemoAnalyzer:
             winning_side = round_winners.get(round_num, "Unknown")
 
             # If no round winner data, try to infer from kills
-            if winning_side not in ["CT", "T"] and hasattr(self.data, "kills_df") and not self.data.kills_df.empty:
+            if (
+                winning_side not in ["CT", "T"]
+                and hasattr(self.data, "kills_df")
+                and not self.data.kills_df.empty
+            ):
                 # Infer winner: count deaths per team, team with fewer deaths likely won
                 # This is a heuristic fallback
                 kills_df = self.data.kills_df
-                round_kills = kills_df[kills_df[self._round_col] == round_num] if self._round_col else pd.DataFrame()
+                round_kills = (
+                    kills_df[kills_df[self._round_col] == round_num]
+                    if self._round_col
+                    else pd.DataFrame()
+                )
                 if not round_kills.empty and self._vic_side_col:
-                    ct_deaths = sum(1 for _, k in round_kills.iterrows() if self._normalize_team(k.get(self._vic_side_col)) == "CT")
-                    t_deaths = sum(1 for _, k in round_kills.iterrows() if self._normalize_team(k.get(self._vic_side_col)) == "T")
+                    ct_deaths = sum(
+                        1
+                        for _, k in round_kills.iterrows()
+                        if self._normalize_team(k.get(self._vic_side_col)) == "CT"
+                    )
+                    t_deaths = sum(
+                        1
+                        for _, k in round_kills.iterrows()
+                        if self._normalize_team(k.get(self._vic_side_col)) == "T"
+                    )
                     if ct_deaths >= 5:
                         winning_side = "T"
                     elif t_deaths >= 5:
@@ -1674,7 +1696,9 @@ class DemoAnalyzer:
 
                 if attacker_team in ["CT", "T"]:
                     team_damage[attacker_team] += damage
-                    player_round_damage[attacker_id] = player_round_damage.get(attacker_id, 0) + damage
+                    player_round_damage[attacker_id] = (
+                        player_round_damage.get(attacker_id, 0) + damage
+                    )
 
             # Calculate RWS contribution for players on winning team
             winning_team_total = team_damage[winning_side]
@@ -1744,19 +1768,12 @@ class DemoAnalyzer:
         # Filter out teamkills if we have side columns
         valid_kills = kills_df
         if self._att_side_col and self._vic_side_col:
-            if (
-                self._att_side_col in kills_df.columns
-                and self._vic_side_col in kills_df.columns
-            ):
+            if self._att_side_col in kills_df.columns and self._vic_side_col in kills_df.columns:
                 # Only count enemy kills (attacker_side != victim_side)
-                valid_kills = kills_df[
-                    kills_df[self._att_side_col] != kills_df[self._vic_side_col]
-                ]
+                valid_kills = kills_df[kills_df[self._att_side_col] != kills_df[self._vic_side_col]]
                 teamkills_filtered = len(kills_df) - len(valid_kills)
                 if teamkills_filtered > 0:
-                    logger.debug(
-                        f"Multi-kill calc: filtered {teamkills_filtered} teamkills"
-                    )
+                    logger.debug(f"Multi-kill calc: filtered {teamkills_filtered} teamkills")
 
         for steam_id, player in self._players.items():
             player_kills = valid_kills[
@@ -2031,9 +2048,7 @@ class DemoAnalyzer:
 
         for round_num in kills_df[self._round_col].unique():
             round_num_int = int(round_num)
-            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values(
-                "tick"
-            )
+            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
 
             if round_kills.empty:
                 continue
@@ -2100,11 +2115,7 @@ class DemoAnalyzer:
 
                 # Check for clutch situation after each death
                 # CT clutch: 1 CT alive, 1+ T alive, not already detected
-                if (
-                    len(ct_alive) == 1
-                    and len(t_alive) >= 1
-                    and not clutch_detected["CT"]
-                ):
+                if len(ct_alive) == 1 and len(t_alive) >= 1 and not clutch_detected["CT"]:
                     clutch_detected["CT"] = True
                     clutcher_id = next(iter(ct_alive))
                     clutch_info["CT"] = {
@@ -2114,11 +2125,7 @@ class DemoAnalyzer:
                     }
 
                 # T clutch: 1 T alive, 1+ CT alive, not already detected
-                if (
-                    len(t_alive) == 1
-                    and len(ct_alive) >= 1
-                    and not clutch_detected["T"]
-                ):
+                if len(t_alive) == 1 and len(ct_alive) >= 1 and not clutch_detected["T"]:
                     clutch_detected["T"] = True
                     clutcher_id = next(iter(t_alive))
                     clutch_info["T"] = {
@@ -2161,9 +2168,7 @@ class DemoAnalyzer:
                 enemies_killed = 0
                 enemy_side = "T" if side == "CT" else "CT"
                 for _, kill in round_kills.iterrows():
-                    attacker_id = (
-                        safe_int(kill.get(self._att_id_col)) if self._att_id_col else 0
-                    )
+                    attacker_id = safe_int(kill.get(self._att_id_col)) if self._att_id_col else 0
                     if attacker_id != clutcher_id:
                         continue
                     # Get victim team from kill event
@@ -3353,7 +3358,80 @@ class DemoAnalyzer:
                 ]
                 player.utility.flash_assists = len(flash_assists)
 
-        logger.info("Calculated utility stats")
+        # ===========================================
+        # FALLBACK: Count grenades from weapon_fire events if still zero
+        # This handles cases where grenade_thrown/player_blind events are empty
+        # ===========================================
+        if hasattr(self.data, "weapon_fires") and self.data.weapon_fires:
+            # Check if we need the fallback (any player with 0 total utility)
+            needs_fallback = any(
+                p.utility.flashbangs_thrown == 0
+                and p.utility.smokes_thrown == 0
+                and p.utility.he_thrown == 0
+                and p.utility.molotovs_thrown == 0
+                for p in self._players.values()
+            )
+
+            if needs_fallback:
+                logger.info(
+                    f"Using weapon_fire fallback for utility counts "
+                    f"({len(self.data.weapon_fires)} weapon_fire events)"
+                )
+
+                # Grenade weapon names in weapon_fire events
+                FLASH_WEAPONS = ["flashbang", "weapon_flashbang"]
+                SMOKE_WEAPONS = ["smokegrenade", "weapon_smokegrenade"]
+                HE_WEAPONS = ["hegrenade", "weapon_hegrenade"]
+                MOLLY_WEAPONS = [
+                    "molotov",
+                    "weapon_molotov",
+                    "incgrenade",
+                    "weapon_incgrenade",
+                ]
+
+                # Count by player
+                for steam_id, player in self._players.items():
+                    player_fires = [
+                        f for f in self.data.weapon_fires if f.player_steamid == steam_id
+                    ]
+
+                    flash_count = 0
+                    smoke_count = 0
+                    he_count = 0
+                    molly_count = 0
+
+                    for fire in player_fires:
+                        weapon = fire.weapon.lower() if fire.weapon else ""
+                        if weapon in FLASH_WEAPONS or "flash" in weapon:
+                            flash_count += 1
+                        elif weapon in SMOKE_WEAPONS or "smoke" in weapon:
+                            smoke_count += 1
+                        elif weapon in HE_WEAPONS or "hegrenade" in weapon:
+                            he_count += 1
+                        elif (
+                            weapon in MOLLY_WEAPONS or "molotov" in weapon or "incendiary" in weapon
+                        ):
+                            molly_count += 1
+
+                    # Only update if player has 0 and we found some
+                    if flash_count > 0 and player.utility.flashbangs_thrown == 0:
+                        player.utility.flashbangs_thrown = flash_count
+                    if smoke_count > 0 and player.utility.smokes_thrown == 0:
+                        player.utility.smokes_thrown = smoke_count
+                    if he_count > 0 and player.utility.he_thrown == 0:
+                        player.utility.he_thrown = he_count
+                    if molly_count > 0 and player.utility.molotovs_thrown == 0:
+                        player.utility.molotovs_thrown = molly_count
+
+        # Log final utility stats summary
+        total_flashes = sum(p.utility.flashbangs_thrown for p in self._players.values())
+        total_smokes = sum(p.utility.smokes_thrown for p in self._players.values())
+        total_he = sum(p.utility.he_thrown for p in self._players.values())
+        total_molly = sum(p.utility.molotovs_thrown for p in self._players.values())
+        logger.info(
+            f"Utility stats complete: {total_flashes} flashes, {total_smokes} smokes, "
+            f"{total_he} HE, {total_molly} molotovs across all players"
+        )
 
     def _calculate_accuracy_stats(self) -> None:
         """Calculate accuracy statistics from weapon_fire events."""
