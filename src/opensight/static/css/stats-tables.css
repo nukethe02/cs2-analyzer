@@ -1,0 +1,348 @@
+/**
+ * Enhanced Stats Tables CSS for OpenSight
+ *
+ * Provides Leetify-style styling with:
+ * - Team groupings with win/loss badges
+ * - Color-coded values (green/red for K/D and performance)
+ * - Star indicators for best stats
+ * - Sortable column headers
+ * - Player avatars
+ * - Dark theme consistent with OpenSight
+ */
+
+/* Table Wrapper */
+.stats-table-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    width: 100%;
+}
+
+/* Team Section */
+.team-section {
+    background: var(--bg-card, #13131a);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+    border-radius: var(--radius-lg, 16px);
+    overflow: hidden;
+}
+
+/* Team Header */
+.team-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: var(--bg-secondary, #0d0d12);
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+}
+
+.team-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary, #ffffff);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.team-result-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.team-score {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary, #ffffff);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Result Badge */
+.result-badge {
+    padding: 4px 12px;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.result-badge.win {
+    background: var(--success-bg, rgba(16, 185, 129, 0.12));
+    color: var(--success, #10b981);
+    border: 1px solid var(--success, #10b981);
+}
+
+.result-badge.loss {
+    background: var(--danger-bg, rgba(239, 68, 68, 0.12));
+    color: var(--danger, #ef4444);
+    border: 1px solid var(--danger, #ef4444);
+}
+
+.result-badge.tie {
+    background: var(--warning-bg, rgba(245, 158, 11, 0.12));
+    color: var(--warning, #f59e0b);
+    border: 1px solid var(--warning, #f59e0b);
+}
+
+/* Table Container */
+.table-container {
+    overflow-x: auto;
+}
+
+/* Enhanced Stats Table */
+.enhanced-stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+/* Table Header */
+.enhanced-stats-table thead tr {
+    background: var(--bg-elevated, #1e1e2a);
+}
+
+.enhanced-stats-table th {
+    padding: 12px 16px;
+    text-align: center;
+    font-weight: 500;
+    font-size: 0.8rem;
+    color: var(--text-muted, #6b7280);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.enhanced-stats-table th:first-child {
+    text-align: left;
+    padding-left: 20px;
+}
+
+/* Sortable Headers */
+.enhanced-stats-table th.sortable {
+    cursor: pointer;
+    transition: color 0.2s, background-color 0.2s;
+}
+
+.enhanced-stats-table th.sortable:hover {
+    color: var(--text-secondary, #9ca3af);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.enhanced-stats-table th.sortable.active {
+    color: var(--accent-primary, #00e5ff);
+}
+
+/* Table Body */
+.enhanced-stats-table tbody tr {
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+    transition: background-color 0.15s;
+}
+
+.enhanced-stats-table tbody tr:hover {
+    background: var(--bg-card-hover, #1a1a24);
+}
+
+.enhanced-stats-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+/* Table Cells */
+.enhanced-stats-table td {
+    padding: 14px 16px;
+    text-align: center;
+    color: var(--text-primary, #ffffff);
+    font-family: 'JetBrains Mono', monospace;
+    position: relative;
+}
+
+.enhanced-stats-table td:first-child {
+    text-align: left;
+    padding-left: 20px;
+}
+
+/* Player Cell */
+.player-cell {
+    font-family: 'Inter', sans-serif;
+}
+
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.player-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-primary, #00e5ff), var(--accent-secondary, #7c4dff));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--bg-primary, #050508);
+    flex-shrink: 0;
+}
+
+.player-name {
+    font-weight: 500;
+    color: var(--text-primary, #ffffff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
+/* Best Indicator (Star) */
+.best-indicator {
+    color: var(--warning, #f59e0b);
+    font-size: 0.9rem;
+    margin-right: 4px;
+    animation: star-pulse 2s infinite;
+}
+
+@keyframes star-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Cell Value */
+.cell-value {
+    font-weight: 500;
+}
+
+/* Color Coded Values */
+.positive .cell-value {
+    color: var(--success, #10b981);
+}
+
+.negative .cell-value {
+    color: var(--danger, #ef4444);
+}
+
+/* Specific Column Styling */
+td[data-col="kills"] .cell-value {
+    color: var(--success, #10b981);
+}
+
+td[data-col="deaths"] .cell-value {
+    color: var(--danger, #ef4444);
+}
+
+td[data-col="hltv_rating"] .cell-value {
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+/* Multi-kill highlighting */
+td[data-col="multi_3k"] .cell-value,
+td[data-col="multi_4k"] .cell-value,
+td[data-col="multi_5k"] .cell-value {
+    color: var(--warning, #f59e0b);
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1200px) {
+    .enhanced-stats-table th,
+    .enhanced-stats-table td {
+        padding: 10px 12px;
+    }
+
+    .player-name {
+        max-width: 100px;
+    }
+}
+
+@media (max-width: 768px) {
+    .team-header {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+
+    .enhanced-stats-table th,
+    .enhanced-stats-table td {
+        padding: 8px 10px;
+        font-size: 0.8rem;
+    }
+
+    .player-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 0.75rem;
+    }
+
+    .player-name {
+        max-width: 80px;
+        font-size: 0.85rem;
+    }
+
+    /* Hide less important columns on mobile */
+    .enhanced-stats-table th:nth-child(7),
+    .enhanced-stats-table td:nth-child(7),
+    .enhanced-stats-table th:nth-child(8),
+    .enhanced-stats-table td:nth-child(8),
+    .enhanced-stats-table th:nth-child(9),
+    .enhanced-stats-table td:nth-child(9),
+    .enhanced-stats-table th:nth-child(10),
+    .enhanced-stats-table td:nth-child(10) {
+        display: none;
+    }
+}
+
+/* General Stats Tab Integration */
+.general-stats-container {
+    margin-top: 24px;
+}
+
+.general-stats-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary, #ffffff);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.general-stats-title::before {
+    content: '';
+    width: 4px;
+    height: 20px;
+    background: var(--accent-primary, #00e5ff);
+    border-radius: 2px;
+}
+
+/* Legend for indicators */
+.stats-legend {
+    display: flex;
+    gap: 16px;
+    padding: 12px 16px;
+    background: var(--glass, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08));
+    border-radius: var(--radius-md, 12px);
+    margin-bottom: 16px;
+    font-size: 0.8rem;
+    color: var(--text-muted, #6b7280);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-star {
+    color: var(--warning, #f59e0b);
+}
+
+.legend-positive {
+    color: var(--success, #10b981);
+}
+
+.legend-negative {
+    color: var(--danger, #ef4444);
+}
