@@ -575,3 +575,251 @@ class TestPlayerMatchStatsNewProperties:
         )
         player.clutches = ClutchStats(v2_attempts=2, v2_wins=1)
         assert player.clutch_1v2_rate == 50.0
+
+
+class TestAimStats:
+    """Tests for comprehensive aim statistics (Leetify style)."""
+
+    def test_aim_stats_creation(self):
+        """AimStats can be created with default values."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats()
+        assert stats.shots_fired == 0
+        assert stats.shots_hit == 0
+        assert stats.spray_shots_fired == 0
+        assert stats.counter_strafe_kills == 0
+
+    def test_accuracy_all_calculation(self):
+        """Overall accuracy calculated correctly."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(shots_fired=100, shots_hit=35)
+        assert stats.accuracy_all == 35.0
+
+    def test_accuracy_all_zero_shots(self):
+        """Overall accuracy is 0 when no shots fired."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats()
+        assert stats.accuracy_all == 0.0
+
+    def test_head_accuracy_calculation(self):
+        """Head accuracy calculated correctly."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(shots_hit=50, headshot_hits=15)
+        assert stats.head_accuracy == 30.0
+
+    def test_head_accuracy_zero_hits(self):
+        """Head accuracy is 0 when no hits."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats()
+        assert stats.head_accuracy == 0.0
+
+    def test_hs_kill_pct_calculation(self):
+        """HS kill percentage calculated correctly."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(total_kills=20, headshot_kills=10)
+        assert stats.hs_kill_pct == 50.0
+
+    def test_spray_accuracy_calculation(self):
+        """Spray accuracy calculated correctly."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(spray_shots_fired=50, spray_shots_hit=20)
+        assert stats.spray_accuracy == 40.0
+
+    def test_spray_accuracy_zero_spray_shots(self):
+        """Spray accuracy is 0 when no spray shots."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats()
+        assert stats.spray_accuracy == 0.0
+
+    def test_counter_strafe_pct_calculation(self):
+        """Counter-strafing percentage calculated correctly."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(counter_strafe_kills=8, total_kills_for_cs=10)
+        assert stats.counter_strafe_pct == 80.0
+
+    def test_counter_strafe_pct_zero_kills(self):
+        """Counter-strafing percentage is 0 when no tracked kills."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats()
+        assert stats.counter_strafe_pct == 0.0
+
+    def test_ttd_rating_elite(self):
+        """TTD rating is elite for <200ms."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(ttd_median_ms=180.0)
+        assert stats._get_ttd_rating() == "elite"
+
+    def test_ttd_rating_good(self):
+        """TTD rating is good for 200-350ms."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(ttd_median_ms=275.0)
+        assert stats._get_ttd_rating() == "good"
+
+    def test_ttd_rating_average(self):
+        """TTD rating is average for 350-500ms."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(ttd_median_ms=425.0)
+        assert stats._get_ttd_rating() == "average"
+
+    def test_ttd_rating_slow(self):
+        """TTD rating is slow for >500ms."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(ttd_median_ms=550.0)
+        assert stats._get_ttd_rating() == "slow"
+
+    def test_ttd_rating_unknown(self):
+        """TTD rating is unknown when None."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats()
+        assert stats._get_ttd_rating() == "unknown"
+
+    def test_cp_rating_elite(self):
+        """CP rating is elite for <5 degrees."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(cp_median_deg=3.5)
+        assert stats._get_cp_rating() == "elite"
+
+    def test_cp_rating_good(self):
+        """CP rating is good for 5-15 degrees."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(cp_median_deg=10.0)
+        assert stats._get_cp_rating() == "good"
+
+    def test_cp_rating_average(self):
+        """CP rating is average for 15-25 degrees."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(cp_median_deg=20.0)
+        assert stats._get_cp_rating() == "average"
+
+    def test_cp_rating_needs_work(self):
+        """CP rating is needs_work for >25 degrees."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(cp_median_deg=30.0)
+        assert stats._get_cp_rating() == "needs_work"
+
+    def test_aim_stats_to_dict(self):
+        """AimStats to_dict serializes correctly."""
+        from opensight.analysis.analytics import AimStats
+
+        stats = AimStats(
+            shots_fired=100,
+            shots_hit=40,
+            headshot_hits=12,
+            spray_shots_fired=30,
+            spray_shots_hit=10,
+            counter_strafe_kills=5,
+            total_kills_for_cs=8,
+            ttd_median_ms=280.0,
+            cp_median_deg=8.5,
+            total_kills=15,
+            headshot_kills=6,
+        )
+        result = stats.to_dict()
+
+        assert result["shots_fired"] == 100
+        assert result["accuracy_all"] == 40.0
+        assert result["head_accuracy"] == 30.0
+        assert result["spray_accuracy"] == pytest.approx(33.3, abs=0.1)
+        assert result["counter_strafe_pct"] == 62.5
+        assert result["time_to_damage_ms"] == 280.0
+        assert result["crosshair_placement_deg"] == 8.5
+        assert result["ttd_rating"] == "good"
+        assert result["cp_rating"] == "good"
+
+
+class TestPlayerMatchStatsAimProperties:
+    """Tests for aim-related properties on PlayerMatchStats."""
+
+    def test_spray_accuracy_property(self):
+        """Spray accuracy property calculated correctly."""
+        from opensight.analysis.analytics import PlayerMatchStats
+
+        player = PlayerMatchStats(
+            steam_id=12345,
+            name="Player1",
+            team="CT",
+            kills=10,
+            deaths=5,
+            assists=3,
+            headshots=4,
+            total_damage=1000,
+            rounds_played=10,
+        )
+        player.spray_shots_fired = 40
+        player.spray_shots_hit = 16
+        assert player.spray_accuracy == 40.0
+
+    def test_counter_strafe_pct_property(self):
+        """Counter-strafing percentage property calculated correctly."""
+        from opensight.analysis.analytics import PlayerMatchStats
+
+        player = PlayerMatchStats(
+            steam_id=12345,
+            name="Player1",
+            team="CT",
+            kills=10,
+            deaths=5,
+            assists=3,
+            headshots=4,
+            total_damage=1000,
+            rounds_played=10,
+        )
+        player.counter_strafe_kills = 6
+        player.total_kills_with_velocity = 8
+        assert player.counter_strafe_pct == 75.0
+
+    def test_aim_stats_property(self):
+        """aim_stats property returns AimStats object."""
+        from opensight.analysis.analytics import AimStats, PlayerMatchStats
+
+        player = PlayerMatchStats(
+            steam_id=12345,
+            name="Player1",
+            team="CT",
+            kills=10,
+            deaths=5,
+            assists=3,
+            headshots=4,
+            total_damage=1000,
+            rounds_played=10,
+        )
+        player.shots_fired = 100
+        player.shots_hit = 35
+        player.headshot_hits = 10
+        player.spray_shots_fired = 30
+        player.spray_shots_hit = 12
+        player.counter_strafe_kills = 7
+        player.total_kills_with_velocity = 10
+        player.ttd_values = [250.0, 300.0, 350.0]
+        player.cp_values = [5.0, 8.0, 10.0]
+
+        aim_stats = player.aim_stats
+
+        assert isinstance(aim_stats, AimStats)
+        assert aim_stats.shots_fired == 100
+        assert aim_stats.shots_hit == 35
+        assert aim_stats.spray_shots_fired == 30
+        assert aim_stats.spray_shots_hit == 12
+        assert aim_stats.counter_strafe_kills == 7
+        assert aim_stats.total_kills_for_cs == 10
+        assert aim_stats.total_kills == 10
+        assert aim_stats.headshot_kills == 4

@@ -14,15 +14,17 @@ Provides:
 """
 
 import logging
+import re
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Any
 
-from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
+from starlette.responses import Response
 
 __version__ = "0.3.0"
 
@@ -30,6 +32,47 @@ __version__ = "0.3.0"
 MAX_FILE_SIZE_MB = 500  # Maximum demo file size in MB
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = (".dem", ".dem.gz")
+
+# =============================================================================
+# Input Validation Patterns
+# =============================================================================
+
+# Demo ID: alphanumeric, max 64 characters (UUIDs, hashes, etc.)
+DEMO_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+# Steam ID: exactly 17 digits (64-bit Steam ID)
+STEAM_ID_PATTERN = re.compile(r"^\d{17}$")
+# Job ID: UUID format (from job_store)
+JOB_ID_PATTERN = re.compile(
+    r"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
+)
+
+
+def validate_demo_id(demo_id: str) -> str:
+    """Validate demo_id format. Raises HTTPException if invalid."""
+    if not demo_id or not DEMO_ID_PATTERN.match(demo_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid demo_id: must be alphanumeric, 1-64 characters",
+        )
+    return demo_id
+
+
+def validate_steam_id(steam_id: str) -> str:
+    """Validate steam_id format. Raises HTTPException if invalid."""
+    if not steam_id or not STEAM_ID_PATTERN.match(steam_id):
+        raise HTTPException(
+            status_code=400, detail="Invalid steam_id: must be exactly 17 digits"
+        )
+    return steam_id
+
+
+def validate_job_id(job_id: str) -> str:
+    """Validate job_id UUID format. Raises HTTPException if invalid."""
+    if not job_id or not JOB_ID_PATTERN.match(job_id):
+        raise HTTPException(
+            status_code=400, detail="Invalid job_id: must be a valid UUID"
+        )
+    return job_id
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -183,18 +226,36 @@ def player_stats_to_dict(player: Any) -> dict:
         "rounds_with_3k": player.multi_kills.rounds_with_3k,
         "rounds_with_4k": player.multi_kills.rounds_with_4k,
         "rounds_with_5k": player.multi_kills.rounds_with_5k,
-        # Utility
+        # Utility (Leetify-style comprehensive)
+        "utility": player.utility.to_dict(),
+        # Legacy utility fields for backwards compatibility
         "flashbangs_thrown": player.utility.flashbangs_thrown,
         "enemies_flashed": player.utility.enemies_flashed,
         "flash_assists": player.utility.flash_assists,
+        "flash_assist_pct": player.utility.flash_assist_pct,
+        "enemies_flashed_per_round": player.utility.enemies_flashed_per_round,
+        "friends_flashed_per_round": player.utility.friends_flashed_per_round,
+        "avg_blind_time": player.utility.avg_blind_time,
         "he_thrown": player.utility.he_thrown,
         "he_damage": player.utility.he_damage,
+        "he_team_damage": player.utility.he_team_damage,
+        "avg_he_damage": player.utility.avg_he_damage,
+        "smokes_thrown": player.utility.smokes_thrown,
+        "molotovs_thrown": player.utility.molotovs_thrown,
+        "molotov_damage": player.utility.molotov_damage,
+        "utility_quality_rating": player.utility.utility_quality_rating,
+        "utility_quantity_rating": player.utility.utility_quantity_rating,
         # Weapon breakdown
         "weapon_kills": player.weapon_kills,
         # RWS (Round Win Shares) - ESEA style
         "rws": player.rws,
         "damage_in_won_rounds": player.damage_in_won_rounds,
         "rounds_won": player.rounds_won,
+        # Comprehensive aim stats (Leetify style)
+        "accuracy_all": round(player.accuracy, 1),
+        "head_accuracy": round(player.head_hit_rate, 1),
+        "spray_accuracy": round(player.spray_accuracy, 1),
+        "counter_strafe_pct": round(player.counter_strafe_pct, 1),
     }
 
 
@@ -236,8 +297,27 @@ def build_player_response(player: Any) -> dict:
             "losses": player.opening_duels.losses,
             "win_rate": round(player.opening_duels.win_rate, 1),
         },
-        # Trades (nested)
+        # Trades (Leetify-style nested stats)
         "trades": {
+            # Trade Kill stats (you trading for teammates)
+            "trade_kill_opportunities": player.trades.trade_kill_opportunities,
+            "trade_kill_attempts": player.trades.trade_kill_attempts,
+            "trade_kill_attempts_pct": round(player.trades.trade_kill_attempts_pct, 1),
+            "trade_kill_success": player.trades.trade_kill_success,
+            "trade_kill_success_pct": round(player.trades.trade_kill_success_pct, 1),
+            # Traded Death stats (teammates trading for you)
+            "traded_death_opportunities": player.trades.traded_death_opportunities,
+            "traded_death_attempts": player.trades.traded_death_attempts,
+            "traded_death_attempts_pct": round(player.trades.traded_death_attempts_pct, 1),
+            "traded_death_success": player.trades.traded_death_success,
+            "traded_death_success_pct": round(player.trades.traded_death_success_pct, 1),
+            # Time to trade analysis
+            "avg_time_to_trade_ms": player.trades.avg_time_to_trade_ms,
+            "median_time_to_trade_ms": player.trades.median_time_to_trade_ms,
+            # Entry trades
+            "traded_entry_kills": player.trades.traded_entry_kills,
+            "traded_entry_deaths": player.trades.traded_entry_deaths,
+            # Legacy fields for backwards compatibility
             "kills_traded": player.trades.kills_traded,
             "deaths_traded": player.trades.deaths_traded,
             "trade_rate": round(player.trades.trade_rate, 1),
@@ -277,22 +357,38 @@ def build_player_response(player: Any) -> dict:
                 for c in player.clutches.clutches
             ],
         },
-        # Utility (nested)
-        "utility": {
-            "damage": player.utility.he_damage + player.utility.molotov_damage,
-            "enemies_flashed": player.utility.enemies_flashed,
-            "flash_assists": player.utility.flash_assists,
-            "flashbangs_thrown": player.utility.flashbangs_thrown,
-            "he_thrown": player.utility.he_thrown,
-            "molotovs_thrown": player.utility.molotovs_thrown,
-            "smokes_thrown": player.utility.smokes_thrown,
-        },
+        # Utility (nested, Leetify-style comprehensive)
+        "utility": player.utility.to_dict(),
         # Multi-kills
         "multi_kills": {
             "2k": player.multi_kills.rounds_with_2k,
             "3k": player.multi_kills.rounds_with_3k,
             "4k": player.multi_kills.rounds_with_4k,
             "5k": player.multi_kills.rounds_with_5k,
+        },
+        # Comprehensive aim stats (Leetify style)
+        "aim_stats": {
+            # Raw counts
+            "shots_fired": player.shots_fired,
+            "shots_hit": player.shots_hit,
+            "headshot_hits": player.headshot_hits,
+            "spray_shots_fired": player.spray_shots_fired,
+            "spray_shots_hit": player.spray_shots_hit,
+            "counter_strafe_kills": player.counter_strafe_kills,
+            "total_kills_with_velocity": player.total_kills_with_velocity,
+            # Computed percentages (Leetify format)
+            "accuracy_all": round(player.accuracy, 1),
+            "head_accuracy": round(player.head_hit_rate, 1),
+            "hs_kill_pct": round(player.headshot_percentage, 1),
+            "spray_accuracy": round(player.spray_accuracy, 1),
+            "counter_strafe_pct": round(player.counter_strafe_pct, 1),
+            # TTD and CP
+            "time_to_damage_ms": (
+                round(player.ttd_median_ms, 1) if player.ttd_median_ms else None
+            ),
+            "crosshair_placement_deg": (
+                round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None
+            ),
         },
     }
 
@@ -341,6 +437,86 @@ app.add_middleware(
 # Enable GZip compression for responses > 1KB
 # This significantly reduces bandwidth for large JSON responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+# =============================================================================
+# Security Middleware
+# =============================================================================
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next) -> Response:
+    """Add security headers to all responses."""
+    response = await call_next(request)
+    # Prevent MIME type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # Prevent clickjacking (allow framing for HF Spaces, so use SAMEORIGIN)
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # XSS protection for older browsers
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    # Referrer policy - send origin only for cross-origin requests
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # Permissions policy - disable unnecessary features
+    response.headers["Permissions-Policy"] = (
+        "accelerometer=(), camera=(), geolocation=(), microphone=()"
+    )
+    return response
+
+
+# =============================================================================
+# Rate Limiting
+# =============================================================================
+
+# Try to import slowapi; if unavailable, create a no-op limiter
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
+
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    RATE_LIMITING_ENABLED = True
+except ImportError:
+    # slowapi not installed - rate limiting disabled
+    RATE_LIMITING_ENABLED = False
+    limiter = None
+    logger.warning("slowapi not installed - rate limiting disabled")
+
+
+def rate_limit(limit_string: str):
+    """Decorator for rate limiting. No-op if slowapi not available."""
+    if RATE_LIMITING_ENABLED and limiter:
+        return limiter.limit(limit_string)
+    # Return identity decorator if rate limiting disabled
+    def identity(func):
+        return func
+    return identity
+
+
+# =============================================================================
+# Global Exception Handler
+# =============================================================================
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """
+    Global exception handler to prevent information disclosure.
+
+    Logs the full error internally but returns a generic message to clients.
+    """
+    # Log the full exception for debugging (server-side only)
+    logger.exception(f"Unhandled exception for {request.method} {request.url.path}")
+
+    # Return generic error to client (no internal details)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": "An unexpected error occurred. Please try again later.",
+        },
+    )
 
 
 class ShareCodeRequest(BaseModel):
@@ -476,7 +652,8 @@ async def decode_share_code(request: ShareCodeRequest) -> dict[str, int]:
 
 
 @app.post("/analyze", status_code=202)
-async def analyze_demo(file: UploadFile = File(...)):
+@rate_limit("5/minute")  # Limit uploads to 5 per minute per IP
+async def analyze_demo(request: Request, file: UploadFile = File(...)):
     """
     Submit a CS2 demo file for analysis.
 
@@ -489,6 +666,8 @@ async def analyze_demo(file: UploadFile = File(...)):
     - Progress tracking available via status endpoint
 
     Accepts .dem and .dem.gz files up to 500MB.
+
+    Rate limit: 5 requests per minute per IP address.
     """
     # Validate file extension
     if not file.filename:
@@ -588,6 +767,10 @@ async def analyze_demo(file: UploadFile = File(...)):
 
 @app.get("/analyze/{job_id}")
 async def get_job_status(job_id: str) -> dict[str, Any]:
+    """Get the status of an analysis job."""
+    # Validate job_id format
+    validate_job_id(job_id)
+
     job = job_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -601,6 +784,10 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
 
 @app.get("/analyze/{job_id}/download")
 async def download_job_result(job_id: str):
+    """Download the results of a completed analysis job."""
+    # Validate job_id format
+    validate_job_id(job_id)
+
     job = job_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -1073,7 +1260,9 @@ async def get_parallel_status() -> dict[str, Any]:
 
 
 @app.post("/replay/generate")
+@rate_limit("3/minute")  # Limit replay generation to 3 per minute per IP
 async def generate_replay_data(
+    request: Request,
     file: Annotated[UploadFile, File(...)],
     sample_rate: Annotated[int, Query(ge=1, le=128, description="Extract every Nth tick")] = 16,
 ) -> dict[str, Any]:
@@ -1082,6 +1271,8 @@ async def generate_replay_data(
 
     This extracts player positions and game state at regular intervals
     for use in 2D replay visualization.
+
+    Rate limit: 3 requests per minute per IP address.
     """
     # Validate file extension
     if not file.filename:
@@ -1208,13 +1399,313 @@ async def generate_replay_data(
                 pass
 
 
+# =============================================================================
+# Your Match - Personal Performance Dashboard
+# =============================================================================
+
+
+class YourMatchResponse(BaseModel):
+    """Response model for Your Match data."""
+
+    persona: dict[str, Any] = Field(..., description="Match identity persona")
+    top_5: list[dict[str, Any]] = Field(..., description="Top 5 stats with rankings")
+    comparison: list[dict[str, Any]] = Field(
+        ..., description="This Match vs Average comparison"
+    )
+    match_count: int = Field(..., description="Number of matches in baseline")
+
+
+@app.get("/api/your-match/{demo_id}/{steam_id}")
+async def get_your_match(demo_id: str, steam_id: str) -> dict[str, Any]:
+    """
+    Get personalized match performance data (Leetify-style "Your Match" feature).
+
+    Returns:
+    - Match Identity persona
+    - Top 5 Stats with progress bars
+    - This Match vs Your 30 Match Average comparison
+
+    Args:
+        demo_id: Demo hash or job ID (alphanumeric, max 64 chars)
+        steam_id: Player's Steam ID (17 digits)
+    """
+    # Validate inputs
+    validate_demo_id(demo_id)
+    validate_steam_id(steam_id)
+
+    try:
+        from opensight.analysis.persona import PersonaAnalyzer
+        from opensight.infra.database import get_db
+
+        db = get_db()
+
+        # Get current match stats from job store
+        current_stats = None
+        job = job_store.get_job(demo_id)
+
+        if job and job.result:
+            # Extract player stats from job result
+            players = job.result.get("players", [])
+            for player in players:
+                if str(player.get("steam_id")) == steam_id:
+                    current_stats = player
+                    break
+
+        if not current_stats:
+            # Try to find in match history
+            history = db.get_player_history(steam_id, limit=1)
+            if history:
+                current_stats = history[0]
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No stats found for player {steam_id} in demo {demo_id}",
+                )
+
+        # Get player baselines
+        baselines = db.get_player_baselines(steam_id)
+
+        # Initialize persona analyzer
+        analyzer = PersonaAnalyzer(baselines)
+
+        # Determine persona
+        persona = analyzer.determine_persona(current_stats)
+
+        # Calculate top 5 stats
+        top_5 = analyzer.calculate_top_5_stats(current_stats, baselines)
+
+        # Build comparison table
+        comparison = analyzer.build_comparison_table(current_stats, baselines)
+
+        # Get match count from baselines
+        match_count = 0
+        if baselines:
+            first_baseline = next(iter(baselines.values()), {})
+            match_count = first_baseline.get("sample_count", 0)
+
+        return {
+            "persona": persona.to_dict(),
+            "top_5": [s.to_dict() for s in top_5],
+            "comparison": [c.to_dict() for c in comparison],
+            "match_count": match_count,
+            "steam_id": steam_id,
+            "demo_id": demo_id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Your Match data retrieval failed")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve Your Match data: {e!s}"
+        ) from e
+
+
+@app.post("/api/your-match/store")
+async def store_match_for_player(
+    steam_id: str = Body(..., embed=True),
+    demo_hash: str = Body(..., embed=True),
+    player_stats: dict[str, Any] = Body(..., embed=True),
+    map_name: str | None = Body(None, embed=True),
+    result: str | None = Body(None, embed=True),
+) -> dict[str, Any]:
+    """
+    Store a match in player's history and update baselines.
+
+    This should be called after analyzing a demo to track the player's
+    performance over time.
+    """
+    validate_steam_id(steam_id)
+
+    try:
+        from opensight.infra.database import get_db
+
+        db = get_db()
+
+        # Store match history
+        entry = db.save_match_history_entry(
+            steam_id=steam_id,
+            demo_hash=demo_hash,
+            player_stats=player_stats,
+            map_name=map_name,
+            result=result,
+        )
+
+        if entry is None:
+            return {"status": "duplicate", "message": "Match already recorded"}
+
+        # Update baselines
+        baselines = db.update_player_baselines(steam_id)
+
+        return {
+            "status": "ok",
+            "match_id": entry.id,
+            "baselines_updated": len(baselines),
+        }
+
+    except Exception as e:
+        logger.exception("Failed to store match")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to store match: {e!s}"
+        ) from e
+
+
+@app.get("/api/your-match/baselines/{steam_id}")
+async def get_player_baselines_endpoint(steam_id: str) -> dict[str, Any]:
+    """
+    Get a player's baseline statistics.
+
+    Returns rolling averages for each metric over the last 30 matches.
+    """
+    validate_steam_id(steam_id)
+
+    try:
+        from opensight.infra.database import get_db
+
+        db = get_db()
+        baselines = db.get_player_baselines(steam_id)
+
+        return {
+            "steam_id": steam_id,
+            "baselines": baselines,
+            "metric_count": len(baselines),
+        }
+
+    except Exception as e:
+        logger.exception("Failed to get baselines")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get baselines: {e!s}"
+        ) from e
+
+
+@app.get("/api/your-match/history/{steam_id}")
+async def get_player_match_history_endpoint(
+    steam_id: str, limit: int = Query(default=30, le=100)
+) -> dict[str, Any]:
+    """
+    Get a player's match history for the Your Match feature.
+
+    Returns recent matches with all tracked metrics.
+    """
+    validate_steam_id(steam_id)
+
+    try:
+        from opensight.infra.database import get_db
+
+        db = get_db()
+        history = db.get_player_history(steam_id, limit=limit)
+
+        return {
+            "steam_id": steam_id,
+            "matches": history,
+            "count": len(history),
+        }
+
+    except Exception as e:
+        logger.exception("Failed to get match history")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get match history: {e!s}"
+        ) from e
+
+
+@app.get("/api/your-match/persona/{steam_id}")
+async def get_player_persona_endpoint(steam_id: str) -> dict[str, Any]:
+    """
+    Get a player's current persona based on their match history.
+
+    Analyzes recent performance to determine their playstyle identity.
+    """
+    validate_steam_id(steam_id)
+
+    try:
+        from opensight.analysis.persona import PersonaAnalyzer
+        from opensight.infra.database import get_db
+
+        db = get_db()
+
+        # Get recent match history
+        history = db.get_player_history(steam_id, limit=10)
+
+        if not history:
+            return {
+                "steam_id": steam_id,
+                "persona": {
+                    "id": "the_competitor",
+                    "name": "The Competitor",
+                    "description": "Play more matches to determine your identity",
+                    "confidence": 0.0,
+                },
+                "match_count": 0,
+            }
+
+        # Aggregate stats from recent matches
+        aggregated: dict[str, Any] = {}
+        count = len(history)
+
+        metrics_to_avg = [
+            "kills",
+            "deaths",
+            "adr",
+            "kast",
+            "hs_pct",
+            "hltv_rating",
+            "aim_rating",
+            "utility_rating",
+            "trade_kill_success",
+            "entry_success",
+            "clutch_wins",
+            "enemies_flashed",
+        ]
+
+        for metric in metrics_to_avg:
+            values = [m.get(metric, 0) for m in history if m.get(metric) is not None]
+            if values:
+                aggregated[metric] = sum(values) / len(values)
+
+        # Also track totals for certain metrics
+        aggregated["trade_kill_opportunities"] = sum(
+            m.get("trade_kill_opportunities", 0) for m in history
+        )
+        aggregated["clutch_situations"] = sum(
+            m.get("clutch_situations", 0) for m in history
+        )
+        aggregated["entry_attempts"] = sum(m.get("entry_attempts", 0) for m in history)
+
+        # Determine persona
+        analyzer = PersonaAnalyzer()
+        persona = analyzer.determine_persona(aggregated)
+
+        # Update stored persona
+        db.update_player_persona(
+            steam_id=steam_id,
+            persona_id=persona.id,
+            confidence=persona.confidence,
+            primary_trait=persona.primary_trait,
+            secondary_trait=persona.secondary_trait,
+        )
+
+        return {
+            "steam_id": steam_id,
+            "persona": persona.to_dict(),
+            "match_count": count,
+        }
+
+    except Exception as e:
+        logger.exception("Failed to get persona")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get persona: {e!s}"
+        ) from e
+
+
 # ============================================================================
 # Professional Metrics Endpoints
 # ============================================================================
 
 
 @app.get("/api/players/{steam_id}/metrics")
-async def get_player_metrics(steam_id: str, demo_id: str = Query(None)) -> dict:
+async def get_player_metrics(
+    steam_id: str, demo_id: str = Query(None, max_length=64)
+) -> dict:
     """
     Get professional metrics for a player.
 
@@ -1225,6 +1716,13 @@ async def get_player_metrics(steam_id: str, demo_id: str = Query(None)) -> dict:
     - Trade Kills: Retribution kill stats
     - Clutch Stats: 1vX situation performance
     """
+    # Validate steam_id format
+    validate_steam_id(steam_id)
+
+    # Validate demo_id if provided
+    if demo_id:
+        validate_demo_id(demo_id)
+
     try:
         from opensight.infra.cache import CacheManager
 
@@ -1256,8 +1754,23 @@ async def get_player_metrics(steam_id: str, demo_id: str = Query(None)) -> dict:
                     "success_rate": 0.0,
                 },
                 "trades": {
-                    "kills": 0,
+                    "trade_kill_opportunities": 0,
+                    "trade_kill_attempts": 0,
+                    "trade_kill_attempts_pct": 0.0,
+                    "trade_kill_success": 0,
+                    "trade_kill_success_pct": 0.0,
+                    "traded_death_opportunities": 0,
+                    "traded_death_attempts": 0,
+                    "traded_death_attempts_pct": 0.0,
+                    "traded_death_success": 0,
+                    "traded_death_success_pct": 0.0,
+                    "avg_time_to_trade_ms": None,
+                    "median_time_to_trade_ms": None,
+                    "traded_entry_kills": 0,
+                    "traded_entry_deaths": 0,
+                    "kills_traded": 0,
                     "deaths_traded": 0,
+                    "trade_rate": 0.0,
                 },
                 "clutches": {
                     "wins": 0,

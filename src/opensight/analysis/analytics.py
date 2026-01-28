@@ -234,40 +234,99 @@ class OpeningDuelStats:
 
 @dataclass
 class TradeStats:
-    """Trade kill statistics - measures how well you avenge teammates.
+    """Trade kill statistics - measures trading performance (Leetify-style).
 
-    Trade Kill: When a teammate is killed, check if you killed the enemy
-    who killed them within 5 seconds.
+    Trade Kill: When a teammate is killed, you kill their killer within 5 seconds.
 
-    Metrics:
-    - trade_rate: Trade Kill % - How often you avenge teammates when opportunity arises
-    - deaths_traded_rate: How often your deaths were avenged by teammates
+    Leetify-style metrics:
+    - Trade Kill Opportunities: Teammate deaths where you were alive
+    - Trade Kill Attempts: Did you engage (damage/fire at) the killer?
+    - Trade Kill Success: Did you kill the killer?
+    - Traded Death Opportunities: Your deaths where teammates were alive
+    - Traded Death Attempts: Did teammates engage your killer?
+    - Traded Death Success: Did teammates kill your killer?
     """
 
-    kills_traded: int = (
-        0  # Kills that avenged a teammate (you killed the enemy who killed teammate)
-    )
-    deaths_traded: int = 0  # Your deaths that were avenged by teammates
-    trade_attempts: int = 0  # Opportunities to trade (teammate deaths where you could trade)
-    failed_trades: int = 0  # Trade opportunities where you didn't get the trade
-    # Entry-specific trade stats
-    traded_entry_kills: int = 0  # Trade kills where the original kill was the entry frag
-    traded_entry_deaths: int = 0  # Entry deaths that were traded by teammates
+    # === Trade Kill Stats (you trading for teammates) ===
+    trade_kill_opportunities: int = 0  # Teammate died, you were alive
+    trade_kill_attempts: int = 0  # You damaged/shot at the killer
+    trade_kill_success: int = 0  # You killed the killer (= kills_traded)
+
+    # === Traded Death Stats (teammates trading for you) ===
+    traded_death_opportunities: int = 0  # You died, teammates were alive
+    traded_death_attempts: int = 0  # Teammates damaged/shot at your killer
+    traded_death_success: int = 0  # Teammates killed your killer (= deaths_traded)
+
+    # === Legacy fields for backwards compatibility ===
+    kills_traded: int = 0  # Alias for trade_kill_success
+    deaths_traded: int = 0  # Alias for traded_death_success
+    trade_attempts: int = 0  # Legacy: opportunities where you could trade
+    failed_trades: int = 0  # Legacy: opportunities where you didn't trade
+
+    # === Entry-specific trade stats ===
+    traded_entry_kills: int = 0  # Trade kills where original was entry frag
+    traded_entry_deaths: int = 0  # Entry deaths traded by teammates
+
+    # === Time to Trade analysis ===
+    time_to_trade_ticks: list[int] = field(default_factory=list)
+
+    @property
+    def trade_kill_attempts_pct(self) -> float:
+        """Trade Kill Attempts % - Did you TRY to trade when given opportunity?"""
+        if self.trade_kill_opportunities <= 0:
+            return 0.0
+        return round(self.trade_kill_attempts / self.trade_kill_opportunities * 100, 1)
+
+    @property
+    def trade_kill_success_pct(self) -> float:
+        """Trade Kill Success % - Of attempts, how many did you convert?"""
+        if self.trade_kill_attempts <= 0:
+            return 0.0
+        return round(self.trade_kill_success / self.trade_kill_attempts * 100, 1)
+
+    @property
+    def traded_death_attempts_pct(self) -> float:
+        """Traded Death Attempts % - Did teammates TRY to trade your death?"""
+        if self.traded_death_opportunities <= 0:
+            return 0.0
+        return round(self.traded_death_attempts / self.traded_death_opportunities * 100, 1)
+
+    @property
+    def traded_death_success_pct(self) -> float:
+        """Traded Death Success % - Of teammate attempts, how many converted?"""
+        if self.traded_death_attempts <= 0:
+            return 0.0
+        return round(self.traded_death_success / self.traded_death_attempts * 100, 1)
 
     @property
     def trade_rate(self) -> float:
-        """Trade Kill % - How often you avenge your teammates when given the opportunity."""
-        return (
-            round(self.kills_traded / self.trade_attempts * 100, 1)
-            if self.trade_attempts > 0
-            else 0.0
-        )
+        """Trade Kill % - How often you avenge teammates (legacy, = success/opportunities)."""
+        if self.trade_kill_opportunities <= 0:
+            return 0.0
+        return round(self.trade_kill_success / self.trade_kill_opportunities * 100, 1)
 
     @property
     def deaths_traded_rate(self) -> float:
         """Percentage of your deaths that were avenged by teammates."""
-        total_deaths = self.deaths_traded + self.failed_trades
-        return round(self.deaths_traded / total_deaths * 100, 1) if total_deaths > 0 else 0.0
+        if self.traded_death_opportunities <= 0:
+            return 0.0
+        return round(self.traded_death_success / self.traded_death_opportunities * 100, 1)
+
+    @property
+    def avg_time_to_trade_ms(self) -> float | None:
+        """Average time to complete a trade in milliseconds."""
+        if not self.time_to_trade_ticks:
+            return None
+        ms_per_tick = 1000.0 / 64.0
+        return round(sum(self.time_to_trade_ticks) / len(self.time_to_trade_ticks) * ms_per_tick, 1)
+
+    @property
+    def median_time_to_trade_ms(self) -> float | None:
+        """Median time to complete a trade in milliseconds."""
+        if not self.time_to_trade_ticks:
+            return None
+        ms_per_tick = 1000.0 / 64.0
+        return round(float(np.median(self.time_to_trade_ticks)) * ms_per_tick, 1)
 
 
 @dataclass
@@ -473,24 +532,41 @@ class WeaponStats:
 
 @dataclass
 class UtilityStats:
-    """Utility usage statistics."""
+    """Comprehensive utility usage statistics (Leetify-style)."""
 
+    # Grenade counts
     flashbangs_thrown: int = 0
     smokes_thrown: int = 0
     he_thrown: int = 0
     molotovs_thrown: int = 0
-    enemies_flashed: int = 0
-    teammates_flashed: int = 0
-    flash_assists: int = 0
-    he_damage: int = 0
-    he_team_damage: int = 0
-    molotov_damage: int = 0
-    molotov_team_damage: int = 0
+
+    # Flash effectiveness
+    enemies_flashed: int = 0  # Enemies blinded > 1.1s (significant)
+    teammates_flashed: int = 0  # Teammates blinded (mistake)
+    flash_assists: int = 0  # Kills within 3s of blinding enemy
     total_blind_time: float = 0.0  # Total seconds enemies were blinded
+
+    # Damage stats
+    he_damage: int = 0  # Damage to enemies from HE grenades
+    he_team_damage: int = 0  # Damage to teammates from HE
+    molotov_damage: int = 0  # Damage to enemies from molotov/incendiary
+    molotov_team_damage: int = 0  # Damage to teammates from fire
+
+    # Economy - unused utility at death
+    unused_utility_value: int = 0  # Average $ of utility not used when dying
+
+    # Round context (set by analyzer)
+    _rounds_played: int = 0
 
     @property
     def total_utility(self) -> int:
+        """Total grenades thrown."""
         return self.flashbangs_thrown + self.smokes_thrown + self.he_thrown + self.molotovs_thrown
+
+    @property
+    def total_utility_damage(self) -> int:
+        """Total damage dealt with utility (HE + Molotov)."""
+        return self.he_damage + self.molotov_damage
 
     @property
     def enemies_flashed_per_flash(self) -> float:
@@ -507,18 +583,169 @@ class UtilityStats:
         return self.teammates_flashed / self.flashbangs_thrown
 
     @property
+    def enemies_flashed_per_round(self) -> float:
+        """Average enemies flashed per round (Leetify column)."""
+        if self._rounds_played <= 0:
+            return 0.0
+        return round(self.enemies_flashed / self._rounds_played, 2)
+
+    @property
+    def friends_flashed_per_round(self) -> float:
+        """Average teammates flashed per round (Leetify column)."""
+        if self._rounds_played <= 0:
+            return 0.0
+        return round(self.teammates_flashed / self._rounds_played, 2)
+
+    @property
     def avg_blind_time(self) -> float:
-        """Average blind time per enemy flashed."""
+        """Average blind time per enemy flashed (seconds)."""
         if self.enemies_flashed <= 0:
             return 0.0
-        return self.total_blind_time / self.enemies_flashed
+        return round(self.total_blind_time / self.enemies_flashed, 2)
+
+    @property
+    def avg_he_damage(self) -> float:
+        """Average HE damage per round."""
+        if self._rounds_played <= 0:
+            return 0.0
+        return round(self.he_damage / self._rounds_played, 1)
+
+    @property
+    def avg_he_team_damage(self) -> float:
+        """Average HE team damage per round."""
+        if self._rounds_played <= 0:
+            return 0.0
+        return round(self.he_team_damage / self._rounds_played, 1)
 
     @property
     def he_damage_per_nade(self) -> float:
         """Average HE damage per grenade."""
         if self.he_thrown <= 0:
             return 0.0
-        return self.he_damage / self.he_thrown
+        return round(self.he_damage / self.he_thrown, 1)
+
+    @property
+    def molotov_damage_per_nade(self) -> float:
+        """Average molotov damage per grenade."""
+        if self.molotovs_thrown <= 0:
+            return 0.0
+        return round(self.molotov_damage / self.molotovs_thrown, 1)
+
+    @property
+    def flash_assist_pct(self) -> float:
+        """Percentage of flashes that resulted in assists (Leetify column)."""
+        if self.flashbangs_thrown <= 0:
+            return 0.0
+        return round(self.flash_assists / self.flashbangs_thrown * 100, 1)
+
+    @property
+    def utility_quality_rating(self) -> float:
+        """
+        Utility Quality Rating (0-100) - how effective utility is when used.
+
+        Based on:
+        - Flash effectiveness (enemy blind ratio vs teammate blind)
+        - Average blind duration
+        - HE damage per grenade
+        - Flash assists
+
+        Higher = better utility usage
+        """
+        if self.total_utility <= 0:
+            return 0.0
+
+        score = 0.0
+
+        # Flash quality (0-40 points)
+        if self.flashbangs_thrown > 0:
+            # Enemies flashed vs teammates (ratio bonus)
+            enemy_ratio = self.enemies_flashed / self.flashbangs_thrown
+            team_ratio = self.teammates_flashed / self.flashbangs_thrown
+            flash_score = min(20, enemy_ratio * 10)  # Up to 20 for good enemy flash rate
+            flash_score -= min(10, team_ratio * 5)  # Penalty for team flashes
+            flash_score = max(0, flash_score)
+
+            # Blind duration bonus (up to 10 points)
+            if self.avg_blind_time >= 2.5:
+                flash_score += 10
+            elif self.avg_blind_time >= 1.5:
+                flash_score += 5
+
+            # Flash assist bonus (up to 10 points)
+            assist_rate = self.flash_assists / self.flashbangs_thrown
+            flash_score += min(10, assist_rate * 20)
+
+            score += flash_score
+
+        # HE quality (0-30 points)
+        if self.he_thrown > 0:
+            dmg_per_nade = self.he_damage_per_nade
+            if dmg_per_nade >= 50:
+                score += 30
+            elif dmg_per_nade >= 30:
+                score += 20
+            elif dmg_per_nade >= 15:
+                score += 10
+            # Penalty for team damage
+            if self.he_team_damage > 0:
+                team_dmg_ratio = self.he_team_damage / max(1, self.he_damage + self.he_team_damage)
+                score -= min(10, team_dmg_ratio * 20)
+
+        # Molotov quality (0-20 points)
+        if self.molotovs_thrown > 0:
+            dmg_per_molly = self.molotov_damage_per_nade
+            if dmg_per_molly >= 40:
+                score += 20
+            elif dmg_per_molly >= 20:
+                score += 12
+            elif dmg_per_molly >= 10:
+                score += 6
+
+        # Smoke quality (0-10 points) - assume smokes are always useful if thrown
+        if self.smokes_thrown > 0:
+            score += 10
+
+        return round(min(100, max(0, score)), 1)
+
+    @property
+    def utility_quantity_rating(self) -> float:
+        """
+        Utility Quantity Rating (0-100) - how much utility is used per round.
+
+        Based on:
+        - Grenades thrown per round vs expected (4 per round max)
+        - Actually using utility (not dying with nades)
+
+        Higher = using more utility appropriately
+        """
+        if self._rounds_played <= 0:
+            return 0.0
+
+        # Expected max utility per round is about 4 grenades
+        expected_per_round = 4.0
+        utility_per_round = self.total_utility / self._rounds_played
+
+        # Base score from utility usage rate
+        usage_rate = min(1.0, utility_per_round / expected_per_round)
+        score = usage_rate * 80  # Up to 80 points for using utility
+
+        # Penalty for dying with unused utility (if tracked)
+        if self.unused_utility_value > 0:
+            avg_unused = self.unused_utility_value / self._rounds_played
+            # Each $300 unused = 5 point penalty (max 20)
+            penalty = min(20, avg_unused / 300 * 5)
+            score -= penalty
+
+        # Bonus for variety (using all types)
+        types_used = sum([
+            1 if self.flashbangs_thrown > 0 else 0,
+            1 if self.smokes_thrown > 0 else 0,
+            1 if self.he_thrown > 0 else 0,
+            1 if self.molotovs_thrown > 0 else 0,
+        ])
+        score += types_used * 5  # Up to 20 points for variety
+
+        return round(min(100, max(0, score)), 1)
 
     # Backwards compatibility alias
     @property
@@ -528,6 +755,36 @@ class UtilityStats:
     @molotov_thrown.setter
     def molotov_thrown(self, value: int) -> None:
         self.molotovs_thrown = value
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API serialization."""
+        return {
+            "flashbangs_thrown": self.flashbangs_thrown,
+            "smokes_thrown": self.smokes_thrown,
+            "he_thrown": self.he_thrown,
+            "molotovs_thrown": self.molotovs_thrown,
+            "total_utility": self.total_utility,
+            "enemies_flashed": self.enemies_flashed,
+            "teammates_flashed": self.teammates_flashed,
+            "flash_assists": self.flash_assists,
+            "flash_assist_pct": self.flash_assist_pct,
+            "enemies_flashed_per_round": self.enemies_flashed_per_round,
+            "friends_flashed_per_round": self.friends_flashed_per_round,
+            "avg_blind_time": self.avg_blind_time,
+            "total_blind_time": round(self.total_blind_time, 2),
+            "he_damage": self.he_damage,
+            "he_team_damage": self.he_team_damage,
+            "avg_he_damage": self.avg_he_damage,
+            "avg_he_team_damage": self.avg_he_team_damage,
+            "he_damage_per_nade": self.he_damage_per_nade,
+            "molotov_damage": self.molotov_damage,
+            "molotov_team_damage": self.molotov_team_damage,
+            "molotov_damage_per_nade": self.molotov_damage_per_nade,
+            "total_utility_damage": self.total_utility_damage,
+            "unused_utility_value": self.unused_utility_value,
+            "utility_quality_rating": self.utility_quality_rating,
+            "utility_quantity_rating": self.utility_quantity_rating,
+        }
 
 
 @dataclass
@@ -711,6 +968,133 @@ class LurkStats:
 
 
 @dataclass
+class AimStats:
+    """Comprehensive aim statistics (Leetify style).
+
+    Metrics tracked:
+    - spotted_accuracy: % of hits when enemy visible (requires visibility data)
+    - time_to_damage_ms: Median reaction time from seeing enemy to dealing damage
+    - crosshair_placement_deg: Median angular error at moment of kill
+    - head_accuracy: % of hits that were headshots
+    - hs_kill_pct: % of kills that were headshots
+    - spray_accuracy: % of hits after 4th bullet in a burst
+    - counter_strafe_pct: % of kills while near-stationary
+    - accuracy_all: Overall accuracy (hits / shots fired)
+    """
+
+    # Core accuracy metrics
+    shots_fired: int = 0
+    shots_hit: int = 0
+    headshot_hits: int = 0  # Hits to head (not just kills)
+
+    # Spray tracking (hits/shots after 4th bullet in burst)
+    spray_shots_fired: int = 0
+    spray_shots_hit: int = 0
+
+    # Counter-strafing (kills while near-stationary)
+    counter_strafe_kills: int = 0
+    total_kills_for_cs: int = 0  # Total kills where velocity was tracked
+
+    # TTD and CP (from existing implementation)
+    ttd_median_ms: float | None = None
+    ttd_mean_ms: float | None = None
+    cp_median_deg: float | None = None
+    cp_mean_deg: float | None = None
+
+    # Headshot stats
+    total_kills: int = 0
+    headshot_kills: int = 0
+
+    @property
+    def accuracy_all(self) -> float:
+        """Overall accuracy - shots hit / shots fired."""
+        return round(self.shots_hit / self.shots_fired * 100, 1) if self.shots_fired > 0 else 0.0
+
+    @property
+    def head_accuracy(self) -> float:
+        """Head Accuracy - % of hits that were headshots."""
+        return (
+            round(self.headshot_hits / self.shots_hit * 100, 1) if self.shots_hit > 0 else 0.0
+        )
+
+    @property
+    def hs_kill_pct(self) -> float:
+        """HS Kill % - % of kills that were headshots."""
+        return (
+            round(self.headshot_kills / self.total_kills * 100, 1) if self.total_kills > 0 else 0.0
+        )
+
+    @property
+    def spray_accuracy(self) -> float:
+        """Spray Accuracy - % of hits after 4th bullet in a burst."""
+        return (
+            round(self.spray_shots_hit / self.spray_shots_fired * 100, 1)
+            if self.spray_shots_fired > 0
+            else 0.0
+        )
+
+    @property
+    def counter_strafe_pct(self) -> float:
+        """Counter-Strafing % - % of kills while near-stationary (< 34 velocity)."""
+        return (
+            round(self.counter_strafe_kills / self.total_kills_for_cs * 100, 1)
+            if self.total_kills_for_cs > 0
+            else 0.0
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API serialization."""
+        return {
+            # Raw counts
+            "shots_fired": self.shots_fired,
+            "shots_hit": self.shots_hit,
+            "headshot_hits": self.headshot_hits,
+            "spray_shots_fired": self.spray_shots_fired,
+            "spray_shots_hit": self.spray_shots_hit,
+            "counter_strafe_kills": self.counter_strafe_kills,
+            "total_kills_for_cs": self.total_kills_for_cs,
+            # Computed percentages (Leetify format)
+            "accuracy_all": self.accuracy_all,
+            "head_accuracy": self.head_accuracy,
+            "hs_kill_pct": self.hs_kill_pct,
+            "spray_accuracy": self.spray_accuracy,
+            "counter_strafe_pct": self.counter_strafe_pct,
+            # TTD and CP
+            "time_to_damage_ms": round(self.ttd_median_ms, 1) if self.ttd_median_ms else None,
+            "crosshair_placement_deg": (
+                round(self.cp_median_deg, 1) if self.cp_median_deg else None
+            ),
+            # Benchmark indicators
+            "ttd_rating": self._get_ttd_rating(),
+            "cp_rating": self._get_cp_rating(),
+        }
+
+    def _get_ttd_rating(self) -> str:
+        """Get TTD rating category."""
+        if self.ttd_median_ms is None:
+            return "unknown"
+        if self.ttd_median_ms < 200:
+            return "elite"
+        elif self.ttd_median_ms < 350:
+            return "good"
+        elif self.ttd_median_ms < 500:
+            return "average"
+        return "slow"
+
+    def _get_cp_rating(self) -> str:
+        """Get Crosshair Placement rating category."""
+        if self.cp_median_deg is None:
+            return "unknown"
+        if self.cp_median_deg < 5:
+            return "elite"
+        elif self.cp_median_deg < 15:
+            return "good"
+        elif self.cp_median_deg < 25:
+            return "average"
+        return "needs_work"
+
+
+@dataclass
 class PlayerMatchStats:
     """Complete match statistics for a player."""
 
@@ -767,6 +1151,14 @@ class PlayerMatchStats:
     shots_fired: int = 0
     shots_hit: int = 0
     headshot_hits: int = 0  # Hits to head (not just kills)
+
+    # Spray accuracy (hits after 4th bullet in burst)
+    spray_shots_fired: int = 0
+    spray_shots_hit: int = 0
+
+    # Counter-strafing (kills while near-stationary)
+    counter_strafe_kills: int = 0
+    total_kills_with_velocity: int = 0  # Kills where velocity was trackable
 
     # Economy stats (integrated from economy module)
     avg_equipment_value: float = 0.0
@@ -910,6 +1302,43 @@ class PlayerMatchStats:
     def head_hit_rate(self) -> float:
         """% of hits that were headshots (different from HS kill %)."""
         return round(self.headshot_hits / self.shots_hit * 100, 1) if self.shots_hit > 0 else 0.0
+
+    @property
+    def spray_accuracy(self) -> float:
+        """Spray Accuracy - % of hits after 4th bullet in a burst."""
+        return (
+            round(self.spray_shots_hit / self.spray_shots_fired * 100, 1)
+            if self.spray_shots_fired > 0
+            else 0.0
+        )
+
+    @property
+    def counter_strafe_pct(self) -> float:
+        """Counter-Strafing % - % of kills while near-stationary (< 34 velocity)."""
+        return (
+            round(self.counter_strafe_kills / self.total_kills_with_velocity * 100, 1)
+            if self.total_kills_with_velocity > 0
+            else 0.0
+        )
+
+    @property
+    def aim_stats(self) -> AimStats:
+        """Get comprehensive aim stats as AimStats dataclass."""
+        return AimStats(
+            shots_fired=self.shots_fired,
+            shots_hit=self.shots_hit,
+            headshot_hits=self.headshot_hits,
+            spray_shots_fired=self.spray_shots_fired,
+            spray_shots_hit=self.spray_shots_hit,
+            counter_strafe_kills=self.counter_strafe_kills,
+            total_kills_for_cs=self.total_kills_with_velocity,
+            ttd_median_ms=self.ttd_median_ms,
+            ttd_mean_ms=self.ttd_mean_ms,
+            cp_median_deg=self.cp_median_error_deg,
+            cp_mean_deg=self.cp_mean_error_deg,
+            total_kills=self.kills,
+            headshot_kills=self.headshots,
+        )
 
     # Utility Rating (Leetify style composite)
     @property
@@ -1866,8 +2295,19 @@ class DemoAnalyzer:
         )
 
     def _detect_trades(self) -> None:
-        """Detect trade kills (kill within trade window of teammate death) with improved accuracy."""
+        """Detect trade kills with Leetify-style opportunity/attempt/success tracking.
+
+        Tracks:
+        - Trade Kill Opportunities: Teammate died and you were alive
+        - Trade Kill Attempts: You damaged/shot at the killer within window
+        - Trade Kill Success: You killed the killer within window
+        - Traded Death Opportunities: You died and teammates were alive
+        - Traded Death Attempts: Teammates damaged your killer within window
+        - Traded Death Success: Teammates killed your killer within window
+        - Time to Trade: How fast successful trades were completed
+        """
         kills_df = self.data.kills_df
+        damages_df = self.data.damages_df
         if kills_df.empty or not self._round_col:
             logger.info("Skipping trade detection - missing round column")
             return
@@ -1881,6 +2321,11 @@ class DemoAnalyzer:
         logger.info(
             f"Trade detection: window = {TRADE_WINDOW_SECONDS}s = {trade_window_ticks} ticks"
         )
+
+        # Find damage DataFrame columns for attempt detection
+        dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
+        dmg_vic_col = self._find_col(damages_df, self.VIC_ID_COLS) if not damages_df.empty else None
+        dmg_round_col = self._find_col(damages_df, self.ROUND_COLS) if not damages_df.empty else None
 
         # Build player team lookup for consistent team matching
         player_teams_lookup: dict[int, str] = {}
@@ -1905,10 +2350,13 @@ class DemoAnalyzer:
                             "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
                         )
 
-        total_trades = 0
-        total_deaths_traded = 0
-        total_entry_trades = 0
-        total_entry_deaths_traded = 0
+        # Counters for logging
+        total_trade_opportunities = 0
+        total_trade_attempts = 0
+        total_trade_success = 0
+        total_traded_death_opportunities = 0
+        total_traded_death_attempts = 0
+        total_traded_death_success = 0
 
         for round_num in kills_df[self._round_col].unique():
             round_kills = (
@@ -1917,104 +2365,152 @@ class DemoAnalyzer:
                 .reset_index(drop=True)
             )
 
-            if len(round_kills) < 2:
+            if round_kills.empty:
                 continue
 
-            # Identify entry kill (first kill of this round) for entry trade tracking
-            entry_kill = round_kills.iloc[0]
-            entry_kill_victim_id = safe_int(entry_kill.get(self._vic_id_col))
-            entry_kill_attacker_id = safe_int(entry_kill.get(self._att_id_col))
-            _entry_kill_tick = safe_int(entry_kill.get("tick"))
+            # Get round damages for attempt detection
+            round_damages = pd.DataFrame()
+            if not damages_df.empty and dmg_round_col and dmg_att_col and dmg_vic_col:
+                round_damages = damages_df[damages_df[dmg_round_col] == round_num]
 
-            # Use sliding window approach for efficiency
+            # Build list of all players in this round
+            all_players_in_round: set[int] = set()
+            for _, kill in round_kills.iterrows():
+                att_id = safe_int(kill.get(self._att_id_col))
+                vic_id = safe_int(kill.get(self._vic_id_col))
+                if att_id:
+                    all_players_in_round.add(att_id)
+                if vic_id:
+                    all_players_in_round.add(vic_id)
+
+            # Identify entry kill for entry trade tracking
+            entry_kill_victim_id = 0
+            entry_kill_attacker_id = 0
+            if len(round_kills) > 0:
+                entry_kill = round_kills.iloc[0]
+                entry_kill_victim_id = safe_int(entry_kill.get(self._vic_id_col))
+                entry_kill_attacker_id = safe_int(entry_kill.get(self._att_id_col))
+
+            # Track who is dead at each point (cumulative deaths)
+            dead_players: set[int] = set()
+
+            # Process each death in order
             for _i, kill in round_kills.iterrows():
                 victim_id = safe_int(kill.get(self._vic_id_col))
-                # Normalize victim team to "CT" or "T" for consistent comparison
-                raw_victim_team = kill.get(self._vic_side_col) if self._vic_side_col else ""
-                victim_team = self._normalize_team(raw_victim_team)
                 killer_id = safe_int(kill.get(self._att_id_col))
                 kill_tick = safe_int(kill.get("tick"))
-
-                if not victim_id or not killer_id or victim_team == "Unknown":
-                    continue
-
-                # Get victim's team from lookup
                 victim_team = player_teams_lookup.get(victim_id, "")
-                if not victim_team or victim_team not in ("CT", "T"):
-                    logger.debug(f"Unknown team for victim {victim_id} in round {round_num}")
+
+                if not victim_id or not killer_id or victim_team not in ("CT", "T"):
+                    if victim_id:
+                        dead_players.add(victim_id)
                     continue
 
-                # Look for trade: teammate kills the killer within window
-                trade_found = False
+                # === TRADED DEATH OPPORTUNITIES ===
+                # Count teammates who are alive when this player dies
+                teammates_alive = [
+                    pid for pid in all_players_in_round
+                    if pid != victim_id
+                    and pid not in dead_players
+                    and player_teams_lookup.get(pid) == victim_team
+                    and pid in self._players
+                ]
 
-                # Filter by tick window and victim being the original killer
-                tick_filter = (round_kills["tick"] > kill_tick) & (
-                    round_kills["tick"] <= kill_tick + trade_window_ticks
-                )
-                victim_filter = round_kills[self._vic_id_col].astype(float) == float(killer_id)
+                if teammates_alive and victim_id in self._players:
+                    # There's at least one teammate alive who could trade
+                    self._players[victim_id].trades.traded_death_opportunities += 1
+                    total_traded_death_opportunities += 1
 
-                # Filter by attacker being on same team as original victim (normalized comparison)
-                attacker_teams = round_kills[self._att_side_col].apply(self._normalize_team)
-                team_filter = attacker_teams == victim_team
+                    # Check if any teammate attempted or succeeded
+                    teammate_attempted = False
+                    teammate_succeeded = False
 
-                potential_trades = round_kills[tick_filter & victim_filter & team_filter]
+                    for teammate_id in teammates_alive:
+                        # Check if teammate damaged the killer within trade window
+                        if not round_damages.empty:
+                            teammate_damage = round_damages[
+                                (round_damages[dmg_att_col].astype(float) == float(teammate_id)) &
+                                (round_damages[dmg_vic_col].astype(float) == float(killer_id)) &
+                                (round_damages["tick"] > kill_tick) &
+                                (round_damages["tick"] <= kill_tick + trade_window_ticks)
+                            ]
+                            if not teammate_damage.empty:
+                                teammate_attempted = True
 
-                # Check each potential trade
-                for _, trade_kill in potential_trades.iterrows():
-                    trade_victim_id = safe_int(trade_kill.get(self._vic_id_col))
-                    trader_id = safe_int(trade_kill.get(self._att_id_col))
-
-                    # Trade conditions:
-                    # 1. The original killer was killed
-                    # 2. By a teammate of the original victim
-                    # 3. Not by the same player (no self-trades)
-                    if trade_victim_id == killer_id and trader_id != victim_id:
-                        trader_team = player_teams_lookup.get(trader_id, "")
-                        if trader_team == victim_team:
-                            # Trade confirmed!
-                            if victim_id in self._players:
-                                self._players[victim_id].trades.deaths_traded += 1
-                                total_deaths_traded += 1
-
+                        # Check if teammate killed the killer within trade window
+                        teammate_kills = round_kills[
+                            (round_kills[self._att_id_col].astype(float) == float(teammate_id)) &
+                            (round_kills[self._vic_id_col].astype(float) == float(killer_id)) &
+                            (round_kills["tick"] > kill_tick) &
+                            (round_kills["tick"] <= kill_tick + trade_window_ticks)
+                        ]
+                        if not teammate_kills.empty:
+                            teammate_succeeded = True
+                            trade_tick = safe_int(teammate_kills.iloc[0].get("tick"))
+                            trader_id = safe_int(teammate_kills.iloc[0].get(self._att_id_col))
                             if trader_id in self._players:
+                                self._players[trader_id].trades.trade_kill_success += 1
                                 self._players[trader_id].trades.kills_traded += 1
-                                total_trades += 1
-
-                            # Check if this trade involves the entry kill
-                            # Case 1: The victim was the entry kill victim (first blood)
-                            # and their death was traded by a teammate
-                            if victim_id == entry_kill_victim_id:
-                                # The entry victim's death was traded
-                                if victim_id in self._players:
-                                    self._players[victim_id].trades.traded_entry_deaths += 1
-                                    total_entry_deaths_traded += 1
-                                # The trader got a traded entry kill
-                                if trader_id in self._players:
+                                time_to_trade = trade_tick - kill_tick
+                                self._players[trader_id].trades.time_to_trade_ticks.append(time_to_trade)
+                                total_trade_success += 1
+                                # Entry trade tracking
+                                if victim_id in (entry_kill_victim_id, entry_kill_attacker_id):
                                     self._players[trader_id].trades.traded_entry_kills += 1
-                                    total_entry_trades += 1
-
-                            # Case 2: The entry fragger got killed and that death was traded
-                            # (entry fragger = attacker of first kill)
-                            elif victim_id == entry_kill_attacker_id:
-                                # Entry fragger's death was traded
-                                if victim_id in self._players:
-                                    self._players[victim_id].trades.traded_entry_deaths += 1
-                                    total_entry_deaths_traded += 1
-                                # Teammate who traded the entry fragger's death
-                                if trader_id in self._players:
-                                    self._players[trader_id].trades.traded_entry_kills += 1
-                                    total_entry_trades += 1
-
-                            trade_found = True
+                                    if victim_id in self._players:
+                                        self._players[victim_id].trades.traded_entry_deaths += 1
                             break
 
-                if not trade_found and victim_id in self._players:
-                    # Track untraded deaths for potential analysis
-                    pass
+                    if teammate_attempted and victim_id in self._players:
+                        self._players[victim_id].trades.traded_death_attempts += 1
+                        total_traded_death_attempts += 1
 
+                    if teammate_succeeded and victim_id in self._players:
+                        self._players[victim_id].trades.traded_death_success += 1
+                        self._players[victim_id].trades.deaths_traded += 1
+                        total_traded_death_success += 1
+
+                # === TRADE KILL OPPORTUNITIES ===
+                for teammate_id in teammates_alive:
+                    if teammate_id in self._players:
+                        self._players[teammate_id].trades.trade_kill_opportunities += 1
+                        self._players[teammate_id].trades.trade_attempts += 1
+                        total_trade_opportunities += 1
+
+                        # Check if this teammate attempted to trade
+                        attempted = False
+                        if not round_damages.empty:
+                            teammate_damage = round_damages[
+                                (round_damages[dmg_att_col].astype(float) == float(teammate_id)) &
+                                (round_damages[dmg_vic_col].astype(float) == float(killer_id)) &
+                                (round_damages["tick"] > kill_tick) &
+                                (round_damages["tick"] <= kill_tick + trade_window_ticks)
+                            ]
+                            if not teammate_damage.empty:
+                                attempted = True
+
+                        teammate_kills = round_kills[
+                            (round_kills[self._att_id_col].astype(float) == float(teammate_id)) &
+                            (round_kills[self._vic_id_col].astype(float) == float(killer_id)) &
+                            (round_kills["tick"] > kill_tick) &
+                            (round_kills["tick"] <= kill_tick + trade_window_ticks)
+                        ]
+                        if not teammate_kills.empty:
+                            attempted = True
+
+                        if attempted:
+                            self._players[teammate_id].trades.trade_kill_attempts += 1
+                            total_trade_attempts += 1
+
+                # Mark this player as dead
+                dead_players.add(victim_id)
+
+        # Log summary
         logger.info(
-            f"Trade detection complete: {total_trades} trade kills, {total_deaths_traded} deaths traded, "
-            f"{total_entry_trades} entry trades, {total_entry_deaths_traded} entry deaths traded"
+            f"Trade detection complete: "
+            f"opportunities={total_trade_opportunities}, attempts={total_trade_attempts}, success={total_trade_success}, "
+            f"death_opps={total_traded_death_opportunities}, death_attempts={total_traded_death_attempts}, "
+            f"death_success={total_traded_death_success}"
         )
 
     def _detect_clutches(self) -> None:
@@ -3181,6 +3677,10 @@ class DemoAnalyzer:
             logger.info("No utility data available, skipping utility stats")
             return
 
+        # Set _rounds_played for per-round metrics calculation
+        for steam_id, player in self._players.items():
+            player.utility._rounds_played = player.rounds_played
+
         # Cache player teams for teammate detection
         {steam_id: player.team for steam_id, player in self._players.items()}
 
@@ -3344,9 +3844,14 @@ class DemoAnalyzer:
                             )
 
         # ===========================================
-        # Flash assists from kills (supplement)
+        # Flash assists from kills
+        # Primary: use flash_assist field from kills
+        # Fallback: correlate blinds with kills (within 3 seconds / ~192 ticks)
         # ===========================================
         kills_df = self.data.kills_df
+        FLASH_ASSIST_WINDOW_TICKS = 192  # ~3 seconds at 64 tick
+
+        # Try native flash_assist field first
         if (
             not kills_df.empty
             and "assister_steamid" in kills_df.columns
@@ -3357,6 +3862,44 @@ class DemoAnalyzer:
                     (kills_df["assister_steamid"] == steam_id) & (kills_df["flash_assist"])
                 ]
                 player.utility.flash_assists = len(flash_assists)
+
+        # Fallback: calculate from blind events and kills correlation
+        elif has_blinds and not kills_df.empty and "tick" in kills_df.columns:
+            logger.info("Calculating flash assists from blind/kill correlation")
+            att_col = self._find_col(kills_df, self.ATT_ID_COLS)
+
+            if att_col:
+                for steam_id, player in self._players.items():
+                    player_blinds = blinds_by_attacker.get(steam_id, [])
+                    if not player_blinds:
+                        continue
+
+                    flash_assist_count = 0
+
+                    # For each enemy blind, check if a teammate got a kill on that enemy
+                    for blind in player_blinds:
+                        if blind.is_teammate:
+                            continue
+
+                        victim_id = blind.victim_steamid
+                        blind_tick = blind.tick
+                        blind_end_tick = blind_tick + int(blind.blind_duration * 64)
+
+                        # Check if any teammate killed this blinded enemy within window
+                        victim_kills = kills_df[
+                            (kills_df["victim_steamid"] == victim_id) &
+                            (kills_df["tick"] >= blind_tick) &
+                            (kills_df["tick"] <= blind_end_tick + FLASH_ASSIST_WINDOW_TICKS)
+                        ]
+
+                        # Count kills by teammates (not by the flash thrower)
+                        for _, kill in victim_kills.iterrows():
+                            killer_id = kill.get(att_col)
+                            if killer_id != steam_id:
+                                flash_assist_count += 1
+                                break  # Only count once per blind
+
+                    player.utility.flash_assists = flash_assist_count
 
         # ===========================================
         # FALLBACK: Count grenades from weapon_fire events if still zero
@@ -3461,7 +4004,129 @@ class DemoAnalyzer:
                         ]
                         player.headshot_hits = len(head_hits)
 
-        logger.info("Calculated accuracy stats")
+            # Calculate spray accuracy
+            self._calculate_spray_accuracy_for_player(player, player_shots, damages_df)
+
+            # Calculate counter-strafing
+            self._calculate_counter_strafing_for_player(player, steam_id)
+
+        logger.info("Calculated accuracy stats (including spray and counter-strafing)")
+
+    def _calculate_spray_accuracy_for_player(
+        self,
+        player: PlayerMatchStats,
+        player_shots: list,
+        damages_df: pd.DataFrame,
+    ) -> None:
+        """Calculate spray accuracy for a single player.
+
+        Spray accuracy = hits after 4th bullet / shots after 4th bullet in a burst.
+        """
+        # Define weapons that support spray (exclude pistols, snipers, shotguns)
+        spray_weapons = {
+            "ak47", "m4a1", "m4a1_silencer", "m4a4", "galil", "famas", "aug", "sg556",
+            "mp9", "mac10", "mp7", "ump45", "p90", "bizon", "mp5sd", "negev", "m249",
+        }
+        burst_tick_window = 20  # ~312ms at 64 tick
+
+        if not player_shots:
+            return
+
+        # Filter to spray weapons only
+        spray_shots = [
+            s for s in player_shots
+            if s.weapon and s.weapon.lower().replace("weapon_", "") in spray_weapons
+        ]
+
+        if not spray_shots:
+            return
+
+        # Sort by tick
+        spray_shots.sort(key=lambda s: s.tick)
+
+        # Detect bursts and count shots 4+ in each burst
+        spray_shot_ticks = []
+        burst_shot_count = 1
+
+        for i in range(1, len(spray_shots)):
+            current = spray_shots[i]
+            previous = spray_shots[i - 1]
+
+            if current.tick - previous.tick <= burst_tick_window:
+                burst_shot_count += 1
+                if burst_shot_count >= 4:
+                    spray_shot_ticks.append(current.tick)
+            else:
+                burst_shot_count = 1
+
+        player.spray_shots_fired = len(spray_shot_ticks)
+
+        # Count spray hits
+        if not damages_df.empty and spray_shot_ticks:
+            att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+            if att_col and "tick" in damages_df.columns:
+                player_damages = damages_df[damages_df[att_col] == player.steam_id]
+                if not player_damages.empty:
+                    damage_ticks = set(player_damages["tick"].values)
+                    spray_hits = 0
+                    for shot_tick in spray_shot_ticks:
+                        for dt in range(shot_tick, shot_tick + 5):
+                            if dt in damage_ticks:
+                                spray_hits += 1
+                                break
+                    player.spray_shots_hit = spray_hits
+
+    def _calculate_counter_strafing_for_player(
+        self, player: PlayerMatchStats, steam_id: int
+    ) -> None:
+        """Calculate counter-strafing percentage for a player.
+
+        Counter-strafing = kills while near-stationary (velocity < 34 units/s).
+        """
+        cs_velocity_threshold = 34.0
+
+        kills_by_player = [k for k in self.data.kills if k.attacker_steamid == steam_id]
+
+        if not kills_by_player:
+            return
+
+        if not hasattr(self.data, "weapon_fires") or not self.data.weapon_fires:
+            return
+
+        # Build velocity lookup from weapon_fire events
+        velocity_by_tick: dict[int, float] = {}
+        for fire in self.data.weapon_fires:
+            if fire.player_steamid == steam_id:
+                if fire.velocity_x is not None and fire.velocity_y is not None:
+                    vel_x = fire.velocity_x or 0
+                    vel_y = fire.velocity_y or 0
+                    velocity = math.sqrt(vel_x ** 2 + vel_y ** 2)
+                    velocity_by_tick[fire.tick] = velocity
+
+        if not velocity_by_tick:
+            return
+
+        counter_strafe_count = 0
+        tracked_kills = 0
+
+        for kill in kills_by_player:
+            kill_tick = kill.tick
+            closest_velocity = None
+            min_tick_diff = float("inf")
+
+            for fire_tick, velocity in velocity_by_tick.items():
+                tick_diff = abs(fire_tick - kill_tick)
+                if tick_diff < min_tick_diff and fire_tick <= kill_tick and tick_diff <= 10:
+                    min_tick_diff = tick_diff
+                    closest_velocity = velocity
+
+            if closest_velocity is not None:
+                tracked_kills += 1
+                if closest_velocity < cs_velocity_threshold:
+                    counter_strafe_count += 1
+
+        player.counter_strafe_kills = counter_strafe_count
+        player.total_kills_with_velocity = tracked_kills
 
     def _calculate_mistakes(self) -> None:
         """Calculate mistakes (Scope.gg style)."""
