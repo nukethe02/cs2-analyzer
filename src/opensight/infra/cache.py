@@ -717,7 +717,7 @@ class CachedAnalyzer:
             logger.info(f"[DEBUG] Sample round keys: {list(sample_round.keys())}")
             logger.info(f"[DEBUG] Sample round events count: {len(sample_round.get('events', []))}")
             # Log first 3 rounds' event counts
-            for i, r in enumerate(round_timeline[:3]):
+            for _i, r in enumerate(round_timeline[:3]):
                 events = r.get('events', [])
                 logger.info(f"[DEBUG] Round {r.get('round_num')}: {len(events)} events")
 

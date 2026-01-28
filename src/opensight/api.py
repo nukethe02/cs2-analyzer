@@ -540,7 +540,7 @@ async def analyze_demo(file: UploadFile = File(...)):
                     if timeline:
                         total_events = sum(len(r.get("events", [])) for r in timeline)
                         logger.info(f"[DEBUG] API: Total events across all rounds: {total_events}")
-                        for i, r in enumerate(timeline[:3]):
+                        for _i, r in enumerate(timeline[:3]):
                             events = r.get("events", [])
                             logger.info(f"[DEBUG] API: Round {r.get('round_num')}: {len(events)} events")
 
