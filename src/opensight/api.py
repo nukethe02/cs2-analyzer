@@ -23,6 +23,7 @@ from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
@@ -558,6 +559,12 @@ class RadarRequest(BaseModel):
 
 # Get the static files directory
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Mount static file directories for CSS and JS
+if (STATIC_DIR / "css").exists():
+    app.mount("/static/css", StaticFiles(directory=STATIC_DIR / "css"), name="css")
+if (STATIC_DIR / "js").exists():
+    app.mount("/static/js", StaticFiles(directory=STATIC_DIR / "js"), name="js")
 
 
 @app.get("/", response_class=HTMLResponse)
