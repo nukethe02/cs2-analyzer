@@ -1054,11 +1054,19 @@
         }
 
         .replay-team-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             padding: 10px 14px;
             font-size: 0.75rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+        }
+
+        .replay-team-score {
+            font-size: 1.1rem;
+            font-family: 'JetBrains Mono', monospace;
         }
 
         .replay-team-header.ct {
@@ -1110,13 +1118,32 @@
         .player-dot.ct { background: var(--ct-color); }
         .player-dot.t { background: var(--t-color); }
 
-        .replay-player-name {
+        .replay-player-info {
             flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .replay-player-name {
             font-size: 0.85rem;
             font-weight: 500;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .replay-player-stats-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .replay-player-kda {
+            font-size: 0.7rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
         }
 
         .replay-player-health {
@@ -1762,6 +1789,9 @@
             background: var(--danger-bg);
         }
     </style>
+    <!-- Enhanced Stats Tables -->
+    <link rel="stylesheet" href="/static/css/stats-tables.css">
+    <script src="/static/js/stats-tables.js"></script>
 </head>
 <body>
     <div class="bg-effects">
@@ -1960,10 +1990,12 @@
                     // Poll for job completion
                     const result = await pollForJobCompletion(data.job_id, data.status_url, data.download_url);
                     analysisData = result;
+                    window.currentAnalysis = result; // Store for General stats tab
                     renderResults(result);
                 } else {
                     // Direct response (from cache or immediate processing)
                     analysisData = data;
+                    window.currentAnalysis = data; // Store for General stats tab
                     renderResults(data);
                 }
             } catch (error) {
@@ -2146,7 +2178,7 @@
                 </div>
 
                 <div class="tab-content" id="tab-timeline">
-                    ${renderTimeline(data.round_timeline || [])}
+                    ${renderTimeline(data.timeline_graph || {}, data.round_timeline || [])}
                 </div>
 
                 <div class="tab-content" id="tab-matrix">
@@ -2184,6 +2216,11 @@
                     // Initialize heatmap when tab is shown
                     if (btn.dataset.tab === 'heatmap') {
                         initHeatmap(data.heatmap_data || {});
+                    }
+
+                    // Initialize timeline chart when tab is shown
+                    if (btn.dataset.tab === 'timeline') {
+                        initTimelineChart(data.timeline_graph || {});
                     }
 
                     // Initialize stats graph when tab is shown
@@ -2398,15 +2435,19 @@
 
             let html = `
                 <div class="detailed-stats-section" style="margin-top: 32px;">
-                    <div class="stats-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
-                        <button class="stats-tab-btn active" data-stats-tab="entry" style="padding: 8px 16px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Entry Stats</button>
+                    <div class="stats-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; flex-wrap: wrap;">
+                        <button class="stats-tab-btn active" data-stats-tab="general" style="padding: 8px 16px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">General</button>
+                        <button class="stats-tab-btn" data-stats-tab="entry" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Entry Stats</button>
                         <button class="stats-tab-btn" data-stats-tab="trade" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Trade Stats</button>
                         <button class="stats-tab-btn" data-stats-tab="clutch" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Clutch Stats</button>
                         <button class="stats-tab-btn" data-stats-tab="ttd" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">TTD (Timing)</button>
                         <button class="stats-tab-btn" data-stats-tab="cp" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">CP (Positioning)</button>
                     </div>
 
-                    <div class="stats-tab-content" id="stats-entry" style="display: block;">
+                    <div class="stats-tab-content" id="stats-general" style="display: block;">
+                        ${renderGeneralStatsTable(players, teamA, teamB)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-entry" style="display: none;">
                         ${renderEntryStatsTable(teamA, teamB)}
                     </div>
                     <div class="stats-tab-content" id="stats-trade" style="display: none;">
@@ -2765,49 +2806,266 @@
 
             return renderTeamSection(team1, 'Team 1') + renderTeamSection(team2, 'Team 2');
         }
-        function renderTimeline(timeline) {
-            // DEBUG: Log what renderTimeline receives
-            console.log('[DEBUG] renderTimeline called with', timeline.length, 'rounds');
-            if (timeline.length > 0) {
-                const totalEvents = timeline.reduce((sum, r) => sum + (r.events?.length || 0), 0);
-                console.log('[DEBUG] renderTimeline: Total events:', totalEvents);
-            }
 
-            if (!timeline.length) {
-                console.log('[DEBUG] renderTimeline: No timeline data, showing empty state');
+        // Render General Stats Table with HLTV Rating, sortable columns, and star indicators
+        function renderGeneralStatsTable(allPlayers, team1, team2) {
+            if (!allPlayers || allPlayers.length === 0) return '<p style="color: var(--text-muted);">No player data available</p>';
+
+            // Calculate best values across all players for star indicators
+            const best = {
+                kills: Math.max(...allPlayers.map(p => p.kills || 0)),
+                kd: Math.max(...allPlayers.map(p => {
+                    const k = p.kills || 0;
+                    const d = p.deaths || 1;
+                    return k / d;
+                })),
+                adr: Math.max(...allPlayers.map(p => p.adr || 0)),
+                hltv_rating: Math.max(...allPlayers.map(p => p.hltv_rating || 0)),
+                multi_3k: Math.max(...allPlayers.map(p => p.special?.['3k'] || 0)),
+                multi_4k: Math.max(...allPlayers.map(p => p.special?.['4k'] || 0)),
+                multi_5k: Math.max(...allPlayers.map(p => p.special?.['5k'] || 0))
+            };
+
+            // Calculate personal performance for each player
+            const calcPerformance = (p) => {
+                const kills = p.kills || 0;
+                const deaths = p.deaths || 0;
+                const assists = p.assists || 0;
+                const rounds = p.rounds_played || 1;
+                const expectedKills = rounds * 0.7;
+                const expectedDeaths = rounds * 0.7;
+                const killDiff = kills - expectedKills;
+                const deathDiff = expectedDeaths - deaths;
+                return ((killDiff + deathDiff * 0.5 + assists * 0.3) / rounds * 10);
+            };
+
+            const renderStar = (val, bestVal) => {
+                return val === bestVal && val > 0 ? '<span style="color: var(--warning); margin-right: 2px;">&#9733;</span>' : '';
+            };
+
+            const renderTeamTable = (players, teamName, result, score) => {
+                if (!players || players.length === 0) return '';
+
+                // Sort by HLTV rating by default
+                const sorted = [...players].sort((a, b) => (b.hltv_rating || 0) - (a.hltv_rating || 0));
+
+                let html = `
+                    <div class="team-section" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 16px;">
+                        <div class="team-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: var(--bg-secondary); border-bottom: 1px solid var(--border);">
+                            <span style="font-size: 0.95rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">${esc(teamName)}</span>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <span style="font-size: 1.25rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">${score}</span>
+                                <span style="padding: 4px 12px; border-radius: 100px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+                                    background: ${result === 'WIN' ? 'var(--success-bg)' : result === 'LOSS' ? 'var(--danger-bg)' : 'var(--warning-bg)'};
+                                    color: ${result === 'WIN' ? 'var(--success)' : result === 'LOSS' ? 'var(--danger)' : 'var(--warning)'};
+                                    border: 1px solid ${result === 'WIN' ? 'var(--success)' : result === 'LOSS' ? 'var(--danger)' : 'var(--warning)'};">${result}</span>
+                            </div>
+                        </div>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                                <thead>
+                                    <tr style="background: var(--bg-elevated);">
+                                        <th style="padding: 12px 16px; text-align: left; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Player</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">K</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">A</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">D</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">K/D</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">ADR</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">2K</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">3K</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">4K</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">5K</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Rating</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">+/-</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+
+                sorted.forEach(p => {
+                    const kills = p.kills || 0;
+                    const deaths = p.deaths || 1;
+                    const assists = p.assists || 0;
+                    const kd = (kills / deaths).toFixed(2);
+                    const adr = p.adr || 0;
+                    const rating = p.hltv_rating || 0;
+                    const s = p.special || {};
+                    const multi2k = s['2k'] || 0;
+                    const multi3k = s['3k'] || 0;
+                    const multi4k = s['4k'] || 0;
+                    const multi5k = s['5k'] || 0;
+                    const perf = calcPerformance(p);
+                    const kdNum = kills / deaths;
+
+                    const kdColor = kdNum >= 1.0 ? 'var(--success)' : 'var(--danger)';
+                    const perfColor = perf >= 0 ? 'var(--success)' : 'var(--danger)';
+                    const perfFormatted = (perf >= 0 ? '+' : '') + perf.toFixed(2);
+
+                    html += `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 14px 16px;">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; color: var(--bg-primary);">
+                                        ${(p.name || 'U')[0].toUpperCase()}
+                                    </div>
+                                    <span style="font-weight: 500;">${esc(p.name)}</span>
+                                </div>
+                            </td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace;">${renderStar(kills, best.kills)}${kills}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace;">${assists}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace;">${p.deaths || 0}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${kdColor};">${renderStar(kdNum, best.kd)}${kd}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace;">${renderStar(adr, best.adr)}${adr.toFixed(1)}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${multi2k > 0 ? 'var(--warning)' : 'inherit'};">${multi2k}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${multi3k > 0 ? 'var(--warning)' : 'inherit'};">${renderStar(multi3k, best.multi_3k)}${multi3k}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${multi4k > 0 ? 'var(--warning)' : 'inherit'};">${renderStar(multi4k, best.multi_4k)}${multi4k}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${multi5k > 0 ? 'var(--accent-tertiary)' : 'inherit'};">${renderStar(multi5k, best.multi_5k)}${multi5k}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; font-weight: 700;">${renderStar(rating, best.hltv_rating)}${rating.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${perfColor};">${perfFormatted}</td>
+                        </tr>`;
+                });
+
+                html += '</tbody></table></div></div>';
+                return html;
+            };
+
+            // Get scores from analysis data (these would come from the parent scope)
+            const team1Score = window.currentAnalysis?.team1_score || 0;
+            const team2Score = window.currentAnalysis?.team2_score || 0;
+            const team1Result = team1Score > team2Score ? 'WIN' : team1Score < team2Score ? 'LOSS' : 'TIE';
+            const team2Result = team2Score > team1Score ? 'WIN' : team2Score < team1Score ? 'LOSS' : 'TIE';
+
+            // Legend
+            let html = `
+                <div class="stats-legend" style="display: flex; gap: 16px; padding: 12px 16px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted);">
+                    <div style="display: flex; align-items: center; gap: 6px;"><span style="color: var(--warning);">&#9733;</span> Best in match</div>
+                    <div style="display: flex; align-items: center; gap: 6px;"><span style="color: var(--success);">Green</span> K/D &gt; 1.0</div>
+                    <div style="display: flex; align-items: center; gap: 6px;"><span style="color: var(--danger);">Red</span> K/D &lt; 1.0</div>
+                </div>
+            `;
+
+            html += renderTeamTable(team1, 'Team 1', team1Result, team1Score);
+            html += renderTeamTable(team2, 'Team 2', team2Result, team2Score);
+
+            return html;
+        }
+
+        // Leetify-style Round Timeline with cumulative line charts
+        function renderTimeline(timelineGraph, roundTimeline) {
+            // Check for timeline graph data first (Leetify-style cumulative chart)
+            const hasGraphData = timelineGraph && timelineGraph.players && timelineGraph.players.length > 0;
+
+            if (!hasGraphData) {
+                console.log('[DEBUG] renderTimeline: No timeline graph data');
                 return `
                     <div class="timeline-container">
                         <div class="empty-state">
                             <div class="empty-state-icon">-</div>
-                            <p>No round timeline data available</p>
+                            <p>No timeline data available</p>
                         </div>
                     </div>
                 `;
             }
 
-            // Round overview bar
-            let html = '<div class="timeline-container">';
-            html += '<div class="timeline-overview"><div class="timeline">';
+            // Color palette for players
+            const colors = [
+                '#00e5ff', '#7c4dff', '#ff4081', '#10b981', '#f59e0b',
+                '#5c9cff', '#ffb347', '#ef4444', '#8b5cf6', '#14b8a6'
+            ];
 
-            for (const round of timeline) {
-                const isCtWin = round.winner === 'CT';
-                const isTWin = round.winner === 'T';
-                const cls = isCtWin ? 'ct-win' : isTWin ? 't-win' : '';
-                const eventCount = (round.events || []).length;
-                const title = `Round ${round.round_num}: ${round.winner} wins (${round.win_reason})\nFirst kill: ${round.first_kill || 'Unknown'}\nFirst death: ${round.first_death || 'Unknown'}\nEvents: ${eventCount}`;
+            // Group players by team
+            const ctPlayers = timelineGraph.players.filter(p => p.team === 'CT');
+            const tPlayers = timelineGraph.players.filter(p => p.team === 'T');
+            const unknownPlayers = timelineGraph.players.filter(p => p.team !== 'CT' && p.team !== 'T');
 
-                if (round.round_num === 13) {
-                    html += '<div class="round-box half-marker">|</div>';
-                }
+            // Metric tabs configuration
+            const metrics = [
+                { id: 'kills', label: 'Kills', icon: '🎯' },
+                { id: 'deaths', label: 'Deaths', icon: '💀' },
+                { id: 'damage', label: 'Damage', icon: '💥' },
+                { id: 'awp_kills', label: 'AWP Kills', icon: '🔫' },
+                { id: 'enemies_flashed', label: 'Flashes', icon: '✨' }
+            ];
 
-                html += `<div class="round-box ${cls}" title="${esc(title)}" onclick="toggleRoundDetails(${round.round_num})">${round.round_num}</div>`;
-            }
+            // Build player checkboxes HTML
+            const buildPlayerList = (players, teamName, teamColor, startIdx) => {
+                if (!players.length) return '';
+                return `
+                    <div style="margin-bottom: 16px;">
+                        <div style="color: ${teamColor}; border-left: 3px solid ${teamColor}; padding-left: 8px; margin-bottom: 8px; font-weight: 600; font-size: 0.85rem;">${teamName}</div>
+                        ${players.map((p, i) => {
+                            const colorIdx = startIdx + i;
+                            return `
+                                <label style="display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; font-size: 0.85rem;">
+                                    <input type="checkbox" checked data-player="${p.steam_id}" style="cursor: pointer;">
+                                    <span style="width: 12px; height: 12px; border-radius: 50%; background: ${colors[colorIdx % colors.length]}; flex-shrink: 0;"></span>
+                                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(p.name)}</span>
+                                </label>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            };
 
-            html += '</div></div>';
+            return `
+                <div class="timeline-container" style="padding: 24px;">
+                    <div style="margin-bottom: 16px;">
+                        <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-primary);">Performance Over Time</h3>
+                        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">Cumulative stats per round - Leetify style</p>
+                    </div>
 
-            // Detailed round events
-            html += '<div class="timeline-details">';
+                    <!-- Metric Tabs -->
+                    <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+                        ${metrics.map((m, i) => `
+                            <button class="timeline-metric-btn ${i === 0 ? 'active' : ''}" data-metric="${m.id}"
+                                style="padding: 8px 16px; background: ${i === 0 ? 'var(--accent-primary)' : 'var(--bg-secondary)'};
+                                       color: ${i === 0 ? 'white' : 'var(--text-muted)'};
+                                       border: ${i === 0 ? 'none' : '1px solid var(--border)'};
+                                       border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;
+                                       transition: all 0.2s ease;">
+                                <span style="margin-right: 4px;">${m.icon}</span>${m.label}
+                            </button>
+                        `).join('')}
+                    </div>
 
+                    <div style="display: flex; gap: 24px;">
+                        <!-- Player Sidebar -->
+                        <div style="width: 200px; flex-shrink: 0; background: var(--bg-card); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--border);">
+                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Players</div>
+                            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                                <button id="timeline-select-all" style="flex: 1; padding: 6px; font-size: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); cursor: pointer;">All</button>
+                                <button id="timeline-select-none" style="flex: 1; padding: 6px; font-size: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); cursor: pointer;">None</button>
+                            </div>
+                            ${buildPlayerList(ctPlayers, 'Counter-Terrorists', 'var(--ct-color)', 0)}
+                            ${buildPlayerList(tPlayers, 'Terrorists', 'var(--t-color)', ctPlayers.length)}
+                            ${buildPlayerList(unknownPlayers, 'Unknown Team', 'var(--text-muted)', ctPlayers.length + tPlayers.length)}
+                        </div>
+
+                        <!-- Chart Area -->
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="background: var(--bg-card); border-radius: var(--radius-lg); padding: 20px; border: 1px solid var(--border); height: 400px;">
+                                <canvas id="timeline-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Round Events Section (collapsible) -->
+                    ${roundTimeline && roundTimeline.length > 0 ? `
+                        <details style="margin-top: 24px;">
+                            <summary style="cursor: pointer; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-weight: 500;">
+                                Round-by-Round Events (${roundTimeline.length} rounds)
+                            </summary>
+                            <div style="margin-top: 16px;">
+                                ${renderRoundEvents(roundTimeline)}
+                            </div>
+                        </details>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        // Render round events (old timeline format, now collapsible)
+        function renderRoundEvents(timeline) {
+            let html = '';
             for (const round of timeline) {
                 const isCtWin = round.winner === 'CT';
                 const winClass = isCtWin ? 'ct-win' : 't-win';
@@ -2816,28 +3074,23 @@
                 const roundType = round.round_type || 'full_buy';
                 const roundTypeLabel = roundType === 'pistol' ? 'Pistol' : roundType === 'eco' ? 'Eco' : roundType === 'force' ? 'Force' : 'Full Buy';
 
-                html += `<div class="round-detail" id="round-detail-${round.round_num}">`;
+                html += `<div class="round-detail" style="margin-bottom: 12px;">`;
                 html += `<div class="round-detail-header ${winClass}">`;
                 html += `<span class="round-detail-num">Round ${round.round_num}</span>`;
                 html += `<span class="round-detail-type">${roundTypeLabel}</span>`;
                 html += `<span class="round-detail-winner" style="color: ${winColor}">${round.winner} WIN</span>`;
-                html += `<span class="round-detail-score">${round.ct_kills || 0} CT kills / ${round.t_kills || 0} T kills</span>`;
+                html += `<span class="round-detail-score">${round.ct_kills || 0} CT / ${round.t_kills || 0} T</span>`;
                 html += '</div>';
 
-                if (events.length === 0) {
-                    html += '<div class="round-detail-events"><div class="event-empty">No detailed events available</div></div>';
-                } else {
+                if (events.length > 0) {
                     html += '<div class="round-detail-events">';
                     for (const event of events) {
                         html += renderTimelineEvent(event);
                     }
                     html += '</div>';
                 }
-
                 html += '</div>';
             }
-
-            html += '</div></div>';
             return html;
         }
 
@@ -2900,6 +3153,173 @@
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Initialize Timeline Chart (Leetify-style cumulative line chart)
+        let timelineChartInstance = null;
+
+        function initTimelineChart(timelineData) {
+            if (!timelineData || !timelineData.players || timelineData.players.length === 0) {
+                console.log('[DEBUG] initTimelineChart: No data');
+                return;
+            }
+
+            const ctx = document.getElementById('timeline-chart');
+            if (!ctx) {
+                console.log('[DEBUG] initTimelineChart: No canvas element');
+                return;
+            }
+
+            // Color palette for players
+            const colors = [
+                '#00e5ff', '#7c4dff', '#ff4081', '#10b981', '#f59e0b',
+                '#5c9cff', '#ffb347', '#ef4444', '#8b5cf6', '#14b8a6'
+            ];
+
+            let currentMetric = 'kills';
+            let visiblePlayers = new Set(timelineData.players.map(p => String(p.steam_id)));
+
+            const buildDatasets = (metric) => {
+                return timelineData.players
+                    .filter(p => visiblePlayers.has(String(p.steam_id)))
+                    .map((player) => {
+                        const originalIdx = timelineData.players.findIndex(p => p.steam_id === player.steam_id);
+                        return {
+                            label: player.name,
+                            data: player.rounds.map(r => r[metric] || 0),
+                            borderColor: colors[originalIdx % colors.length],
+                            backgroundColor: colors[originalIdx % colors.length] + '20',
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            borderWidth: 2,
+                            fill: false,
+                        };
+                    });
+            };
+
+            // Destroy existing chart if any
+            if (timelineChartInstance) {
+                timelineChartInstance.destroy();
+            }
+
+            timelineChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: timelineData.max_rounds}, (_, i) => `R${i + 1}`),
+                    datasets: buildDatasets(currentMetric),
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index',
+                    },
+                    plugins: {
+                        legend: {
+                            display: false,
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(13, 13, 18, 0.95)',
+                            titleColor: '#fff',
+                            bodyColor: '#9ca3af',
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            borderWidth: 1,
+                            padding: 12,
+                            callbacks: {
+                                title: function(context) {
+                                    return `Round ${context[0].dataIndex + 1}`;
+                                },
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    const metricLabel = currentMetric.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                    return `${label}: ${value} ${metricLabel}`;
+                                }
+                            }
+                        },
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255,255,255,0.05)',
+                            },
+                            ticks: {
+                                color: '#6b7280',
+                                maxRotation: 0,
+                            },
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255,255,255,0.05)',
+                            },
+                            ticks: {
+                                color: '#6b7280',
+                            },
+                        },
+                    },
+                },
+            });
+
+            // Metric tab switching
+            document.querySelectorAll('.timeline-metric-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // Update button styles
+                    document.querySelectorAll('.timeline-metric-btn').forEach(b => {
+                        b.classList.remove('active');
+                        b.style.background = 'var(--bg-secondary)';
+                        b.style.color = 'var(--text-muted)';
+                        b.style.border = '1px solid var(--border)';
+                    });
+                    btn.classList.add('active');
+                    btn.style.background = 'var(--accent-primary)';
+                    btn.style.color = 'white';
+                    btn.style.border = 'none';
+
+                    // Update chart
+                    currentMetric = btn.dataset.metric;
+                    timelineChartInstance.data.datasets = buildDatasets(currentMetric);
+                    timelineChartInstance.update();
+                });
+            });
+
+            // Player visibility toggles
+            document.querySelectorAll('[data-player]').forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    const steamId = checkbox.dataset.player;
+                    if (checkbox.checked) {
+                        visiblePlayers.add(steamId);
+                    } else {
+                        visiblePlayers.delete(steamId);
+                    }
+                    timelineChartInstance.data.datasets = buildDatasets(currentMetric);
+                    timelineChartInstance.update();
+                });
+            });
+
+            // Select All / None buttons
+            const selectAllBtn = document.getElementById('timeline-select-all');
+            const selectNoneBtn = document.getElementById('timeline-select-none');
+
+            if (selectAllBtn) {
+                selectAllBtn.addEventListener('click', () => {
+                    visiblePlayers = new Set(timelineData.players.map(p => String(p.steam_id)));
+                    document.querySelectorAll('[data-player]').forEach(cb => cb.checked = true);
+                    timelineChartInstance.data.datasets = buildDatasets(currentMetric);
+                    timelineChartInstance.update();
+                });
+            }
+
+            if (selectNoneBtn) {
+                selectNoneBtn.addEventListener('click', () => {
+                    visiblePlayers.clear();
+                    document.querySelectorAll('[data-player]').forEach(cb => cb.checked = false);
+                    timelineChartInstance.data.datasets = buildDatasets(currentMetric);
+                    timelineChartInstance.update();
+                });
+            }
         }
 
         function toggleRoundDetails(roundNum) {
@@ -4080,11 +4500,17 @@
                         </div>
                         <div class="replay-sidebar">
                             <div class="replay-team-section">
-                                <div class="replay-team-header ct">Counter-Terrorists</div>
+                                <div class="replay-team-header ct">
+                                    <span>Counter-Terrorists</span>
+                                    <span class="replay-team-score" id="replay-ct-score">0</span>
+                                </div>
                                 <div id="replay-ct-players"></div>
                             </div>
                             <div class="replay-team-section">
-                                <div class="replay-team-header t">Terrorists</div>
+                                <div class="replay-team-header t">
+                                    <span>Terrorists</span>
+                                    <span class="replay-team-score" id="replay-t-score">0</span>
+                                </div>
                                 <div id="replay-t-players"></div>
                             </div>
                         </div>
@@ -4162,12 +4588,22 @@
             if (!canvas) return;
 
             replayState.players = players;
+            // Build player KDA tracking from initial stats
+            replayState.playerKDA = {};
+            for (const p of players) {
+                replayState.playerKDA[p.name] = {
+                    kills: p.stats?.kills || 0,
+                    deaths: p.stats?.deaths || 0,
+                    assists: p.stats?.assists || 0
+                };
+            }
+
             const ctx = canvas.getContext('2d');
 
             // Setup event listeners
             setupReplayControls(ctx, canvas);
 
-            // Populate initial player lists
+            // Populate initial player lists with full stats
             populatePlayerLists(players);
 
             // Show initial state with placeholder
@@ -4177,6 +4613,11 @@
             const fetchBtn = document.getElementById('replay-fetch-btn');
             if (fetchBtn) {
                 fetchBtn.addEventListener('click', () => fetchReplayData());
+            }
+
+            // Auto-fetch replay data if we have the demo file and haven't loaded yet
+            if (uploadedDemoFile && !replayState.isLoaded && !replayState.isLoading) {
+                fetchReplayData();
             }
         }
 
@@ -4283,6 +4724,9 @@
                     updatePlayerSidebar(replayState.frames[0]);
                 }
 
+                // Initialize score display
+                updateScoreDisplay(1);
+
             } catch (error) {
                 console.error('Replay fetch error:', error);
                 alert('Failed to load replay data: ' + error.message);
@@ -4347,12 +4791,31 @@
                     btn.classList.toggle('active', parseInt(btn.dataset.round) === roundNum);
                 });
 
+                // Update scores
+                updateScoreDisplay(roundNum);
+
                 updateReplaySlider();
                 const canvas = document.getElementById('replay-canvas');
                 if (canvas) {
                     drawReplayFrame(canvas.getContext('2d'), canvas.width, canvas.height);
                 }
             }
+        }
+
+        // Update score display based on current round
+        function updateScoreDisplay(roundNum) {
+            let ctScore = 0, tScore = 0;
+            // Count rounds won before this round
+            for (const r of replayState.rounds) {
+                if (r.round_num < roundNum) {
+                    if (r.winner === 'CT') ctScore++;
+                    else if (r.winner === 'T') tScore++;
+                }
+            }
+            const ctScoreEl = document.getElementById('replay-ct-score');
+            const tScoreEl = document.getElementById('replay-t-score');
+            if (ctScoreEl) ctScoreEl.textContent = ctScore;
+            if (tScoreEl) tScoreEl.textContent = tScore;
         }
 
         // Populate player lists in sidebar
@@ -4381,13 +4844,21 @@
             tContainer.innerHTML = tPlayers.map(p => renderPlayerItem(p, 't')).join('');
         }
 
-        // Render single player item
+        // Render single player item (Leetify-style with full stats)
         function renderPlayerItem(player, team) {
+            const stats = player.stats || {};
+            const k = stats.kills || 0;
+            const d = stats.deaths || 0;
+            const a = stats.assists || 0;
             return `
                 <div class="replay-player-item" data-player="${esc(player.name)}" data-steam-id="${player.id || ''}" onclick="selectReplayPlayer('${esc(player.name)}')">
                     <span class="player-dot ${team}"></span>
-                    <div style="flex: 1; min-width: 0;">
+                    <div class="replay-player-info">
                         <div class="replay-player-name">${esc(player.name)}</div>
+                        <div class="replay-player-stats-row">
+                            <span class="replay-player-kda" data-player-kda="${esc(player.name)}">${k}/${d}/${a}</span>
+                            <span class="replay-player-money" data-player-money="${esc(player.name)}">$800</span>
+                        </div>
                         <div class="replay-player-weapon" data-player-weapon="${esc(player.name)}">-</div>
                     </div>
                     <div class="replay-player-health">
@@ -4408,6 +4879,7 @@
                 const healthEl = document.querySelector(`[data-player-health="${player.name}"]`);
                 const healthBarEl = document.querySelector(`[data-player-health-bar="${player.name}"]`);
                 const weaponEl = document.querySelector(`[data-player-weapon="${player.name}"]`);
+                const moneyEl = document.querySelector(`[data-player-money="${player.name}"]`);
                 const itemEl = document.querySelector(`.replay-player-item[data-player="${player.name}"]`);
 
                 if (healthEl) healthEl.textContent = player.is_alive ? player.health : '0';
@@ -4416,7 +4888,16 @@
                     healthBarEl.style.width = healthPct + '%';
                     healthBarEl.classList.toggle('low', healthPct <= 30);
                 }
-                if (weaponEl) weaponEl.textContent = player.weapon || '-';
+                if (weaponEl) {
+                    // Format weapon name nicely
+                    const weapon = (player.weapon || '-').replace(/^weapon_/, '').replace(/_/g, ' ');
+                    weaponEl.textContent = weapon;
+                }
+                if (moneyEl) {
+                    // Show money if available (from equipment_value or explicit money field)
+                    const money = player.money || player.equipment_value || 0;
+                    moneyEl.textContent = '$' + money.toLocaleString();
+                }
                 if (itemEl) itemEl.classList.toggle('dead', !player.is_alive);
             }
 
@@ -4517,6 +4998,8 @@
                 document.querySelectorAll('.replay-round-btn').forEach(btn => {
                     btn.classList.toggle('active', parseInt(btn.dataset.round) === frame.round);
                 });
+                // Update scores when round changes
+                updateScoreDisplay(frame.round);
             }
 
             updateReplaySlider();

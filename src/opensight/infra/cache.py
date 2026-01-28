@@ -1086,10 +1086,17 @@ class CachedAnalyzer:
         return result
 
     def _build_timeline_graph_data(self, demo_data) -> dict:
-        """Build round-by-round data for timeline graphs (kills, damage per round per player)."""
+        """Build round-by-round data for Leetify-style timeline graphs.
+
+        Tracks per-round cumulative stats for all players:
+        - kills, deaths, damage, awp_kills, enemies_flashed
+        - Team information for grouping (CT/T)
+        """
         kills = getattr(demo_data, "kills", [])
         damages = getattr(demo_data, "damages", [])
+        blinds = getattr(demo_data, "blinds", [])
         player_names = getattr(demo_data, "player_names", {})
+        player_teams = getattr(demo_data, "player_teams", {})
         rounds = getattr(demo_data, "rounds", [])
 
         # Build round boundaries from round events (for inferring round_num from tick)
@@ -1107,97 +1114,170 @@ class CachedAnalyzer:
             for round_num, start_tick, end_tick in round_boundaries:
                 if start_tick <= tick <= end_tick:
                     return round_num
-            # If no match, estimate based on position in sorted boundaries
             if round_boundaries:
-                # Use the last round if tick is after all boundaries
                 for round_num, _start_tick, end_tick in reversed(round_boundaries):
                     if tick > end_tick:
                         return round_num
-                # Use round 1 if tick is before all boundaries
                 return 1
-            return 1  # Fallback
+            return 1
 
         # Check if kills have valid round data
         has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
 
-        # Initialize per-player round data
-        player_round_data: dict[
-            int, dict[int, dict]
-        ] = {}  # steam_id -> {round_num -> {kills, damage}}
+        # Initialize per-player round data with all metrics
+        # steam_id -> {round_num -> {kills, deaths, damage, awp_kills, enemies_flashed}}
+        player_round_data: dict[int, dict[int, dict]] = {}
 
         # Get max rounds from demo_data or round boundaries
         max_round = getattr(demo_data, "num_rounds", 0) or len(round_boundaries) or 1
 
-        # Count kills per player per round
+        def ensure_player_round(steam_id: int, round_num: int) -> None:
+            """Ensure player and round entry exists with all metric fields."""
+            if steam_id not in player_round_data:
+                player_round_data[steam_id] = {}
+            if round_num not in player_round_data[steam_id]:
+                player_round_data[steam_id][round_num] = {
+                    "kills": 0,
+                    "deaths": 0,
+                    "damage": 0,
+                    "awp_kills": 0,
+                    "enemies_flashed": 0,
+                }
+
+        # Process kills - track both attacker (kills) and victim (deaths)
         for kill in kills:
             attacker_id = getattr(kill, "attacker_steamid", 0)
+            victim_id = getattr(kill, "victim_steamid", 0)
             round_num = getattr(kill, "round_num", 0)
+            weapon = str(getattr(kill, "weapon", "")).lower()
 
-            # Skip kills without attacker_id
-            if not attacker_id:
-                continue
-
-            # If no round_num, try to infer from tick using round boundaries
+            # Infer round if missing
             if round_num == 0:
                 if round_boundaries and not has_round_data:
                     tick = getattr(kill, "tick", 0)
                     round_num = infer_round_from_tick(tick)
                 else:
-                    round_num = 1  # Fallback to round 1
+                    round_num = 1
 
             max_round = max(max_round, round_num)
 
-            if attacker_id not in player_round_data:
-                player_round_data[attacker_id] = {}
-            if round_num not in player_round_data[attacker_id]:
-                player_round_data[attacker_id][round_num] = {"kills": 0, "damage": 0}
-            player_round_data[attacker_id][round_num]["kills"] += 1
+            # Track kills for attacker
+            if attacker_id:
+                ensure_player_round(attacker_id, round_num)
+                player_round_data[attacker_id][round_num]["kills"] += 1
+                # Track AWP kills
+                if "awp" in weapon:
+                    player_round_data[attacker_id][round_num]["awp_kills"] += 1
 
-        # Sum damage per player per round
+            # Track deaths for victim
+            if victim_id:
+                ensure_player_round(victim_id, round_num)
+                player_round_data[victim_id][round_num]["deaths"] += 1
+
+        # Process damage
         for dmg in damages:
             attacker_id = getattr(dmg, "attacker_steamid", 0)
             round_num = getattr(dmg, "round_num", 0)
             damage_val = getattr(dmg, "damage", 0)
 
-            # Skip damages without attacker_id
             if not attacker_id:
                 continue
 
-            # If no round_num, try to infer from tick using round boundaries
             if round_num == 0:
                 if round_boundaries and not has_round_data:
                     tick = getattr(dmg, "tick", 0)
                     round_num = infer_round_from_tick(tick)
                 else:
-                    round_num = 1  # Fallback to round 1
+                    round_num = 1
 
             max_round = max(max_round, round_num)
-
-            if attacker_id not in player_round_data:
-                player_round_data[attacker_id] = {}
-            if round_num not in player_round_data[attacker_id]:
-                player_round_data[attacker_id][round_num] = {"kills": 0, "damage": 0}
+            ensure_player_round(attacker_id, round_num)
             player_round_data[attacker_id][round_num]["damage"] += damage_val
+
+        # Process blinds - count enemies flashed (duration > 0.5s, not teammate)
+        for blind in blinds:
+            attacker_id = getattr(blind, "attacker_steamid", 0)
+            round_num = getattr(blind, "round_num", 0)
+            duration = getattr(blind, "blind_duration", 0.0)
+            is_teammate = getattr(blind, "is_teammate", False)
+
+            # Only count enemy flashes with meaningful duration
+            if not attacker_id or duration < 0.5 or is_teammate:
+                continue
+
+            if round_num == 0:
+                if round_boundaries and not has_round_data:
+                    tick = getattr(blind, "tick", 0)
+                    round_num = infer_round_from_tick(tick)
+                else:
+                    round_num = 1
+
+            max_round = max(max_round, round_num)
+            ensure_player_round(attacker_id, round_num)
+            player_round_data[attacker_id][round_num]["enemies_flashed"] += 1
 
         # Build cumulative data for graphs
         players_timeline = []
         for steam_id, round_data in player_round_data.items():
             player_name = player_names.get(steam_id, f"Player {steam_id}")
+            # Get team - prefer from player_teams dict, fallback to inferring from kills
+            team = player_teams.get(steam_id, "Unknown")
+            if team == "Unknown":
+                # Try to infer from kills
+                for kill in kills:
+                    if getattr(kill, "attacker_steamid", 0) == steam_id:
+                        side = str(getattr(kill, "attacker_side", "")).upper()
+                        if "CT" in side:
+                            team = "CT"
+                        elif "T" in side:
+                            team = "T"
+                        break
+                    if getattr(kill, "victim_steamid", 0) == steam_id:
+                        side = str(getattr(kill, "victim_side", "")).upper()
+                        if "CT" in side:
+                            team = "CT"
+                        elif "T" in side:
+                            team = "T"
+                        break
 
-            cumulative_kills = 0
-            cumulative_damage = 0
-            rounds = []
+            # Build cumulative stats per round
+            cumulative = {
+                "kills": 0,
+                "deaths": 0,
+                "damage": 0,
+                "awp_kills": 0,
+                "enemies_flashed": 0,
+            }
+            rounds_list = []
 
             for r in range(1, max_round + 1):
-                rd = round_data.get(r, {"kills": 0, "damage": 0})
-                cumulative_kills += rd["kills"]
-                cumulative_damage += rd["damage"]
-                rounds.append(
+                rd = round_data.get(
+                    r,
+                    {
+                        "kills": 0,
+                        "deaths": 0,
+                        "damage": 0,
+                        "awp_kills": 0,
+                        "enemies_flashed": 0,
+                    },
+                )
+                cumulative["kills"] += rd["kills"]
+                cumulative["deaths"] += rd["deaths"]
+                cumulative["damage"] += rd["damage"]
+                cumulative["awp_kills"] += rd["awp_kills"]
+                cumulative["enemies_flashed"] += rd["enemies_flashed"]
+
+                rounds_list.append(
                     {
                         "round": r,
-                        "kills": cumulative_kills,
-                        "damage": cumulative_damage,
+                        "kills": cumulative["kills"],
+                        "deaths": cumulative["deaths"],
+                        "damage": cumulative["damage"],
+                        "awp_kills": cumulative["awp_kills"],
+                        "enemies_flashed": cumulative["enemies_flashed"],
+                        # Per-round values for tooltips
                         "round_kills": rd["kills"],
+                        "round_deaths": rd["deaths"],
                         "round_damage": rd["damage"],
                     }
                 )
@@ -1206,9 +1286,13 @@ class CachedAnalyzer:
                 {
                     "steam_id": steam_id,
                     "name": player_name,
-                    "rounds": rounds,
+                    "team": team,
+                    "rounds": rounds_list,
                 }
             )
+
+        # Sort players by team for better grouping
+        players_timeline.sort(key=lambda p: (p["team"] != "CT", p["name"]))
 
         return {
             "max_rounds": max_round,
