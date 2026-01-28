@@ -338,9 +338,7 @@ class PlayerBaseline(Base):
     # Last update timestamp
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    __table_args__ = (
-        Index("idx_player_baselines_steam_metric", "steam_id", "metric"),
-    )
+    __table_args__ = (Index("idx_player_baselines_steam_metric", "steam_id", "metric"),)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
@@ -975,9 +973,15 @@ class DatabaseManager:
                 opensight_rating=player_stats.get("opensight_rating", 50.0),
                 trade_kill_opportunities=player_stats.get("trade_kill_opportunities", 0),
                 trade_kill_attempts=player_stats.get("trade_kill_attempts", 0),
-                trade_kill_success=player_stats.get("kills_traded", player_stats.get("trade_kill_success", 0)),
-                entry_attempts=player_stats.get("opening_duel_attempts", player_stats.get("entry_attempts", 0)),
-                entry_success=player_stats.get("opening_duel_wins", player_stats.get("entry_success", 0)),
+                trade_kill_success=player_stats.get(
+                    "kills_traded", player_stats.get("trade_kill_success", 0)
+                ),
+                entry_attempts=player_stats.get(
+                    "opening_duel_attempts", player_stats.get("entry_attempts", 0)
+                ),
+                entry_success=player_stats.get(
+                    "opening_duel_wins", player_stats.get("entry_success", 0)
+                ),
                 clutch_situations=player_stats.get("clutch_situations", 0),
                 clutch_wins=player_stats.get("clutch_wins", 0),
                 clutch_kills=player_stats.get("clutch_kills", 0),
@@ -985,7 +989,9 @@ class DatabaseManager:
                 enemies_flashed=player_stats.get("enemies_flashed", 0),
                 flash_assists=player_stats.get("flash_assists", 0),
                 ttd_median_ms=player_stats.get("ttd_median_ms"),
-                cp_median_deg=player_stats.get("cp_median_error_deg", player_stats.get("cp_median_deg")),
+                cp_median_deg=player_stats.get(
+                    "cp_median_error_deg", player_stats.get("cp_median_deg")
+                ),
                 rounds_played=player_stats.get("rounds_played", 0),
             )
             session.add(entry)
@@ -1019,9 +1025,7 @@ class DatabaseManager:
         session = self.get_session()
         try:
             baselines = (
-                session.query(PlayerBaseline)
-                .filter(PlayerBaseline.steam_id == steam_id)
-                .all()
+                session.query(PlayerBaseline).filter(PlayerBaseline.steam_id == steam_id).all()
             )
             return {b.metric: b.to_dict() for b in baselines}
         finally:
@@ -1145,9 +1149,7 @@ class DatabaseManager:
         session = self.get_session()
         try:
             persona = (
-                session.query(PlayerPersona)
-                .filter(PlayerPersona.steam_id == steam_id)
-                .first()
+                session.query(PlayerPersona).filter(PlayerPersona.steam_id == steam_id).first()
             )
             return persona.to_dict() if persona else None
         finally:
@@ -1165,14 +1167,14 @@ class DatabaseManager:
         session = self.get_session()
         try:
             persona = (
-                session.query(PlayerPersona)
-                .filter(PlayerPersona.steam_id == steam_id)
-                .first()
+                session.query(PlayerPersona).filter(PlayerPersona.steam_id == steam_id).first()
             )
 
             if persona:
                 # Update existing
-                old_history = json.loads(persona.persona_history_json) if persona.persona_history_json else []
+                old_history = (
+                    json.loads(persona.persona_history_json) if persona.persona_history_json else []
+                )
                 old_history.append(persona.current_persona)
                 if len(old_history) > 10:
                     old_history = old_history[-10:]

@@ -459,9 +459,7 @@ class TestYourMatchAPI:
 
     def test_get_your_match_invalid_demo_id(self, client):
         """Test validation of invalid demo ID."""
-        response = client.get(
-            "/api/your-match/invalid!demo!id/12345678901234567"
-        )
+        response = client.get("/api/your-match/invalid!demo!id/12345678901234567")
 
         assert response.status_code == 400
         assert "demo_id" in response.json()["detail"].lower()

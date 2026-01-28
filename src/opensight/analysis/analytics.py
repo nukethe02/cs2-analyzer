@@ -737,12 +737,14 @@ class UtilityStats:
             score -= penalty
 
         # Bonus for variety (using all types)
-        types_used = sum([
-            1 if self.flashbangs_thrown > 0 else 0,
-            1 if self.smokes_thrown > 0 else 0,
-            1 if self.he_thrown > 0 else 0,
-            1 if self.molotovs_thrown > 0 else 0,
-        ])
+        types_used = sum(
+            [
+                1 if self.flashbangs_thrown > 0 else 0,
+                1 if self.smokes_thrown > 0 else 0,
+                1 if self.he_thrown > 0 else 0,
+                1 if self.molotovs_thrown > 0 else 0,
+            ]
+        )
         score += types_used * 5  # Up to 20 points for variety
 
         return round(min(100, max(0, score)), 1)
@@ -1013,9 +1015,7 @@ class AimStats:
     @property
     def head_accuracy(self) -> float:
         """Head Accuracy - % of hits that were headshots."""
-        return (
-            round(self.headshot_hits / self.shots_hit * 100, 1) if self.shots_hit > 0 else 0.0
-        )
+        return round(self.headshot_hits / self.shots_hit * 100, 1) if self.shots_hit > 0 else 0.0
 
     @property
     def hs_kill_pct(self) -> float:
@@ -2325,7 +2325,9 @@ class DemoAnalyzer:
         # Find damage DataFrame columns for attempt detection
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
         dmg_vic_col = self._find_col(damages_df, self.VIC_ID_COLS) if not damages_df.empty else None
-        dmg_round_col = self._find_col(damages_df, self.ROUND_COLS) if not damages_df.empty else None
+        dmg_round_col = (
+            self._find_col(damages_df, self.ROUND_COLS) if not damages_df.empty else None
+        )
 
         # Build player team lookup for consistent team matching
         player_teams_lookup: dict[int, str] = {}
@@ -2409,7 +2411,8 @@ class DemoAnalyzer:
                 # === TRADED DEATH OPPORTUNITIES ===
                 # Count teammates who are alive when this player dies
                 teammates_alive = [
-                    pid for pid in all_players_in_round
+                    pid
+                    for pid in all_players_in_round
                     if pid != victim_id
                     and pid not in dead_players
                     and player_teams_lookup.get(pid) == victim_team
@@ -2429,20 +2432,20 @@ class DemoAnalyzer:
                         # Check if teammate damaged the killer within trade window
                         if not round_damages.empty:
                             teammate_damage = round_damages[
-                                (round_damages[dmg_att_col].astype(float) == float(teammate_id)) &
-                                (round_damages[dmg_vic_col].astype(float) == float(killer_id)) &
-                                (round_damages["tick"] > kill_tick) &
-                                (round_damages["tick"] <= kill_tick + trade_window_ticks)
+                                (round_damages[dmg_att_col].astype(float) == float(teammate_id))
+                                & (round_damages[dmg_vic_col].astype(float) == float(killer_id))
+                                & (round_damages["tick"] > kill_tick)
+                                & (round_damages["tick"] <= kill_tick + trade_window_ticks)
                             ]
                             if not teammate_damage.empty:
                                 teammate_attempted = True
 
                         # Check if teammate killed the killer within trade window
                         teammate_kills = round_kills[
-                            (round_kills[self._att_id_col].astype(float) == float(teammate_id)) &
-                            (round_kills[self._vic_id_col].astype(float) == float(killer_id)) &
-                            (round_kills["tick"] > kill_tick) &
-                            (round_kills["tick"] <= kill_tick + trade_window_ticks)
+                            (round_kills[self._att_id_col].astype(float) == float(teammate_id))
+                            & (round_kills[self._vic_id_col].astype(float) == float(killer_id))
+                            & (round_kills["tick"] > kill_tick)
+                            & (round_kills["tick"] <= kill_tick + trade_window_ticks)
                         ]
                         if not teammate_kills.empty:
                             teammate_succeeded = True
@@ -2452,7 +2455,9 @@ class DemoAnalyzer:
                                 self._players[trader_id].trades.trade_kill_success += 1
                                 self._players[trader_id].trades.kills_traded += 1
                                 time_to_trade = trade_tick - kill_tick
-                                self._players[trader_id].trades.time_to_trade_ticks.append(time_to_trade)
+                                self._players[trader_id].trades.time_to_trade_ticks.append(
+                                    time_to_trade
+                                )
                                 total_trade_success += 1
                                 # Entry trade tracking
                                 if victim_id in (entry_kill_victim_id, entry_kill_attacker_id):
@@ -2481,19 +2486,19 @@ class DemoAnalyzer:
                         attempted = False
                         if not round_damages.empty:
                             teammate_damage = round_damages[
-                                (round_damages[dmg_att_col].astype(float) == float(teammate_id)) &
-                                (round_damages[dmg_vic_col].astype(float) == float(killer_id)) &
-                                (round_damages["tick"] > kill_tick) &
-                                (round_damages["tick"] <= kill_tick + trade_window_ticks)
+                                (round_damages[dmg_att_col].astype(float) == float(teammate_id))
+                                & (round_damages[dmg_vic_col].astype(float) == float(killer_id))
+                                & (round_damages["tick"] > kill_tick)
+                                & (round_damages["tick"] <= kill_tick + trade_window_ticks)
                             ]
                             if not teammate_damage.empty:
                                 attempted = True
 
                         teammate_kills = round_kills[
-                            (round_kills[self._att_id_col].astype(float) == float(teammate_id)) &
-                            (round_kills[self._vic_id_col].astype(float) == float(killer_id)) &
-                            (round_kills["tick"] > kill_tick) &
-                            (round_kills["tick"] <= kill_tick + trade_window_ticks)
+                            (round_kills[self._att_id_col].astype(float) == float(teammate_id))
+                            & (round_kills[self._vic_id_col].astype(float) == float(killer_id))
+                            & (round_kills["tick"] > kill_tick)
+                            & (round_kills["tick"] <= kill_tick + trade_window_ticks)
                         ]
                         if not teammate_kills.empty:
                             attempted = True
@@ -3887,9 +3892,9 @@ class DemoAnalyzer:
 
                         # Check if any teammate killed this blinded enemy within window
                         victim_kills = kills_df[
-                            (kills_df["victim_steamid"] == victim_id) &
-                            (kills_df["tick"] >= blind_tick) &
-                            (kills_df["tick"] <= blind_end_tick + FLASH_ASSIST_WINDOW_TICKS)
+                            (kills_df["victim_steamid"] == victim_id)
+                            & (kills_df["tick"] >= blind_tick)
+                            & (kills_df["tick"] <= blind_end_tick + FLASH_ASSIST_WINDOW_TICKS)
                         ]
 
                         # Count kills by teammates (not by the flash thrower)
@@ -4024,8 +4029,23 @@ class DemoAnalyzer:
         """
         # Define weapons that support spray (exclude pistols, snipers, shotguns)
         spray_weapons = {
-            "ak47", "m4a1", "m4a1_silencer", "m4a4", "galil", "famas", "aug", "sg556",
-            "mp9", "mac10", "mp7", "ump45", "p90", "bizon", "mp5sd", "negev", "m249",
+            "ak47",
+            "m4a1",
+            "m4a1_silencer",
+            "m4a4",
+            "galil",
+            "famas",
+            "aug",
+            "sg556",
+            "mp9",
+            "mac10",
+            "mp7",
+            "ump45",
+            "p90",
+            "bizon",
+            "mp5sd",
+            "negev",
+            "m249",
         }
         burst_tick_window = 20  # ~312ms at 64 tick
 
@@ -4034,7 +4054,8 @@ class DemoAnalyzer:
 
         # Filter to spray weapons only
         spray_shots = [
-            s for s in player_shots
+            s
+            for s in player_shots
             if s.weapon and s.weapon.lower().replace("weapon_", "") in spray_weapons
         ]
 
@@ -4100,7 +4121,7 @@ class DemoAnalyzer:
                 if fire.velocity_x is not None and fire.velocity_y is not None:
                     vel_x = fire.velocity_x or 0
                     vel_y = fire.velocity_y or 0
-                    velocity = math.sqrt(vel_x ** 2 + vel_y ** 2)
+                    velocity = math.sqrt(vel_x**2 + vel_y**2)
                     velocity_by_tick[fire.tick] = velocity
 
         if not velocity_by_tick:

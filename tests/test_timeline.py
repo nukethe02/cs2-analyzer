@@ -101,9 +101,7 @@ class TestTimelineGraphData:
         analyzer = CachedAnalyzer()
         demo_data = MockDemoData()
         demo_data.kills = [
-            MockKillEvent(
-                round_num=1, attacker_steamid=111, victim_steamid=222, weapon="ak47"
-            )
+            MockKillEvent(round_num=1, attacker_steamid=111, victim_steamid=222, weapon="ak47")
         ]
         demo_data.player_names = {111: "Player1", 222: "Player2"}
         demo_data.player_teams = {111: "CT", 222: "T"}
@@ -135,12 +133,8 @@ class TestTimelineGraphData:
         analyzer = CachedAnalyzer()
         demo_data = MockDemoData()
         demo_data.kills = [
-            MockKillEvent(
-                round_num=1, attacker_steamid=111, victim_steamid=222, weapon="awp"
-            ),
-            MockKillEvent(
-                round_num=1, attacker_steamid=111, victim_steamid=333, weapon="ak47"
-            ),
+            MockKillEvent(round_num=1, attacker_steamid=111, victim_steamid=222, weapon="awp"),
+            MockKillEvent(round_num=1, attacker_steamid=111, victim_steamid=333, weapon="ak47"),
         ]
         demo_data.player_names = {111: "AWPer", 222: "Victim1", 333: "Victim2"}
         demo_data.num_rounds = 1
@@ -158,18 +152,10 @@ class TestTimelineGraphData:
         analyzer = CachedAnalyzer()
         demo_data = MockDemoData()
         demo_data.kills = [
-            MockKillEvent(
-                round_num=1, attacker_steamid=111, victim_steamid=222, weapon="ak47"
-            ),
-            MockKillEvent(
-                round_num=2, attacker_steamid=111, victim_steamid=222, weapon="ak47"
-            ),
-            MockKillEvent(
-                round_num=2, attacker_steamid=111, victim_steamid=333, weapon="ak47"
-            ),
-            MockKillEvent(
-                round_num=3, attacker_steamid=111, victim_steamid=222, weapon="ak47"
-            ),
+            MockKillEvent(round_num=1, attacker_steamid=111, victim_steamid=222, weapon="ak47"),
+            MockKillEvent(round_num=2, attacker_steamid=111, victim_steamid=222, weapon="ak47"),
+            MockKillEvent(round_num=2, attacker_steamid=111, victim_steamid=333, weapon="ak47"),
+            MockKillEvent(round_num=3, attacker_steamid=111, victim_steamid=222, weapon="ak47"),
         ]
         demo_data.player_names = {111: "Fragger"}
         demo_data.num_rounds = 3
@@ -219,9 +205,7 @@ class TestTimelineGraphData:
                 round_num=1, attacker_steamid=111, blind_duration=0.3, is_teammate=False
             ),
             # Teammate flash (should not count)
-            MockBlindEvent(
-                round_num=1, attacker_steamid=111, blind_duration=2.0, is_teammate=True
-            ),
+            MockBlindEvent(round_num=1, attacker_steamid=111, blind_duration=2.0, is_teammate=True),
             # Another valid enemy flash
             MockBlindEvent(
                 round_num=2, attacker_steamid=111, blind_duration=1.5, is_teammate=False
@@ -281,15 +265,9 @@ class TestTimelineGraphData:
         analyzer = CachedAnalyzer()
         demo_data = MockDemoData()
         demo_data.kills = [
-            MockKillEvent(
-                round_num=1, attacker_steamid=111, victim_steamid=222, weapon="ak47"
-            ),
-            MockKillEvent(
-                round_num=2, attacker_steamid=111, victim_steamid=222, weapon="ak47"
-            ),
-            MockKillEvent(
-                round_num=2, attacker_steamid=111, victim_steamid=333, weapon="ak47"
-            ),
+            MockKillEvent(round_num=1, attacker_steamid=111, victim_steamid=222, weapon="ak47"),
+            MockKillEvent(round_num=2, attacker_steamid=111, victim_steamid=222, weapon="ak47"),
+            MockKillEvent(round_num=2, attacker_steamid=111, victim_steamid=333, weapon="ak47"),
         ]
         demo_data.player_names = {111: "Player1"}
         demo_data.num_rounds = 2
@@ -310,9 +288,7 @@ class TestTimelineGraphDataEdgeCases:
 
         analyzer = CachedAnalyzer()
         demo_data = MockDemoData()
-        demo_data.kills = [
-            MockKillEvent(round_num=0, attacker_steamid=111, victim_steamid=222)
-        ]
+        demo_data.kills = [MockKillEvent(round_num=0, attacker_steamid=111, victim_steamid=222)]
         demo_data.player_names = {111: "Player1"}
 
         # No round boundaries, so should fallback to round 1
@@ -327,9 +303,7 @@ class TestTimelineGraphDataEdgeCases:
 
         analyzer = CachedAnalyzer()
         demo_data = MockDemoData()
-        demo_data.kills = [
-            MockKillEvent(round_num=1, attacker_steamid=0, victim_steamid=222)
-        ]
+        demo_data.kills = [MockKillEvent(round_num=1, attacker_steamid=0, victim_steamid=222)]
 
         result = analyzer._build_timeline_graph_data(demo_data)
 

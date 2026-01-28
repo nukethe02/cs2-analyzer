@@ -121,7 +121,12 @@ STAT_BENCHMARKS = {
     "he_damage": {"min": 0, "avg": 50, "max": 200, "higher_is_better": True},
     "hs_pct": {"min": 0, "avg": 35, "max": 70, "higher_is_better": True},
     "cp_median_deg": {"min": 25, "avg": 12, "max": 3, "higher_is_better": False},  # Lower is better
-    "ttd_median_ms": {"min": 500, "avg": 250, "max": 100, "higher_is_better": False},  # Lower is better
+    "ttd_median_ms": {
+        "min": 500,
+        "avg": 250,
+        "max": 100,
+        "higher_is_better": False,
+    },  # Lower is better
     "trade_kill_success": {"min": 0, "avg": 2, "max": 6, "higher_is_better": True},
     "enemies_flashed": {"min": 0, "avg": 5, "max": 15, "higher_is_better": True},
     "flash_assists": {"min": 0, "avg": 1, "max": 5, "higher_is_better": True},

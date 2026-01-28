@@ -210,10 +210,19 @@ class TestReplayFrame:
         """ReplayFrame can be created with players."""
         players = [
             PlayerFrame(
-                steam_id=1, name="P1", team="CT",
-                x=0, y=0, z=0, yaw=0, pitch=0,
-                health=100, armor=100, is_alive=True,
-                is_scoped=False, is_crouching=False,
+                steam_id=1,
+                name="P1",
+                team="CT",
+                x=0,
+                y=0,
+                z=0,
+                yaw=0,
+                pitch=0,
+                health=100,
+                armor=100,
+                is_alive=True,
+                is_scoped=False,
+                is_crouching=False,
             ),
         ]
         frame = ReplayFrame(
@@ -230,10 +239,19 @@ class TestReplayFrame:
         """ReplayFrame converts to dict correctly."""
         players = [
             PlayerFrame(
-                steam_id=1, name="P1", team="CT",
-                x=0, y=0, z=0, yaw=0, pitch=0,
-                health=100, armor=100, is_alive=True,
-                is_scoped=False, is_crouching=False,
+                steam_id=1,
+                name="P1",
+                team="CT",
+                x=0,
+                y=0,
+                z=0,
+                yaw=0,
+                pitch=0,
+                health=100,
+                armor=100,
+                is_alive=True,
+                is_scoped=False,
+                is_crouching=False,
             ),
         ]
         frame = ReplayFrame(
@@ -322,12 +340,22 @@ class TestMatchReplay:
     def test_match_replay_get_round(self):
         """MatchReplay can retrieve specific round."""
         round1 = RoundReplay(
-            round_num=1, start_tick=0, end_tick=1000,
-            winner="CT", win_reason="elim", ct_score=1, t_score=0,
+            round_num=1,
+            start_tick=0,
+            end_tick=1000,
+            winner="CT",
+            win_reason="elim",
+            ct_score=1,
+            t_score=0,
         )
         round2 = RoundReplay(
-            round_num=2, start_tick=1000, end_tick=2000,
-            winner="T", win_reason="bomb", ct_score=1, t_score=1,
+            round_num=2,
+            start_tick=1000,
+            end_tick=2000,
+            winner="T",
+            win_reason="bomb",
+            ct_score=1,
+            t_score=1,
         )
         replay = MatchReplay(
             map_name="de_dust2",

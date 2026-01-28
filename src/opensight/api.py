@@ -61,19 +61,16 @@ def validate_demo_id(demo_id: str) -> str:
 def validate_steam_id(steam_id: str) -> str:
     """Validate steam_id format. Raises HTTPException if invalid."""
     if not steam_id or not STEAM_ID_PATTERN.match(steam_id):
-        raise HTTPException(
-            status_code=400, detail="Invalid steam_id: must be exactly 17 digits"
-        )
+        raise HTTPException(status_code=400, detail="Invalid steam_id: must be exactly 17 digits")
     return steam_id
 
 
 def validate_job_id(job_id: str) -> str:
     """Validate job_id UUID format. Raises HTTPException if invalid."""
     if not job_id or not JOB_ID_PATTERN.match(job_id):
-        raise HTTPException(
-            status_code=400, detail="Invalid job_id: must be a valid UUID"
-        )
+        raise HTTPException(status_code=400, detail="Invalid job_id: must be a valid UUID")
     return job_id
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -384,9 +381,7 @@ def build_player_response(player: Any) -> dict:
             "spray_accuracy": round(player.spray_accuracy, 1),
             "counter_strafe_pct": round(player.counter_strafe_pct, 1),
             # TTD and CP
-            "time_to_damage_ms": (
-                round(player.ttd_median_ms, 1) if player.ttd_median_ms else None
-            ),
+            "time_to_damage_ms": (round(player.ttd_median_ms, 1) if player.ttd_median_ms else None),
             "crosshair_placement_deg": (
                 round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None
             ),
@@ -489,9 +484,11 @@ def rate_limit(limit_string: str):
     """Decorator for rate limiting. No-op if slowapi not available."""
     if RATE_LIMITING_ENABLED and limiter:
         return limiter.limit(limit_string)
+
     # Return identity decorator if rate limiting disabled
     def identity(func):
         return func
+
     return identity
 
 
@@ -1416,9 +1413,7 @@ class YourMatchResponse(BaseModel):
 
     persona: dict[str, Any] = Field(..., description="Match identity persona")
     top_5: list[dict[str, Any]] = Field(..., description="Top 5 stats with rankings")
-    comparison: list[dict[str, Any]] = Field(
-        ..., description="This Match vs Average comparison"
-    )
+    comparison: list[dict[str, Any]] = Field(..., description="This Match vs Average comparison")
     match_count: int = Field(..., description="Number of matches in baseline")
 
 
@@ -1471,9 +1466,7 @@ async def store_match_for_player(
 
     except Exception as e:
         logger.exception("Failed to store match")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to store match: {e!s}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to store match: {e!s}") from e
 
 
 @app.get("/api/your-match/baselines/{steam_id}")
@@ -1499,9 +1492,7 @@ async def get_player_baselines_endpoint(steam_id: str) -> dict[str, Any]:
 
     except Exception as e:
         logger.exception("Failed to get baselines")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get baselines: {e!s}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to get baselines: {e!s}") from e
 
 
 @app.get("/api/your-match/history/{steam_id}")
@@ -1529,9 +1520,7 @@ async def get_player_match_history_endpoint(
 
     except Exception as e:
         logger.exception("Failed to get match history")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get match history: {e!s}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to get match history: {e!s}") from e
 
 
 @app.get("/api/your-match/persona/{steam_id}")
@@ -1592,9 +1581,7 @@ async def get_player_persona_endpoint(steam_id: str) -> dict[str, Any]:
         aggregated["trade_kill_opportunities"] = sum(
             m.get("trade_kill_opportunities", 0) for m in history
         )
-        aggregated["clutch_situations"] = sum(
-            m.get("clutch_situations", 0) for m in history
-        )
+        aggregated["clutch_situations"] = sum(m.get("clutch_situations", 0) for m in history)
         aggregated["entry_attempts"] = sum(m.get("entry_attempts", 0) for m in history)
 
         # Determine persona
@@ -1618,9 +1605,7 @@ async def get_player_persona_endpoint(steam_id: str) -> dict[str, Any]:
 
     except Exception as e:
         logger.exception("Failed to get persona")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get persona: {e!s}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to get persona: {e!s}") from e
 
 
 # Parameterized route MUST come AFTER static routes
@@ -1716,9 +1701,7 @@ async def get_your_match(demo_id: str, steam_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/players/{steam_id}/metrics")
-async def get_player_metrics(
-    steam_id: str, demo_id: str = Query(None, max_length=64)
-) -> dict:
+async def get_player_metrics(steam_id: str, demo_id: str = Query(None, max_length=64)) -> dict:
     """
     Get professional metrics for a player.
 

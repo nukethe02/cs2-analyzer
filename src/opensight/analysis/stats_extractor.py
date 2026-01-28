@@ -288,6 +288,7 @@ def extract_player_stats_row(player: Any, my_team_steam_ids: set[str]) -> Player
     Returns:
         PlayerStatsRow with extracted stats
     """
+
     # Helper to get value from dict or object
     def get_val(key: str, default: Any = 0) -> Any:
         if isinstance(player, dict):
@@ -355,12 +356,16 @@ def extract_player_stats_row(player: Any, my_team_steam_ids: set[str]) -> Player
     impact_rating = float(get_val("impact_rating", 0))
 
     # Calculate personal performance
-    player_dict = player if isinstance(player, dict) else {
-        "kills": kills,
-        "deaths": deaths,
-        "assists": assists,
-        "rounds_played": rounds_played,
-    }
+    player_dict = (
+        player
+        if isinstance(player, dict)
+        else {
+            "kills": kills,
+            "deaths": deaths,
+            "assists": assists,
+            "rounds_played": rounds_played,
+        }
+    )
     performance = calculate_personal_performance(player_dict)
 
     # Advanced stats

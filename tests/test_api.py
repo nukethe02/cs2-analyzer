@@ -443,9 +443,7 @@ class TestPathTraversal:
     def test_analyze_path_traversal_in_filename(self):
         """Analyze endpoint handles path traversal attempts safely."""
         # Path traversal attempt in filename
-        files = {
-            "file": ("../../etc/passwd.dem", io.BytesIO(b"FAKE"), "application/octet-stream")
-        }
+        files = {"file": ("../../etc/passwd.dem", io.BytesIO(b"FAKE"), "application/octet-stream")}
         response = client.post("/analyze", files=files)
         # Should accept since extension is .dem (filename sanitized) or rate limited
         assert response.status_code in (202, 429)
