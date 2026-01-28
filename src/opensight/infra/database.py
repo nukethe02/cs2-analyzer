@@ -231,6 +231,165 @@ class Round(Base):
     __table_args__ = (Index("idx_round_match_num", "match_id", "round_num"),)
 
 
+class MatchHistory(Base):
+    """Individual match history for 'Your Match' personal performance tracking."""
+
+    __tablename__ = "match_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    steam_id = Column(String(20), nullable=False, index=True)
+    demo_hash = Column(String(64), nullable=False, index=True)
+    analyzed_at = Column(DateTime, default=datetime.utcnow)
+
+    # Match metadata
+    map_name = Column(String(50))
+    result = Column(String(10))  # 'win', 'loss', 'draw'
+
+    # Core stats
+    kills = Column(Integer, default=0)
+    deaths = Column(Integer, default=0)
+    assists = Column(Integer, default=0)
+    adr = Column(Float, default=0.0)
+    kast = Column(Float, default=0.0)
+    hs_pct = Column(Float, default=0.0)
+
+    # Ratings
+    aim_rating = Column(Float, default=50.0)
+    utility_rating = Column(Float, default=50.0)
+    hltv_rating = Column(Float, default=1.0)
+    opensight_rating = Column(Float, default=50.0)
+
+    # Trade stats
+    trade_kill_opportunities = Column(Integer, default=0)
+    trade_kill_attempts = Column(Integer, default=0)
+    trade_kill_success = Column(Integer, default=0)
+
+    # Entry stats
+    entry_attempts = Column(Integer, default=0)
+    entry_success = Column(Integer, default=0)
+
+    # Clutch stats
+    clutch_situations = Column(Integer, default=0)
+    clutch_wins = Column(Integer, default=0)
+    clutch_kills = Column(Integer, default=0)
+
+    # Utility stats
+    he_damage = Column(Integer, default=0)
+    enemies_flashed = Column(Integer, default=0)
+    flash_assists = Column(Integer, default=0)
+
+    # Advanced metrics
+    ttd_median_ms = Column(Float)
+    cp_median_deg = Column(Float)
+
+    # Rounds
+    rounds_played = Column(Integer, default=0)
+
+    __table_args__ = (
+        Index("idx_match_history_steam_analyzed", "steam_id", "analyzed_at"),
+        # SQLite doesn't support UNIQUE in table_args the same way, use UniqueConstraint
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "steam_id": self.steam_id,
+            "demo_hash": self.demo_hash,
+            "analyzed_at": self.analyzed_at.isoformat() if self.analyzed_at else None,
+            "map_name": self.map_name,
+            "result": self.result,
+            "kills": self.kills,
+            "deaths": self.deaths,
+            "assists": self.assists,
+            "adr": round(self.adr, 1) if self.adr else 0,
+            "kast": round(self.kast, 1) if self.kast else 0,
+            "hs_pct": round(self.hs_pct, 1) if self.hs_pct else 0,
+            "aim_rating": round(self.aim_rating, 1) if self.aim_rating else 50,
+            "utility_rating": round(self.utility_rating, 1) if self.utility_rating else 50,
+            "hltv_rating": round(self.hltv_rating, 2) if self.hltv_rating else 1.0,
+            "opensight_rating": round(self.opensight_rating, 1) if self.opensight_rating else 50,
+            "trade_kill_opportunities": self.trade_kill_opportunities,
+            "clutch_kills": self.clutch_kills,
+            "entry_attempts": self.entry_attempts,
+            "entry_success": self.entry_success,
+        }
+
+
+class PlayerBaseline(Base):
+    """Rolling baselines for player metrics comparison."""
+
+    __tablename__ = "player_baselines"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    steam_id = Column(String(20), nullable=False, index=True)
+    metric = Column(String(50), nullable=False)
+
+    # Statistical values
+    avg_value = Column(Float, default=0.0)
+    std_value = Column(Float, default=0.0)
+    min_value = Column(Float)
+    max_value = Column(Float)
+
+    # Sample tracking
+    sample_count = Column(Integer, default=0)
+    window_size = Column(Integer, default=30)
+
+    # Last update timestamp
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_player_baselines_steam_metric", "steam_id", "metric"),
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API responses."""
+        return {
+            "steam_id": self.steam_id,
+            "metric": self.metric,
+            "avg": round(self.avg_value, 2) if self.avg_value else 0,
+            "std": round(self.std_value, 2) if self.std_value else 0,
+            "min": round(self.min_value, 2) if self.min_value else None,
+            "max": round(self.max_value, 2) if self.max_value else None,
+            "sample_count": self.sample_count,
+        }
+
+
+class PlayerPersona(Base):
+    """Player persona tracking for Match Identity feature."""
+
+    __tablename__ = "player_personas"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    steam_id = Column(String(20), nullable=False, unique=True, index=True)
+
+    # Current persona
+    current_persona = Column(String(50), default="the_competitor")
+    persona_confidence = Column(Float, default=0.0)
+
+    # Persona history (JSON array)
+    persona_history_json = Column(Text)
+
+    # Top traits
+    primary_trait = Column(String(50))
+    secondary_trait = Column(String(50))
+
+    # Calculation timestamp
+    calculated_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API responses."""
+        history = json.loads(self.persona_history_json) if self.persona_history_json else []
+        return {
+            "steam_id": self.steam_id,
+            "persona": self.current_persona,
+            "confidence": round(self.persona_confidence, 2) if self.persona_confidence else 0,
+            "primary_trait": self.primary_trait,
+            "secondary_trait": self.secondary_trait,
+            "history": history[-5:],  # Last 5 personas
+        }
+
+
 class PlayerProfile(Base):
     """Aggregated player statistics across all matches."""
 
@@ -759,6 +918,289 @@ class DatabaseManager:
                 }
                 for i, p in enumerate(profiles)
             ]
+        finally:
+            session.close()
+
+    # =========================================================================
+    # Your Match - Match History Operations
+    # =========================================================================
+
+    def save_match_history_entry(
+        self,
+        steam_id: str,
+        demo_hash: str,
+        player_stats: dict[str, Any],
+        map_name: str | None = None,
+        result: str | None = None,
+    ) -> MatchHistory | None:
+        """
+        Save a match history entry for a player.
+
+        Args:
+            steam_id: Player's Steam ID (17 digits)
+            demo_hash: SHA256 hash of the demo file
+            player_stats: Dictionary of player statistics
+            map_name: Map name
+            result: 'win', 'loss', or 'draw'
+
+        Returns:
+            MatchHistory object if saved, None if duplicate
+        """
+        session = self.get_session()
+        try:
+            # Check for duplicate
+            existing = (
+                session.query(MatchHistory)
+                .filter(MatchHistory.steam_id == steam_id, MatchHistory.demo_hash == demo_hash)
+                .first()
+            )
+            if existing:
+                logger.debug(f"Match history already exists for {steam_id[:8]}...")
+                return None
+
+            entry = MatchHistory(
+                steam_id=steam_id,
+                demo_hash=demo_hash,
+                map_name=map_name,
+                result=result,
+                kills=player_stats.get("kills", 0),
+                deaths=player_stats.get("deaths", 0),
+                assists=player_stats.get("assists", 0),
+                adr=player_stats.get("adr", 0.0),
+                kast=player_stats.get("kast_percentage", player_stats.get("kast", 0.0)),
+                hs_pct=player_stats.get("headshot_percentage", player_stats.get("hs_pct", 0.0)),
+                aim_rating=player_stats.get("aim_rating", 50.0),
+                utility_rating=player_stats.get("utility_rating", 50.0),
+                hltv_rating=player_stats.get("hltv_rating", 1.0),
+                opensight_rating=player_stats.get("opensight_rating", 50.0),
+                trade_kill_opportunities=player_stats.get("trade_kill_opportunities", 0),
+                trade_kill_attempts=player_stats.get("trade_kill_attempts", 0),
+                trade_kill_success=player_stats.get("kills_traded", player_stats.get("trade_kill_success", 0)),
+                entry_attempts=player_stats.get("opening_duel_attempts", player_stats.get("entry_attempts", 0)),
+                entry_success=player_stats.get("opening_duel_wins", player_stats.get("entry_success", 0)),
+                clutch_situations=player_stats.get("clutch_situations", 0),
+                clutch_wins=player_stats.get("clutch_wins", 0),
+                clutch_kills=player_stats.get("clutch_kills", 0),
+                he_damage=player_stats.get("he_damage", 0),
+                enemies_flashed=player_stats.get("enemies_flashed", 0),
+                flash_assists=player_stats.get("flash_assists", 0),
+                ttd_median_ms=player_stats.get("ttd_median_ms"),
+                cp_median_deg=player_stats.get("cp_median_error_deg", player_stats.get("cp_median_deg")),
+                rounds_played=player_stats.get("rounds_played", 0),
+            )
+            session.add(entry)
+            session.commit()
+            logger.info(f"Saved match history for {steam_id[:8]}...")
+            return entry
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to save match history: {e}")
+            raise
+        finally:
+            session.close()
+
+    def get_player_history(self, steam_id: str, limit: int = 30) -> list[dict]:
+        """Get a player's match history for baseline calculation."""
+        session = self.get_session()
+        try:
+            entries = (
+                session.query(MatchHistory)
+                .filter(MatchHistory.steam_id == steam_id)
+                .order_by(MatchHistory.analyzed_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return [e.to_dict() for e in entries]
+        finally:
+            session.close()
+
+    def get_player_baselines(self, steam_id: str) -> dict[str, dict]:
+        """Get all baselines for a player."""
+        session = self.get_session()
+        try:
+            baselines = (
+                session.query(PlayerBaseline)
+                .filter(PlayerBaseline.steam_id == steam_id)
+                .all()
+            )
+            return {b.metric: b.to_dict() for b in baselines}
+        finally:
+            session.close()
+
+    def update_player_baselines(self, steam_id: str, window_size: int = 30) -> dict[str, dict]:
+        """
+        Recalculate and update baselines for a player from their match history.
+
+        Args:
+            steam_id: Player's Steam ID
+            window_size: Number of recent matches to include (default 30)
+
+        Returns:
+            Updated baselines dictionary
+        """
+        import statistics
+
+        session = self.get_session()
+        try:
+            # Get recent matches
+            history = (
+                session.query(MatchHistory)
+                .filter(MatchHistory.steam_id == steam_id)
+                .order_by(MatchHistory.analyzed_at.desc())
+                .limit(window_size)
+                .all()
+            )
+
+            if not history:
+                return {}
+
+            # Metrics to track
+            metrics_config = {
+                "kills": lambda h: h.kills,
+                "deaths": lambda h: h.deaths,
+                "adr": lambda h: h.adr,
+                "kast": lambda h: h.kast,
+                "hs_pct": lambda h: h.hs_pct,
+                "aim_rating": lambda h: h.aim_rating,
+                "utility_rating": lambda h: h.utility_rating,
+                "hltv_rating": lambda h: h.hltv_rating,
+                "opensight_rating": lambda h: h.opensight_rating,
+                "trade_kill_opportunities": lambda h: h.trade_kill_opportunities,
+                "trade_kill_success": lambda h: h.trade_kill_success,
+                "entry_attempts": lambda h: h.entry_attempts,
+                "entry_success": lambda h: h.entry_success,
+                "clutch_situations": lambda h: h.clutch_situations,
+                "clutch_wins": lambda h: h.clutch_wins,
+                "clutch_kills": lambda h: h.clutch_kills,
+                "he_damage": lambda h: h.he_damage,
+                "enemies_flashed": lambda h: h.enemies_flashed,
+                "flash_assists": lambda h: h.flash_assists,
+                "ttd_median_ms": lambda h: h.ttd_median_ms,
+                "cp_median_deg": lambda h: h.cp_median_deg,
+            }
+
+            updated_baselines = {}
+
+            for metric_name, extractor in metrics_config.items():
+                values = [extractor(h) for h in history if extractor(h) is not None]
+
+                if not values:
+                    continue
+
+                avg_val = sum(values) / len(values)
+                std_val = statistics.stdev(values) if len(values) > 1 else 0.0
+                min_val = min(values)
+                max_val = max(values)
+
+                # Upsert baseline
+                baseline = (
+                    session.query(PlayerBaseline)
+                    .filter(
+                        PlayerBaseline.steam_id == steam_id,
+                        PlayerBaseline.metric == metric_name,
+                    )
+                    .first()
+                )
+
+                if baseline:
+                    baseline.avg_value = avg_val
+                    baseline.std_value = std_val
+                    baseline.min_value = min_val
+                    baseline.max_value = max_val
+                    baseline.sample_count = len(values)
+                    baseline.window_size = window_size
+                else:
+                    baseline = PlayerBaseline(
+                        steam_id=steam_id,
+                        metric=metric_name,
+                        avg_value=avg_val,
+                        std_value=std_val,
+                        min_value=min_val,
+                        max_value=max_val,
+                        sample_count=len(values),
+                        window_size=window_size,
+                    )
+                    session.add(baseline)
+
+                updated_baselines[metric_name] = {
+                    "avg": round(avg_val, 2),
+                    "std": round(std_val, 2),
+                    "min": round(min_val, 2),
+                    "max": round(max_val, 2),
+                    "sample_count": len(values),
+                }
+
+            session.commit()
+            logger.info(f"Updated {len(updated_baselines)} baselines for {steam_id[:8]}...")
+            return updated_baselines
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to update baselines: {e}")
+            raise
+        finally:
+            session.close()
+
+    def get_player_persona(self, steam_id: str) -> dict | None:
+        """Get a player's current persona."""
+        session = self.get_session()
+        try:
+            persona = (
+                session.query(PlayerPersona)
+                .filter(PlayerPersona.steam_id == steam_id)
+                .first()
+            )
+            return persona.to_dict() if persona else None
+        finally:
+            session.close()
+
+    def update_player_persona(
+        self,
+        steam_id: str,
+        persona_id: str,
+        confidence: float,
+        primary_trait: str | None = None,
+        secondary_trait: str | None = None,
+    ) -> PlayerPersona:
+        """Update or create a player's persona."""
+        session = self.get_session()
+        try:
+            persona = (
+                session.query(PlayerPersona)
+                .filter(PlayerPersona.steam_id == steam_id)
+                .first()
+            )
+
+            if persona:
+                # Update existing
+                old_history = json.loads(persona.persona_history_json) if persona.persona_history_json else []
+                old_history.append(persona.current_persona)
+                if len(old_history) > 10:
+                    old_history = old_history[-10:]
+
+                persona.current_persona = persona_id
+                persona.persona_confidence = confidence
+                persona.persona_history_json = json.dumps(old_history)
+                persona.primary_trait = primary_trait
+                persona.secondary_trait = secondary_trait
+                persona.calculated_at = datetime.utcnow()
+            else:
+                # Create new
+                persona = PlayerPersona(
+                    steam_id=steam_id,
+                    current_persona=persona_id,
+                    persona_confidence=confidence,
+                    persona_history_json=json.dumps([]),
+                    primary_trait=primary_trait,
+                    secondary_trait=secondary_trait,
+                )
+                session.add(persona)
+
+            session.commit()
+            return persona
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to update persona: {e}")
+            raise
         finally:
             session.close()
 

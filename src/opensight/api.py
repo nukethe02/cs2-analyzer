@@ -1422,90 +1422,9 @@ class YourMatchResponse(BaseModel):
     match_count: int = Field(..., description="Number of matches in baseline")
 
 
-@app.get("/api/your-match/{demo_id}/{steam_id}")
-async def get_your_match(demo_id: str, steam_id: str) -> dict[str, Any]:
-    """
-    Get personalized match performance data (Leetify-style "Your Match" feature).
-
-    Returns:
-    - Match Identity persona
-    - Top 5 Stats with progress bars
-    - This Match vs Your 30 Match Average comparison
-
-    Args:
-        demo_id: Demo hash or job ID (alphanumeric, max 64 chars)
-        steam_id: Player's Steam ID (17 digits)
-    """
-    # Validate inputs
-    validate_demo_id(demo_id)
-    validate_steam_id(steam_id)
-
-    try:
-        from opensight.analysis.persona import PersonaAnalyzer
-        from opensight.infra.database import get_db
-
-        db = get_db()
-
-        # Get current match stats from job store
-        current_stats = None
-        job = job_store.get_job(demo_id)
-
-        if job and job.result:
-            # Extract player stats from job result
-            players = job.result.get("players", [])
-            for player in players:
-                if str(player.get("steam_id")) == steam_id:
-                    current_stats = player
-                    break
-
-        if not current_stats:
-            # Try to find in match history
-            history = db.get_player_history(steam_id, limit=1)
-            if history:
-                current_stats = history[0]
-            else:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No stats found for player {steam_id} in demo {demo_id}",
-                )
-
-        # Get player baselines
-        baselines = db.get_player_baselines(steam_id)
-
-        # Initialize persona analyzer
-        analyzer = PersonaAnalyzer(baselines)
-
-        # Determine persona
-        persona = analyzer.determine_persona(current_stats)
-
-        # Calculate top 5 stats
-        top_5 = analyzer.calculate_top_5_stats(current_stats, baselines)
-
-        # Build comparison table
-        comparison = analyzer.build_comparison_table(current_stats, baselines)
-
-        # Get match count from baselines
-        match_count = 0
-        if baselines:
-            first_baseline = next(iter(baselines.values()), {})
-            match_count = first_baseline.get("sample_count", 0)
-
-        return {
-            "persona": persona.to_dict(),
-            "top_5": [s.to_dict() for s in top_5],
-            "comparison": [c.to_dict() for c in comparison],
-            "match_count": match_count,
-            "steam_id": steam_id,
-            "demo_id": demo_id,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Your Match data retrieval failed")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve Your Match data: {e!s}"
-        ) from e
+# NOTE: Static path routes must come BEFORE parameterized routes to avoid conflicts
+# FastAPI matches routes in order, so /api/your-match/baselines/{steam_id}
+# must be defined before /api/your-match/{demo_id}/{steam_id}
 
 
 @app.post("/api/your-match/store")
@@ -1701,6 +1620,93 @@ async def get_player_persona_endpoint(steam_id: str) -> dict[str, Any]:
         logger.exception("Failed to get persona")
         raise HTTPException(
             status_code=500, detail=f"Failed to get persona: {e!s}"
+        ) from e
+
+
+# Parameterized route MUST come AFTER static routes
+@app.get("/api/your-match/{demo_id}/{steam_id}")
+async def get_your_match(demo_id: str, steam_id: str) -> dict[str, Any]:
+    """
+    Get personalized match performance data (Leetify-style "Your Match" feature).
+
+    Returns:
+    - Match Identity persona
+    - Top 5 Stats with progress bars
+    - This Match vs Your 30 Match Average comparison
+
+    Args:
+        demo_id: Demo hash or job ID (alphanumeric, max 64 chars)
+        steam_id: Player's Steam ID (17 digits)
+    """
+    # Validate inputs
+    validate_demo_id(demo_id)
+    validate_steam_id(steam_id)
+
+    try:
+        from opensight.analysis.persona import PersonaAnalyzer
+        from opensight.infra.database import get_db
+
+        db = get_db()
+
+        # Get current match stats from job store
+        current_stats = None
+        job = job_store.get_job(demo_id)
+
+        if job and job.result:
+            # Extract player stats from job result
+            players = job.result.get("players", [])
+            for player in players:
+                if str(player.get("steam_id")) == steam_id:
+                    current_stats = player
+                    break
+
+        if not current_stats:
+            # Try to find in match history
+            history = db.get_player_history(steam_id, limit=1)
+            if history:
+                current_stats = history[0]
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No stats found for player {steam_id} in demo {demo_id}",
+                )
+
+        # Get player baselines
+        baselines = db.get_player_baselines(steam_id)
+
+        # Initialize persona analyzer
+        analyzer = PersonaAnalyzer(baselines)
+
+        # Determine persona
+        persona = analyzer.determine_persona(current_stats)
+
+        # Calculate top 5 stats
+        top_5 = analyzer.calculate_top_5_stats(current_stats, baselines)
+
+        # Build comparison table
+        comparison = analyzer.build_comparison_table(current_stats, baselines)
+
+        # Get match count from baselines
+        match_count = 0
+        if baselines:
+            first_baseline = next(iter(baselines.values()), {})
+            match_count = first_baseline.get("sample_count", 0)
+
+        return {
+            "persona": persona.to_dict(),
+            "top_5": [s.to_dict() for s in top_5],
+            "comparison": [c.to_dict() for c in comparison],
+            "match_count": match_count,
+            "steam_id": steam_id,
+            "demo_id": demo_id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Your Match data retrieval failed")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve Your Match data: {e!s}"
         ) from e
 
 
