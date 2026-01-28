@@ -14,8 +14,6 @@ from typing import Any
 
 from opensight.analysis.hltv_rating import (
     calculate_hltv_rating,
-    get_rating_color,
-    get_rating_tier,
 )
 
 
@@ -461,7 +459,7 @@ def extract_enhanced_stats(
     Returns:
         EnhancedStatsData with all formatted data for the tables
     """
-    my_team_set = set(str(sid) for sid in my_team_steam_ids)
+    my_team_set = {str(sid) for sid in my_team_steam_ids}
 
     # Extract all player rows
     all_rows = [extract_player_stats_row(p, my_team_set) for p in players]

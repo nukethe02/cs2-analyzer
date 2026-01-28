@@ -5,10 +5,8 @@ Tests persona analysis, baseline calculation, match history storage,
 and API endpoints for the Leetify-style personal performance dashboard.
 """
 
-import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
