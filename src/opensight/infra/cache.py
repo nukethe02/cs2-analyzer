@@ -824,6 +824,11 @@ class CachedAnalyzer:
         rounds_data = getattr(demo_data, "rounds", [])
         player_names = getattr(demo_data, "player_names", {})
 
+        logger.info(
+            f"Building timeline: {len(kills)} kills, {len(rounds_data)} rounds, "
+            f"{len(player_names)} players"
+        )
+
         # Build round boundaries for tick-based inference
         round_boundaries = {}  # round_num -> (start_tick, end_tick)
         round_info = {}  # round_num -> round data
@@ -1021,6 +1026,14 @@ class CachedAnalyzer:
                     "events": events,
                 }
             )
+
+        # Log timeline generation stats
+        total_events = sum(len(r.get("events", [])) for r in timeline)
+        rounds_with_events = sum(1 for r in timeline if r.get("events"))
+        logger.info(
+            f"Built round timeline: {len(timeline)} rounds, "
+            f"{rounds_with_events} with events, {total_events} total events"
+        )
 
         return timeline
 
