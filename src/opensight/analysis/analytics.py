@@ -1888,32 +1888,14 @@ class DemoAnalyzer:
             logger.info("Skipping clutch detection - missing required columns")
             return
 
-        # Build player team lookup from player data
-        player_team_lookup: dict[int, str] = {}
-        for steam_id, player in self._players.items():
-            player_team_lookup[steam_id] = player.team
-        # Also add from data.player_teams if available
-        if hasattr(self.data, "player_teams"):
-            for steam_id, team_num in self.data.player_teams.items():
-                if steam_id not in player_team_lookup:
-                    player_team_lookup[steam_id] = (
-                        "CT" if team_num == 3 else "T" if team_num == 2 else "Unknown"
-                    )
-
-        # Check if we have team column or can use fallback
+        # Check if we have team columns - required for proper detection
         use_team_column = bool(self._vic_side_col)
-        if not use_team_column and not player_team_lookup:
-            logger.info("Skipping clutch detection - no team data available")
-            return
+        att_team_col = self._att_side_col
 
         # Build round winner lookup from rounds data
         round_winners: dict[int, str] = {}
         for round_info in self.data.rounds:
             round_winners[round_info.round_num] = round_info.winner
-
-        # Get all unique players per team
-        ct_players = {sid for sid, p in self._players.items() if p.team == "CT"}
-        t_players = {sid for sid, p in self._players.items() if p.team == "T"}
 
         total_clutch_situations = 0
         total_clutch_wins = 0
@@ -1924,14 +1906,38 @@ class DemoAnalyzer:
                 "tick"
             )
 
+            if round_kills.empty:
+                continue
+
             # Get round winner (CT or T)
             round_winner = round_winners.get(round_num_int, "Unknown")
 
-            # Initialize alive sets for this round - start with all players alive
-            ct_alive = ct_players.copy()
-            t_alive = t_players.copy()
+            # Build per-round team rosters from kill events
+            # This handles side swaps correctly by reading team from each event
+            ct_alive: set[int] = set()
+            t_alive: set[int] = set()
 
-            # Skip rounds with no players on either side
+            # First pass: collect all players and their teams for THIS round
+            for _, kill in round_kills.iterrows():
+                # Add attacker to their team
+                attacker_id = safe_int(kill.get(self._att_id_col)) if self._att_id_col else 0
+                if attacker_id and use_team_column and att_team_col:
+                    att_side = self._normalize_team(kill.get(att_team_col))
+                    if att_side == "CT":
+                        ct_alive.add(attacker_id)
+                    elif att_side == "T":
+                        t_alive.add(attacker_id)
+
+                # Add victim to their team
+                victim_id = safe_int(kill.get(self._vic_id_col))
+                if victim_id and use_team_column:
+                    vic_side = self._normalize_team(kill.get(self._vic_side_col))
+                    if vic_side == "CT":
+                        ct_alive.add(victim_id)
+                    elif vic_side == "T":
+                        t_alive.add(victim_id)
+
+            # Skip rounds with incomplete team data
             if not ct_alive or not t_alive:
                 continue
 
@@ -1939,17 +1945,23 @@ class DemoAnalyzer:
             clutch_detected: dict[str, bool] = {"CT": False, "T": False}
             clutch_info: dict[str, dict[str, Any]] = {}
 
-            # Process deaths in tick order to track alive status
+            # Second pass: process deaths in tick order to track alive status
             for _, kill in round_kills.iterrows():
                 victim_id = safe_int(kill.get(self._vic_id_col))
                 if not victim_id:
                     continue
 
-                # Get victim team - prefer column, fallback to lookup
+                # Get victim team from the kill event (handles side swaps correctly)
                 if use_team_column:
                     victim_side = self._normalize_team(kill.get(self._vic_side_col))
                 else:
-                    victim_side = player_team_lookup.get(victim_id, "Unknown")
+                    # Fallback: determine from current alive sets
+                    if victim_id in ct_alive:
+                        victim_side = "CT"
+                    elif victim_id in t_alive:
+                        victim_side = "T"
+                    else:
+                        victim_side = "Unknown"
 
                 # Remove victim from alive set
                 if victim_side == "CT":
@@ -2016,19 +2028,21 @@ class DemoAnalyzer:
                     outcome = "SAVED"
                     clutch_won = False
 
-                # Count enemies killed during clutch
+                # Count enemies killed during clutch (by the clutcher)
                 enemies_killed = 0
                 enemy_side = "T" if side == "CT" else "CT"
                 for _, kill in round_kills.iterrows():
                     attacker_id = (
                         safe_int(kill.get(self._att_id_col)) if self._att_id_col else 0
                     )
+                    if attacker_id != clutcher_id:
+                        continue
+                    # Get victim team from kill event
                     if use_team_column:
                         vic_side = self._normalize_team(kill.get(self._vic_side_col))
                     else:
-                        vic_id = safe_int(kill.get(self._vic_id_col))
-                        vic_side = player_team_lookup.get(vic_id, "Unknown")
-                    if attacker_id == clutcher_id and vic_side == enemy_side:
+                        vic_side = "Unknown"
+                    if vic_side == enemy_side:
                         enemies_killed += 1
 
                 # Create clutch type string
