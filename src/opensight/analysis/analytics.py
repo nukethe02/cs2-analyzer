@@ -250,6 +250,9 @@ class TradeStats:
     deaths_traded: int = 0  # Your deaths that were avenged by teammates
     trade_attempts: int = 0  # Opportunities to trade (teammate deaths where you could trade)
     failed_trades: int = 0  # Trade opportunities where you didn't get the trade
+    # Entry-specific trade stats
+    traded_entry_kills: int = 0  # Trade kills where the original kill was the entry frag
+    traded_entry_deaths: int = 0  # Entry deaths that were traded by teammates
 
     @property
     def trade_rate(self) -> float:
@@ -1555,8 +1558,8 @@ class DemoAnalyzer:
         damages_df = self.data.damages_df
         rounds_data = self.data.rounds
 
-        if damages_df.empty or not rounds_data:
-            logger.info("Skipping RWS calculation - missing damage or round data")
+        if damages_df.empty:
+            logger.info("Skipping RWS calculation - no damage data")
             return
 
         # Find damage and round columns
@@ -1565,16 +1568,43 @@ class DemoAnalyzer:
         round_col = self._find_col(damages_df, ["round_num", "round"])
 
         if not dmg_att_col or not dmg_col or not round_col:
-            logger.info("Skipping RWS calculation - missing required columns")
+            logger.info(f"Skipping RWS calculation - missing columns. att={dmg_att_col}, dmg={dmg_col}, round={round_col}")
             return
 
-        # Get attacker team column
-        att_team_col = self._find_col(damages_df, ["attacker_side", "attacker_team"])
+        # Get attacker team column (check DataFrame columns, not row)
+        att_team_col = self._find_col(damages_df, ["attacker_side", "attacker_team", "attacker_team_name"])
+        has_team_col = att_team_col is not None and att_team_col in damages_df.columns
 
-        # Build dict of round winners
+        # Build dict of round winners from rounds data
         round_winners: dict[int, str] = {}
-        for round_info in rounds_data:
-            round_winners[round_info.round_num] = round_info.winner
+        if rounds_data:
+            for round_info in rounds_data:
+                round_winners[round_info.round_num] = round_info.winner
+            logger.info(f"RWS: Built round winners from {len(rounds_data)} rounds")
+        else:
+            logger.info("RWS: No rounds data - will infer winners from damage patterns")
+
+        # Build player starting team lookup for halftime handling
+        player_starting_team: dict[int, str] = {}
+        for steam_id, player in self._players.items():
+            player_starting_team[steam_id] = player.team
+
+        # Also add from data.player_teams if available
+        if hasattr(self.data, "player_teams"):
+            for steam_id, team_num in self.data.player_teams.items():
+                if steam_id not in player_starting_team:
+                    player_starting_team[steam_id] = "CT" if team_num == 3 else "T" if team_num == 2 else "Unknown"
+
+        def get_player_team_for_round(player_id: int, round_num: int) -> str:
+            """Get player's team for a specific round, handling halftime swap."""
+            starting_team = player_starting_team.get(player_id, "Unknown")
+            if starting_team not in ["CT", "T"]:
+                return "Unknown"
+
+            # Standard CS2 MR12: rounds 1-12 = first half, 13+ = second half (teams swap)
+            if round_num > 12:
+                return "T" if starting_team == "CT" else "CT"
+            return starting_team
 
         # Track RWS contributions per player
         from collections import defaultdict
@@ -1583,15 +1613,39 @@ class DemoAnalyzer:
         player_damage_in_won: dict[int, int] = defaultdict(int)
         player_rounds_won: dict[int, int] = defaultdict(int)
 
+        # Track for debugging
+        rounds_processed = 0
+        rounds_with_winner = 0
+
         # Group damage by round
         for round_num, round_damages in damages_df.groupby(round_col):
             round_num = safe_int(round_num)
-            if round_num not in round_winners:
+            if round_num <= 0:
                 continue
 
-            winning_side = round_winners[round_num]
+            rounds_processed += 1
+
+            # Get winning side for this round
+            winning_side = round_winners.get(round_num, "Unknown")
+
+            # If no round winner data, try to infer from kills
+            if winning_side not in ["CT", "T"] and hasattr(self.data, "kills_df") and not self.data.kills_df.empty:
+                # Infer winner: count deaths per team, team with fewer deaths likely won
+                # This is a heuristic fallback
+                kills_df = self.data.kills_df
+                round_kills = kills_df[kills_df[self._round_col] == round_num] if self._round_col else pd.DataFrame()
+                if not round_kills.empty and self._vic_side_col:
+                    ct_deaths = sum(1 for _, k in round_kills.iterrows() if self._normalize_team(k.get(self._vic_side_col)) == "CT")
+                    t_deaths = sum(1 for _, k in round_kills.iterrows() if self._normalize_team(k.get(self._vic_side_col)) == "T")
+                    if ct_deaths >= 5:
+                        winning_side = "T"
+                    elif t_deaths >= 5:
+                        winning_side = "CT"
+
             if winning_side not in ["CT", "T"]:
                 continue
+
+            rounds_with_winner += 1
 
             # Calculate team damage for this round
             team_damage: dict[str, int] = {"CT": 0, "T": 0}
@@ -1601,26 +1655,40 @@ class DemoAnalyzer:
                 attacker_id = safe_int(dmg_row.get(dmg_att_col))
                 damage = safe_int(dmg_row.get(dmg_col))
 
-                if attacker_id == 0 or damage == 0:
+                if attacker_id == 0 or damage <= 0:
                     continue
 
-                # Determine attacker's team
+                # Cap damage at 100 per event (no overkill)
+                damage = min(damage, 100)
+
+                # Determine attacker's team for THIS round (handle halftime)
                 attacker_team = "Unknown"
-                if att_team_col and att_team_col in dmg_row:
+
+                # Priority 1: Use team column from damage event if available
+                if has_team_col:
                     attacker_team = self._normalize_side(dmg_row.get(att_team_col))
-                elif attacker_id in self._players:
-                    attacker_team = self._players[attacker_id].team
+
+                # Priority 2: Look up from player data with halftime handling
+                if attacker_team not in ["CT", "T"]:
+                    attacker_team = get_player_team_for_round(attacker_id, round_num)
 
                 if attacker_team in ["CT", "T"]:
                     team_damage[attacker_team] += damage
-                    if attacker_team == winning_side:
-                        player_round_damage[attacker_id] += damage
+                    player_round_damage[attacker_id] = player_round_damage.get(attacker_id, 0) + damage
 
             # Calculate RWS contribution for players on winning team
             winning_team_total = team_damage[winning_side]
             if winning_team_total > 0:
                 for player_id, player_dmg in player_round_damage.items():
-                    if player_id in self._players:
+                    # Check if this player was on the winning team this round
+                    player_team_this_round = "Unknown"
+                    if has_team_col:
+                        # Already tracked damage only for attacker's team
+                        player_team_this_round = get_player_team_for_round(player_id, round_num)
+                    else:
+                        player_team_this_round = get_player_team_for_round(player_id, round_num)
+
+                    if player_team_this_round == winning_side and player_id in self._players:
                         rws_contribution = (player_dmg / winning_team_total) * 100
                         player_rws_contributions[player_id].append(rws_contribution)
                         player_damage_in_won[player_id] += player_dmg
@@ -1637,7 +1705,11 @@ class DemoAnalyzer:
             player.rounds_won = player_rounds_won.get(steam_id, 0)
 
         total_rws = sum(p.rws for p in self._players.values())
-        logger.info(f"RWS calculated for {len(self._players)} players (total: {total_rws:.1f})")
+        players_with_rws = sum(1 for p in self._players.values() if p.rws > 0)
+        logger.info(
+            f"RWS calculated: {players_with_rws}/{len(self._players)} players have RWS>0, "
+            f"total={total_rws:.1f}, rounds processed={rounds_processed}, with winner={rounds_with_winner}"
+        )
 
     def _normalize_side(self, value) -> str:
         """Normalize team/side values to 'CT' or 'T'."""
@@ -1659,14 +1731,37 @@ class DemoAnalyzer:
         return "Unknown"
 
     def _calculate_multi_kills(self) -> None:
-        """Calculate multi-kill rounds for each player."""
+        """Calculate multi-kill rounds for each player.
+
+        Counts enemy kills only (excludes teamkills).
+        Each round is assigned to exactly one category (1K, 2K, 3K, 4K, or 5K).
+        """
         kills_df = self.data.kills_df
         if kills_df.empty or not self._round_col or not self._att_id_col:
             logger.info("Skipping multi-kill calculation - missing columns")
             return
 
+        # Filter out teamkills if we have side columns
+        valid_kills = kills_df
+        if self._att_side_col and self._vic_side_col:
+            if (
+                self._att_side_col in kills_df.columns
+                and self._vic_side_col in kills_df.columns
+            ):
+                # Only count enemy kills (attacker_side != victim_side)
+                valid_kills = kills_df[
+                    kills_df[self._att_side_col] != kills_df[self._vic_side_col]
+                ]
+                teamkills_filtered = len(kills_df) - len(valid_kills)
+                if teamkills_filtered > 0:
+                    logger.debug(
+                        f"Multi-kill calc: filtered {teamkills_filtered} teamkills"
+                    )
+
         for steam_id, player in self._players.items():
-            player_kills = kills_df[kills_df[self._att_id_col].astype(float) == float(steam_id)]
+            player_kills = valid_kills[
+                valid_kills[self._att_id_col].astype(float) == float(steam_id)
+            ]
             if player_kills.empty:
                 continue
             kills_per_round = player_kills.groupby(self._round_col).size()
@@ -1795,6 +1890,8 @@ class DemoAnalyzer:
 
         total_trades = 0
         total_deaths_traded = 0
+        total_entry_trades = 0
+        total_entry_deaths_traded = 0
 
         for round_num in kills_df[self._round_col].unique():
             round_kills = (
@@ -1805,6 +1902,12 @@ class DemoAnalyzer:
 
             if len(round_kills) < 2:
                 continue
+
+            # Identify entry kill (first kill of this round) for entry trade tracking
+            entry_kill = round_kills.iloc[0]
+            entry_kill_victim_id = safe_int(entry_kill.get(self._vic_id_col))
+            entry_kill_attacker_id = safe_int(entry_kill.get(self._att_id_col))
+            entry_kill_tick = safe_int(entry_kill.get("tick"))
 
             # Use sliding window approach for efficiency
             for _i, kill in round_kills.iterrows():
@@ -1860,6 +1963,31 @@ class DemoAnalyzer:
                                 self._players[trader_id].trades.kills_traded += 1
                                 total_trades += 1
 
+                            # Check if this trade involves the entry kill
+                            # Case 1: The victim was the entry kill victim (first blood)
+                            # and their death was traded by a teammate
+                            if victim_id == entry_kill_victim_id:
+                                # The entry victim's death was traded
+                                if victim_id in self._players:
+                                    self._players[victim_id].trades.traded_entry_deaths += 1
+                                    total_entry_deaths_traded += 1
+                                # The trader got a traded entry kill
+                                if trader_id in self._players:
+                                    self._players[trader_id].trades.traded_entry_kills += 1
+                                    total_entry_trades += 1
+
+                            # Case 2: The entry fragger got killed and that death was traded
+                            # (entry fragger = attacker of first kill)
+                            elif victim_id == entry_kill_attacker_id:
+                                # Entry fragger's death was traded
+                                if victim_id in self._players:
+                                    self._players[victim_id].trades.traded_entry_deaths += 1
+                                    total_entry_deaths_traded += 1
+                                # Teammate who traded the entry fragger's death
+                                if trader_id in self._players:
+                                    self._players[trader_id].trades.traded_entry_kills += 1
+                                    total_entry_trades += 1
+
                             trade_found = True
                             break
 
@@ -1868,7 +1996,8 @@ class DemoAnalyzer:
                     pass
 
         logger.info(
-            f"Trade detection complete: {total_trades} trade kills, {total_deaths_traded} deaths traded"
+            f"Trade detection complete: {total_trades} trade kills, {total_deaths_traded} deaths traded, "
+            f"{total_entry_trades} entry trades, {total_entry_deaths_traded} entry deaths traded"
         )
 
     def _detect_clutches(self) -> None:
