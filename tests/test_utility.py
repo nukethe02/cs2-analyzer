@@ -350,3 +350,358 @@ class TestAnalyzeUtilityFunction:
         result = analyze_utility(demo)
         assert result.grenade_damage_events == []
         assert result.player_stats == {}
+
+
+class TestUtilityStatsDataclass:
+    """Tests for UtilityStats dataclass from analytics module."""
+
+    def test_utility_stats_default_values(self):
+        """UtilityStats has correct default values."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats()
+        assert stats.flashbangs_thrown == 0
+        assert stats.enemies_flashed == 0
+        assert stats.flash_assists == 0
+        assert stats.he_damage == 0
+        assert stats.total_utility == 0
+        assert stats.utility_quality_rating == 0.0
+        assert stats.utility_quantity_rating == 0.0
+
+    def test_total_utility_calculation(self):
+        """Total utility counts all grenade types."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=3,
+            smokes_thrown=2,
+            he_thrown=2,
+            molotovs_thrown=1,
+        )
+        assert stats.total_utility == 8
+
+    def test_total_utility_damage(self):
+        """Total utility damage combines HE and molotov damage."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            he_damage=75,
+            molotov_damage=45,
+        )
+        assert stats.total_utility_damage == 120
+
+    def test_enemies_flashed_per_flash(self):
+        """Enemies flashed per flash is calculated correctly."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=4,
+            enemies_flashed=6,
+        )
+        assert stats.enemies_flashed_per_flash == 1.5
+
+    def test_enemies_flashed_per_flash_zero_flashes(self):
+        """Enemies flashed per flash returns 0 when no flashes thrown."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=0,
+            enemies_flashed=0,
+        )
+        assert stats.enemies_flashed_per_flash == 0.0
+
+    def test_enemies_flashed_per_round(self):
+        """Enemies flashed per round is calculated correctly."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            enemies_flashed=12,
+            _rounds_played=10,
+        )
+        assert stats.enemies_flashed_per_round == 1.2
+
+    def test_friends_flashed_per_round(self):
+        """Friends flashed per round is calculated correctly."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            teammates_flashed=5,
+            _rounds_played=10,
+        )
+        assert stats.friends_flashed_per_round == 0.5
+
+    def test_avg_blind_time(self):
+        """Average blind time is calculated correctly."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            enemies_flashed=4,
+            total_blind_time=8.0,
+        )
+        assert stats.avg_blind_time == 2.0
+
+    def test_avg_blind_time_zero_enemies(self):
+        """Average blind time returns 0 when no enemies flashed."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            enemies_flashed=0,
+            total_blind_time=0.0,
+        )
+        assert stats.avg_blind_time == 0.0
+
+    def test_he_damage_per_nade(self):
+        """HE damage per nade is calculated correctly."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            he_thrown=3,
+            he_damage=90,
+        )
+        assert stats.he_damage_per_nade == 30.0
+
+    def test_molotov_damage_per_nade(self):
+        """Molotov damage per nade is calculated correctly."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            molotovs_thrown=2,
+            molotov_damage=80,
+        )
+        assert stats.molotov_damage_per_nade == 40.0
+
+    def test_flash_assist_pct(self):
+        """Flash assist percentage is calculated correctly."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=10,
+            flash_assists=3,
+        )
+        assert stats.flash_assist_pct == 30.0
+
+    def test_avg_he_damage_per_round(self):
+        """Average HE damage per round is calculated correctly."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            he_damage=150,
+            _rounds_played=10,
+        )
+        assert stats.avg_he_damage == 15.0
+
+
+class TestUtilityQualityRating:
+    """Tests for utility quality rating calculation."""
+
+    def test_quality_rating_no_utility(self):
+        """Quality rating is 0 when no utility used."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats()
+        assert stats.utility_quality_rating == 0.0
+
+    def test_quality_rating_good_flashes(self):
+        """Quality rating rewards good flash usage."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=5,
+            enemies_flashed=10,  # 2.0 enemies per flash
+            teammates_flashed=0,
+            total_blind_time=25.0,  # 2.5s avg
+            flash_assists=2,
+        )
+        # Should have points for enemy flash ratio, blind duration, and assists
+        assert stats.utility_quality_rating > 20.0
+
+    def test_quality_rating_penalizes_team_flashes(self):
+        """Quality rating penalizes team flashes."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats_good = UtilityStats(
+            flashbangs_thrown=5,
+            enemies_flashed=5,
+            teammates_flashed=0,
+        )
+        stats_bad = UtilityStats(
+            flashbangs_thrown=5,
+            enemies_flashed=5,
+            teammates_flashed=5,
+        )
+        assert stats_good.utility_quality_rating > stats_bad.utility_quality_rating
+
+    def test_quality_rating_rewards_he_damage(self):
+        """Quality rating rewards high HE damage per nade."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            he_thrown=2,
+            he_damage=100,  # 50 per nade = high
+        )
+        assert stats.utility_quality_rating >= 30.0
+
+    def test_quality_rating_penalizes_team_he(self):
+        """Quality rating penalizes team HE damage."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats_good = UtilityStats(
+            he_thrown=2,
+            he_damage=100,
+            he_team_damage=0,
+        )
+        stats_bad = UtilityStats(
+            he_thrown=2,
+            he_damage=100,
+            he_team_damage=50,
+        )
+        assert stats_good.utility_quality_rating > stats_bad.utility_quality_rating
+
+    def test_quality_rating_smoke_bonus(self):
+        """Quality rating gives bonus for smokes."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats_no_smoke = UtilityStats(
+            flashbangs_thrown=2,
+        )
+        stats_with_smoke = UtilityStats(
+            flashbangs_thrown=2,
+            smokes_thrown=2,
+        )
+        assert stats_with_smoke.utility_quality_rating > stats_no_smoke.utility_quality_rating
+
+
+class TestUtilityQuantityRating:
+    """Tests for utility quantity rating calculation."""
+
+    def test_quantity_rating_no_rounds(self):
+        """Quantity rating is 0 when no rounds played."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=5,
+            _rounds_played=0,
+        )
+        assert stats.utility_quantity_rating == 0.0
+
+    def test_quantity_rating_high_usage(self):
+        """Quantity rating rewards high utility usage."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=10,
+            smokes_thrown=8,
+            he_thrown=5,
+            molotovs_thrown=5,
+            _rounds_played=10,
+        )
+        # 2.8 utility per round with all types = high score
+        assert stats.utility_quantity_rating >= 60.0
+
+    def test_quantity_rating_variety_bonus(self):
+        """Quantity rating gives bonus for using all utility types."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats_one_type = UtilityStats(
+            flashbangs_thrown=12,
+            _rounds_played=10,
+        )
+        stats_all_types = UtilityStats(
+            flashbangs_thrown=3,
+            smokes_thrown=3,
+            he_thrown=3,
+            molotovs_thrown=3,
+            _rounds_played=10,
+        )
+        # Same total utility but variety should give bonus
+        assert stats_all_types.utility_quantity_rating > stats_one_type.utility_quantity_rating
+
+    def test_quantity_rating_capped_at_100(self):
+        """Quantity rating is capped at 100."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=100,
+            smokes_thrown=100,
+            he_thrown=100,
+            molotovs_thrown=100,
+            _rounds_played=10,
+        )
+        assert stats.utility_quantity_rating <= 100.0
+
+
+class TestUtilityStatsToDict:
+    """Tests for UtilityStats.to_dict() method."""
+
+    def test_to_dict_returns_all_fields(self):
+        """to_dict() returns all expected fields."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=5,
+            smokes_thrown=3,
+            he_thrown=2,
+            molotovs_thrown=2,
+            enemies_flashed=8,
+            teammates_flashed=2,
+            flash_assists=3,
+            total_blind_time=20.0,
+            he_damage=80,
+            he_team_damage=10,
+            molotov_damage=50,
+            molotov_team_damage=5,
+            _rounds_played=10,
+        )
+
+        result = stats.to_dict()
+
+        # Check all expected keys
+        expected_keys = [
+            "flashbangs_thrown",
+            "smokes_thrown",
+            "he_thrown",
+            "molotovs_thrown",
+            "total_utility",
+            "enemies_flashed",
+            "teammates_flashed",
+            "flash_assists",
+            "flash_assist_pct",
+            "enemies_flashed_per_round",
+            "friends_flashed_per_round",
+            "avg_blind_time",
+            "total_blind_time",
+            "he_damage",
+            "he_team_damage",
+            "avg_he_damage",
+            "avg_he_team_damage",
+            "he_damage_per_nade",
+            "molotov_damage",
+            "molotov_team_damage",
+            "molotov_damage_per_nade",
+            "total_utility_damage",
+            "unused_utility_value",
+            "utility_quality_rating",
+            "utility_quantity_rating",
+        ]
+
+        for key in expected_keys:
+            assert key in result, f"Missing key: {key}"
+
+    def test_to_dict_values_are_correct(self):
+        """to_dict() returns correct values."""
+        from opensight.analysis.analytics import UtilityStats
+
+        stats = UtilityStats(
+            flashbangs_thrown=4,
+            enemies_flashed=6,
+            flash_assists=2,
+            _rounds_played=10,
+        )
+
+        result = stats.to_dict()
+
+        assert result["flashbangs_thrown"] == 4
+        assert result["enemies_flashed"] == 6
+        assert result["flash_assists"] == 2
+        assert result["flash_assist_pct"] == 50.0
+        assert result["enemies_flashed_per_round"] == 0.6
