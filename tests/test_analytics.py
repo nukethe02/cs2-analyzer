@@ -380,25 +380,81 @@ class TestTradeStats:
         assert stats.failed_trades == 0
 
     def test_trade_rate_calculation(self):
-        """Trade Kill % calculated correctly."""
+        """Trade Kill % calculated correctly (Leetify-style)."""
         from opensight.analysis.analytics import TradeStats
 
-        stats = TradeStats(kills_traded=3, trade_attempts=10)
+        stats = TradeStats(trade_kill_opportunities=10, trade_kill_success=3, kills_traded=3)
         assert stats.trade_rate == 30.0
 
     def test_trade_rate_zero_attempts(self):
-        """Trade rate is 0 when no attempts."""
+        """Trade rate is 0 when no opportunities."""
         from opensight.analysis.analytics import TradeStats
 
         stats = TradeStats()
         assert stats.trade_rate == 0.0
 
     def test_deaths_traded_rate(self):
-        """Deaths traded rate calculated correctly."""
+        """Deaths traded rate calculated correctly (Leetify-style)."""
         from opensight.analysis.analytics import TradeStats
 
-        stats = TradeStats(deaths_traded=2, failed_trades=3)
+        stats = TradeStats(traded_death_opportunities=5, traded_death_success=2, deaths_traded=2)
         assert stats.deaths_traded_rate == 40.0
+
+    def test_trade_kill_attempts_pct(self):
+        """Trade Kill Attempts % calculated correctly."""
+        from opensight.analysis.analytics import TradeStats
+
+        stats = TradeStats(trade_kill_opportunities=10, trade_kill_attempts=7)
+        assert stats.trade_kill_attempts_pct == 70.0
+
+    def test_trade_kill_success_pct(self):
+        """Trade Kill Success % calculated correctly."""
+        from opensight.analysis.analytics import TradeStats
+
+        stats = TradeStats(trade_kill_attempts=8, trade_kill_success=6)
+        assert stats.trade_kill_success_pct == 75.0
+
+    def test_traded_death_attempts_pct(self):
+        """Traded Death Attempts % calculated correctly."""
+        from opensight.analysis.analytics import TradeStats
+
+        stats = TradeStats(traded_death_opportunities=10, traded_death_attempts=8)
+        assert stats.traded_death_attempts_pct == 80.0
+
+    def test_traded_death_success_pct(self):
+        """Traded Death Success % calculated correctly."""
+        from opensight.analysis.analytics import TradeStats
+
+        stats = TradeStats(traded_death_attempts=5, traded_death_success=4)
+        assert stats.traded_death_success_pct == 80.0
+
+    def test_avg_time_to_trade_ms(self):
+        """Average time to trade in milliseconds."""
+        from opensight.analysis.analytics import TradeStats
+
+        # 64 ticks = 1000 ms
+        stats = TradeStats(time_to_trade_ticks=[64, 128, 192])  # 1000, 2000, 3000 ms
+        avg = stats.avg_time_to_trade_ms
+        assert avg is not None
+        assert abs(avg - 2000.0) < 1  # Should be ~2000ms
+
+    def test_median_time_to_trade_ms(self):
+        """Median time to trade in milliseconds."""
+        from opensight.analysis.analytics import TradeStats
+
+        # 64 ticks = 1000 ms
+        stats = TradeStats(time_to_trade_ticks=[64, 128, 192])  # 1000, 2000, 3000 ms
+        median = stats.median_time_to_trade_ms
+        assert median is not None
+        assert abs(median - 2000.0) < 1  # Should be 2000ms (middle value)
+
+    def test_time_to_trade_empty(self):
+        """Time to trade is None when no trades."""
+        from opensight.analysis.analytics import TradeStats
+
+        stats = TradeStats()
+        assert stats.avg_time_to_trade_ms is None
+        assert stats.median_time_to_trade_ms is None
 
 
 class TestClutchStats:
@@ -519,7 +575,11 @@ class TestPlayerMatchStatsNewProperties:
             total_damage=1000,
             rounds_played=10,
         )
-        player.trades = TradeStats(kills_traded=2, trade_attempts=5)
+        player.trades = TradeStats(
+            trade_kill_opportunities=5,
+            trade_kill_success=2,
+            kills_traded=2,
+        )
         assert player.trade_kill_rate == 40.0
 
     def test_clutch_win_rate_property(self):

@@ -3678,7 +3678,7 @@ class DemoAnalyzer:
             return
 
         # Set _rounds_played for per-round metrics calculation
-        for steam_id, player in self._players.items():
+        for _steam_id, player in self._players.items():
             player.utility._rounds_played = player.rounds_played
 
         # Cache player teams for teammate detection
