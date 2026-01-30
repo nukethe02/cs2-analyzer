@@ -1,270 +1,282 @@
 # OpenSight - CS2 Demo Analyzer
 
-Local Counter-Strike 2 analytics framework providing professional-grade metrics without cloud dependencies. Works with Valve MM, FACEIT, ESEA, HLTV, scrims, and POV demos.
+Local Counter-Strike 2 analytics framework providing Leetify/Scope.gg quality metrics without cloud dependencies. Works with Valve MM, FACEIT, ESEA, HLTV, scrims, and POV demos.
 
-**RECENT FIXES**: TTD and Crosshair Placement now work without expensive tick data parsing. See `FIXES_DOCUMENTATION.md` for details.
+## Before Making Any Changes (CRITICAL)
 
-## Quick Start
+**Always run these commands before committing:**
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# 1. Format code
+ruff format src/ tests/
 
-# Run web API (Hugging Face compatible)
-PYTHONPATH=src uvicorn opensight.api:app --host 0.0.0.0 --port 7860
+# 2. Fix linting issues
+ruff check --fix src/ tests/
 
-# Run CLI
-pip install -e .
-opensight analyze /path/to/demo.dem
+# 3. Run tests (REQUIRED - do not skip)
+PYTHONPATH=src pytest tests/ -v
 
-# Test the workflow
-python test_workflow.py
+# 4. If you modified a specific module, run its tests first:
+PYTHONPATH=src pytest tests/test_api.py -v        # API changes
+PYTHONPATH=src pytest tests/test_analytics.py -v  # Analytics changes
+PYTHONPATH=src pytest tests/test_metrics.py -v    # Metric changes
 ```
 
-## Commands
+**If tests fail, fix them before committing. Never push broken tests.**
+
+## Quick Reference Commands
 
 | Command | Description |
 |---------|-------------|
-| `pip install -r requirements.txt` | Install all dependencies |
-| `pip install -e .` | Install package in development mode |
-| `pip install -e ".[dev]"` | Install with dev dependencies (pytest, ruff, mypy) |
-| `PYTHONPATH=src uvicorn opensight.api:app --port 7860` | Run web API |
-| `PYTHONPATH=src pytest tests/ -v` | Run tests |
-| `python test_workflow.py` | Test complete workflow with local demo |
-| `ruff check src/` | Run linting |
-| `mypy src/` | Type checking |
+| `pip install -e ".[dev]"` | Install with dev dependencies |
+| `PYTHONPATH=src uvicorn opensight.api:app --port 7860 --reload` | Run API (dev mode) |
+| `PYTHONPATH=src pytest tests/ -v` | Run all tests |
+| `PYTHONPATH=src pytest tests/ -v -k "test_name"` | Run specific test |
+| `ruff format src/ tests/ && ruff check --fix src/ tests/` | Format + lint |
+| `opensight analyze demo.dem` | CLI analysis |
+| `opensight watch` | Watch replays folder |
 
 ## Architecture
 
 ```
 src/opensight/
-├── __init__.py        # Package exports (lazy imports for heavy deps)
-├── api.py             # FastAPI web interface (port 7860)
-├── cli.py             # Typer CLI (opensight command)
-├── server.py          # Web server entry point
-│── core/
-│   ├── parser.py      # Demo parser using demoparser2 (optimized)
-│   ├── constants.py   # Game constants
-│   └── utils.py       # Utilities
-├── analysis/
-│   ├── analytics.py   # TTD and CP calculations (FIXED)
-│   ├── metrics.py     # Metric calculation utilities (FIXED)
-│   └── metrics_optimized.py  # Vectorized computations
-├── integrations/
-│   └── sharecode.py   # CS2 share code encode/decode
-├── infra/
-│   ├── watcher.py     # File system watcher for auto-processing
-│   ├── cache.py       # Analysis caching
-│   └── database.py    # SQLite history storage
-└── static/
-    └── index.html     # Web UI
+├── api.py                 # FastAPI web app (main entry point)
+├── cli.py                 # Typer CLI
+├── server.py              # Uvicorn server entry
+│
+├── core/                  # Demo parsing layer
+│   ├── parser.py          # DemoParser class (demoparser2/awpy backends)
+│   ├── enhanced_parser.py # Advanced parsing features
+│   ├── constants.py       # TICK_RATE, TRADE_WINDOW_MS, HLTV coefficients
+│   ├── config.py          # Configuration management
+│   └── utils.py           # safe_int, safe_str, safe_float, safe_bool
+│
+├── analysis/              # Metrics and analytics
+│   ├── analytics.py       # DemoAnalyzer - main analysis engine
+│   ├── metrics.py         # TTD, CP, utility calculations
+│   ├── metrics_optimized.py # Vectorized computations
+│   ├── hltv_rating.py     # HLTV 2.0 Rating formula
+│   ├── persona.py         # Player identity classification
+│   ├── combat.py          # Accuracy, spray, counter-strafe
+│   ├── economy.py         # Buy patterns, eco detection
+│   ├── utility.py         # Grenade effectiveness
+│   ├── game_state.py      # Tick-level state tracking
+│   └── detection.py       # Event classification
+│
+├── integrations/          # External services
+│   ├── sharecode.py       # CS2 share code encode/decode
+│   ├── hltv.py            # HLTV API (rankings, player data)
+│   ├── faceit.py          # FACEIT API integration
+│   ├── feedback.py        # Community feedback collection
+│   └── profiles.py        # Player profile management
+│
+├── infra/                 # Infrastructure
+│   ├── cache.py           # SHA256-based file caching
+│   ├── database.py        # SQLite (match history, baselines)
+│   ├── parallel.py        # Batch demo processing
+│   ├── watcher.py         # File system monitoring
+│   └── backend.py         # DataFrame backend (pandas/polars)
+│
+├── visualization/         # Output generation
+│   ├── replay.py          # 2D replay data extraction
+│   ├── radar.py           # Map coordinate transformation
+│   ├── export.py          # JSON/CSV/Excel/HTML export
+│   └── trajectory.py      # Player movement visualization
+│
+├── coaching/              # AI coaching features
+│   ├── coaching.py        # Adaptive coaching engine
+│   ├── patterns.py        # Temporal pattern analysis
+│   ├── opponent.py        # Opponent modeling
+│   └── playbook.py        # Team playbook generation
+│
+└── static/                # Web UI
+    ├── index.html         # Main interface
+    ├── css/               # Stylesheets
+    └── js/                # Frontend scripts
 ```
-
-## Key Files
-
-- `pyproject.toml` - Package config, dependencies, tool settings
-- `requirements.txt` - Pip dependencies for deployment
-- `FIXES_DOCUMENTATION.md` - Details on recent performance fixes
-- `test_workflow.py` - End-to-end test script
-- `Dockerfile` - Container build (exposes 7860 for Hugging Face)
-- `README.md` - Has Hugging Face YAML frontmatter for Spaces
-- `tests/` - pytest test suite
-
-## Dependencies
-
-**Core:**
-- `demoparser2>=0.9.0` - Rust-backed CS2 demo parser (fast)
-- `pandas>=2.0.0` - DataFrame manipulation
-- `numpy>=1.24.0` - Numerical calculations
-
-**Web API:**
-- `fastapi>=0.100.0` - Web framework
-- `uvicorn>=0.23.0` - ASGI server
-- `python-multipart>=0.0.6` - File uploads
-
-**CLI:**
-- `typer>=0.9.0` - CLI framework
-- `rich>=13.0.0` - Terminal formatting
-- `watchdog>=3.0.0` - File system monitoring
-
-## Code Style
-
-- Python 3.11+ with type hints on all function parameters
-- Use dataclasses for data structures
-- Detailed docstrings on public functions
-- Named exports preferred, avoid wildcard imports
-- Constants in UPPER_SNAKE_CASE at module level
-
-## Error Handling
-
-**Critical: Never crash on malformed demo data.**
-
-Use safe accessor functions throughout:
-```python
-from opensight.parser import safe_int, safe_str, safe_bool
-from opensight.analytics import safe_float
-
-# Always use these when parsing demo events
-value = safe_int(row.get("kills"), default=0)
-name = safe_str(row.get("player_name"), default="Unknown")
-```
-
-All parsing code must use try/except and return sensible defaults.
-
-## Security Measures
-
-The codebase implements these security controls:
-
-| Control | Location | Description |
-|---------|----------|-------------|
-| XSS Protection | `static/index.html` | `escapeHtml()` sanitizes player names |
-| File Size Limit | `api.py` | 500MB max upload size |
-| Extension Validation | `api.py` | Only `.dem` and `.dem.gz` accepted |
-| Empty File Check | `api.py` | Rejects zero-byte uploads |
-| Temp File Cleanup | `api.py` | Files deleted in finally block |
-| Safe Accessors | `parser.py`, `analytics.py` | Prevent crashes on bad data |
-
-## Metrics Implementation
-
-### Time to Damage (TTD)
-Measures latency from first damage to kill. Lower = faster reactions.
-```python
-ttd_ms = (kill_tick - first_damage_tick) * MS_PER_TICK
-# MS_PER_TICK = 1000 / 64 ≈ 15.625ms
-```
-Benchmarks: <200ms elite | 200-350ms good | 350-500ms average | >500ms slow
-
-### Crosshair Placement (CP)
-Angular error between aim and enemy position at moment of kill.
-```python
-angular_error = math.degrees(math.acos(dot(view_vec, ideal_vec)))
-```
-Benchmarks: <5° elite | 5-15° good | 15-25° average | >25° needs work
 
 ## API Endpoints
 
+### Core Analysis
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | Web interface (HTML) |
-| GET | `/health` | Health check, returns version |
-| GET | `/readiness` | Readiness check for orchestration (disk, temp dir, deps) |
-| GET | `/about` | API documentation and metric descriptions |
-| POST | `/decode` | Decode share code (JSON body: `{"code": "CSGO-..."}`) |
-| POST | `/analyze` | Upload and analyze demo (multipart form) |
+| POST | `/analyze` | Upload demo, returns job_id (async) |
+| GET | `/analyze/{job_id}` | Check job status |
+| GET | `/analyze/{job_id}/download` | Download results when complete |
+| GET | `/jobs` | List all analysis jobs |
 
-## Hugging Face Deployment
+### Your Match (Personal Dashboard)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/your-match/{demo_id}/{steam_id}` | Personalized match performance |
+| POST | `/api/your-match/store` | Store match in player history |
+| GET | `/api/your-match/baselines/{steam_id}` | Player 30-match averages |
+| GET | `/api/your-match/history/{steam_id}` | Match history |
+| GET | `/api/your-match/persona/{steam_id}` | Player identity persona |
 
-The project is configured for Hugging Face Spaces:
+### Maps & Replay
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/maps` | List available maps |
+| GET | `/maps/{map_name}` | Map metadata and radar info |
+| POST | `/radar/transform` | Game coords → radar pixels |
+| POST | `/replay/generate` | Generate 2D replay data |
 
-1. `README.md` has YAML frontmatter:
-   ```yaml
-   sdk: docker
-   app_port: 7860
-   ```
+### HLTV Integration
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/hltv/rankings` | World team rankings |
+| GET | `/hltv/map/{map_name}` | Map statistics |
+| GET | `/hltv/player/search` | Search players by nickname |
+| POST | `/hltv/enrich` | Enrich analysis with HLTV data |
 
-2. `Dockerfile` uses multi-stage build for optimization:
-   - **Build stage**: Compiles Rust extensions (demoparser2), installs all dependencies
-   - **Runtime stage**: Minimal image with only virtualenv and source files
-   - Runs as non-root user for security
-   - Includes Docker HEALTHCHECK for container orchestration
+### Utilities
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/decode` | Decode CS2 share code |
+| GET | `/cache/stats` | Cache statistics |
+| POST | `/cache/clear` | Clear analysis cache |
+| POST | `/feedback` | Submit metric feedback |
+| GET | `/health` | Health check |
+| GET | `/readiness` | Orchestration readiness |
+| GET | `/about` | API documentation |
 
-3. Uvicorn runs with production settings:
-   - 1 worker (demo parsing is CPU-heavy)
-   - Log level: warning (reduces verbosity)
-   - Timeout keep-alive: 65s (above typical load balancer timeout)
+## Key Metrics Implemented
 
-4. Readiness endpoint (`/readiness`) checks:
-   - Disk space (>100MB free)
-   - Temp directory writable
-   - Heavy dependencies importable (demoparser2, pandas, numpy)
-
-5. To deploy: Push to a Hugging Face Space repository
-
-## CLI Usage
-
-```bash
-# Analyze a demo file
-opensight analyze /path/to/demo.dem
-
-# Filter to specific player
-opensight analyze demo.dem --player "PlayerName"
-
-# Export to JSON
-opensight analyze demo.dem --output results.json
-
-# Decode a share code
-opensight decode "CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
-
-# Watch replays folder
-opensight watch
-
-# Check environment
-opensight info
+### HLTV 2.0 Rating
+```python
+# Formula in hltv_rating.py
+Rating = 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + 0.2372*Impact + 0.0032*ADR + 0.1587*RMK
 ```
+
+### Time to Damage (TTD)
+Milliseconds from engagement start to damage dealt. Located in `analysis/metrics.py`.
+- Elite: <200ms | Good: 200-350ms | Average: 350-500ms | Slow: >500ms
+
+### Crosshair Placement (CP)
+Angular error in degrees. Located in `analysis/metrics.py`.
+- Elite: <5° | Good: 5-15° | Average: 15-25° | Needs work: >25°
+
+### Trade Detection
+5-second window (industry standard). Constants in `core/constants.py`:
+```python
+TRADE_WINDOW_MS = 5000
+TRADE_WINDOW_TICKS = 320  # At 64 tick
+```
+
+### Player Personas (analysis/persona.py)
+- **The Opener**: High entry success rate
+- **The Anchor**: Clutch specialist
+- **The Cleanup**: Trade kill expert
+- **The Utility Master**: High utility effectiveness
+- **The Fragger**: High K/D and impact
+
+## Code Style Requirements
+
+1. **Type hints on all functions** - Required for mypy
+2. **Dataclasses for data structures** - Not dicts or tuples
+3. **Safe accessors for demo data** - Never trust raw values:
+   ```python
+   from opensight.core.utils import safe_int, safe_str, safe_float, safe_bool
+
+   kills = safe_int(row.get("kills"), default=0)
+   name = safe_str(row.get("player_name"), default="Unknown")
+   ```
+4. **No wildcard imports** - Use named imports only
+5. **Constants in UPPER_SNAKE_CASE** - Define at module level
+
+## Error Handling Rules
+
+**Never crash on malformed demo data.** All parsing must:
+1. Use safe accessor functions
+2. Wrap in try/except with sensible defaults
+3. Log warnings, don't raise exceptions
+4. Return partial results rather than failing completely
+
+## Security Controls
+
+| Control | Location | Notes |
+|---------|----------|-------|
+| CSP frame-ancestors | `api.py` middleware | Allows HF Spaces embedding |
+| Rate limiting | `api.py` @rate_limit | 5/min uploads, 3/min replays |
+| File size limit | `api.py` | 500MB max |
+| Extension validation | `api.py` | Only .dem, .dem.gz |
+| Input validation | `api.py` | validate_steam_id, validate_demo_id |
+| XSS sanitization | `static/index.html` | escapeHtml() function |
+| Temp file cleanup | `api.py` | Always in finally block |
+
+## Database Schema (SQLite)
+
+Located in `infra/database.py`. Tables:
+- `match_history` - Per-match player stats
+- `player_baselines` - Rolling 30-match averages
+- `player_personas` - Current persona assignment
+- `feedback` - User feedback on metrics
 
 ## Testing
 
 ```bash
-# Run all tests
+# Full test suite
 PYTHONPATH=src pytest tests/ -v
 
-# Run specific test file
-PYTHONPATH=src pytest tests/test_sharecode.py -v
+# With coverage
+PYTHONPATH=src pytest tests/ --cov=opensight --cov-report=html
 
-# Run with coverage
-PYTHONPATH=src pytest tests/ --cov=opensight
+# Specific test file
+PYTHONPATH=src pytest tests/test_api.py -v
+
+# Specific test by name
+PYTHONPATH=src pytest tests/ -v -k "test_hltv_rating"
 ```
 
-Tests use mock data - no actual demo files required for unit tests.
+### Test Files
+| File | Tests |
+|------|-------|
+| `test_api.py` | API endpoints, security headers |
+| `test_analytics.py` | DemoAnalyzer, metrics engine |
+| `test_hltv_rating.py` | HLTV 2.0 formula accuracy |
+| `test_metrics.py` | TTD, CP, utility calculations |
+| `test_replay.py` | 2D replay generation |
+| `test_sharecode.py` | Share code encode/decode |
+| `test_your_match.py` | Personal dashboard features |
 
-## Before Committing (IMPORTANT)
-
-**Always run these commands before committing any changes:**
-
-```bash
-# Format code with ruff
-ruff format src/ tests/
-
-# Fix linting issues
-ruff check --fix src/ tests/
-
-# Run tests to catch regressions
-PYTHONPATH=src pytest tests/ -v
-```
-
-If any tests fail, fix them before committing. Do not push code that breaks tests.
-
-## Common Development Tasks
+## Common Tasks
 
 ### Adding a New Metric
-
-1. Add calculation in `analytics.py` in `DemoAnalyzer` class
-2. Add result field to `PlayerAnalytics` dataclass
-3. Include in API response in `api.py`
-4. Add display in `cli.py` if needed
+1. Add calculation in `analysis/analytics.py` or create new module
+2. Add field to relevant dataclass (e.g., `PlayerMatchStats`)
+3. Include in `player_stats_to_dict()` in `api.py`
+4. Add to `build_player_response()` for structured output
 5. Write test in `tests/`
+6. Run `ruff format` and `pytest` before committing
 
-### Adding New Event Parsing
+### Adding a New API Endpoint
+1. Add route in `api.py`
+2. Add input validation (use existing `validate_*` functions)
+3. Add rate limiting if it's resource-intensive
+4. Add to this documentation
+5. Write test in `test_api.py`
 
-1. Add parsing method in `parser.py` (e.g., `_parse_grenades`)
-2. Add result to `DemoData` dataclass
-3. Use safe accessors for all field access
-4. Handle missing columns gracefully
+### Modifying Security Headers
+1. Edit `security_headers_middleware()` in `api.py`
+2. Update corresponding test in `test_api.py` `TestSecurityHeaders` class
+3. Verify with: `PYTHONPATH=src pytest tests/test_api.py -v -k "security"`
 
-## File Validation
+## Deployment
 
-The API only accepts these file types:
-- `.dem` - CS2 demo files
-- `.dem.gz` - Compressed demo files
+### Hugging Face Spaces
+- Dockerfile exposes port 7860
+- Multi-stage build for optimization
+- Non-root user execution
+- Health check at `/health`
+- Readiness check at `/readiness`
 
-Maximum file size: 500MB
-
-## Known Limitations
-
-1. POV demos have incomplete utility data
-2. Clutch detection approximates from kill sequence
-3. Economy tracking not yet implemented
-4. Position heatmaps require tick-level parsing (slow)
+### Environment Variables
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENSIGHT_CACHE_DIR` | Cache directory | `~/.opensight/cache` |
+| `OPENSIGHT_DB_PATH` | SQLite database path | `~/.opensight/opensight.db` |
+| `OPENSIGHT_LOG_LEVEL` | Logging level | `INFO` |
 
 ## Troubleshooting
 
@@ -275,12 +287,29 @@ pip install demoparser2
 
 **Module not found: opensight**
 ```bash
-export PYTHONPATH=src
-# or
+export PYTHONPATH=src  # Unix
+set PYTHONPATH=src     # Windows
+# or install in dev mode:
 pip install -e .
+```
+
+**Tests fail with import errors**
+```bash
+pip install -e ".[dev]"
 ```
 
 **Port 7860 in use**
 ```bash
 uvicorn opensight.api:app --port 8000
 ```
+
+## File Structure Reference
+
+| File | Purpose |
+|------|---------|
+| `pyproject.toml` | Package config, dependencies, ruff/mypy settings |
+| `requirements.txt` | Pip dependencies for deployment |
+| `.pre-commit-config.yaml` | Pre-commit hooks (ruff, mypy, bandit) |
+| `Dockerfile` | Multi-stage build for HF Spaces |
+| `README.md` | HF Spaces frontmatter + public docs |
+| `CLAUDE.md` | This file - AI assistant instructions |
