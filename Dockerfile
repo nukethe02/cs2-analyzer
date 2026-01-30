@@ -44,6 +44,7 @@ RUN pip install --no-cache-dir \
     "uvicorn[standard]>=0.23.0" \
     python-multipart>=0.0.6 \
     websockets>=11.0.0 \
+    slowapi>=0.1.9 \
     pandas>=2.0.0 \
     numpy>=1.24.0 \
     polars>=0.20.0 \
