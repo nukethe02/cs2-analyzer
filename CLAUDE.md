@@ -217,6 +217,23 @@ PYTHONPATH=src pytest tests/ --cov=opensight
 
 Tests use mock data - no actual demo files required for unit tests.
 
+## Before Committing (IMPORTANT)
+
+**Always run these commands before committing any changes:**
+
+```bash
+# Format code with ruff
+ruff format src/ tests/
+
+# Fix linting issues
+ruff check --fix src/ tests/
+
+# Run tests to catch regressions
+PYTHONPATH=src pytest tests/ -v
+```
+
+If any tests fail, fix them before committing. Do not push code that breaks tests.
+
 ## Common Development Tasks
 
 ### Adding a New Metric
