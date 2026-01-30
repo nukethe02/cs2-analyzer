@@ -446,8 +446,12 @@ async def security_headers_middleware(request: Request, call_next) -> Response:
     response = await call_next(request)
     # Prevent MIME type sniffing
     response.headers["X-Content-Type-Options"] = "nosniff"
-    # Prevent clickjacking (allow framing for HF Spaces, so use SAMEORIGIN)
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # Allow framing by Hugging Face Spaces (required for HF embedding)
+    # Using Content-Security-Policy frame-ancestors instead of X-Frame-Options
+    # as it's more flexible and the modern standard
+    response.headers["Content-Security-Policy"] = (
+        "frame-ancestors 'self' https://*.huggingface.co https://huggingface.co https://*.hf.space"
+    )
     # XSS protection for older browsers
     response.headers["X-XSS-Protection"] = "1; mode=block"
     # Referrer policy - send origin only for cross-origin requests
