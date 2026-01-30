@@ -2493,8 +2493,12 @@
         }
 
         // Render detailed stats tables like FACEIT (Entry, Trade, Clutch)
-        function renderDetailedStatsTables(players) {
+        function renderDetailedStatsTables(players, team1Name, team2Name) {
             if (!players || players.length === 0) return '';
+
+            // Use provided team names or fallback to defaults
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
 
             // Separate teams
             const team1 = players.filter(p => p.team === 'CT' || (players.indexOf(p) < 5 && !p.team));
@@ -2516,22 +2520,22 @@
                     </div>
 
                     <div class="stats-tab-content" id="stats-general" style="display: block;">
-                        ${renderGeneralStatsTable(players, teamA, teamB)}
+                        ${renderGeneralStatsTable(players, teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                     <div class="stats-tab-content" id="stats-entry" style="display: none;">
-                        ${renderEntryStatsTable(teamA, teamB)}
+                        ${renderEntryStatsTable(teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                     <div class="stats-tab-content" id="stats-trade" style="display: none;">
-                        ${renderTradeStatsTable(teamA, teamB)}
+                        ${renderTradeStatsTable(teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                     <div class="stats-tab-content" id="stats-clutch" style="display: none;">
-                        ${renderClutchStatsTable(teamA, teamB)}
+                        ${renderClutchStatsTable(teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                     <div class="stats-tab-content" id="stats-ttd" style="display: none;">
-                        ${renderTTDStatsTable(teamA, teamB)}
+                        ${renderTTDStatsTable(teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                     <div class="stats-tab-content" id="stats-cp" style="display: none;">
-                        ${renderCPStatsTable(teamA, teamB)}
+                        ${renderCPStatsTable(teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                 </div>
             `;
@@ -2561,7 +2565,9 @@
         }
 
         // Render Entry Stats Table (like FACEIT)
-        function renderEntryStatsTable(team1, team2) {
+        function renderEntryStatsTable(team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
             const renderTeamTable = (players, teamName) => {
                 if (!players || players.length === 0) return '';
                 let html = '<div style="margin-bottom: 24px;">' +
@@ -2604,11 +2610,13 @@
                 return html;
             };
 
-            return renderTeamTable(team1, 'Team 1') + renderTeamTable(team2, 'Team 2');
+            return renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
         }
 
         // Render Trade Stats Table (like FACEIT)
-        function renderTradeStatsTable(team1, team2) {
+        function renderTradeStatsTable(team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
             const renderTeamTable = (players, teamName) => {
                 if (!players || players.length === 0) return '';
                 let html = '<div style="margin-bottom: 24px;">' +
@@ -2645,11 +2653,13 @@
                 return html;
             };
 
-            return renderTeamTable(team1, 'Team 1') + renderTeamTable(team2, 'Team 2');
+            return renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
         }
 
         // Render Clutch Stats with Visual Cards (like Leetify)
-        function renderClutchStatsTable(team1, team2) {
+        function renderClutchStatsTable(team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
             const renderPlayerCard = (player) => {
                 const c = player.clutches || {};
                 const wins = c.clutch_wins || 0;
@@ -2730,11 +2740,13 @@
                 `;
             };
 
-            return renderTeamSection(team1, 'Team 1') + renderTeamSection(team2, 'Team 2');
+            return renderTeamSection(team1, ctTeamName) + renderTeamSection(team2, tTeamName);
         }
 
         // Render TTD (Time to Damage) Stats Table
-        function renderTTDStatsTable(team1, team2) {
+        function renderTTDStatsTable(team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
             const renderPlayerCard = (player) => {
                 const a = player.advanced || {};
                 const median = a.ttd_median_ms || 0;
@@ -2805,11 +2817,13 @@
                 `;
             };
 
-            return renderTeamSection(team1, 'Team 1') + renderTeamSection(team2, 'Team 2');
+            return renderTeamSection(team1, ctTeamName) + renderTeamSection(team2, tTeamName);
         }
 
         // Render CP (Crosshair Placement) Stats Table
-        function renderCPStatsTable(team1, team2) {
+        function renderCPStatsTable(team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
             const renderPlayerCard = (player) => {
                 const a = player.advanced || {};
                 const median = a.cp_median_error_deg || 0;
@@ -2875,34 +2889,44 @@
                 `;
             };
 
-            return renderTeamSection(team1, 'Team 1') + renderTeamSection(team2, 'Team 2');
+            return renderTeamSection(team1, ctTeamName) + renderTeamSection(team2, tTeamName);
         }
 
         // Render General Stats Table with HLTV Rating, sortable columns, and star indicators
-        function renderGeneralStatsTable(allPlayers, team1, team2) {
+        function renderGeneralStatsTable(allPlayers, team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
             if (!allPlayers || allPlayers.length === 0) return '<p style="color: var(--text-muted);">No player data available</p>';
 
             // Calculate best values across all players for star indicators
+            // Support both nested (p.stats.kills) and flat (p.kills) data structures
+            const getKills = (p) => p.kills || p.stats?.kills || 0;
+            const getDeaths = (p) => p.deaths || p.stats?.deaths || 1;
+            const getAdr = (p) => p.adr || p.stats?.adr || 0;
+            const getRating = (p) => p.hltv_rating || p.rating?.hltv_rating || 0;
+            const getSpecial = (p) => p.special || p.stats?.special || {};
+
             const best = {
-                kills: Math.max(...allPlayers.map(p => p.kills || 0)),
+                kills: Math.max(...allPlayers.map(p => getKills(p))),
                 kd: Math.max(...allPlayers.map(p => {
-                    const k = p.kills || 0;
-                    const d = p.deaths || 1;
-                    return k / d;
+                    const k = getKills(p);
+                    const d = getDeaths(p);
+                    return k / Math.max(d, 1);
                 })),
-                adr: Math.max(...allPlayers.map(p => p.adr || 0)),
-                hltv_rating: Math.max(...allPlayers.map(p => p.hltv_rating || 0)),
-                multi_3k: Math.max(...allPlayers.map(p => p.special?.['3k'] || 0)),
-                multi_4k: Math.max(...allPlayers.map(p => p.special?.['4k'] || 0)),
-                multi_5k: Math.max(...allPlayers.map(p => p.special?.['5k'] || 0))
+                adr: Math.max(...allPlayers.map(p => getAdr(p))),
+                hltv_rating: Math.max(...allPlayers.map(p => getRating(p))),
+                multi_3k: Math.max(...allPlayers.map(p => getSpecial(p)['3k'] || 0)),
+                multi_4k: Math.max(...allPlayers.map(p => getSpecial(p)['4k'] || 0)),
+                multi_5k: Math.max(...allPlayers.map(p => getSpecial(p)['5k'] || 0))
             };
 
             // Calculate personal performance for each player
             const calcPerformance = (p) => {
-                const kills = p.kills || 0;
-                const deaths = p.deaths || 0;
-                const assists = p.assists || 0;
-                const rounds = p.rounds_played || 1;
+                const stats = p.stats || {};
+                const kills = p.kills || stats.kills || 0;
+                const deaths = p.deaths || stats.deaths || 0;
+                const assists = p.assists || stats.assists || 0;
+                const rounds = p.rounds_played || stats.rounds_played || 1;
                 const expectedKills = rounds * 0.7;
                 const expectedDeaths = rounds * 0.7;
                 const killDiff = kills - expectedKills;
@@ -2953,19 +2977,22 @@
                                 <tbody>`;
 
                 sorted.forEach(p => {
-                    const kills = p.kills || 0;
-                    const deaths = p.deaths || 1;
-                    const assists = p.assists || 0;
-                    const kd = (kills / deaths).toFixed(2);
-                    const adr = p.adr || 0;
-                    const rating = p.hltv_rating || 0;
-                    const s = p.special || {};
+                    // Support both nested (p.stats.kills) and flat (p.kills) data structures
+                    const stats = p.stats || {};
+                    const ratingData = p.rating || {};
+                    const kills = p.kills || stats.kills || 0;
+                    const deaths = p.deaths || stats.deaths || 1;
+                    const assists = p.assists || stats.assists || 0;
+                    const kd = (kills / Math.max(deaths, 1)).toFixed(2);
+                    const adr = p.adr || stats.adr || 0;
+                    const rating = p.hltv_rating || ratingData.hltv_rating || 0;
+                    const s = p.special || stats.special || {};
                     const multi2k = s['2k'] || 0;
                     const multi3k = s['3k'] || 0;
                     const multi4k = s['4k'] || 0;
                     const multi5k = s['5k'] || 0;
                     const perf = calcPerformance(p);
-                    const kdNum = kills / deaths;
+                    const kdNum = kills / Math.max(deaths, 1);
 
                     const kdColor = kdNum >= 1.0 ? 'var(--success)' : 'var(--danger)';
                     const perfColor = perf >= 0 ? 'var(--success)' : 'var(--danger)';
@@ -3014,8 +3041,8 @@
                 </div>
             `;
 
-            html += renderTeamTable(team1, 'Team 1', team1Result, team1Score);
-            html += renderTeamTable(team2, 'Team 2', team2Result, team2Score);
+            html += renderTeamTable(team1, ctTeamName, team1Result, team1Score);
+            html += renderTeamTable(team2, tTeamName, team2Result, team2Score);
 
             return html;
         }

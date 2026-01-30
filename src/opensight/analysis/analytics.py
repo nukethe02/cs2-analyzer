@@ -4756,6 +4756,23 @@ class DemoAnalyzer:
         t_wins = sum(1 for r in self.data.rounds if r.winner == "T")
         return (ct_wins, t_wins)
 
+    def _extract_team_names(self) -> tuple[str, str]:
+        """Extract team names from demo data or use defaults."""
+        team1_name = "Team 1"
+        team2_name = "Team 2"
+
+        # Try to get team names from players' clan tags or team assignments
+        ct_players = [p for p in self._players.values() if p.team == "CT"]
+        t_players = [p for p in self._players.values() if p.team == "T"]
+
+        # Use first player's clan tag if available, otherwise use CT/T
+        if ct_players:
+            team1_name = getattr(ct_players[0], "clan_tag", None) or "CT"
+        if t_players:
+            team2_name = getattr(t_players[0], "clan_tag", None) or "T"
+
+        return (team1_name, team2_name)
+
 
 def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
     """

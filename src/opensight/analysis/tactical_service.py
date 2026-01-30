@@ -498,9 +498,7 @@ class TacticalAnalysisService:
 
         # Star player
         if team1_star[0] and isinstance(player_names, dict):
-            team1_analysis.star_player = player_names.get(
-                team1_star[0], f"Player {team1_star[0]}"
-            )
+            team1_analysis.star_player = player_names.get(team1_star[0], f"Player {team1_star[0]}")
             team1_analysis.star_player_role = (
                 "Entry" if team1_opening_kills > team1_trade_kills else "Rifler"
             )
@@ -562,26 +560,16 @@ class TacticalAnalysisService:
         # Team 2 recommendations
         team2_analysis.recommendations = []
         if team2_opening_kills < 5:
-            team2_analysis.recommendations.append(
-                "Work on flash timing and pre-fire angles"
-            )
+            team2_analysis.recommendations.append("Work on flash timing and pre-fire angles")
         if team2_trade_kills < 3:
-            team2_analysis.recommendations.append(
-                "Tighten up spacing - stay closer to teammates"
-            )
+            team2_analysis.recommendations.append("Tighten up spacing - stay closer to teammates")
         if team2_rate < 45:
-            team2_analysis.recommendations.append(
-                "Focus on utility efficiency and site execution"
-            )
+            team2_analysis.recommendations.append("Focus on utility efficiency and site execution")
         if not team2_analysis.recommendations:
-            team2_analysis.recommendations.append(
-                "Maintain current form - strong fundamentals"
-            )
+            team2_analysis.recommendations.append("Maintain current form - strong fundamentals")
 
         if team2_star[0] and isinstance(player_names, dict):
-            team2_analysis.star_player = player_names.get(
-                team2_star[0], f"Player {team2_star[0]}"
-            )
+            team2_analysis.star_player = player_names.get(team2_star[0], f"Player {team2_star[0]}")
             team2_analysis.star_player_role = (
                 "Entry" if team2_opening_kills > team2_trade_kills else "Rifler"
             )
