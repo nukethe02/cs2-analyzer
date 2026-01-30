@@ -275,11 +275,14 @@ class TestSecurityHeaders:
         assert response.status_code == 200
         assert response.headers.get("x-content-type-options") == "nosniff"
 
-    def test_x_frame_options_header(self):
-        """Response includes X-Frame-Options header."""
+    def test_content_security_policy_header(self):
+        """Response includes Content-Security-Policy header for iframe embedding."""
         response = client.get("/health")
         assert response.status_code == 200
-        assert response.headers.get("x-frame-options") == "SAMEORIGIN"
+        csp = response.headers.get("content-security-policy")
+        assert csp is not None
+        assert "frame-ancestors" in csp
+        assert "huggingface.co" in csp
 
     def test_x_xss_protection_header(self):
         """Response includes X-XSS-Protection header."""
