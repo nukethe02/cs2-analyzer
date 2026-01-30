@@ -27,36 +27,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Upgrade pip and install build tools
 RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
-# Copy requirements and install dependencies
-# This layer is cached unless requirements.txt changes
+# Copy requirements and install all dependencies from requirements.txt
+# This is the single source of truth for dependencies
 COPY requirements.txt .
 
-# Install core dependencies first (these have Rust/native extensions)
-# demoparser2 has Rust bindings that need compilation
-RUN pip install --no-cache-dir demoparser2>=0.9.0 || echo "demoparser2 compilation failed, will retry"
-
-# Install awpy (includes demoparser2 as dependency, may provide pre-built wheels)
-RUN pip install --no-cache-dir awpy>=2.0.0 || echo "awpy installation failed, continuing"
-
-# Install remaining Python dependencies
-RUN pip install --no-cache-dir \
-    fastapi>=0.100.0 \
-    "uvicorn[standard]>=0.23.0" \
-    python-multipart>=0.0.6 \
-    websockets>=11.0.0 \
-    slowapi>=0.1.9 \
-    pandas>=2.0.0 \
-    numpy>=1.24.0 \
-    polars>=0.20.0 \
-    rich>=13.0.0 \
-    typer>=0.9.0 \
-    watchdog>=3.0.0 \
-    pyyaml>=6.0 \
-    openpyxl>=3.1.0 \
-    || true
-
-# Retry demoparser2 if first attempt failed
-RUN pip show demoparser2 > /dev/null 2>&1 || pip install --no-cache-dir demoparser2>=0.9.0 || echo "demoparser2 unavailable"
+# Install all dependencies from requirements.txt
+# awpy includes demoparser2 which has Rust bindings that need compilation
+RUN pip install --no-cache-dir -r requirements.txt
 
 # =============================================================================
 # CRITICAL: Verify essential packages are installed (fail build if missing)
