@@ -1513,6 +1513,10 @@ class MatchAnalysis:
     total_rounds: int
     map_name: str
 
+    # Team names (extracted from demo or inferred from player clan tags)
+    team1_name: str = "Team 1"
+    team2_name: str = "Team 2"
+
     # Enhanced data (integrated from other modules)
     round_timeline: list[RoundTimeline] = field(default_factory=list)
     kill_matrix: list[KillMatrixEntry] = field(default_factory=list)
@@ -1593,8 +1597,19 @@ class DemoAnalyzer:
     ROUND_COLS = ["round_num", "total_rounds_played", "round"]
     ATT_ID_COLS = ["attacker_steamid", "attacker_steam_id"]
     VIC_ID_COLS = ["victim_steamid", "user_steamid", "victim_steam_id"]
-    ATT_SIDE_COLS = ["attacker_side", "attacker_team_name", "attacker_team"]
-    VIC_SIDE_COLS = ["victim_side", "user_team_name", "victim_team"]
+    ATT_SIDE_COLS = [
+        "attacker_side",
+        "attacker_team_name",
+        "attacker_team",
+        "attacker_team_num",
+    ]
+    VIC_SIDE_COLS = [
+        "victim_side",
+        "user_team_name",
+        "victim_team",
+        "user_team_num",
+        "victim_team_num",
+    ]
 
     # Available metric categories
     METRIC_CATEGORIES = {
@@ -1861,12 +1876,15 @@ class DemoAnalyzer:
 
         # Build result
         team_scores = self._calculate_team_scores()
+        team_names = self._extract_team_names()
         analysis = MatchAnalysis(
             players=self._players,
             team1_score=team_scores[0],
             team2_score=team_scores[1],
             total_rounds=self.data.num_rounds,
             map_name=self.data.map_name,
+            team1_name=team_names[0],
+            team2_name=team_names[1],
             round_timeline=round_timeline,
             kill_matrix=kill_matrix,
             team_trade_rates=combat_stats.get("trade_rates", {}),
@@ -2036,8 +2054,9 @@ class DemoAnalyzer:
             if starting_team not in ["CT", "T"]:
                 return "Unknown"
 
-            # Standard CS2 MR12: rounds 1-12 = first half, 13+ = second half (teams swap)
-            if round_num > 12:
+            # Standard CS2 MR15: rounds 1-15 = first half, 16-30 = second half (teams swap)
+            # Overtime rounds (31+) swap every 3 rounds but we simplify to first half logic
+            if 16 <= round_num <= 30:
                 return "T" if starting_team == "CT" else "CT"
             return starting_team
 
@@ -2563,26 +2582,46 @@ class DemoAnalyzer:
             t_alive: set[int] = set()
 
             # First pass: collect all players and their teams for THIS round
-            for _, kill in round_kills.iterrows():
-                # Add attacker to their team
-                attacker_id = safe_int(kill.get(self._att_id_col)) if self._att_id_col else 0
-                if attacker_id and use_team_column and att_team_col:
-                    att_side = self._normalize_team(kill.get(att_team_col))
-                    if att_side == "CT":
-                        ct_alive.add(attacker_id)
-                    elif att_side == "T":
-                        t_alive.add(attacker_id)
+            if use_team_column:
+                for _, kill in round_kills.iterrows():
+                    # Add attacker to their team
+                    attacker_id = safe_int(kill.get(self._att_id_col)) if self._att_id_col else 0
+                    if attacker_id and att_team_col:
+                        att_side = self._normalize_team(kill.get(att_team_col))
+                        if att_side == "CT":
+                            ct_alive.add(attacker_id)
+                        elif att_side == "T":
+                            t_alive.add(attacker_id)
 
-                # Add victim to their team
-                victim_id = safe_int(kill.get(self._vic_id_col))
-                if victim_id and use_team_column:
-                    vic_side = self._normalize_team(kill.get(self._vic_side_col))
-                    if vic_side == "CT":
-                        ct_alive.add(victim_id)
-                    elif vic_side == "T":
-                        t_alive.add(victim_id)
+                    # Add victim to their team
+                    victim_id = safe_int(kill.get(self._vic_id_col))
+                    if victim_id:
+                        vic_side = self._normalize_team(kill.get(self._vic_side_col))
+                        if vic_side == "CT":
+                            ct_alive.add(victim_id)
+                        elif vic_side == "T":
+                            t_alive.add(victim_id)
 
-            # Skip rounds with incomplete team data
+            # Fallback: use player_teams from initialization when team columns unavailable
+            # or when kill events didn't give us complete team data
+            # NOTE: After halftime (round 15), teams swap sides, so we need to invert
+            if not ct_alive or not t_alive:
+                # Determine if we're in second half (teams have swapped)
+                is_second_half = round_num_int > 15
+                for steam_id, team in self.data.player_teams.items():
+                    normalized = self._normalize_team(team)
+                    # Swap teams if in second half
+                    if is_second_half:
+                        if normalized == "CT":
+                            normalized = "T"
+                        elif normalized == "T":
+                            normalized = "CT"
+                    if normalized == "CT":
+                        ct_alive.add(steam_id)
+                    elif normalized == "T":
+                        t_alive.add(steam_id)
+
+            # Skip rounds with incomplete team data (still no teams after fallback)
             if not ct_alive or not t_alive:
                 continue
 
@@ -2673,10 +2712,13 @@ class DemoAnalyzer:
                     if attacker_id != clutcher_id:
                         continue
                     # Get victim team from kill event
+                    victim_id = safe_int(kill.get(self._vic_id_col))
                     if use_team_column:
                         vic_side = self._normalize_team(kill.get(self._vic_side_col))
                     else:
-                        vic_side = "Unknown"
+                        # Fallback: look up from player_teams
+                        vic_team = self.data.player_teams.get(victim_id, "Unknown")
+                        vic_side = self._normalize_team(vic_team)
                     if vic_side == enemy_side:
                         enemies_killed += 1
 
