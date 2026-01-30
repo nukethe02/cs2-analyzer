@@ -31,6 +31,39 @@ def _safe_attr(obj: Any, attr: str, default: Any = None) -> Any:
 
 
 @dataclass
+class TeamTacticalAnalysis:
+    """Tactical analysis for a single team."""
+
+    team_name: str = "Unknown Team"
+    team_side: str = ""  # Which side they started on (CT/T)
+
+    # Key insights specific to this team
+    key_insights: list[str] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
+
+    # Strengths and weaknesses
+    strengths: list[str] = field(default_factory=list)
+    weaknesses: list[str] = field(default_factory=list)
+
+    # Side-specific performance
+    t_side_performance: dict[str, Any] = field(default_factory=dict)
+    ct_side_performance: dict[str, Any] = field(default_factory=dict)
+
+    # Play patterns
+    common_executes: list[tuple[str, int]] = field(default_factory=list)
+    utility_effectiveness: float = 0.0
+    coordination_score: float = 0.0
+
+    # Economy
+    eco_discipline: str = ""
+    force_buy_success: float = 0.0
+
+    # Key player for this team
+    star_player: str = ""
+    star_player_role: str = ""
+
+
+@dataclass
 class TacticalSummary:
     """Complete tactical analysis summary."""
 
@@ -51,13 +84,17 @@ class TacticalSummary:
     # Round details
     round_plays: list[dict[str, Any]] = field(default_factory=list)
 
-    # Matchup
+    # Matchup (legacy T/CT side analysis)
     t_strengths: list[str] = field(default_factory=list)
     t_weaknesses: list[str] = field(default_factory=list)
     ct_strengths: list[str] = field(default_factory=list)
     ct_weaknesses: list[str] = field(default_factory=list)
     t_win_rate: float = 0.0
     ct_win_rate: float = 0.0
+
+    # NEW: Team-specific tactical analysis
+    team1_analysis: TeamTacticalAnalysis = field(default_factory=TeamTacticalAnalysis)
+    team2_analysis: TeamTacticalAnalysis = field(default_factory=TeamTacticalAnalysis)
 
     # Recommendations
     team_recommendations: list[str] = field(default_factory=list)
@@ -80,6 +117,7 @@ class TacticalAnalysisService:
         self._analyze_players()
         self._analyze_rounds()
         self._analyze_matchup()
+        self._analyze_team_tactics()  # NEW: Team-specific analysis
         self._generate_recommendations()
         self._extract_key_insights()
 
@@ -333,6 +371,225 @@ class TacticalAnalysisService:
             self.summary.ct_weaknesses = [
                 "Mid-round positioning",
             ]
+
+    def _analyze_team_tactics(self) -> None:
+        """Analyze tactics specific to each team (Team 1 and Team 2)."""
+        kills = getattr(self.data, "kills", [])
+        ct_players = set(getattr(self.data, "ct_players", []))
+        t_players = set(getattr(self.data, "t_players", []))
+        player_names = getattr(self.data, "player_names", {})
+
+        # Team 1 = CT players at start, Team 2 = T players at start
+        team1_players = ct_players
+        team2_players = t_players
+
+        # Calculate team-specific stats
+        team1_kills = 0
+        team2_kills = 0
+        team1_opening_kills = 0
+        team2_opening_kills = 0
+        team1_trade_kills = 0
+        team2_trade_kills = 0
+
+        for kill in kills:
+            attacker_id = _safe_attr(kill, "attacker_steamid")
+            tick = _safe_attr(kill, "tick", 0)
+            time = _safe_attr(kill, "time", tick / 64 if tick else 0)
+
+            if attacker_id in team1_players:
+                team1_kills += 1
+                if time < 15:
+                    team1_opening_kills += 1
+                if 1 < (time % 5) < 3:
+                    team1_trade_kills += 1
+            elif attacker_id in team2_players:
+                team2_kills += 1
+                if time < 15:
+                    team2_opening_kills += 1
+                if 1 < (time % 5) < 3:
+                    team2_trade_kills += 1
+
+        total_kills = team1_kills + team2_kills
+
+        # Find star players for each team
+        team1_player_kills = defaultdict(int)
+        team2_player_kills = defaultdict(int)
+        for kill in kills:
+            attacker_id = _safe_attr(kill, "attacker_steamid")
+            if attacker_id in team1_players:
+                team1_player_kills[attacker_id] += 1
+            elif attacker_id in team2_players:
+                team2_player_kills[attacker_id] += 1
+
+        team1_star = max(team1_player_kills.items(), key=lambda x: x[1], default=(None, 0))
+        team2_star = max(team2_player_kills.items(), key=lambda x: x[1], default=(None, 0))
+
+        # Generate Team 1 analysis
+        team1_analysis = TeamTacticalAnalysis(
+            team_name="Team 1",
+            team_side="CT",
+        )
+
+        if total_kills > 0:
+            team1_rate = (team1_kills / total_kills) * 100
+        else:
+            team1_rate = 50.0
+
+        # Team 1 key insights
+        if team1_rate > 55:
+            team1_analysis.key_insights = [
+                "Strong overall performance - controlled the pace of the game",
+                f"Secured {team1_kills} total kills with {team1_opening_kills} opening picks",
+            ]
+        elif team1_rate > 45:
+            team1_analysis.key_insights = [
+                "Competitive performance - traded rounds effectively",
+                f"Consistent fragging with {team1_kills} kills throughout the match",
+            ]
+        else:
+            team1_analysis.key_insights = [
+                "Struggled to find impact - need to improve fundamentals",
+                f"Only {team1_kills} kills - look for better positioning",
+            ]
+
+        # Team 1 strengths/weaknesses based on data
+        team1_analysis.strengths = []
+        team1_analysis.weaknesses = []
+
+        if team1_opening_kills >= 5:
+            team1_analysis.strengths.append("Strong opening duel conversion")
+        else:
+            team1_analysis.weaknesses.append("Losing too many opening duels")
+
+        if team1_trade_kills >= 3:
+            team1_analysis.strengths.append("Good trade discipline")
+        else:
+            team1_analysis.weaknesses.append("Need better trade setups")
+
+        if team1_rate > 50:
+            team1_analysis.strengths.append("Winning the kill battle")
+        else:
+            team1_analysis.weaknesses.append("Getting outfragged overall")
+
+        # Ensure at least one strength/weakness
+        if not team1_analysis.strengths:
+            team1_analysis.strengths.append("Team cohesion present")
+        if not team1_analysis.weaknesses:
+            team1_analysis.weaknesses.append("Minor positioning adjustments needed")
+
+        # Team 1 recommendations
+        team1_analysis.recommendations = []
+        if team1_opening_kills < 5:
+            team1_analysis.recommendations.append(
+                "Focus on pre-aim and crosshair placement for opening duels"
+            )
+        if team1_trade_kills < 3:
+            team1_analysis.recommendations.append(
+                "Practice buddy-system setups for better trade opportunities"
+            )
+        if team1_rate < 45:
+            team1_analysis.recommendations.append(
+                "Review positioning and consider more coordinated utility usage"
+            )
+        if not team1_analysis.recommendations:
+            team1_analysis.recommendations.append(
+                "Continue current approach - maintain consistency"
+            )
+
+        # Star player
+        if team1_star[0] and isinstance(player_names, dict):
+            team1_analysis.star_player = player_names.get(
+                team1_star[0], f"Player {team1_star[0]}"
+            )
+            team1_analysis.star_player_role = (
+                "Entry" if team1_opening_kills > team1_trade_kills else "Rifler"
+            )
+
+        team1_analysis.coordination_score = min(85, int(team1_rate + 10))
+
+        # Generate Team 2 analysis
+        team2_analysis = TeamTacticalAnalysis(
+            team_name="Team 2",
+            team_side="T",
+        )
+
+        if total_kills > 0:
+            team2_rate = (team2_kills / total_kills) * 100
+        else:
+            team2_rate = 50.0
+
+        # Team 2 key insights
+        if team2_rate > 55:
+            team2_analysis.key_insights = [
+                "Dominant performance - dictated the tempo of rounds",
+                f"Secured {team2_kills} total kills with {team2_opening_kills} opening picks",
+            ]
+        elif team2_rate > 45:
+            team2_analysis.key_insights = [
+                "Balanced performance - kept rounds competitive",
+                f"Solid fragging with {team2_kills} kills across the match",
+            ]
+        else:
+            team2_analysis.key_insights = [
+                "Underperformed - need to review positioning and utility",
+                f"Only {team2_kills} kills - focus on fundamentals",
+            ]
+
+        # Team 2 strengths/weaknesses
+        team2_analysis.strengths = []
+        team2_analysis.weaknesses = []
+
+        if team2_opening_kills >= 5:
+            team2_analysis.strengths.append("Excellent opening aggression")
+        else:
+            team2_analysis.weaknesses.append("Need more early round impact")
+
+        if team2_trade_kills >= 3:
+            team2_analysis.strengths.append("Effective trading")
+        else:
+            team2_analysis.weaknesses.append("Players dying without trades")
+
+        if team2_rate > 50:
+            team2_analysis.strengths.append("Outfragging opponents")
+        else:
+            team2_analysis.weaknesses.append("Losing the frag battle")
+
+        if not team2_analysis.strengths:
+            team2_analysis.strengths.append("Room for improvement")
+        if not team2_analysis.weaknesses:
+            team2_analysis.weaknesses.append("Fine-tune execute timings")
+
+        # Team 2 recommendations
+        team2_analysis.recommendations = []
+        if team2_opening_kills < 5:
+            team2_analysis.recommendations.append(
+                "Work on flash timing and pre-fire angles"
+            )
+        if team2_trade_kills < 3:
+            team2_analysis.recommendations.append(
+                "Tighten up spacing - stay closer to teammates"
+            )
+        if team2_rate < 45:
+            team2_analysis.recommendations.append(
+                "Focus on utility efficiency and site execution"
+            )
+        if not team2_analysis.recommendations:
+            team2_analysis.recommendations.append(
+                "Maintain current form - strong fundamentals"
+            )
+
+        if team2_star[0] and isinstance(player_names, dict):
+            team2_analysis.star_player = player_names.get(
+                team2_star[0], f"Player {team2_star[0]}"
+            )
+            team2_analysis.star_player_role = (
+                "Entry" if team2_opening_kills > team2_trade_kills else "Rifler"
+            )
+
+        team2_analysis.coordination_score = min(85, int(team2_rate + 10))
+
+        self.summary.team1_analysis = team1_analysis
+        self.summary.team2_analysis = team2_analysis
 
     def _generate_recommendations(self) -> None:
         """Generate coaching recommendations."""

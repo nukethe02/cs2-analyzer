@@ -723,6 +723,8 @@ class CachedAnalyzer:
                 "duration_minutes": getattr(analysis, "duration_minutes", 30),
                 "score": f"{analysis.team1_score} - {analysis.team2_score}",
                 "total_kills": sum(p["stats"]["kills"] for p in players.values()),
+                "team1_name": getattr(analysis, "team1_name", "Team 1"),
+                "team2_name": getattr(analysis, "team2_name", "Team 2"),
             },
             "players": players,
             "mvp": mvp,
@@ -1309,25 +1311,63 @@ class CachedAnalyzer:
         if not rounds or not kills:
             return {}
 
-        # Build player teams from kills (more reliable than player_teams dict)
-        player_teams: dict[int, str] = {}
+        # Build player teams from FIRST HALF kills only (rounds 1-12)
+        # to establish starting side, then handle halftime swap
+        player_starting_teams: dict[int, str] = {}
         for kill in kills:
+            round_num = getattr(kill, "round_num", 0)
+            # Only use first half kills to determine starting team
+            if round_num > 12:
+                continue
+
             att_id = getattr(kill, "attacker_steamid", 0)
             att_side = str(getattr(kill, "attacker_side", "")).upper()
             vic_id = getattr(kill, "victim_steamid", 0)
             vic_side = str(getattr(kill, "victim_side", "")).upper()
 
-            if att_id and "CT" in att_side:
-                player_teams[att_id] = "CT"
-            elif att_id and "T" in att_side:
-                player_teams[att_id] = "T"
-            if vic_id and "CT" in vic_side:
-                player_teams[vic_id] = "CT"
-            elif vic_id and "T" in vic_side:
-                player_teams[vic_id] = "T"
+            if att_id and att_id not in player_starting_teams:
+                if "CT" in att_side:
+                    player_starting_teams[att_id] = "CT"
+                elif "T" in att_side:
+                    player_starting_teams[att_id] = "T"
+            if vic_id and vic_id not in player_starting_teams:
+                if "CT" in vic_side:
+                    player_starting_teams[vic_id] = "CT"
+                elif "T" in vic_side:
+                    player_starting_teams[vic_id] = "T"
 
-        # Group damage by round
+        # If no first-half kills found, fall back to any kill data
+        if not player_starting_teams:
+            for kill in kills:
+                att_id = getattr(kill, "attacker_steamid", 0)
+                att_side = str(getattr(kill, "attacker_side", "")).upper()
+                vic_id = getattr(kill, "victim_steamid", 0)
+                vic_side = str(getattr(kill, "victim_side", "")).upper()
+
+                if att_id and att_id not in player_starting_teams:
+                    if "CT" in att_side:
+                        player_starting_teams[att_id] = "CT"
+                    elif "T" in att_side:
+                        player_starting_teams[att_id] = "T"
+                if vic_id and vic_id not in player_starting_teams:
+                    if "CT" in vic_side:
+                        player_starting_teams[vic_id] = "CT"
+                    elif "T" in vic_side:
+                        player_starting_teams[vic_id] = "T"
+
+        def get_player_team_for_round(player_id: int, round_num: int) -> str:
+            """Get player's team for a specific round, handling halftime swap."""
+            starting_team = player_starting_teams.get(player_id, "")
+            if starting_team not in ["CT", "T"]:
+                return ""
+            # Standard CS2 MR12: rounds 1-12 = first half, 13+ = second half (teams swap)
+            if round_num > 12:
+                return "T" if starting_team == "CT" else "CT"
+            return starting_team
+
+        # Group damage by round with attacker's side for that specific event
         round_damages: dict[int, dict[int, int]] = {}  # round_num -> {steam_id -> damage}
+        round_player_sides: dict[int, dict[int, str]] = {}  # round_num -> {steam_id -> side}
         for dmg in damages:
             round_num = getattr(dmg, "round_num", 0)
             attacker_id = getattr(dmg, "attacker_steamid", 0)
@@ -1343,9 +1383,15 @@ class CachedAnalyzer:
             if attacker_id and round_num and is_enemy_damage:
                 if round_num not in round_damages:
                     round_damages[round_num] = {}
+                    round_player_sides[round_num] = {}
                 if attacker_id not in round_damages[round_num]:
                     round_damages[round_num][attacker_id] = 0
                 round_damages[round_num][attacker_id] += damage_val
+                # Track the side for this player in this round
+                if "CT" in attacker_side:
+                    round_player_sides[round_num][attacker_id] = "CT"
+                elif "T" in attacker_side:
+                    round_player_sides[round_num][attacker_id] = "T"
 
         # Initialize player stats
         player_stats: dict[int, dict] = {}
@@ -1366,15 +1412,21 @@ class CachedAnalyzer:
                 continue
 
             round_dmg = round_damages.get(round_num, {})
+            round_sides = round_player_sides.get(round_num, {})
 
-            # Find winning players based on their side in this half
+            # Find winning players based on their side for THIS round
             winning_players = []
-            for pid, team in player_teams.items():
-                if pid in player_stats:
-                    player_stats[pid]["rounds_played"] += 1
+            for pid in player_stats:
+                # First try to get side from damage events in this round (most accurate)
+                player_side = round_sides.get(pid, "")
+                # Fall back to calculated side based on starting team + halftime
+                if not player_side:
+                    player_side = get_player_team_for_round(pid, round_num)
 
+                if player_side in ["CT", "T"]:
+                    player_stats[pid]["rounds_played"] += 1
                     # Check if player is on winning team
-                    if (winner == "CT" and team == "CT") or (winner == "T" and team == "T"):
+                    if player_side == winner:
                         winning_players.append(pid)
 
             if not winning_players:
@@ -2462,6 +2514,31 @@ class CachedAnalyzer:
             service = TacticalAnalysisService(demo_data)
             summary = service.analyze()
 
+            # Serialize team analysis to dict
+            team1_dict = {
+                "team_name": summary.team1_analysis.team_name,
+                "team_side": summary.team1_analysis.team_side,
+                "key_insights": summary.team1_analysis.key_insights,
+                "recommendations": summary.team1_analysis.recommendations,
+                "strengths": summary.team1_analysis.strengths,
+                "weaknesses": summary.team1_analysis.weaknesses,
+                "star_player": summary.team1_analysis.star_player,
+                "star_player_role": summary.team1_analysis.star_player_role,
+                "coordination_score": summary.team1_analysis.coordination_score,
+            }
+
+            team2_dict = {
+                "team_name": summary.team2_analysis.team_name,
+                "team_side": summary.team2_analysis.team_side,
+                "key_insights": summary.team2_analysis.key_insights,
+                "recommendations": summary.team2_analysis.recommendations,
+                "strengths": summary.team2_analysis.strengths,
+                "weaknesses": summary.team2_analysis.weaknesses,
+                "star_player": summary.team2_analysis.star_player,
+                "star_player_role": summary.team2_analysis.star_player_role,
+                "coordination_score": summary.team2_analysis.coordination_score,
+            }
+
             return {
                 "key_insights": summary.key_insights,
                 "t_stats": summary.t_stats,
@@ -2474,6 +2551,8 @@ class CachedAnalyzer:
                 "ct_weaknesses": summary.ct_weaknesses,
                 "team_recommendations": summary.team_recommendations,
                 "practice_drills": summary.practice_drills,
+                "team1_analysis": team1_dict,
+                "team2_analysis": team2_dict,
             }
         except Exception as e:
             logger.warning(f"Tactical analysis failed: {e}")
