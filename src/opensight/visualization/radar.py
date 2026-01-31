@@ -281,52 +281,99 @@ MAP_ZONES: dict[str, dict[str, dict]] = {
         },
     },
     "de_ancient": {
+        # === SPAWN AREAS ===
         "T Spawn": {
-            "bounds": [[-1800, -600], [-1200, -600], [-1200, 0], [-1800, 0]],
+            "bounds": [[-2400, -900], [-1400, -900], [-1400, 200], [-2400, 200]],
             "type": "spawn",
         },
         "CT Spawn": {
-            "bounds": [[700, 300], [1400, 300], [1400, 900], [700, 900]],
+            "bounds": [[600, 200], [1500, 200], [1500, 1000], [600, 1000]],
             "type": "spawn",
         },
+        # === T SIDE APPROACH (Outside / Alley) ===
+        "Outside": {
+            "bounds": [[-2400, 200], [-1400, 200], [-1400, 800], [-2400, 800]],
+            "type": "route",
+        },
+        "T Alley": {
+            "bounds": [[-1400, -400], [-1200, -400], [-1200, 400], [-1400, 400]],
+            "type": "route",
+        },
+        # === A SITE AREA ===
         "A Site": {
-            "bounds": [[-500, 750], [250, 750], [250, 1350], [-500, 1350]],
+            "bounds": [[-600, 650], [350, 650], [350, 1450], [-600, 1450]],
             "type": "bombsite",
         },
         "A Main": {
-            "bounds": [[-1200, 250], [-500, 250], [-500, 750], [-1200, 750]],
+            "bounds": [[-1300, 150], [-400, 150], [-400, 700], [-1300, 700]],
             "type": "route",
         },
+        "Elbow": {
+            "bounds": [[-400, 400], [100, 400], [100, 700], [-400, 700]],
+            "type": "choke",
+        },
+        "A Default": {
+            "bounds": [[-200, 1000], [300, 1000], [300, 1400], [-200, 1400]],
+            "type": "position",
+        },
+        # === MID AREA ===
         "Donut": {
-            "bounds": [[-500, -200], [200, -200], [200, 250], [-500, 250]],
+            "bounds": [[-600, -300], [300, -300], [300, 200], [-600, 200]],
             "type": "route",
         },
         "Mid": {
-            "bounds": [[-200, -700], [600, -700], [600, -200], [-200, -200]],
+            "bounds": [[-300, -800], [700, -800], [700, -250], [-300, -250]],
             "type": "mid",
         },
+        "Temple": {
+            "bounds": [[-1300, -350], [-500, -350], [-500, 200], [-1300, 200]],
+            "type": "route",
+        },
+        # === B SITE AREA ===
         "B Site": {
-            "bounds": [[900, -400], [1600, -400], [1600, 300], [900, 300]],
+            "bounds": [[800, -500], [1700, -500], [1700, 400], [800, 400]],
             "type": "bombsite",
         },
         "B Main": {
-            "bounds": [[600, -1100], [1200, -1100], [1200, -400], [600, -400]],
+            "bounds": [[500, -1200], [1300, -1200], [1300, -450], [500, -450]],
             "type": "route",
         },
+        "B Ramp": {
+            "bounds": [[600, -500], [900, -500], [900, 100], [600, 100]],
+            "type": "choke",
+        },
+        "Ruins": {
+            "bounds": [[1400, -600], [1800, -600], [1800, 100], [1400, 100]],
+            "type": "position",
+        },
+        "Back of B": {
+            "bounds": [[1300, 100], [1700, 100], [1700, 500], [1300, 500]],
+            "type": "position",
+        },
+        # === CT SIDE / ROTATIONS ===
         "Cave": {
-            "bounds": [[200, 750], [700, 750], [700, 1200], [200, 1200]],
+            "bounds": [[100, 650], [800, 650], [800, 1300], [100, 1300]],
             "type": "route",
         },
-        "Temple": {
-            "bounds": [[-1200, -200], [-500, -200], [-500, 250], [-1200, 250]],
+        "House": {
+            "bounds": [[350, 300], [700, 300], [700, 700], [350, 700]],
+            "type": "route",
+        },
+        "CT": {
+            "bounds": [[700, 650], [1100, 650], [1100, 1100], [700, 1100]],
             "type": "route",
         },
         "Ramp": {
-            "bounds": [[200, -200], [600, -200], [600, 300], [200, 300]],
+            "bounds": [[100, -300], [700, -300], [700, 400], [100, 400]],
             "type": "route",
         },
+        # === WATER / SEWER AREA ===
         "Water": {
-            "bounds": [[-200, -1100], [400, -1100], [400, -700], [-200, -700]],
+            "bounds": [[-400, -1200], [550, -1200], [550, -750], [-400, -750]],
+            "type": "route",
+        },
+        "Tunnel": {
+            "bounds": [[400, -800], [700, -800], [700, -450], [400, -450]],
             "type": "route",
         },
     },
@@ -613,9 +660,45 @@ def _point_in_polygon(x: float, y: float, polygon: list[list[float]]) -> bool:
     return inside
 
 
+def _get_polygon_centroid(polygon: list[list[float]]) -> tuple[float, float]:
+    """
+    Calculate the centroid (center point) of a polygon.
+
+    Args:
+        polygon: List of [x, y] vertices defining the polygon
+
+    Returns:
+        Tuple of (center_x, center_y)
+    """
+    if not polygon:
+        return (0.0, 0.0)
+    sum_x = sum(p[0] for p in polygon)
+    sum_y = sum(p[1] for p in polygon)
+    n = len(polygon)
+    return (sum_x / n, sum_y / n)
+
+
+def _distance_squared(x1: float, y1: float, x2: float, y2: float) -> float:
+    """Calculate squared distance between two points (avoids sqrt for performance)."""
+    return (x2 - x1) ** 2 + (y2 - y1) ** 2
+
+
+# Maximum distance (in game units) to assign a point to the nearest zone
+# If a point is further than this from all zone centroids, it's truly "Unknown"
+NEAREST_ZONE_MAX_DISTANCE = 500
+
+
 def get_zone_for_position(map_name: str, x: float, y: float, z: float | None = None) -> str:
     """
     Determine which zone a position is in.
+
+    Uses a two-stage approach:
+    1. Strict check: If point is inside a zone polygon, return that zone
+    2. Nearest neighbor fallback: If not inside any zone, find the closest
+       zone centroid within NEAREST_ZONE_MAX_DISTANCE (500 units)
+
+    This handles edge cases where players are standing in gaps between zones
+    or slightly outside defined boundaries.
 
     Args:
         map_name: Internal map name (e.g., "de_dust2")
@@ -624,7 +707,7 @@ def get_zone_for_position(map_name: str, x: float, y: float, z: float | None = N
         z: Game Z coordinate (for multi-level maps like Nuke/Vertigo)
 
     Returns:
-        Zone name or "Unknown" if not in any defined zone
+        Zone name or "Unknown" if truly off the playable map
     """
     map_name = map_name.lower()
     if map_name not in MAP_ZONES:
@@ -632,6 +715,7 @@ def get_zone_for_position(map_name: str, x: float, y: float, z: float | None = N
 
     zones = MAP_ZONES[map_name]
 
+    # Stage 1: Strict point-in-polygon check
     for zone_name, zone_def in zones.items():
         bounds = zone_def.get("bounds", [])
         if len(bounds) < 3:
@@ -640,25 +724,56 @@ def get_zone_for_position(map_name: str, x: float, y: float, z: float | None = N
         if _point_in_polygon(x, y, bounds):
             return zone_name
 
+    # Stage 2: Nearest neighbor fallback
+    # Find the closest zone centroid within the max distance threshold
+    nearest_zone = None
+    nearest_dist_sq = NEAREST_ZONE_MAX_DISTANCE**2  # Use squared distance for performance
+
+    for zone_name, zone_def in zones.items():
+        bounds = zone_def.get("bounds", [])
+        if len(bounds) < 3:
+            continue
+
+        centroid_x, centroid_y = _get_polygon_centroid(bounds)
+        dist_sq = _distance_squared(x, y, centroid_x, centroid_y)
+
+        if dist_sq < nearest_dist_sq:
+            nearest_dist_sq = dist_sq
+            nearest_zone = zone_name
+
+    if nearest_zone:
+        return nearest_zone
+
+    # Truly off the map - no zone within threshold
     return "Unknown"
 
 
 def classify_round_economy(equipment_value: int, is_pistol_round: bool) -> str:
     """
-    Classify round type based on equipment value.
+    Classify round type based on TEAM TOTAL equipment value.
+
+    These thresholds are calibrated for a 5-player team total, NOT individual values.
 
     Args:
-        equipment_value: Total equipment value for the team/player
-        is_pistol_round: Whether this is round 1 or 13
+        equipment_value: Total equipment value for the TEAM (all 5 players combined)
+        is_pistol_round: Whether this is a pistol round
 
     Returns:
         Round type: 'pistol', 'eco', 'semi_eco', 'force', or 'full_buy'
+
+    Thresholds (for 5-player team):
+    - Eco: < $5,000 (avg < $1,000/player - pistols only)
+    - Semi-Eco: $5,000 - $12,500 (avg $1,000-2,500/player - SMGs or mixed)
+    - Force: $12,500 - $20,000 (avg $2,500-4,000/player - some rifles, partial armor)
+    - Full Buy: > $20,000 (avg > $4,000/player - full rifles, armor, utility)
     """
     if is_pistol_round:
         return "pistol"
+
+    # Team total thresholds (5 players)
     if equipment_value < 5000:
         return "eco"
-    elif equipment_value < 10000:
+    elif equipment_value < 12500:
         return "semi_eco"
     elif equipment_value < 20000:
         return "force"

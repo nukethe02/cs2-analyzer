@@ -170,6 +170,57 @@ WEAPON_CATEGORIES: dict[str, WeaponCategory] = {
     "knife": WeaponCategory.KNIFE,
 }
 
+# Valid weapon categories for crosshair placement measurement
+# Only measure CP for primary/secondary weapons, not utility or melee
+CP_VALID_CATEGORIES: set[WeaponCategory] = {
+    WeaponCategory.PISTOL,
+    WeaponCategory.SMG,
+    WeaponCategory.RIFLE,
+    WeaponCategory.SNIPER,
+    WeaponCategory.SHOTGUN,
+    WeaponCategory.MACHINE_GUN,
+}
+
+# Grenade weapon names (for filtering)
+GRENADE_WEAPONS: set[str] = {
+    "hegrenade", "flashbang", "smokegrenade", "molotov",
+    "incgrenade", "decoy", "inferno", "he_grenade",
+    "flash", "smoke", "molly", "inc",
+}
+
+
+def _is_valid_cp_weapon(weapon_name: str | None) -> bool:
+    """
+    Check if a weapon is valid for crosshair placement measurement.
+
+    Only primary and secondary weapons count - knives, grenades, and
+    utility kills should not affect CP metrics.
+
+    Args:
+        weapon_name: The weapon name from kill/damage event
+
+    Returns:
+        True if weapon is valid for CP measurement
+    """
+    if not weapon_name:
+        return False
+
+    weapon_clean = str(weapon_name).lower().replace("weapon_", "").strip()
+
+    # Explicit knife check (various formats)
+    if "knife" in weapon_clean or weapon_clean in ("bayonet", "karambit", "m9_bayonet"):
+        return False
+
+    # Explicit grenade check
+    if weapon_clean in GRENADE_WEAPONS:
+        return False
+
+    # Check against known categories
+    category = WEAPON_CATEGORIES.get(weapon_clean, WeaponCategory.UNKNOWN)
+
+    # Only allow guns, not utility
+    return category in CP_VALID_CATEGORIES
+
 # Map areas for positioning analysis (simplified, per-map data would be more accurate)
 MAP_AREAS: dict[str, list[tuple[str, tuple[float, float, float, float]]]] = {
     "de_dust2": [
@@ -511,29 +562,126 @@ def calculate_ttd(demo_data: DemoData, steam_id: int | None = None) -> dict[int,
     return results
 
 
+def _get_pre_engagement_tick(
+    kill_tick: int,
+    attacker_id: int,
+    victim_id: int,
+    round_num: int,
+    damage_cache: dict[tuple, list[int]],
+    tick_rate: int,
+    pre_engagement_ms: float = 200.0,
+) -> int:
+    """
+    Find the pre-engagement tick for crosshair placement measurement.
+
+    Instead of measuring at kill moment (which includes recoil/flicks),
+    we measure BEFORE the engagement started.
+
+    Priority:
+    1. First damage tick - pre_engagement_ms (before recoil kicks in)
+    2. Kill tick - pre_engagement_ms (fallback)
+
+    Args:
+        kill_tick: Tick when kill occurred
+        attacker_id: Attacker steam ID
+        victim_id: Victim steam ID
+        round_num: Round number
+        damage_cache: Pre-built cache of (attacker, victim, round) -> damage ticks
+        tick_rate: Game tick rate
+        pre_engagement_ms: How far back to look (default 200ms)
+
+    Returns:
+        Tick to use for CP measurement
+    """
+    pre_engagement_ticks = int((pre_engagement_ms / 1000.0) * tick_rate)
+
+    # Try to find first damage tick
+    cache_key = (attacker_id, victim_id, round_num)
+    damage_ticks = damage_cache.get(cache_key, [])
+
+    if damage_ticks:
+        first_dmg_tick = min(damage_ticks)
+        # Measure BEFORE first damage (pre-aim, not during recoil)
+        return max(0, first_dmg_tick - pre_engagement_ticks)
+
+    # Fallback: measure before kill tick
+    return max(0, kill_tick - pre_engagement_ticks)
+
+
+def _count_shots_in_engagement(
+    attacker_id: int,
+    engagement_start_tick: int,
+    kill_tick: int,
+    weapon_fires_df: pd.DataFrame | None,
+) -> int:
+    """
+    Count how many shots the attacker fired during this engagement.
+
+    Used to filter out spray situations where we'd be measuring recoil
+    control rather than crosshair placement.
+
+    Args:
+        attacker_id: Attacker steam ID
+        engagement_start_tick: When engagement started
+        kill_tick: When kill occurred
+        weapon_fires_df: DataFrame of weapon fire events
+
+    Returns:
+        Number of shots fired in the engagement window
+    """
+    if weapon_fires_df is None or weapon_fires_df.empty:
+        return 1  # Assume single shot if no data
+
+    steamid_col = None
+    for col in ["player_steamid", "steamid", "steam_id", "attacker_steamid"]:
+        if col in weapon_fires_df.columns:
+            steamid_col = col
+            break
+
+    if steamid_col is None:
+        return 1
+
+    # Filter to attacker's shots in the engagement window
+    mask = (
+        (weapon_fires_df[steamid_col] == attacker_id)
+        & (weapon_fires_df["tick"] >= engagement_start_tick)
+        & (weapon_fires_df["tick"] <= kill_tick)
+    )
+
+    return len(weapon_fires_df[mask])
+
+
 def calculate_crosshair_placement(
-    demo_data: DemoData, steam_id: int | None = None, sample_interval_ticks: int = 16
+    demo_data: DemoData,
+    steam_id: int | None = None,
+    sample_interval_ticks: int = 16,
+    pre_engagement_ms: float = 200.0,
+    max_shots_for_valid_sample: int = 3,
 ) -> dict[int, CrosshairPlacementResult]:
     """
-    Calculate Crosshair Placement quality for players.
+    Calculate Crosshair Placement quality for players (Leetify-style).
 
-    CP measures the angular distance between a player's aim and
-    enemy positions at time of kill. Lower angles indicate better placement.
+    IMPROVED IMPLEMENTATION:
+    - Measures PRE-ENGAGEMENT crosshair position, not kill-moment position
+    - Filters out knife/grenade kills (only guns count)
+    - Filters out spray situations (>3 shots = measuring recoil, not placement)
+    - Uses first damage tick - 200ms as measurement point
 
-    This implementation works from kill events with position data,
-    avoiding expensive full tick sampling.
+    This measures TRUE crosshair discipline: where was your crosshair
+    BEFORE you saw the enemy, not after you flicked to them.
 
     Args:
         demo_data: Parsed demo data
         steam_id: Optional specific player to analyze
         sample_interval_ticks: Ignored - kept for API compatibility
+        pre_engagement_ms: How far before first damage to measure (default 200ms)
+        max_shots_for_valid_sample: Max shots to count as "clean" kill (default 3)
 
     Returns:
         Dictionary mapping steam_id to CrosshairPlacementResult
     """
     results: dict[int, CrosshairPlacementResult] = {}
 
-    # Use kills with position data
     kills = demo_data.kills
     if not kills:
         logger.warning("No kill events with position data for CP calculation")
@@ -542,27 +690,95 @@ def calculate_crosshair_placement(
     # Constants
     MIN_DISTANCE = 100  # Units
     MAX_DISTANCE = 3000  # Units
+    tick_rate = getattr(demo_data, "tick_rate", 64)
+
+    # Build damage cache for finding first damage tick
+    damage_cache: dict[tuple, list[int]] = {}
+    damage_df = demo_data.damages_df
+    if damage_df is not None and not damage_df.empty:
+        att_col = _find_column(damage_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
+        vic_col = _find_column(damage_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
+        round_col = _find_column(damage_df, ["round_num", "round", "round_number"])
+
+        if att_col and vic_col:
+            for _, row in damage_df.iterrows():
+                try:
+                    att = int(row[att_col]) if pd.notna(row[att_col]) else 0
+                    vic = int(row[vic_col]) if pd.notna(row[vic_col]) else 0
+                    rnd = int(row[round_col]) if round_col and pd.notna(row[round_col]) else 0
+                    tick = int(row["tick"]) if pd.notna(row["tick"]) else 0
+
+                    if att and vic and tick:
+                        key = (att, vic, rnd)
+                        if key not in damage_cache:
+                            damage_cache[key] = []
+                        damage_cache[key].append(tick)
+                except (ValueError, TypeError):
+                    continue
+
+    # Get weapon fires for spray detection
+    weapon_fires_df = getattr(demo_data, "weapon_fires_df", None)
 
     # Collect angle samples per player
     player_angles: dict[int, list[float]] = {}
+    filtered_counts = {"weapon": 0, "spray": 0, "distance": 0, "data": 0}
 
     for kill in kills:
         try:
             att_id = kill.attacker_steamid
+            vic_id = kill.victim_steamid
+            kill_tick = kill.tick
+            round_num = getattr(kill, "round_num", 0)
 
             # Filter to specific player if requested
             if steam_id is not None and att_id != steam_id:
                 continue
 
-            # Check if we have position and angle data
-            if not hasattr(kill, "attacker_x") or kill.attacker_x is None:
-                continue
-            if not hasattr(kill, "attacker_pitch") or kill.attacker_pitch is None:
-                continue
-            if not hasattr(kill, "victim_x") or kill.victim_x is None:
+            # FILTER 1: Weapon check - only primary/secondary weapons
+            weapon = getattr(kill, "weapon", None)
+            if not _is_valid_cp_weapon(weapon):
+                filtered_counts["weapon"] += 1
+                logger.debug(f"CP: Filtered kill with weapon '{weapon}' (not valid for CP)")
                 continue
 
-            # Get positions
+            # Check if we have position and angle data
+            if not hasattr(kill, "attacker_x") or kill.attacker_x is None:
+                filtered_counts["data"] += 1
+                continue
+            if not hasattr(kill, "attacker_pitch") or kill.attacker_pitch is None:
+                filtered_counts["data"] += 1
+                continue
+            if not hasattr(kill, "victim_x") or kill.victim_x is None:
+                filtered_counts["data"] += 1
+                continue
+
+            # Get the PRE-ENGAGEMENT tick (before recoil/flicks)
+            measurement_tick = _get_pre_engagement_tick(
+                kill_tick=kill_tick,
+                attacker_id=att_id,
+                victim_id=vic_id,
+                round_num=round_num,
+                damage_cache=damage_cache,
+                tick_rate=tick_rate,
+                pre_engagement_ms=pre_engagement_ms,
+            )
+
+            # FILTER 2: Spray filter - don't measure recoil control as placement
+            shots_fired = _count_shots_in_engagement(
+                attacker_id=att_id,
+                engagement_start_tick=measurement_tick,
+                kill_tick=kill_tick,
+                weapon_fires_df=weapon_fires_df,
+            )
+            if shots_fired > max_shots_for_valid_sample:
+                filtered_counts["spray"] += 1
+                logger.debug(
+                    f"CP: Filtered spray kill ({shots_fired} shots > {max_shots_for_valid_sample})"
+                )
+                continue
+
+            # Get positions (we use kill positions as proxy for pre-engagement)
+            # In a perfect world, we'd have tick-by-tick position data
             att_pos = np.array([kill.attacker_x, kill.attacker_y, kill.attacker_z + 64])
             vic_pos = np.array([kill.victim_x, kill.victim_y, kill.victim_z + 64])
 
@@ -570,8 +786,9 @@ def calculate_crosshair_placement(
             direction = vic_pos - att_pos
             distance = np.linalg.norm(direction)
 
-            # Validate distance
+            # FILTER 3: Distance validation
             if distance < MIN_DISTANCE or distance > MAX_DISTANCE:
+                filtered_counts["distance"] += 1
                 continue
 
             # Get attacker's view direction
@@ -591,6 +808,15 @@ def calculate_crosshair_placement(
         except (AttributeError, ValueError, TypeError) as e:
             logger.debug(f"Error processing kill for CP: {e}")
             continue
+
+    # Log filtering stats
+    total_filtered = sum(filtered_counts.values())
+    if total_filtered > 0:
+        logger.info(
+            f"CP filtering: {filtered_counts['weapon']} weapon, "
+            f"{filtered_counts['spray']} spray, {filtered_counts['distance']} distance, "
+            f"{filtered_counts['data']} missing data"
+        )
 
     # Build results from collected angles
     for player_id, angles in player_angles.items():

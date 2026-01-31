@@ -5736,60 +5736,102 @@
             tContainer.innerHTML = tPlayers.map(p => renderPlayerItem(p, 't')).join('');
         }
 
-        // Render single player item (Leetify-style with full stats)
+        // Render single player item (Leetify-style with full stats and health background)
         function renderPlayerItem(player, team) {
             const stats = player.stats || {};
             const k = stats.kills || 0;
             const d = stats.deaths || 0;
             const a = stats.assists || 0;
+            const teamBorder = team === 'ct' ? 'var(--ct-color)' : 'var(--t-color)';
             return `
-                <div class="replay-player-item" data-player="${esc(player.name)}" data-steam-id="${player.id || ''}" onclick="selectReplayPlayer('${esc(player.name)}')">
-                    <span class="player-dot ${team}"></span>
-                    <div class="replay-player-info">
-                        <div class="replay-player-name">${esc(player.name)}</div>
-                        <div class="replay-player-stats-row">
-                            <span class="replay-player-kda" data-player-kda="${esc(player.name)}">${k}/${d}/${a}</span>
-                            <span class="replay-player-money" data-player-money="${esc(player.name)}">$800</span>
+                <div class="replay-player-item" data-player="${esc(player.name)}" data-steam-id="${player.id || ''}" onclick="selectReplayPlayer('${esc(player.name)}')" style="border-left: 3px solid ${teamBorder};">
+                    <!-- Health background bar (Leetify-style) -->
+                    <div class="health-bg" data-player-health-bg="${esc(player.name)}" style="width: 100%;"></div>
+
+                    <!-- Player content -->
+                    <div class="player-content">
+                        <!-- Health value (prominent) -->
+                        <span class="replay-player-health-value" data-player-health="${esc(player.name)}">100</span>
+
+                        <!-- Player info -->
+                        <div class="replay-player-info">
+                            <div class="replay-player-name">${esc(player.name)}</div>
+                            <div class="replay-player-stats-row">
+                                <span class="replay-player-money" data-player-money="${esc(player.name)}">$800</span>
+                                <span class="replay-player-kda" data-player-kda="${esc(player.name)}">${k}/${d}/${a}</span>
+                            </div>
                         </div>
-                        <div class="replay-player-weapon" data-player-weapon="${esc(player.name)}">-</div>
-                    </div>
-                    <div class="replay-player-health">
-                        <div class="replay-health-bar">
-                            <div class="replay-health-fill" data-player-health-bar="${esc(player.name)}" style="width: 100%"></div>
+
+                        <!-- Weapon and armor -->
+                        <div style="text-align: right; min-width: 60px;">
+                            <div class="replay-player-weapon" data-player-weapon="${esc(player.name)}">-</div>
+                            <div class="replay-player-armor" data-player-armor="${esc(player.name)}"></div>
                         </div>
-                        <span data-player-health="${esc(player.name)}">100</span>
                     </div>
                 </div>
             `;
         }
 
-        // Update player sidebar with current frame data
+        // Update player sidebar with current frame data (Leetify-style)
         function updatePlayerSidebar(frame) {
             if (!frame || !frame.players) return;
 
             for (const player of frame.players) {
                 const healthEl = document.querySelector(`[data-player-health="${player.name}"]`);
-                const healthBarEl = document.querySelector(`[data-player-health-bar="${player.name}"]`);
+                const healthBgEl = document.querySelector(`[data-player-health-bg="${player.name}"]`);
                 const weaponEl = document.querySelector(`[data-player-weapon="${player.name}"]`);
                 const moneyEl = document.querySelector(`[data-player-money="${player.name}"]`);
+                const armorEl = document.querySelector(`[data-player-armor="${player.name}"]`);
                 const itemEl = document.querySelector(`.replay-player-item[data-player="${player.name}"]`);
 
-                if (healthEl) healthEl.textContent = player.is_alive ? player.health : '0';
-                if (healthBarEl) {
-                    const healthPct = player.is_alive ? player.health : 0;
-                    healthBarEl.style.width = healthPct + '%';
-                    healthBarEl.classList.toggle('low', healthPct <= 30);
+                const healthPct = player.is_alive ? (player.health || 0) : 0;
+
+                // Update health value with color coding
+                if (healthEl) {
+                    healthEl.textContent = healthPct;
+                    healthEl.classList.remove('low', 'critical');
+                    if (healthPct <= 25) healthEl.classList.add('critical');
+                    else if (healthPct <= 50) healthEl.classList.add('low');
                 }
+
+                // Update Leetify-style health background bar
+                if (healthBgEl) {
+                    healthBgEl.style.width = healthPct + '%';
+                    healthBgEl.classList.remove('warning', 'danger');
+                    if (healthPct <= 25) healthBgEl.classList.add('danger');
+                    else if (healthPct <= 50) healthBgEl.classList.add('warning');
+                }
+
+                // Update weapon display
                 if (weaponEl) {
-                    // Format weapon name nicely
                     const weapon = (player.weapon || '-').replace(/^weapon_/, '').replace(/_/g, ' ');
                     weaponEl.textContent = weapon;
                 }
+
+                // Update money display
                 if (moneyEl) {
-                    // Show money if available (from equipment_value or explicit money field)
                     const money = player.money || player.equipment_value || 0;
                     moneyEl.textContent = '$' + money.toLocaleString();
                 }
+
+                // Update armor display with helmet indicator
+                if (armorEl) {
+                    const armor = player.armor_value || player.armor || 0;
+                    const hasHelmet = player.has_helmet || false;
+                    if (armor > 0) {
+                        armorEl.innerHTML = hasHelmet
+                            ? `<svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>${armor}`;
+                        armorEl.classList.add('has-helmet');
+                    } else if (armor > 0) {
+                        armorEl.textContent = armor;
+                        armorEl.classList.remove('has-helmet');
+                    } else {
+                        armorEl.textContent = '';
+                        armorEl.classList.remove('has-helmet');
+                    }
+                }
+
+                // Mark dead players
                 if (itemEl) itemEl.classList.toggle('dead', !player.is_alive);
             }
 

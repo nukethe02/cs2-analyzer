@@ -540,11 +540,15 @@ class UtilityStats:
     he_thrown: int = 0
     molotovs_thrown: int = 0
 
-    # Flash effectiveness
+    # Flash effectiveness (attacker-side)
     enemies_flashed: int = 0  # Enemies blinded > 1.1s (significant)
     teammates_flashed: int = 0  # Teammates blinded (mistake)
     flash_assists: int = 0  # Kills within 3s of blinding enemy
     total_blind_time: float = 0.0  # Total seconds enemies were blinded
+
+    # Flash received (victim-side) - Leetify "Avg Blind Time"
+    times_blinded: int = 0  # How many times player was blinded by enemies
+    total_time_blinded: float = 0.0  # Total seconds player was blinded
 
     # Damage stats
     he_damage: int = 0  # Damage to enemies from HE grenades
@@ -602,6 +606,13 @@ class UtilityStats:
         if self.enemies_flashed <= 0:
             return 0.0
         return round(self.total_blind_time / self.enemies_flashed, 2)
+
+    @property
+    def avg_time_blinded(self) -> float:
+        """Average blind time received per flash (victim-side, Leetify 'Avg Blind Time')."""
+        if self.times_blinded <= 0:
+            return 0.0
+        return round(self.total_time_blinded / self.times_blinded, 2)
 
     @property
     def avg_he_damage(self) -> float:
@@ -774,6 +785,10 @@ class UtilityStats:
             "friends_flashed_per_round": self.friends_flashed_per_round,
             "avg_blind_time": self.avg_blind_time,
             "total_blind_time": round(self.total_blind_time, 2),
+            # Victim-side blind metrics (Leetify "Avg Blind Time")
+            "times_blinded": self.times_blinded,
+            "total_time_blinded": round(self.total_time_blinded, 2),
+            "avg_time_blinded": self.avg_time_blinded,
             "he_damage": self.he_damage,
             "he_team_damage": self.he_team_damage,
             "avg_he_damage": self.avg_he_damage,
@@ -2598,13 +2613,42 @@ class DemoAnalyzer:
             # Get round winner (CT or T)
             round_winner = round_winners.get(round_num_int, "Unknown")
 
-            # Build per-round team rosters from kill events
-            # This handles side swaps correctly by reading team from each event
+            # Initialize FULL team rosters at round start
+            # Critical: We must include ALL players, not just those in kill events
+            # Players who survive without killing would otherwise be invisible
             ct_alive: set[int] = set()
             t_alive: set[int] = set()
 
-            # First pass: collect all players and their teams for THIS round
-            if use_team_column:
+            # Detect match format: MR12 (CS2 standard) vs MR15 (legacy CS:GO)
+            # MR12: halftime after round 12, max 24 rounds (or 25+ with OT)
+            # MR15: halftime after round 15, max 30 rounds (or 31+ with OT)
+            max_round = int(kills_df[self._round_col].max())
+            if max_round > 24:
+                # Overtime or MR15 format
+                halftime_round = 15
+            else:
+                halftime_round = 12  # CS2 standard MR12
+
+            # Determine if we're in second half (teams have swapped sides)
+            is_second_half = round_num_int > halftime_round
+
+            # Build full roster from player_teams with side swap logic
+            for steam_id, team in self.data.player_teams.items():
+                normalized = self._normalize_team(team)
+                # Swap teams if in second half
+                if is_second_half:
+                    if normalized == "CT":
+                        normalized = "T"
+                    elif normalized == "T":
+                        normalized = "CT"
+                if normalized == "CT":
+                    ct_alive.add(steam_id)
+                elif normalized == "T":
+                    t_alive.add(steam_id)
+
+            # Fallback: if player_teams is empty, extract from kill events
+            # This handles edge cases like incomplete demo data
+            if use_team_column and (not ct_alive or not t_alive):
                 for _, kill in round_kills.iterrows():
                     # Add attacker to their team
                     attacker_id = safe_int(kill.get(self._att_id_col)) if self._att_id_col else 0
@@ -2623,25 +2667,6 @@ class DemoAnalyzer:
                             ct_alive.add(victim_id)
                         elif vic_side == "T":
                             t_alive.add(victim_id)
-
-            # Fallback: use player_teams from initialization when team columns unavailable
-            # or when kill events didn't give us complete team data
-            # NOTE: After halftime (round 15), teams swap sides, so we need to invert
-            if not ct_alive or not t_alive:
-                # Determine if we're in second half (teams have swapped)
-                is_second_half = round_num_int > 15
-                for steam_id, team in self.data.player_teams.items():
-                    normalized = self._normalize_team(team)
-                    # Swap teams if in second half
-                    if is_second_half:
-                        if normalized == "CT":
-                            normalized = "T"
-                        elif normalized == "T":
-                            normalized = "CT"
-                    if normalized == "CT":
-                        ct_alive.add(steam_id)
-                    elif normalized == "T":
-                        t_alive.add(steam_id)
 
             # Skip rounds with incomplete team data (still no teams after fallback)
             if not ct_alive or not t_alive:
@@ -3807,6 +3832,38 @@ class DemoAnalyzer:
                             flash_count += 1
                         prev_tick = tick
                     player.utility.flashbangs_thrown = flash_count
+
+            # ===========================================
+            # Victim-side blind metrics (Leetify "Avg Blind Time")
+            # ===========================================
+            # Group blinds by victim for victim-side stats
+            blinds_by_victim: dict[int, list] = {}
+            for blind in self.data.blinds:
+                # Validate blind duration
+                if (
+                    blind.blind_duration < MIN_BLIND_DURATION
+                    or blind.blind_duration > MAX_BLIND_DURATION
+                ):
+                    continue
+                vic_id = blind.victim_steamid
+                if vic_id not in blinds_by_victim:
+                    blinds_by_victim[vic_id] = []
+                blinds_by_victim[vic_id].append(blind)
+
+            for steam_id, player in self._players.items():
+                victim_blinds = blinds_by_victim.get(steam_id, [])
+                if not victim_blinds:
+                    continue
+
+                # Only count blinds from enemies (not self-flashes or teammate flashes)
+                enemy_blinds_received = [
+                    b for b in victim_blinds if b.attacker_steamid != steam_id and not b.is_teammate
+                ]
+
+                player.utility.times_blinded = len(enemy_blinds_received)
+                player.utility.total_time_blinded = sum(
+                    b.blind_duration for b in enemy_blinds_received
+                )
 
         # ===========================================
         # Use GRENADES data for accurate grenade counts

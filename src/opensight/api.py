@@ -234,6 +234,10 @@ def player_stats_to_dict(player: Any) -> dict:
         "enemies_flashed_per_round": player.utility.enemies_flashed_per_round,
         "friends_flashed_per_round": player.utility.friends_flashed_per_round,
         "avg_blind_time": player.utility.avg_blind_time,
+        # Victim-side blind metrics (Leetify "Avg Blind Time")
+        "times_blinded": player.utility.times_blinded,
+        "total_time_blinded": player.utility.total_time_blinded,
+        "avg_time_blinded": player.utility.avg_time_blinded,
         "he_thrown": player.utility.he_thrown,
         "he_damage": player.utility.he_damage,
         "he_team_damage": player.utility.he_team_damage,
@@ -956,6 +960,8 @@ async def about() -> dict[str, Any]:
                     "Average enemies blinded per flashbang (Leetify metric)"
                 ),
                 "avg_blind_time": "Average enemy blind duration per flash",
+                "times_blinded": "Times you were blinded by enemies",
+                "avg_time_blinded": "Average time you were blinded (Leetify Avg Blind Time)",
                 "he_damage": "Total HE grenade damage to enemies",
                 "he_damage_per_nade": "Average damage per HE grenade",
                 "molotov_damage": "Total molotov/incendiary damage",

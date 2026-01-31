@@ -117,6 +117,156 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+# =============================================================================
+# ECONOMY HELPERS
+# =============================================================================
+
+
+def is_pistol_round(round_num: int, rounds_per_half: int = 12) -> bool:
+    """
+    Check if a round is a pistol round (first of each half/OT period).
+
+    CS2 MR12 format:
+    - Round 1: First half pistol
+    - Round 13: Second half pistol
+    - Round 25, 28, 31...: Overtime pistol rounds (every 6 rounds in OT for MR3)
+
+    CS2 MR15 format (legacy):
+    - Round 1: First half pistol
+    - Round 16: Second half pistol
+    - Round 31, 34, 37...: Overtime pistol rounds
+
+    Args:
+        round_num: The round number (1-indexed)
+        rounds_per_half: Rounds per half (12 for MR12, 15 for MR15)
+
+    Returns:
+        True if this is a pistol round
+    """
+    if round_num <= 0:
+        return False
+
+    # First round is always pistol
+    if round_num == 1:
+        return True
+
+    regulation_rounds = rounds_per_half * 2  # 24 for MR12, 30 for MR15
+
+    # Second half pistol (round 13 for MR12, round 16 for MR15)
+    if round_num == rounds_per_half + 1:
+        return True
+
+    # Overtime pistol rounds
+    # OT format is MR3 (6 rounds per OT period: 3 per side)
+    if round_num > regulation_rounds:
+        ot_round = round_num - regulation_rounds
+        # First round of each OT period (rounds 25, 31, 37... for MR12)
+        # Pattern: 1, 7, 13, 19... (every 6 rounds starting from 1)
+        return ot_round == 1 or (ot_round - 1) % 6 == 0
+
+    return False
+
+
+def classify_team_equipment(equipment_value: int, is_pistol: bool = False) -> str:
+    """
+    Classify round type based on TEAM TOTAL equipment value.
+
+    Args:
+        equipment_value: Total equipment value for the team (all 5 players)
+        is_pistol: Whether this is a pistol round
+
+    Returns:
+        Round type: 'pistol', 'eco', 'semi_eco', 'force', or 'full_buy'
+
+    Thresholds (for 5-player team):
+    - Eco: < $5,000 (avg < $1,000/player)
+    - Semi-Eco: $5,000 - $12,500 (avg $1,000-2,500/player)
+    - Force: $12,500 - $20,000 (avg $2,500-4,000/player)
+    - Full Buy: > $20,000 (avg > $4,000/player)
+    """
+    if is_pistol:
+        return "pistol"
+
+    if equipment_value < 5000:
+        return "eco"
+    elif equipment_value < 12500:
+        return "semi_eco"
+    elif equipment_value < 20000:
+        return "force"
+    else:
+        return "full_buy"
+
+
+# Weapon cost lookup for equipment estimation
+WEAPON_COSTS_ESTIMATE = {
+    # Pistols (starting/cheap)
+    "glock": 0,
+    "usp_silencer": 0,
+    "hkp2000": 0,
+    "p250": 300,
+    "tec9": 500,
+    "cz75a": 500,
+    "fiveseven": 500,
+    "deagle": 700,
+    # SMGs
+    "mac10": 1050,
+    "mp9": 1250,
+    "mp7": 1500,
+    "ump45": 1200,
+    "p90": 2350,
+    # Rifles
+    "famas": 2050,
+    "galilar": 1800,
+    "m4a1": 3100,
+    "m4a1_silencer": 2900,
+    "ak47": 2700,
+    "awp": 4750,
+    "ssg08": 1700,
+    # Heavy
+    "nova": 1050,
+    "mag7": 1300,
+    "negev": 1700,
+}
+
+
+def estimate_equipment_from_weapon(weapon: str) -> int:
+    """
+    Estimate a player's equipment value from their weapon.
+
+    This is a rough estimate: weapon cost + armor (assumed if rifle).
+
+    Args:
+        weapon: Weapon name from kill event
+
+    Returns:
+        Estimated equipment value
+    """
+    if not weapon:
+        return 800  # Default pistol round loadout
+
+    weapon_lower = weapon.lower().replace("-", "_").replace(" ", "_")
+
+    # Direct lookup
+    weapon_cost = WEAPON_COSTS_ESTIMATE.get(weapon_lower, 0)
+
+    # Try partial match
+    if weapon_cost == 0:
+        for known_weapon, cost in WEAPON_COSTS_ESTIMATE.items():
+            if known_weapon in weapon_lower or weapon_lower in known_weapon:
+                weapon_cost = cost
+                break
+
+    # Add armor estimate based on weapon tier
+    if weapon_cost >= 2500:  # Rifle tier
+        equipment_estimate = weapon_cost + 1000  # Vest + Helmet
+    elif weapon_cost >= 1000:  # SMG tier
+        equipment_estimate = weapon_cost + 650  # Just vest likely
+    else:
+        equipment_estimate = weapon_cost + 200  # Minimal or no armor
+
+    return equipment_estimate
+
+
 @dataclass
 class KillEvent:
     """A kill event with timing, position, and angle data."""
@@ -682,6 +832,17 @@ class DemoParser:
         kills = self._build_kills(kills_df)
         damages = self._build_damages(damages_df)
         rounds = self._build_rounds(round_end_df, round_start_df, round_freeze_df)
+
+        # Populate round economy data (equipment values and round_type)
+        # Detect format: MR12 (24 regulation) vs MR15 (30 regulation)
+        rounds_per_half = 12 if num_rounds <= 30 else 15
+        self._populate_round_economy(
+            rounds=rounds,
+            kills=kills,
+            ticks_df=ticks_df,
+            player_teams=player_teams,
+            rounds_per_half=rounds_per_half,
+        )
 
         # Build structured events - EXTENDED
         weapon_fires = self._build_weapon_fires(weapon_fires_df) if comprehensive else []
@@ -1389,6 +1550,187 @@ class DemoParser:
                     rounds[i].round_num = i + 1
 
         return rounds
+
+    def _populate_round_economy(
+        self,
+        rounds: list[RoundInfo],
+        kills: list[KillEvent],
+        ticks_df: pd.DataFrame | None,
+        player_teams: dict[int, int],
+        rounds_per_half: int = 12,
+    ) -> None:
+        """
+        Populate equipment values and round_type on RoundInfo objects.
+
+        Uses tick data if available (most accurate), otherwise estimates
+        from weapons used in kills during each round.
+
+        Args:
+            rounds: List of RoundInfo objects to populate
+            kills: List of KillEvent objects for weapon estimation
+            ticks_df: Optional tick-level DataFrame with current_equip_value
+            player_teams: Dict mapping steam_id -> team (2=T, 3=CT)
+            rounds_per_half: Rounds per half for pistol detection (default 12 for MR12)
+        """
+        if not rounds:
+            return
+
+        # Group kills by round for equipment estimation
+        kills_by_round: dict[int, list[KillEvent]] = {}
+        for kill in kills:
+            if kill.round_num not in kills_by_round:
+                kills_by_round[kill.round_num] = []
+            kills_by_round[kill.round_num].append(kill)
+
+        # Try to get equipment from tick data at freeze_end
+        equipment_from_ticks = {}
+        if ticks_df is not None and not ticks_df.empty:
+            equipment_from_ticks = self._extract_equipment_from_ticks(
+                ticks_df, rounds, player_teams
+            )
+
+        for round_info in rounds:
+            round_num = round_info.round_num
+            is_pistol = is_pistol_round(round_num, rounds_per_half)
+
+            # Try tick-based equipment first
+            if round_num in equipment_from_ticks:
+                ct_equip, t_equip = equipment_from_ticks[round_num]
+                round_info.ct_equipment_value = ct_equip
+                round_info.t_equipment_value = t_equip
+            else:
+                # Estimate from weapons used in kills
+                ct_equip, t_equip = self._estimate_equipment_from_kills(
+                    kills_by_round.get(round_num, []), player_teams
+                )
+                round_info.ct_equipment_value = ct_equip
+                round_info.t_equipment_value = t_equip
+
+            # Set round_type based on equipment (use average of both teams)
+            avg_equipment = (round_info.ct_equipment_value + round_info.t_equipment_value) // 2
+            round_info.round_type = classify_team_equipment(avg_equipment, is_pistol)
+
+            logger.debug(
+                f"Round {round_num}: CT=${round_info.ct_equipment_value}, "
+                f"T=${round_info.t_equipment_value}, type={round_info.round_type}"
+            )
+
+    def _extract_equipment_from_ticks(
+        self,
+        ticks_df: pd.DataFrame,
+        rounds: list[RoundInfo],
+        player_teams: dict[int, int],
+    ) -> dict[int, tuple[int, int]]:
+        """
+        Extract team equipment values at freeze_end_tick from tick data.
+
+        Returns:
+            Dict mapping round_num -> (ct_equipment, t_equipment)
+        """
+        result = {}
+
+        # Find required columns
+        tick_col = self._find_column(ticks_df, ["tick"])
+        steamid_col = self._find_column(ticks_df, ["steamid", "steam_id", "user_steamid"])
+        equip_col = self._find_column(
+            ticks_df, ["current_equip_value", "equipment_value", "equip_value"]
+        )
+        team_col = self._find_column(ticks_df, ["team_num", "team", "side"])
+
+        if not tick_col or not steamid_col or not equip_col:
+            logger.debug("Missing columns for tick-based equipment extraction")
+            return result
+
+        for round_info in rounds:
+            freeze_tick = round_info.freeze_end_tick
+            if freeze_tick <= 0:
+                continue
+
+            # Find tick data closest to freeze_end_tick
+            # Allow some tolerance (within 64 ticks = 1 second)
+            tick_mask = (ticks_df[tick_col] >= freeze_tick - 32) & (
+                ticks_df[tick_col] <= freeze_tick + 64
+            )
+            round_ticks = ticks_df[tick_mask]
+
+            if round_ticks.empty:
+                continue
+
+            ct_total = 0
+            t_total = 0
+
+            # Group by player and sum equipment
+            for steamid in round_ticks[steamid_col].unique():
+                player_data = round_ticks[round_ticks[steamid_col] == steamid]
+                if player_data.empty:
+                    continue
+
+                # Get equipment value (use last value in window)
+                equip_value = safe_int(player_data[equip_col].iloc[-1])
+
+                # Determine team
+                team = 0
+                if team_col and team_col in player_data.columns:
+                    team = safe_int(player_data[team_col].iloc[-1])
+                elif steamid in player_teams:
+                    team = player_teams[steamid]
+
+                if team == 3:  # CT
+                    ct_total += equip_value
+                elif team == 2:  # T
+                    t_total += equip_value
+
+            if ct_total > 0 or t_total > 0:
+                result[round_info.round_num] = (ct_total, t_total)
+
+        return result
+
+    def _estimate_equipment_from_kills(
+        self,
+        kills: list[KillEvent],
+        player_teams: dict[int, int],
+    ) -> tuple[int, int]:
+        """
+        Estimate team equipment from weapons used in kills.
+
+        This is a fallback when tick data isn't available.
+
+        Returns:
+            Tuple of (ct_equipment, t_equipment) estimated values
+        """
+        ct_weapons: list[str] = []
+        t_weapons: list[str] = []
+
+        for kill in kills:
+            weapon = kill.weapon
+            side = kill.attacker_side.upper() if kill.attacker_side else ""
+
+            if "CT" in side:
+                ct_weapons.append(weapon)
+            elif "T" in side:
+                t_weapons.append(weapon)
+            else:
+                # Use player_teams as fallback
+                team = player_teams.get(kill.attacker_steamid, 0)
+                if team == 3:
+                    ct_weapons.append(weapon)
+                elif team == 2:
+                    t_weapons.append(weapon)
+
+        # Estimate per-player equipment from best weapon, multiply by 5 for team
+        ct_max_equip = max(
+            (estimate_equipment_from_weapon(w) for w in ct_weapons), default=800
+        )
+        t_max_equip = max(
+            (estimate_equipment_from_weapon(w) for w in t_weapons), default=800
+        )
+
+        # Estimate team total (assume similar loadouts for teammates)
+        # This is rough - multiply by 4-5 players
+        ct_team_estimate = ct_max_equip * 5
+        t_team_estimate = t_max_equip * 5
+
+        return (ct_team_estimate, t_team_estimate)
 
     def _build_weapon_fires(self, weapon_fires_df: pd.DataFrame) -> list[WeaponFireEvent]:
         """Build WeaponFireEvent list for accuracy tracking."""
