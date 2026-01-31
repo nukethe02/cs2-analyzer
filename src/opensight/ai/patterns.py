@@ -440,7 +440,9 @@ class PatternDetector:
                 pos = pos_data.get(death_tick, {})
                 if pos:
                     teammate_pos = (pos.get("x", 0), pos.get("y", 0), pos.get("z", 0))
-                    if self._position_distance(victim_pos, teammate_pos) < 500:
+                    # 750 units = ~3 seconds run distance at 250 units/s
+                    # Aligns with 5-second trade window (TRADE_WINDOW_SECONDS)
+                    if self._position_distance(victim_pos, teammate_pos) < 750:
                         teammates_nearby += 1
 
             if teammates_nearby == 0:

@@ -3591,8 +3591,17 @@
                 multi_5k: Math.max(...allPlayers.map(p => getSpecial(p)['5k'] || 0))
             };
 
-            // Calculate personal performance for each player
-            const calcPerformance = (p) => {
+            // Get Impact +/- rating from backend (preferred) or calculate fallback
+            // Backend impact_plus_minus uses weighted high-impact plays:
+            // +0.50 entry kill, +1.00 clutch win, +0.30 trade kill, +0.25 flash assist
+            // -0.50 entry death, -0.25 untraded death, -0.15 team flash
+            // Benchmarks: +5.00 = hard carry, 0 = average, -5.00 = liability
+            const getImpactRating = (p) => {
+                // Prefer backend-calculated impact_plus_minus
+                if (typeof p.impact_plus_minus === 'number') {
+                    return p.impact_plus_minus;
+                }
+                // Fallback: simple K/D based calculation (legacy)
                 const stats = p.stats || {};
                 const kills = p.kills || stats.kills || 0;
                 const deaths = p.deaths || stats.deaths || 0;
@@ -3643,7 +3652,7 @@
                                         <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">4K</th>
                                         <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">5K</th>
                                         <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Rating</th>
-                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">+/-</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" title="Impact +/-: Entry kills, clutches, trades, multi-kills vs entry deaths, untraded deaths. +5 = carry, 0 = avg, -5 = liability">+/-</th>
                                     </tr>
                                 </thead>
                                 <tbody>`;
@@ -3663,7 +3672,7 @@
                     const multi3k = s['3k'] || 0;
                     const multi4k = s['4k'] || 0;
                     const multi5k = s['5k'] || 0;
-                    const perf = calcPerformance(p);
+                    const perf = getImpactRating(p);
                     const kdNum = kills / Math.max(deaths, 1);
 
                     // Trade stats - support nested trades object
@@ -3672,7 +3681,7 @@
                     const tradeOpps = trades.trade_kill_opportunities || 0;
                     const tradeRate = tradeOpps > 0 ? (tradeSuccess / tradeOpps * 100) : 0;
                     const tradeDisplay = tradeOpps > 0 ? `${tradeSuccess} / ${tradeOpps}` : '-';
-                    const tradeColor = tradeOpps === 0 ? 'var(--text-muted)' : tradeRate > 50 ? 'var(--success)' : 'inherit';
+                    const tradeColor = tradeOpps === 0 ? 'var(--text-muted)' : tradeRate >= 20 ? 'var(--success)' : 'inherit';
 
                     const kdColor = kdNum >= 1.0 ? 'var(--success)' : 'var(--danger)';
                     const perfColor = perf >= 0 ? 'var(--success)' : 'var(--danger)';

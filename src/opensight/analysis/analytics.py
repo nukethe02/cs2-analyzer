@@ -162,19 +162,45 @@ def compute_kill_positions(match_data) -> list[dict]:
 
 
 @dataclass
-class TTDResult:
-    """Time to Damage result for a single engagement."""
+class EngagementResult:
+    """Duel/engagement duration result (time from first damage to kill).
 
-    tick_spotted: int
-    tick_damage: int
-    ttd_ticks: int
-    ttd_ms: float
+    Note: This is NOT reaction time. This measures how long it took to
+    finish a kill after first dealing damage (spray control, tracking).
+    """
+
+    tick_first_damage: int
+    tick_kill: int
+    duration_ticks: int
+    duration_ms: float
     attacker_steamid: int
     victim_steamid: int
     weapon: str
     headshot: bool
-    is_prefire: bool
     round_num: int = 0
+
+
+@dataclass
+class TrueTTDResult:
+    """True Time to Damage - reaction time from visibility to first damage.
+
+    This measures actual human reaction time: how long from when the player
+    could first see the enemy until they dealt damage.
+    """
+
+    tick_visibility_start: int
+    tick_first_damage: int
+    reaction_ticks: int
+    reaction_ms: float
+    attacker_steamid: int
+    victim_steamid: int
+    weapon: str
+    is_prefire: bool  # < 100ms indicates pre-aim/game sense
+    round_num: int = 0
+
+
+# Legacy alias for backwards compatibility
+TTDResult = EngagementResult
 
 
 @dataclass
@@ -1197,9 +1223,18 @@ class PlayerMatchStats:
     # Weapon breakdown
     weapon_kills: dict = field(default_factory=dict)
 
-    # TTD stats
-    ttd_values: list = field(default_factory=list)
-    prefire_count: int = 0
+    # Engagement Duration stats (time from first damage to kill - measures spray/tracking)
+    engagement_duration_values: list = field(default_factory=list)
+
+    # True TTD stats (reaction time: visibility to first damage)
+    true_ttd_values: list = field(default_factory=list)
+    prefire_count: int = 0  # Kills with reaction time < 100ms (pre-aim/game sense)
+
+    # Legacy alias for backwards compatibility
+    @property
+    def ttd_values(self) -> list:
+        """Legacy alias - returns engagement duration values."""
+        return self.engagement_duration_values
 
     # CP stats
     cp_values: list = field(default_factory=list)
@@ -1335,24 +1370,132 @@ class PlayerMatchStats:
 
         return round(max(0.0, rating), 2)
 
-    # TTD properties
+    @property
+    def impact_plus_minus(self) -> float:
+        """
+        Leetify-style Impact +/- Rating centered on 0.00.
+
+        Positive weights (reward high-impact plays):
+        - Opening Kill: +0.50 (putting team at 5v4)
+        - Clutch Win: +1.00 (round-winning play)
+        - Trade Kill: +0.30 (maintaining man advantage)
+        - Multi-Kill 2K: +0.25, 3K: +0.75, 4K: +1.25, 5K: +2.00
+        - Flash Assist: +0.25 (enabling teammates)
+
+        Negative weights (penalize liability plays):
+        - Opening Death: -0.50 (putting team at 4v5)
+        - Untraded Death: -0.25 (dying for free)
+        - Team Flash: -0.15 (hindering teammates)
+
+        Formula: (Total Impact Points / Rounds) * 10
+        Scale factor of 10 makes "carry" performances reach ~+5.0
+
+        Benchmarks:
+        - +5.00 or higher: Hard carry
+        - +2.00 to +5.00: Strong performance
+        - +0.50 to +2.00: Above average
+        - -0.50 to +0.50: Average
+        - -2.00 to -0.50: Below average
+        - -5.00 or lower: Liability
+        """
+        if self.rounds_played == 0:
+            return 0.0
+
+        # === POSITIVE IMPACT ===
+        # Opening kills - high value, puts team at advantage
+        opening_kills_points = self.opening_duels.kills * 0.50
+
+        # Clutch wins - round-winning plays
+        clutch_wins_points = self.clutches.total_wins * 1.00
+
+        # Trade kills - maintaining numbers advantage
+        trade_kills_points = self.trades.trade_kill_success * 0.30
+
+        # Multi-kills - scaled bonuses (extra value beyond first kill)
+        # 2K = +0.25 (1 extra kill), 3K = +0.75 (2 extra), 4K = +1.25 (3 extra), 5K = +2.00 (4 extra)
+        multi_kill_points = (
+            self.multi_kills.rounds_with_2k * 0.25
+            + self.multi_kills.rounds_with_3k * 0.75
+            + self.multi_kills.rounds_with_4k * 1.25
+            + self.multi_kills.rounds_with_5k * 2.00
+        )
+
+        # Flash assists - enabling teammate kills
+        flash_assist_points = self.utility.flash_assists * 0.25
+
+        # === NEGATIVE IMPACT ===
+        # Opening deaths - putting team at disadvantage
+        opening_deaths_points = self.opening_duels.deaths * -0.50
+
+        # Untraded deaths - dying without value
+        untraded_deaths_points = self.untraded_deaths * -0.25
+
+        # Team flashes - hindering teammates
+        team_flash_points = self.utility.teammates_flashed * -0.15
+
+        # === TOTAL ===
+        total_points = (
+            opening_kills_points
+            + clutch_wins_points
+            + trade_kills_points
+            + multi_kill_points
+            + flash_assist_points
+            + opening_deaths_points
+            + untraded_deaths_points
+            + team_flash_points
+        )
+
+        # Normalize by rounds and scale by 10 to reach ~+/-5.0 range for carry/liability
+        impact_per_round = total_points / self.rounds_played
+        scaled_impact = impact_per_round * 10
+
+        return round(scaled_impact, 2)
+
+    # Engagement Duration properties (time from first damage to kill)
+    @property
+    def engagement_duration_median_ms(self) -> float | None:
+        """Median time from first damage to kill (spray control/tracking)."""
+        return float(np.median(self.engagement_duration_values)) if self.engagement_duration_values else None
+
+    @property
+    def engagement_duration_mean_ms(self) -> float | None:
+        """Mean time from first damage to kill."""
+        return float(np.mean(self.engagement_duration_values)) if self.engagement_duration_values else None
+
+    # Legacy TTD aliases (these now return engagement duration, not reaction time)
     @property
     def ttd_median_ms(self) -> float | None:
-        return float(np.median(self.ttd_values)) if self.ttd_values else None
+        """Legacy alias - returns engagement_duration_median_ms."""
+        return self.engagement_duration_median_ms
 
     @property
     def ttd_mean_ms(self) -> float | None:
-        return float(np.mean(self.ttd_values)) if self.ttd_values else None
+        """Legacy alias - returns engagement_duration_mean_ms."""
+        return self.engagement_duration_mean_ms
+
+    # True TTD properties (reaction time: visibility to first damage)
+    @property
+    def reaction_time_median_ms(self) -> float | None:
+        """Median reaction time (visibility to first damage) - TRUE TTD."""
+        return float(np.median(self.true_ttd_values)) if self.true_ttd_values else None
+
+    @property
+    def reaction_time_mean_ms(self) -> float | None:
+        """Mean reaction time (visibility to first damage)."""
+        return float(np.mean(self.true_ttd_values)) if self.true_ttd_values else None
 
     @property
     def prefire_percentage(self) -> float:
-        """Percentage of kills that were prefires (TTD < 50ms).
+        """Percentage of engagements that were prefires (reaction time < 100ms).
 
         Prefires indicate high game-sense - anticipating enemy positions.
         """
-        if not self.ttd_values:
-            return 0.0
-        return round(self.prefire_count / len(self.ttd_values) * 100, 1)
+        if not self.true_ttd_values:
+            # Fallback to engagement duration count if no true TTD data
+            if not self.engagement_duration_values:
+                return 0.0
+            return round(self.prefire_count / len(self.engagement_duration_values) * 100, 1)
+        return round(self.prefire_count / len(self.true_ttd_values) * 100, 1)
 
     # CP properties
     @property
@@ -1668,9 +1811,17 @@ class DemoAnalyzer:
     TICK_RATE = CS2_TICK_RATE
     MS_PER_TICK = 1000 / TICK_RATE
 
-    # TTD filtering thresholds
-    TTD_MIN_MS = 0
-    TTD_MAX_MS = 1500
+    # Engagement duration thresholds (time from first damage to kill)
+    ENGAGEMENT_MIN_MS = 0
+    ENGAGEMENT_MAX_MS = 1500  # Kills taking >1.5s are outliers
+
+    # True TTD (reaction time) thresholds
+    REACTION_TIME_MIN_MS = 100  # < 100ms = prefire (anticipation, not reaction)
+    REACTION_TIME_MAX_MS = 2000  # > 2s = visibility logic likely failed (wallbang/smoke)
+
+    # Legacy aliases
+    TTD_MIN_MS = REACTION_TIME_MIN_MS
+    TTD_MAX_MS = REACTION_TIME_MAX_MS
 
     # Column name variations
     ROUND_COLS = ["round_num", "total_rounds_played", "round"]
@@ -2987,10 +3138,10 @@ class DemoAnalyzer:
             logger.info("Using vectorized TTD computation")
             self._metrics_computer.compute(MetricType.TTD)
 
-            # Transfer results to player stats
+            # Transfer results to player stats (engagement duration from vectorized computation)
             for steam_id, player in self._players.items():
-                player.ttd_values = self._metrics_computer.get_ttd_values(steam_id)
-                player.prefire_count = self._metrics_computer.get_prefire_count(steam_id)
+                player.engagement_duration_values = self._metrics_computer.get_ttd_values(steam_id)
+                # Note: prefire_count will be updated by _compute_true_ttd if tick data available
 
             ttd_metrics = self._metrics_computer.ttd_metrics
             if ttd_metrics:
@@ -3186,19 +3337,242 @@ class DemoAnalyzer:
                     logger.debug(f"Error processing kill for TTD: {e}")
                     continue
 
-        # CRITICAL: Transfer raw_ttd_values to player stats
-        # This was missing - causing TTD to show 0ms for all players
+        # Transfer engagement duration values to player stats
         for att_id, values in raw_ttd_values.items():
             if att_id in self._players and values:
-                self._players[att_id].ttd_values = values
+                self._players[att_id].engagement_duration_values = values
 
-        # Summary of TTD results per player
-        players_with_ttd = sum(1 for p in self._players.values() if p.ttd_values)
-        total_ttd_values = sum(len(p.ttd_values) for p in self._players.values())
+        # Summary of engagement results per player
+        players_with_data = sum(1 for p in self._players.values() if p.engagement_duration_values)
+        total_values = sum(len(p.engagement_duration_values) for p in self._players.values())
         logger.info(
-            f"Computed TTD for {len(self._ttd_results)} engagements, "
-            f"{players_with_ttd} players have TTD values ({total_ttd_values} total samples)"
+            f"Computed engagement duration for {len(self._ttd_results)} engagements, "
+            f"{players_with_data} players have data ({total_values} total samples)"
         )
+
+        # Calculate true TTD (reaction time) if tick data is available
+        self._compute_true_ttd()
+
+    def _compute_true_ttd(self) -> None:
+        """Compute true Time to Damage (reaction time: visibility to first damage).
+
+        This uses tick-level position data to determine when the attacker
+        first had visibility of the victim, then calculates the time until
+        first damage was dealt.
+
+        Requires: self.data.ticks_df with X, Y, Z, pitch, yaw columns
+        """
+        # Check if tick data is available
+        if self.data.ticks_df is None or self.data.ticks_df.empty:
+            logger.info("No tick data available for true TTD calculation - skipping")
+            return
+
+        ticks_df = self.data.ticks_df
+        damages_df = self.data.damages_df
+
+        # Check for required columns
+        required_cols = ["tick", "X", "Y", "Z"]
+        view_cols = ["pitch", "yaw"]
+
+        has_position = all(col in ticks_df.columns for col in required_cols)
+        has_view = all(col in ticks_df.columns for col in view_cols)
+
+        if not has_position:
+            logger.info("Tick data missing position columns for true TTD - skipping")
+            return
+
+        if not has_view:
+            logger.info("Tick data missing view angle columns - using position-only visibility")
+
+        # Find steamid column in tick data
+        steamid_col = None
+        for col in ["steamid", "steam_id", "user_steamid"]:
+            if col in ticks_df.columns:
+                steamid_col = col
+                break
+
+        if not steamid_col:
+            logger.warning("No steamid column in tick data for true TTD")
+            return
+
+        logger.info(f"Computing true TTD with {len(ticks_df)} tick entries")
+
+        # For each damage event, try to find visibility start
+        dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+        dmg_vic_col = self._find_col(damages_df, self.VIC_ID_COLS)
+
+        if not dmg_att_col or not dmg_vic_col:
+            logger.warning("Missing columns in damage data for true TTD")
+            return
+
+        true_ttd_values: dict[int, list[float]] = {}
+        prefire_counts: dict[int, int] = {}
+        processed = 0
+        visibility_found = 0
+
+        # Process unique (attacker, victim) pairs from damage events
+        # Group damages to get first damage tick per engagement
+        for (att_id, vic_id), group in damages_df.groupby([dmg_att_col, dmg_vic_col]):
+            try:
+                att_id = int(att_id)
+                vic_id = int(vic_id)
+                first_dmg_tick = int(group["tick"].min())
+
+                # Get position data for attacker and victim
+                attacker_ticks = ticks_df[ticks_df[steamid_col] == att_id]
+                victim_ticks = ticks_df[ticks_df[steamid_col] == vic_id]
+
+                if attacker_ticks.empty or victim_ticks.empty:
+                    continue
+
+                # Find visibility start using simplified check
+                visibility_tick = self._find_visibility_start_simple(
+                    attacker_ticks, victim_ticks, first_dmg_tick, has_view
+                )
+
+                if visibility_tick is None:
+                    continue
+
+                visibility_found += 1
+
+                # Calculate true TTD
+                reaction_ticks = first_dmg_tick - visibility_tick
+                reaction_ms = reaction_ticks * self.MS_PER_TICK
+
+                # Sanity filter
+                if reaction_ms < 0:
+                    continue  # Invalid - damage before visibility
+
+                processed += 1
+
+                # Classify as prefire or valid reaction
+                if reaction_ms < self.REACTION_TIME_MIN_MS:
+                    # Prefire - player was pre-aiming
+                    prefire_counts[att_id] = prefire_counts.get(att_id, 0) + 1
+                elif reaction_ms <= self.REACTION_TIME_MAX_MS:
+                    # Valid reaction time sample
+                    if att_id not in true_ttd_values:
+                        true_ttd_values[att_id] = []
+                    true_ttd_values[att_id].append(reaction_ms)
+                # > REACTION_TIME_MAX_MS: visibility logic likely failed, skip
+
+            except Exception as e:
+                logger.debug(f"Error processing true TTD for engagement: {e}")
+                continue
+
+        # Transfer to player stats
+        for att_id, values in true_ttd_values.items():
+            if att_id in self._players and values:
+                self._players[att_id].true_ttd_values = values
+
+        # Update prefire counts (true prefires based on reaction time)
+        for att_id, count in prefire_counts.items():
+            if att_id in self._players:
+                self._players[att_id].prefire_count = count
+
+        players_with_ttd = sum(1 for p in self._players.values() if p.true_ttd_values)
+        total_prefires = sum(prefire_counts.values())
+
+        logger.info(
+            f"True TTD computed: {processed} engagements analyzed, "
+            f"{visibility_found} with visibility data, "
+            f"{players_with_ttd} players have reaction time data, "
+            f"{total_prefires} prefires detected"
+        )
+
+    def _find_visibility_start_simple(
+        self,
+        attacker_ticks: pd.DataFrame,
+        victim_ticks: pd.DataFrame,
+        damage_tick: int,
+        use_view_angles: bool = True,
+    ) -> int | None:
+        """Find when attacker first had visibility of victim (simplified).
+
+        Uses a distance + FOV check without ray-casting against map geometry.
+        This is an approximation that works reasonably well for open areas.
+
+        Args:
+            attacker_ticks: Attacker position data (needs X, Y, Z, optionally pitch/yaw)
+            victim_ticks: Victim position data (needs X, Y, Z)
+            damage_tick: Tick when damage occurred
+            use_view_angles: Whether to check if victim is in FOV
+
+        Returns:
+            Tick when visibility started, or None if not determinable
+        """
+        MAX_LOOKBACK_TICKS = int(2000 / self.MS_PER_TICK)  # 2 seconds max lookback
+        MIN_DISTANCE = 50  # Units - too close is likely already in combat
+        MAX_DISTANCE = 3000  # Units - beyond this visibility is questionable
+        FOV_THRESHOLD = 90  # Degrees - consider visible if within this FOV
+
+        start_tick = max(0, damage_tick - MAX_LOOKBACK_TICKS)
+
+        # Get data in lookback window
+        att_window = attacker_ticks[
+            (attacker_ticks["tick"] >= start_tick) & (attacker_ticks["tick"] <= damage_tick)
+        ].sort_values("tick")
+
+        vic_window = victim_ticks[
+            (victim_ticks["tick"] >= start_tick) & (victim_ticks["tick"] <= damage_tick)
+        ].sort_values("tick")
+
+        if att_window.empty or vic_window.empty:
+            return None
+
+        # Check each tick from earliest to find first visibility
+        for _, att_row in att_window.iterrows():
+            tick = int(att_row["tick"])
+
+            # Find victim position at same tick (or closest)
+            vic_at_tick = vic_window[vic_window["tick"] == tick]
+            if vic_at_tick.empty:
+                # Try closest tick
+                vic_at_tick = vic_window.iloc[(vic_window["tick"] - tick).abs().argsort()[:1]]
+                if vic_at_tick.empty:
+                    continue
+
+            vic_row = vic_at_tick.iloc[0]
+
+            # Calculate distance
+            try:
+                att_pos = np.array([att_row["X"], att_row["Y"], att_row["Z"]])
+                vic_pos = np.array([vic_row["X"], vic_row["Y"], vic_row["Z"]])
+                direction = vic_pos - att_pos
+                distance = np.linalg.norm(direction)
+
+                if distance < MIN_DISTANCE or distance > MAX_DISTANCE:
+                    continue
+
+                # If we have view angles, check FOV
+                if use_view_angles and "pitch" in att_row and "yaw" in att_row:
+                    pitch = float(att_row["pitch"])
+                    yaw = float(att_row["yaw"])
+
+                    # Convert view angles to direction vector
+                    pitch_rad = np.radians(pitch)
+                    yaw_rad = np.radians(yaw)
+                    view_dir = np.array([
+                        np.cos(yaw_rad) * np.cos(pitch_rad),
+                        np.sin(yaw_rad) * np.cos(pitch_rad),
+                        -np.sin(pitch_rad),
+                    ])
+
+                    # Calculate angle to target
+                    target_dir = direction / distance
+                    dot = np.clip(np.dot(view_dir, target_dir), -1.0, 1.0)
+                    angle = np.degrees(np.arccos(dot))
+
+                    if angle <= FOV_THRESHOLD:
+                        return tick
+                else:
+                    # No view angles - assume visible if in range
+                    return tick
+
+            except Exception:
+                continue
+
+        return None
 
     def _compute_crosshair_placement(self) -> None:
         """Compute crosshair placement error for each kill.

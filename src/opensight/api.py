@@ -191,14 +191,38 @@ def player_stats_to_dict(player: Any) -> dict:
         "kast_percentage": player.kast_percentage,
         "hltv_rating": player.hltv_rating,
         "impact_rating": player.impact_rating,
+        "impact_plus_minus": player.impact_plus_minus,
         "survival_rate": player.survival_rate,
         "kills_per_round": player.kills_per_round,
         "deaths_per_round": player.deaths_per_round,
-        # TTD (Time to Damage)
+        # Engagement Duration (time from first damage to kill - spray/tracking skill)
+        "engagement_duration_median_ms": (
+            round(player.engagement_duration_median_ms, 1)
+            if player.engagement_duration_median_ms
+            else None
+        ),
+        "engagement_duration_mean_ms": (
+            round(player.engagement_duration_mean_ms, 1)
+            if player.engagement_duration_mean_ms
+            else None
+        ),
+        "engagement_samples": len(player.engagement_duration_values),
+        # True TTD / Reaction Time (visibility to first damage)
+        "reaction_time_median_ms": (
+            round(player.reaction_time_median_ms, 1)
+            if player.reaction_time_median_ms
+            else None
+        ),
+        "reaction_time_mean_ms": (
+            round(player.reaction_time_mean_ms, 1) if player.reaction_time_mean_ms else None
+        ),
+        "reaction_time_samples": len(player.true_ttd_values),
+        "prefire_count": player.prefire_count,
+        "prefire_percentage": round(player.prefire_percentage, 1),
+        # Legacy TTD aliases (now returns engagement_duration for backwards compatibility)
         "ttd_median_ms": (round(player.ttd_median_ms, 1) if player.ttd_median_ms else None),
         "ttd_mean_ms": round(player.ttd_mean_ms, 1) if player.ttd_mean_ms else None,
-        "ttd_samples": len(player.ttd_values),
-        "prefire_count": player.prefire_count,
+        "ttd_samples": len(player.engagement_duration_values),
         # Crosshair Placement
         "cp_median_error_deg": (
             round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None
@@ -293,6 +317,7 @@ def build_player_response(player: Any) -> dict:
         # Ratings
         "impact_rating": round(player.impact_rating, 2),
         "hltv_rating": round(player.hltv_rating, 2),
+        "impact_plus_minus": round(player.impact_plus_minus, 2),
         # Advanced metrics - TTD and CP
         "ttd_median_ms": (round(player.ttd_median_ms, 1) if player.ttd_median_ms else None),
         "cp_median_error": (
@@ -925,17 +950,21 @@ async def about() -> dict[str, Any]:
                 "entry_success_rate": "Percentage of opening duels won",
             },
             "advanced": {
-                "ttd_median_ms": (
-                    "Time to Damage (median) - milliseconds from engagement start to damage dealt"
+                "reaction_time_median_ms": (
+                    "True TTD / Reaction Time (median) - ms from seeing enemy to first damage"
                 ),
-                "ttd_mean_ms": "Time to Damage (mean)",
+                "reaction_time_mean_ms": "Reaction Time (mean)",
+                "engagement_duration_median_ms": (
+                    "Duel Duration (median) - ms from first damage to kill (spray/tracking)"
+                ),
+                "engagement_duration_mean_ms": "Duel Duration (mean)",
                 "cp_median_error_deg": (
                     "Crosshair Placement error (median) - degrees off-target when engaging"
                 ),
-                "prefire_kills": (
-                    "Kills where damage was dealt before/instantly "
-                    "upon visibility (prediction shots)"
+                "prefire_count": (
+                    "Kills with reaction time < 100ms - pre-aimed/anticipated enemy position"
                 ),
+                "prefire_percentage": "Percentage of engagements that were prefires",
             },
             "detailed_accuracy": {
                 "spotted_accuracy": "Accuracy when enemy is spotted (shots within damage window)",

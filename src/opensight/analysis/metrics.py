@@ -181,6 +181,47 @@ CP_VALID_CATEGORIES: set[WeaponCategory] = {
     WeaponCategory.MACHINE_GUN,
 }
 
+# ============================================================================
+# Firing Sequence Detection Constants (Leetify-style Tap/Burst/Spray)
+# ============================================================================
+
+# Gap threshold between shots to start a new sequence
+# 150ms at 64 tick = ~10 ticks
+SEQUENCE_GAP_TICKS = 10
+
+# Sequence classifications (Leetify standard)
+TAP_MAX_SHOTS = 2  # 1-2 shots = Tap
+BURST_MAX_SHOTS = 5  # 3-5 shots = Burst
+SPRAY_MIN_SHOTS = 6  # 6+ shots = Spray
+
+# Weapons that support automatic fire (for tap/burst/spray analysis)
+# Excludes: pistols (except CZ), snipers, shotguns
+AUTOMATIC_WEAPONS: set[str] = {
+    # Rifles
+    "ak47",
+    "m4a1",
+    "m4a1_silencer",
+    "m4a4",
+    "galil",
+    "galilar",
+    "famas",
+    "aug",
+    "sg556",
+    # SMGs
+    "mac10",
+    "mp9",
+    "mp7",
+    "ump45",
+    "p90",
+    "bizon",
+    "mp5sd",
+    # Machine guns
+    "negev",
+    "m249",
+    # CZ-75 Auto (the only automatic pistol)
+    "cz75a",
+}
+
 # Grenade weapon names (for filtering)
 GRENADE_WEAPONS: set[str] = {
     "hegrenade",
@@ -295,6 +336,197 @@ class CrosshairPlacementResult:
         return (
             f"CP({self.player_name}: mean={self.mean_angle_deg:.1f}°, "
             f"score={self.placement_score:.1f}, n={self.sample_count})"
+        )
+
+
+# ============================================================================
+# Firing Sequence Detection (Leetify-style Tap/Burst/Spray)
+# ============================================================================
+
+
+@dataclass
+class FiringSequence:
+    """A detected firing sequence (tap/burst/spray).
+
+    Sequences are groups of consecutive shots where the gap between
+    each shot is less than SEQUENCE_GAP_TICKS (150ms).
+    """
+
+    start_tick: int
+    end_tick: int
+    shot_count: int
+    shot_ticks: list[int]
+    weapon: str
+    round_num: int
+
+    @property
+    def sequence_type(self) -> str:
+        """Classify the sequence based on shot count.
+
+        - Tap: 1-2 shots
+        - Burst: 3-5 shots
+        - Spray: 6+ shots
+        """
+        if self.shot_count <= TAP_MAX_SHOTS:
+            return "tap"
+        elif self.shot_count <= BURST_MAX_SHOTS:
+            return "burst"
+        else:
+            return "spray"
+
+    @property
+    def duration_ticks(self) -> int:
+        """Duration of the sequence in ticks."""
+        return self.end_tick - self.start_tick
+
+    def __repr__(self) -> str:
+        return f"FiringSequence({self.sequence_type}: {self.shot_count} shots, {self.weapon})"
+
+
+@dataclass
+class FiringAccuracyResult:
+    """Tap/Burst/Spray accuracy breakdown for a player.
+
+    Tracks shots fired, hits, and headshots separately for each
+    firing style category (Leetify-style metrics).
+    """
+
+    steam_id: int
+    player_name: str
+
+    # Tap (1-2 shots)
+    tap_shots_fired: int = 0
+    tap_shots_hit: int = 0
+    tap_headshots: int = 0
+    tap_sequences: int = 0
+
+    # Burst (3-5 shots)
+    burst_shots_fired: int = 0
+    burst_shots_hit: int = 0
+    burst_headshots: int = 0
+    burst_sequences: int = 0
+
+    # Spray (6+ shots)
+    spray_shots_fired: int = 0
+    spray_shots_hit: int = 0
+    spray_headshots: int = 0
+    spray_sequences: int = 0
+
+    @property
+    def tap_accuracy(self) -> float:
+        """Tap accuracy percentage (1-2 shot sequences)."""
+        return (
+            round(self.tap_shots_hit / self.tap_shots_fired * 100, 1)
+            if self.tap_shots_fired > 0
+            else 0.0
+        )
+
+    @property
+    def burst_accuracy(self) -> float:
+        """Burst accuracy percentage (3-5 shot sequences)."""
+        return (
+            round(self.burst_shots_hit / self.burst_shots_fired * 100, 1)
+            if self.burst_shots_fired > 0
+            else 0.0
+        )
+
+    @property
+    def spray_accuracy(self) -> float:
+        """Spray accuracy percentage (6+ shot sequences)."""
+        return (
+            round(self.spray_shots_hit / self.spray_shots_fired * 100, 1)
+            if self.spray_shots_fired > 0
+            else 0.0
+        )
+
+    @property
+    def tap_headshot_rate(self) -> float:
+        """Headshot rate for tap sequences."""
+        return (
+            round(self.tap_headshots / self.tap_shots_hit * 100, 1)
+            if self.tap_shots_hit > 0
+            else 0.0
+        )
+
+    @property
+    def burst_headshot_rate(self) -> float:
+        """Headshot rate for burst sequences."""
+        return (
+            round(self.burst_headshots / self.burst_shots_hit * 100, 1)
+            if self.burst_shots_hit > 0
+            else 0.0
+        )
+
+    @property
+    def spray_headshot_rate(self) -> float:
+        """Headshot rate for spray sequences."""
+        return (
+            round(self.spray_headshots / self.spray_shots_hit * 100, 1)
+            if self.spray_shots_hit > 0
+            else 0.0
+        )
+
+    @property
+    def total_sequences(self) -> int:
+        """Total number of firing sequences."""
+        return self.tap_sequences + self.burst_sequences + self.spray_sequences
+
+    @property
+    def total_shots_fired(self) -> int:
+        """Total shots fired across all sequence types."""
+        return self.tap_shots_fired + self.burst_shots_fired + self.spray_shots_fired
+
+    @property
+    def total_shots_hit(self) -> int:
+        """Total shots hit across all sequence types."""
+        return self.tap_shots_hit + self.burst_shots_hit + self.spray_shots_hit
+
+    @property
+    def overall_accuracy(self) -> float:
+        """Overall accuracy across all firing styles."""
+        return (
+            round(self.total_shots_hit / self.total_shots_fired * 100, 1)
+            if self.total_shots_fired > 0
+            else 0.0
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API serialization."""
+        return {
+            # Tap metrics
+            "tap_shots_fired": self.tap_shots_fired,
+            "tap_shots_hit": self.tap_shots_hit,
+            "tap_headshots": self.tap_headshots,
+            "tap_sequences": self.tap_sequences,
+            "tap_accuracy": self.tap_accuracy,
+            "tap_headshot_rate": self.tap_headshot_rate,
+            # Burst metrics
+            "burst_shots_fired": self.burst_shots_fired,
+            "burst_shots_hit": self.burst_shots_hit,
+            "burst_headshots": self.burst_headshots,
+            "burst_sequences": self.burst_sequences,
+            "burst_accuracy": self.burst_accuracy,
+            "burst_headshot_rate": self.burst_headshot_rate,
+            # Spray metrics
+            "spray_shots_fired": self.spray_shots_fired,
+            "spray_shots_hit": self.spray_shots_hit,
+            "spray_headshots": self.spray_headshots,
+            "spray_sequences": self.spray_sequences,
+            "spray_accuracy": self.spray_accuracy,
+            "spray_headshot_rate": self.spray_headshot_rate,
+            # Totals
+            "total_sequences": self.total_sequences,
+            "total_shots_fired": self.total_shots_fired,
+            "total_shots_hit": self.total_shots_hit,
+            "overall_accuracy": self.overall_accuracy,
+        }
+
+    def __repr__(self) -> str:
+        return (
+            f"FiringAccuracy({self.player_name}: "
+            f"tap={self.tap_accuracy:.1f}%, "
+            f"burst={self.burst_accuracy:.1f}%, "
+            f"spray={self.spray_accuracy:.1f}%)"
         )
 
 
@@ -1756,6 +1988,245 @@ def calculate_opening_metrics(
 
 
 # ============================================================================
+# Firing Sequence Detection and Accuracy Calculation
+# ============================================================================
+
+
+def detect_firing_sequences(
+    weapon_fires: list,
+    steam_id: int,
+    gap_threshold_ticks: int = SEQUENCE_GAP_TICKS,
+) -> list[FiringSequence]:
+    """
+    Group weapon_fire events into firing sequences.
+
+    A new sequence starts when the gap between shots exceeds the threshold
+    (default 150ms / ~10 ticks) or the weapon changes.
+
+    Args:
+        weapon_fires: List of WeaponFireEvent objects
+        steam_id: Player's Steam ID to filter
+        gap_threshold_ticks: Max ticks between shots to be same sequence
+
+    Returns:
+        List of FiringSequence objects
+    """
+    # Filter to player's shots only
+    player_shots = [f for f in weapon_fires if f.player_steamid == steam_id]
+
+    if not player_shots:
+        return []
+
+    # Sort by tick
+    player_shots.sort(key=lambda s: s.tick)
+
+    sequences: list[FiringSequence] = []
+    current_sequence_shots: list = [player_shots[0]]
+
+    for i in range(1, len(player_shots)):
+        current = player_shots[i]
+        previous = player_shots[i - 1]
+
+        # Get weapon names (handle None safely)
+        current_weapon = (current.weapon or "unknown").lower().replace("weapon_", "")
+        previous_weapon = (previous.weapon or "unknown").lower().replace("weapon_", "")
+
+        # Same weapon and within time window = same sequence
+        if (
+            current.tick - previous.tick <= gap_threshold_ticks
+            and current_weapon == previous_weapon
+        ):
+            current_sequence_shots.append(current)
+        else:
+            # End current sequence, start new one
+            first_shot = current_sequence_shots[0]
+            last_shot = current_sequence_shots[-1]
+            weapon_name = (first_shot.weapon or "unknown").lower().replace("weapon_", "")
+
+            sequences.append(
+                FiringSequence(
+                    start_tick=first_shot.tick,
+                    end_tick=last_shot.tick,
+                    shot_count=len(current_sequence_shots),
+                    shot_ticks=[s.tick for s in current_sequence_shots],
+                    weapon=weapon_name,
+                    round_num=getattr(first_shot, "round_num", 0),
+                )
+            )
+            current_sequence_shots = [current]
+
+    # Don't forget the last sequence
+    if current_sequence_shots:
+        first_shot = current_sequence_shots[0]
+        last_shot = current_sequence_shots[-1]
+        weapon_name = (first_shot.weapon or "unknown").lower().replace("weapon_", "")
+
+        sequences.append(
+            FiringSequence(
+                start_tick=first_shot.tick,
+                end_tick=last_shot.tick,
+                shot_count=len(current_sequence_shots),
+                shot_ticks=[s.tick for s in current_sequence_shots],
+                weapon=weapon_name,
+                round_num=getattr(first_shot, "round_num", 0),
+            )
+        )
+
+    return sequences
+
+
+def _count_hits_for_sequence(
+    damages_df: pd.DataFrame,
+    steam_id: int,
+    shot_ticks: list[int],
+    tick_tolerance: int = 5,
+) -> tuple[int, int]:
+    """
+    Count hits and headshots for a firing sequence.
+
+    Correlates weapon_fire ticks with damage events within a small window.
+
+    Args:
+        damages_df: DataFrame of damage events
+        steam_id: Attacker's Steam ID
+        shot_ticks: List of ticks when shots were fired
+        tick_tolerance: Ticks after shot to look for damage
+
+    Returns:
+        Tuple of (hits, headshots)
+    """
+    if damages_df.empty or not shot_ticks:
+        return 0, 0
+
+    # Find attacker column
+    att_col = _find_column(
+        damages_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"]
+    )
+    if not att_col or "tick" not in damages_df.columns:
+        return 0, 0
+
+    # Filter to this player's damage events
+    player_damages = damages_df[damages_df[att_col] == steam_id]
+    if player_damages.empty:
+        return 0, 0
+
+    # Build set of damage ticks for fast lookup
+    damage_ticks = set(player_damages["tick"].values)
+
+    # Check for headshots
+    hitgroup_col = _find_column(damages_df, ["hitgroup", "hit_group"])
+    headshot_ticks: set[int] = set()
+    if hitgroup_col:
+        headshot_damages = player_damages[
+            player_damages[hitgroup_col].astype(str).str.lower().isin(["head", "1", "headshot"])
+        ]
+        headshot_ticks = set(headshot_damages["tick"].values)
+
+    hits = 0
+    headshots = 0
+
+    for shot_tick in shot_ticks:
+        # Look for damage within tolerance window after shot
+        for dt in range(shot_tick, shot_tick + tick_tolerance + 1):
+            if dt in damage_ticks:
+                hits += 1
+                if dt in headshot_ticks:
+                    headshots += 1
+                break  # Only count one hit per shot
+
+    return hits, headshots
+
+
+def calculate_firing_accuracy(
+    demo_data: DemoData,
+    steam_id: int | None = None,
+) -> dict[int, FiringAccuracyResult]:
+    """
+    Calculate tap/burst/spray accuracy for players (Leetify-style).
+
+    Detects firing sequences and calculates accuracy for each category:
+    - Tap: 1-2 shots
+    - Burst: 3-5 shots
+    - Spray: 6+ shots
+
+    Only analyzes automatic weapons (rifles, SMGs, machine guns, CZ-75).
+    Excludes pistols, snipers, and shotguns.
+
+    Args:
+        demo_data: Parsed demo data with weapon_fires and damages_df
+        steam_id: Optional specific player to analyze
+
+    Returns:
+        Dictionary mapping steam_id to FiringAccuracyResult
+    """
+    results: dict[int, FiringAccuracyResult] = {}
+
+    # Get weapon fires
+    weapon_fires = getattr(demo_data, "weapon_fires", [])
+    if not weapon_fires:
+        logger.warning("No weapon_fire events - cannot calculate firing accuracy")
+        return results
+
+    # Get damages for hit correlation
+    damages_df = getattr(demo_data, "damages_df", pd.DataFrame())
+    if damages_df is None:
+        damages_df = pd.DataFrame()
+
+    # Determine players to analyze
+    player_ids = set(demo_data.player_names.keys())
+    if steam_id is not None:
+        player_ids = {steam_id} if steam_id in player_ids else set()
+
+    for pid in player_ids:
+        # Detect all firing sequences for this player
+        sequences = detect_firing_sequences(weapon_fires, pid)
+
+        result = FiringAccuracyResult(
+            steam_id=int(pid),
+            player_name=demo_data.player_names.get(int(pid), "Unknown"),
+        )
+
+        for seq in sequences:
+            # Only analyze automatic weapons
+            weapon_clean = seq.weapon.lower().replace("weapon_", "")
+            if weapon_clean not in AUTOMATIC_WEAPONS:
+                continue
+
+            # Count hits and headshots for this sequence
+            hits, headshots = _count_hits_for_sequence(
+                damages_df, pid, seq.shot_ticks
+            )
+
+            # Categorize by sequence type
+            seq_type = seq.sequence_type
+
+            if seq_type == "tap":
+                result.tap_shots_fired += seq.shot_count
+                result.tap_shots_hit += hits
+                result.tap_headshots += headshots
+                result.tap_sequences += 1
+            elif seq_type == "burst":
+                result.burst_shots_fired += seq.shot_count
+                result.burst_shots_hit += hits
+                result.burst_headshots += headshots
+                result.burst_sequences += 1
+            else:  # spray
+                result.spray_shots_fired += seq.shot_count
+                result.spray_shots_hit += hits
+                result.spray_headshots += headshots
+                result.spray_sequences += 1
+
+        results[int(pid)] = result
+
+    # Log summary
+    if results:
+        total_seqs = sum(r.total_sequences for r in results.values())
+        logger.info(f"Calculated firing accuracy for {len(results)} players ({total_seqs} sequences)")
+
+    return results
+
+
+# ============================================================================
 # Comprehensive Analysis
 # ============================================================================
 
@@ -1775,6 +2246,7 @@ class ComprehensivePlayerMetrics:
     opening_duels: OpeningDuelMetrics | None
     ttd: TTDResult | None
     crosshair_placement: CrosshairPlacementResult | None
+    firing_accuracy: FiringAccuracyResult | None = None  # Tap/Burst/Spray accuracy
 
     def overall_rating(self) -> float:
         """
@@ -1829,6 +2301,7 @@ def calculate_comprehensive_metrics(
     openings = calculate_opening_metrics(demo_data, steam_id)
     ttd = calculate_ttd(demo_data, steam_id)
     cp = calculate_crosshair_placement(demo_data, steam_id)
+    firing_acc = calculate_firing_accuracy(demo_data, steam_id)
 
     results: dict[int, ComprehensivePlayerMetrics] = {}
 
@@ -1849,6 +2322,7 @@ def calculate_comprehensive_metrics(
             opening_duels=openings.get(int(player_id)),
             ttd=ttd.get(int(player_id)),
             crosshair_placement=cp.get(int(player_id)),
+            firing_accuracy=firing_acc.get(int(player_id)),
         )
 
     return results
