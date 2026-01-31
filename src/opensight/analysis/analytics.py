@@ -27,7 +27,7 @@ from opensight.core.constants import (
     IMPACT_COEFFICIENTS,
     TRADE_WINDOW_SECONDS,
 )
-from opensight.core.parser import DemoData, safe_float, safe_int
+from opensight.core.parser import DemoData, safe_float, safe_int, safe_str
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,16 @@ try:
 except ImportError:
     HAS_COMBAT = False
     logger.debug("Combat module not available")
+
+# Import lurker detection for smart spacing warnings
+try:
+    from opensight.analysis.persona import _is_effective_lurker
+
+    HAS_PERSONA = True
+except ImportError:
+    HAS_PERSONA = False
+    _is_effective_lurker = None
+    logger.debug("Persona module not available")
 
 
 # Note: safe_int, safe_str, safe_float are imported from opensight.core.parser
@@ -228,6 +238,8 @@ class OpeningDuelStats:
     - win_rate: Entry Success % - How often you win opening duels
     - entry_kills_total: Raw count of entry kills
     - entry_ttd_values: TTD specifically for entry kills (reaction time on first contact)
+    - map_control_kills: Kills in non-bombsite zones (mid, connectors, etc.)
+    - site_kills: Kills in bombsite zones
     """
 
     wins: int = 0
@@ -238,10 +250,56 @@ class OpeningDuelStats:
     t_side_entries: int = 0  # Entry kills while on T side (aggressive)
     ct_side_entries: int = 0  # Entry kills while on CT side (defensive)
 
+    # Zone-based classification (Task 2)
+    map_control_kills: int = 0  # Opening kills in non-bombsite zones
+    site_kills: int = 0  # Opening kills in bombsite zones
+    kill_zones: dict[str, int] = field(default_factory=dict)  # zone_name -> count
+
+    # Dry peek tracking - entries without utility support
+    supported_entries: int = 0  # Entry kills with teammate flash/smoke support
+    unsupported_entries: int = 0  # Entry kills without utility (dry peek wins)
+    supported_deaths: int = 0  # Entry deaths with utility support (unlucky)
+    unsupported_deaths: int = 0  # Entry deaths without utility (dry peek punished)
+
+    @property
+    def dry_peek_rate(self) -> float:
+        """Dry Peek % - percentage of opening duels taken without utility support.
+
+        Only counts rifler entries (excludes AWP/Scout which legitimately hold angles).
+        High dry peek rate indicates player is taking unnecessary risks without team support.
+
+        Benchmarks:
+        - <30%: Good discipline, using utility
+        - 30-50%: Average, room for improvement
+        - >50%: Too aggressive, need to coordinate with team
+        """
+        total_entries = self.supported_entries + self.unsupported_entries
+        total_deaths = self.supported_deaths + self.unsupported_deaths
+        total = total_entries + total_deaths
+        if total <= 0:
+            return 0.0
+        unsupported = self.unsupported_entries + self.unsupported_deaths
+        return round(unsupported / total * 100, 1)
+
+    @property
+    def dry_peek_death_rate(self) -> float:
+        """% of dry peeks that resulted in death (punishment rate for bad plays)."""
+        total_dry = self.unsupported_entries + self.unsupported_deaths
+        if total_dry <= 0:
+            return 0.0
+        return round(self.unsupported_deaths / total_dry * 100, 1)
+
     @property
     def win_rate(self) -> float:
         """Entry Success % - percentage of opening duels won."""
         return round(self.wins / self.attempts * 100, 1) if self.attempts > 0 else 0.0
+
+    @property
+    def map_control_rate(self) -> float:
+        """Percentage of opening kills that were map control (not site)."""
+        if self.wins <= 0:
+            return 0.0
+        return round(self.map_control_kills / self.wins * 100, 1)
 
     @property
     def entry_ttd_median_ms(self) -> float | None:
@@ -256,6 +314,115 @@ class OpeningDuelStats:
         if self.entry_ttd_values:
             return float(np.mean(self.entry_ttd_values))
         return None
+
+
+@dataclass
+class OpeningEngagementStats:
+    """Opening engagement stats - who FOUGHT first, not just who DIED first.
+
+    An engagement participant = any player who dealt OR received damage
+    before the first kill of the round. This captures the true "first contact"
+    scenario more accurately than kill-based tracking alone.
+
+    Metrics:
+    - engagement_attempts: Rounds where player was involved in pre-kill damage
+    - first_damage_dealt: Rounds where player dealt the very first damage
+    - opening_damage_total: Total damage dealt during opening phases
+    """
+
+    # Core engagement tracking
+    engagement_attempts: int = 0  # Rounds involved in pre-kill damage
+    engagement_wins: int = 0  # Player's team got first kill
+    engagement_losses: int = 0  # Enemy got first kill
+
+    # First damage tracking
+    first_damage_dealt: int = 0  # Rounds where this player dealt FIRST damage
+    first_damage_taken: int = 0  # Rounds where this player TOOK first damage
+
+    # Damage accumulation during opening phase
+    opening_damage_total: int = 0  # Total damage dealt before first kill
+    opening_damage_values: list[int] = field(default_factory=list)  # Per-round values
+
+    @property
+    def engagement_win_rate(self) -> float:
+        """Win rate when involved in opening engagement."""
+        if self.engagement_attempts <= 0:
+            return 0.0
+        return round(self.engagement_wins / self.engagement_attempts * 100, 1)
+
+    @property
+    def first_damage_rate(self) -> float:
+        """How often this player deals the first damage of a round."""
+        if self.engagement_attempts <= 0:
+            return 0.0
+        return round(self.first_damage_dealt / self.engagement_attempts * 100, 1)
+
+    @property
+    def opening_damage_avg(self) -> float:
+        """Average damage dealt during opening phases."""
+        if not self.opening_damage_values:
+            return 0.0
+        return round(sum(self.opening_damage_values) / len(self.opening_damage_values), 1)
+
+
+@dataclass
+class EntryFragStats:
+    """Zone-aware entry frag stats - first kill INTO a bombsite.
+
+    Entry Frag = first kill in a specific bombsite for a round.
+    Distinguished from Opening Duels (map control kills in mid/connectors).
+
+    Metrics:
+    - a_site_entries: Entry kills at A bombsite
+    - b_site_entries: Entry kills at B bombsite
+    - entry_frag_rate: Success rate (kills vs deaths on site entries)
+    """
+
+    # Site-specific entry frags
+    a_site_entries: int = 0
+    a_site_entry_deaths: int = 0
+    b_site_entries: int = 0
+    b_site_entry_deaths: int = 0
+
+    # Overall entry frag stats
+    total_entry_frags: int = 0
+    total_entry_deaths: int = 0
+
+    # Round outcomes after entry
+    entry_rounds_won: int = 0
+    entry_rounds_lost: int = 0
+
+    @property
+    def entry_frag_rate(self) -> float:
+        """Entry frag success rate (kills vs deaths on site)."""
+        total = self.total_entry_frags + self.total_entry_deaths
+        if total <= 0:
+            return 0.0
+        return round(self.total_entry_frags / total * 100, 1)
+
+    @property
+    def a_site_success_rate(self) -> float:
+        """A site entry success rate."""
+        total = self.a_site_entries + self.a_site_entry_deaths
+        if total <= 0:
+            return 0.0
+        return round(self.a_site_entries / total * 100, 1)
+
+    @property
+    def b_site_success_rate(self) -> float:
+        """B site entry success rate."""
+        total = self.b_site_entries + self.b_site_entry_deaths
+        if total <= 0:
+            return 0.0
+        return round(self.b_site_entries / total * 100, 1)
+
+    @property
+    def entry_round_win_rate(self) -> float:
+        """Win rate in rounds with entry frag."""
+        total = self.entry_rounds_won + self.entry_rounds_lost
+        if total <= 0:
+            return 0.0
+        return round(self.entry_rounds_won / total * 100, 1)
 
 
 @dataclass
@@ -1196,6 +1363,8 @@ class PlayerMatchStats:
 
     # Component stats
     opening_duels: OpeningDuelStats = field(default_factory=OpeningDuelStats)
+    opening_engagements: OpeningEngagementStats = field(default_factory=OpeningEngagementStats)
+    entry_frags: EntryFragStats = field(default_factory=EntryFragStats)
     trades: TradeStats = field(default_factory=TradeStats)
     clutches: ClutchStats = field(default_factory=ClutchStats)
     multi_kills: MultiKillStats = field(default_factory=MultiKillStats)
@@ -1267,6 +1436,10 @@ class PlayerMatchStats:
     # Combat stats (integrated from combat module)
     trade_kill_time_avg_ms: float = 0.0
     untraded_deaths: int = 0
+
+    # Discipline stats (greedy play detection)
+    greedy_repeeks: int = 0  # Deaths from re-peeking same angle after a kill
+    discipline_rating: float = 100.0  # (safe_kills / total_kills) * 100
 
     # RWS (Round Win Shares) - ESEA style
     rws: float = 0.0  # Average RWS across rounds won
@@ -1455,12 +1628,20 @@ class PlayerMatchStats:
     @property
     def engagement_duration_median_ms(self) -> float | None:
         """Median time from first damage to kill (spray control/tracking)."""
-        return float(np.median(self.engagement_duration_values)) if self.engagement_duration_values else None
+        return (
+            float(np.median(self.engagement_duration_values))
+            if self.engagement_duration_values
+            else None
+        )
 
     @property
     def engagement_duration_mean_ms(self) -> float | None:
         """Mean time from first damage to kill."""
-        return float(np.mean(self.engagement_duration_values)) if self.engagement_duration_values else None
+        return (
+            float(np.mean(self.engagement_duration_values))
+            if self.engagement_duration_values
+            else None
+        )
 
     # Legacy TTD aliases (these now return engagement duration, not reaction time)
     @property
@@ -1696,6 +1877,262 @@ class PlayerMatchStats:
         """Clutch 1v2 % - success rate in 1v2 clutches."""
         return self.clutches.v2_win_rate
 
+    # AWP/Sniper properties for role detection
+    @property
+    def awp_kills(self) -> int:
+        """Total kills with AWP/SSG08 (sniper weapons)."""
+        awp_count = self.weapon_kills.get("awp", 0) + self.weapon_kills.get("AWP", 0)
+        ssg_count = self.weapon_kills.get("ssg08", 0) + self.weapon_kills.get("SSG08", 0)
+        return awp_count + ssg_count
+
+    @property
+    def awp_kill_percentage(self) -> float:
+        """Percentage of kills that were with sniper weapons (AWP/SSG08)."""
+        if self.kills == 0:
+            return 0.0
+        return round(self.awp_kills / self.kills * 100, 1)
+
+    @property
+    def is_primary_awper(self) -> bool:
+        """
+        Determine if player is a primary AWPer based on weapon usage.
+
+        Threshold: 35% of kills with sniper rifles indicates AWPer role.
+        This overrides other role detection as AWPing is a distinct playstyle.
+        """
+        return self.awp_kill_percentage >= 35.0
+
+
+@dataclass
+class RoleScores:
+    """
+    Role scores for player identity detection.
+
+    Each role is scored 0-100 based on behavioral metrics, not just K/D.
+    The highest score determines the player's primary role.
+    """
+
+    entry: float = 0.0
+    support: float = 0.0
+    lurker: float = 0.0
+    awper: float = 0.0
+    rifler: float = 0.0
+
+    @property
+    def primary_role(self) -> str:
+        """Get the highest-scoring role."""
+        scores = {
+            "entry": self.entry,
+            "support": self.support,
+            "lurker": self.lurker,
+            "awper": self.awper,
+            "rifler": self.rifler,
+        }
+        best_role = max(scores, key=scores.get)
+        best_score = scores[best_role]
+
+        # If best score is very low, default to flex
+        if best_score < 20:
+            return "flex"
+
+        # Check for tie (within 10% of each other)
+        second_best = sorted(scores.values(), reverse=True)[1]
+        if best_score > 0 and (best_score - second_best) / best_score < 0.10:
+            return "flex"  # Too close to call
+
+        return best_role
+
+    @property
+    def confidence(self) -> str:
+        """Get confidence level based on score spread."""
+        scores = [self.entry, self.support, self.lurker, self.awper, self.rifler]
+        best_score = max(scores)
+        if best_score >= 70:
+            return "high"
+        elif best_score >= 40:
+            return "medium"
+        return "low"
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses."""
+        return {
+            "entry": round(self.entry, 1),
+            "support": round(self.support, 1),
+            "lurker": round(self.lurker, 1),
+            "awper": round(self.awper, 1),
+            "rifler": round(self.rifler, 1),
+            "primary_role": self.primary_role,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass
+class WinProbEvent:
+    """A single win probability data point at a state change."""
+
+    tick: int
+    time_seconds: float  # Time since round start
+    event_type: str  # "round_start", "kill", "bomb_plant", "bomb_defuse", "bomb_explode"
+    ct_alive: int
+    t_alive: int
+    bomb_planted: bool
+    ct_win_prob: float  # CT's win probability [0.0, 1.0]
+    t_win_prob: float  # T's win probability [0.0, 1.0]
+    description: str = ""  # e.g., "Player1 killed Player2"
+
+
+@dataclass
+class RoundMomentum:
+    """
+    Win probability tracking for a single round.
+
+    Used to identify "throw" rounds (had advantage, lost) and
+    "heroic" rounds (had disadvantage, won).
+    """
+
+    round_num: int
+    winner: str  # "CT" or "T"
+    win_prob_timeline: list[WinProbEvent] = field(default_factory=list)
+
+    # Computed from timeline
+    ct_peak_prob: float = 0.5  # Max CT win probability during round
+    ct_min_prob: float = 0.5  # Min CT win probability during round
+    t_peak_prob: float = 0.5  # Max T win probability during round
+    t_min_prob: float = 0.5  # Min T win probability during round
+
+    @property
+    def ct_is_throw(self) -> bool:
+        """CT had >=80% win prob but lost."""
+        return self.ct_peak_prob >= 0.80 and self.winner == "T"
+
+    @property
+    def ct_is_heroic(self) -> bool:
+        """CT had <=20% win prob but won."""
+        return self.ct_min_prob <= 0.20 and self.winner == "CT"
+
+    @property
+    def t_is_throw(self) -> bool:
+        """T had >=80% win prob but lost."""
+        return self.t_peak_prob >= 0.80 and self.winner == "CT"
+
+    @property
+    def t_is_heroic(self) -> bool:
+        """T had <=20% win prob but won."""
+        return self.t_min_prob <= 0.20 and self.winner == "T"
+
+    @property
+    def round_tag(self) -> str:
+        """Get the most significant tag for this round."""
+        if self.ct_is_throw:
+            return "CT_THROW"
+        if self.t_is_throw:
+            return "T_THROW"
+        if self.ct_is_heroic:
+            return "CT_HEROIC"
+        if self.t_is_heroic:
+            return "T_HEROIC"
+        return ""
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses."""
+        return {
+            "round_num": self.round_num,
+            "winner": self.winner,
+            "ct_peak_prob": round(self.ct_peak_prob, 2),
+            "ct_min_prob": round(self.ct_min_prob, 2),
+            "t_peak_prob": round(self.t_peak_prob, 2),
+            "t_min_prob": round(self.t_min_prob, 2),
+            "ct_is_throw": self.ct_is_throw,
+            "ct_is_heroic": self.ct_is_heroic,
+            "t_is_throw": self.t_is_throw,
+            "t_is_heroic": self.t_is_heroic,
+            "round_tag": self.round_tag,
+            "timeline": [
+                {
+                    "tick": e.tick,
+                    "time": round(e.time_seconds, 1),
+                    "event": e.event_type,
+                    "ct_alive": e.ct_alive,
+                    "t_alive": e.t_alive,
+                    "bomb_planted": e.bomb_planted,
+                    "ct_prob": round(e.ct_win_prob, 2),
+                    "t_prob": round(e.t_win_prob, 2),
+                    "desc": e.description,
+                }
+                for e in self.win_prob_timeline
+            ],
+        }
+
+
+def calculate_win_probability(
+    perspective: str,
+    ct_alive: int,
+    t_alive: int,
+    bomb_planted: bool,
+    ct_has_defuser: bool = True,
+    time_remaining: float = 60.0,
+) -> float:
+    """
+    Calculate live win probability using CS2 standard heuristics.
+
+    This implements a simple but effective heuristic based on:
+    - Man advantage (+/-0.10 per player difference)
+    - Bomb state (+/-0.20 for bomb plant)
+    - Defuse kit advantage (+0.15 for CT when bomb not planted)
+
+    Args:
+        perspective: "CT" or "T" - whose win probability to calculate
+        ct_alive: Number of CTs alive
+        t_alive: Number of Ts alive
+        bomb_planted: Whether the bomb is currently planted
+        ct_has_defuser: Whether at least one CT has a defuse kit
+        time_remaining: Seconds remaining in round (for future refinement)
+
+    Returns:
+        Win probability as float between 0.0 and 1.0
+
+    Examples:
+        >>> calculate_win_probability("CT", 5, 4, False)  # 5v4, no bomb
+        0.60
+        >>> calculate_win_probability("T", 3, 3, True)  # 3v3, bomb planted
+        0.70
+        >>> calculate_win_probability("CT", 1, 1, True)  # 1v1, bomb planted
+        0.30
+    """
+    # Base probability
+    base = 0.50
+
+    # Man advantage: +0.10 per player difference
+    if perspective == "CT":
+        man_diff = ct_alive - t_alive
+    else:
+        man_diff = t_alive - ct_alive
+
+    prob = base + (man_diff * 0.10)
+
+    # Bomb state modifiers
+    if bomb_planted:
+        # Bomb planted heavily favors T
+        if perspective == "T":
+            prob += 0.20
+        else:
+            prob -= 0.20
+    else:
+        # No bomb planted - CT has map control advantage
+        if perspective == "CT" and ct_has_defuser:
+            prob += 0.15
+        elif perspective == "T":
+            prob -= 0.15
+
+    # Handle elimination edge cases
+    if ct_alive == 0:
+        prob = 0.0 if perspective == "CT" else 1.0
+    elif t_alive == 0:
+        prob = 1.0 if perspective == "CT" else 0.0
+
+    # Clamp to valid probability range
+    return max(0.0, min(1.0, prob))
+
 
 @dataclass
 class RoundTimeline:
@@ -1713,6 +2150,8 @@ class RoundTimeline:
     buy_type_t: str = ""
     clutch_player: str = ""
     clutch_scenario: str = ""
+    # Win probability tracking
+    momentum: RoundMomentum | None = None
 
 
 @dataclass
@@ -1785,6 +2224,199 @@ class MatchAnalysis:
     def get_death_matrix_for_player(self, player_name: str) -> dict[str, int]:
         """Get deaths this player suffered from each opponent."""
         return {e.attacker_name: e.count for e in self.kill_matrix if e.victim_name == player_name}
+
+
+def calculate_role_scores(
+    player: PlayerMatchStats,
+    first_contact_rate: float | None = None,
+    avg_distance_from_teammates: float | None = None,
+) -> RoleScores:
+    """
+    Calculate behavioral role scores for player identity detection.
+
+    This implements the unified Role Scoring Engine that uses BEHAVIORAL metrics
+    (positioning, utility timing, aggression patterns) rather than just K/D.
+
+    Args:
+        player: PlayerMatchStats object with all computed metrics
+        first_contact_rate: % of rounds where player was first to engage (from PositioningMetrics)
+        avg_distance_from_teammates: Average distance from teammates (from PositioningMetrics)
+
+    Returns:
+        RoleScores with scores for each role (0-100 scale)
+
+    Role Detection Priority:
+        1. AWPer check (35%+ kills with sniper) - overrides everything
+        2. Entry score (high opening attempts + first contact)
+        3. Support score (high utility + low first contact)
+        4. Lurker score (high isolation + impact)
+        5. Rifler (default high-frag player)
+    """
+    scores = RoleScores()
+
+    # =========================================================================
+    # STEP 1: AWPer Detection (Highest Priority)
+    # If 35%+ of kills are with AWP/SSG08, this defines the player's role
+    # =========================================================================
+    if player.is_primary_awper:
+        scores.awper = 85.0 + min(player.awp_kill_percentage - 35, 15)  # 85-100 based on %
+        # AWPers can still have secondary role tendencies, but AWPer dominates
+        # Continue scoring other roles but they'll be lower
+
+    # =========================================================================
+    # STEP 2: Entry Score
+    # Based on: opening duel attempts (NOT just kills), first contact rate
+    # =========================================================================
+    entry_score = 0.0
+
+    # Opening duel ATTEMPTS (shows aggression, not just success)
+    attempts_per_round = (
+        player.opening_duels.attempts / player.rounds_played if player.rounds_played > 0 else 0
+    )
+    # 0.3+ attempts/round = very aggressive entry
+    entry_score += min(attempts_per_round / 0.3, 1.0) * 40  # Up to 40 points
+
+    # Entry success rate (reward winning, not just attempting)
+    if player.opening_duels.attempts >= 3:
+        entry_score += min(player.opening_duels.win_rate / 50, 1.0) * 25  # Up to 25 points
+
+    # First contact rate (behavioral - who takes fights first)
+    if first_contact_rate is not None:
+        # 50%+ first contact = dedicated entry
+        entry_score += min(first_contact_rate / 50, 1.0) * 25  # Up to 25 points
+    else:
+        # Fallback: use opening kills as proxy for first contact
+        if player.rounds_played > 0:
+            opening_kill_rate = player.opening_duels.wins / player.rounds_played * 100
+            entry_score += min(opening_kill_rate / 25, 1.0) * 15  # Up to 15 points
+
+    # Bonus: Self-flash before entry (shows intentional entry, not random aggression)
+    # We don't have this exact metric, but effective flashes can be a proxy
+    if player.effective_flashes > 3:
+        entry_score += 5  # Bonus for utility-supported entries
+
+    scores.entry = min(entry_score, 100)
+
+    # =========================================================================
+    # STEP 3: Support Score
+    # Based on: utility effectiveness, flash assists, LOW first contact
+    # =========================================================================
+    support_score = 0.0
+
+    # Effective flashes (shows intentional team support)
+    support_score += min(player.effective_flashes / 8, 1.0) * 25  # Up to 25 points
+
+    # Flash assists (direct team contribution)
+    support_score += min(player.utility.flash_assists / 4, 1.0) * 25  # Up to 25 points
+
+    # Total utility usage quantity
+    total_utility = (
+        player.utility.flashbangs_thrown
+        + player.utility.he_thrown
+        + player.utility.molotovs_thrown
+        + player.utility.smokes_thrown
+    )
+    if player.rounds_played > 0:
+        utility_per_round = total_utility / player.rounds_played
+        support_score += min(utility_per_round / 3, 1.0) * 20  # Up to 20 points
+
+    # LOW first contact rate (supports play passive)
+    if first_contact_rate is not None:
+        # < 20% first contact = supportive positioning
+        if first_contact_rate < 30:
+            support_score += (30 - first_contact_rate) / 30 * 15  # Up to 15 points
+    else:
+        # Fallback: low opening attempts = passive player
+        if attempts_per_round < 0.15:
+            support_score += 10
+
+    # Trade success (being in position to trade teammates)
+    if player.trades.trade_kill_opportunities > 0:
+        trade_attempt_rate = (
+            player.trades.trade_kill_attempts / player.trades.trade_kill_opportunities
+        )
+        support_score += trade_attempt_rate * 15  # Up to 15 points
+
+    scores.support = min(support_score, 100)
+
+    # =========================================================================
+    # STEP 4: Lurker Score
+    # Based on: high untraded deaths (isolation), but WITH IMPACT
+    # A player who dies alone without impact is NOT a lurker - they're feeding
+    # =========================================================================
+    lurker_score = 0.0
+
+    # Isolation indicator: untraded deaths
+    if player.deaths > 3:
+        isolation_rate = player.untraded_deaths / player.deaths
+        # > 50% untraded deaths = operating alone
+        if isolation_rate > 0.5:
+            lurker_score += (isolation_rate - 0.5) * 2 * 30  # Up to 30 points
+
+    # Distance from teammates (if available)
+    if avg_distance_from_teammates is not None:
+        # > 1000 units = playing far from team
+        if avg_distance_from_teammates > 800:
+            lurker_score += min((avg_distance_from_teammates - 800) / 400, 1.0) * 25  # Up to 25
+
+    # LOW first contact (lurkers let team take initial contact)
+    if first_contact_rate is not None and first_contact_rate < 25:
+        lurker_score += (25 - first_contact_rate) / 25 * 15  # Up to 15 points
+
+    # CRITICAL: Must have IMPACT to be a lurker, not a feeder
+    # Check multiple impact indicators
+    has_impact = False
+    kpr = player.kills_per_round
+    if kpr >= 0.5:  # Decent kill rate
+        has_impact = True
+        lurker_score += 20
+    if player.hltv_rating >= 0.9:  # Positive impact
+        has_impact = True
+        lurker_score += 15
+
+    # Multi-kills (catching rotations often leads to multi-kills)
+    if player.multi_kills.rounds_with_2k >= 3:
+        lurker_score += 10
+
+    # If no impact, heavily penalize lurker score
+    if not has_impact and lurker_score > 30:
+        lurker_score *= 0.3  # Reduce to 30% if no impact
+
+    scores.lurker = min(lurker_score, 100)
+
+    # =========================================================================
+    # STEP 5: Rifler Score (Default High-Frag Role)
+    # Based on: high kills, high HS%, consistent damage
+    # =========================================================================
+    rifler_score = 0.0
+
+    # Kill count (raw fragging)
+    if player.rounds_played > 0:
+        kpr = player.kills_per_round
+        rifler_score += min(kpr / 0.8, 1.0) * 30  # Up to 30 points for 0.8+ KPR
+
+    # ADR (consistent damage)
+    rifler_score += min(player.adr / 85, 1.0) * 25  # Up to 25 points for 85+ ADR
+
+    # Headshot percentage (rifle discipline)
+    rifler_score += min(player.headshot_percentage / 50, 1.0) * 20  # Up to 20 points
+
+    # Multi-kills (impact fragging)
+    multi_kill_rounds = (
+        player.multi_kills.rounds_with_2k
+        + player.multi_kills.rounds_with_3k * 2
+        + player.multi_kills.rounds_with_4k * 3
+        + player.multi_kills.rounds_with_5k * 4
+    )
+    rifler_score += min(multi_kill_rounds / 8, 1.0) * 15  # Up to 15 points
+
+    # HLTV rating bonus
+    if player.hltv_rating >= 1.15:
+        rifler_score += 10
+
+    scores.rifler = min(rifler_score, 100)
+
+    return scores
 
 
 class DemoAnalyzer:
@@ -2044,6 +2676,12 @@ class DemoAnalyzer:
         # Detect opening duels
         self._safe_calculate("opening_duels", self._detect_opening_duels)
 
+        # Detect opening engagements (damage-based, not just kill-based)
+        self._safe_calculate("opening_engagements", self._detect_opening_engagements)
+
+        # Detect zone-aware entry frags (bombsite kills vs map control)
+        self._safe_calculate("entry_frags", self._detect_entry_frags)
+
         # Detect trade kills
         self._safe_calculate("trade_detection", self._detect_trades)
 
@@ -2070,6 +2708,9 @@ class DemoAnalyzer:
 
         # Calculate mistakes
         self._safe_calculate("mistakes", self._calculate_mistakes)
+
+        # Detect greedy re-peeks (discipline tracking)
+        self._safe_calculate("greedy_repeeks", self._detect_greedy_repeeks)
 
         # Run State Machine for pro-level analytics (Entry/Trade/Lurk)
         self._safe_calculate("state_machine", self._run_state_machine)
@@ -2467,13 +3108,103 @@ class DemoAnalyzer:
             player.multi_kills.rounds_with_4k = int((kills_per_round == 4).sum())
             player.multi_kills.rounds_with_5k = int((kills_per_round >= 5).sum())
 
+    def _is_utility_supported(
+        self,
+        kill_tick: int,
+        kill_x: float | None,
+        kill_y: float | None,
+        kill_z: float | None,
+        player_team: str,
+        round_num: int,
+    ) -> bool:
+        """Check if an engagement was supported by teammate utility (flash/smoke).
+
+        An engagement is considered "supported" if a teammate's flash or smoke
+        detonated within 3 seconds prior AND within 2000 game units of the kill position.
+
+        This detects "dry peeks" - entry plays taken without utility support.
+
+        Args:
+            kill_tick: Tick when the kill/death occurred
+            kill_x, kill_y, kill_z: Position of the engagement
+            player_team: Team of the player ('CT' or 'T')
+            round_num: Round number for filtering grenades
+
+        Returns:
+            True if flash or smoke support was present, False if dry peek
+        """
+        # Need position data to check spatial proximity
+        if kill_x is None or kill_y is None:
+            return False  # Can't determine, assume unsupported
+
+        # Check if we have grenade data
+        if not hasattr(self.data, "grenades") or not self.data.grenades:
+            return False  # No grenade data, can't determine support
+
+        # Constants for support detection
+        SUPPORT_WINDOW_TICKS = int(3.0 * self.TICK_RATE)  # 3 seconds
+        SUPPORT_DISTANCE = 2000.0  # Game units
+
+        # Get team grenades (flashes and smokes from teammates)
+        for grenade in self.data.grenades:
+            # Only consider flashes and smokes as "support" utility
+            grenade_type = grenade.grenade_type.lower()
+            if "flash" not in grenade_type and "smoke" not in grenade_type:
+                continue
+
+            # Only count detonations
+            if grenade.event_type != "detonate":
+                continue
+
+            # Must be from same round
+            if grenade.round_num != round_num:
+                continue
+
+            # Must be from same team (teammate utility)
+            grenade_team = self._normalize_team(grenade.player_side)
+            if grenade_team != player_team:
+                continue
+
+            # Need position data
+            if grenade.x is None or grenade.y is None:
+                continue
+
+            # Temporal check: grenade detonated within 3 seconds BEFORE the kill
+            tick_diff = kill_tick - grenade.tick
+            if tick_diff < 0 or tick_diff > SUPPORT_WINDOW_TICKS:
+                continue
+
+            # Spatial check: grenade detonated within 2000 units
+            dx = kill_x - grenade.x
+            dy = kill_y - grenade.y
+            dz = (kill_z - grenade.z) if (kill_z and grenade.z) else 0
+            distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+
+            if distance <= SUPPORT_DISTANCE:
+                return True  # Found supporting utility
+
+        return False  # No supporting utility found
+
+    def _is_sniper_weapon(self, weapon: str | None) -> bool:
+        """Check if weapon is a sniper rifle (AWP, Scout, Autos).
+
+        Snipers legitimately hold angles without utility support,
+        so they should be excluded from dry peek tracking.
+        """
+        if not weapon:
+            return False
+        weapon_lower = weapon.lower()
+        sniper_weapons = {"awp", "ssg08", "g3sg1", "scar20", "weapon_awp", "weapon_ssg08"}
+        return any(sniper in weapon_lower for sniper in sniper_weapons)
+
     def _detect_opening_duels(self) -> None:
-        """Detect opening duels (first kill of each round) with Entry TTD tracking.
+        """Detect opening duels (first kill of each round) with Entry TTD and Dry Peek tracking.
 
         Entry duels are the first kills of each round. This method:
         1. Identifies the first kill of each round
         2. Calculates Entry TTD (time from first damage to kill for entry frags)
         3. Tracks T-side vs CT-side entries for context
+        4. Detects "dry peeks" - entries without teammate utility support
         """
         kills_df = self.data.kills_df
         damages_df = self.data.damages_df
@@ -2485,10 +3216,24 @@ class DemoAnalyzer:
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
         dmg_vic_col = self._find_col(damages_df, self.VIC_ID_COLS) if not damages_df.empty else None
 
+        # Find position columns for dry peek detection
+        att_x_col = self._find_col(kills_df, ["attacker_X", "attacker_x", "X", "x"])
+        att_y_col = self._find_col(kills_df, ["attacker_Y", "attacker_y", "Y", "y"])
+        att_z_col = self._find_col(kills_df, ["attacker_Z", "attacker_z", "Z", "z"])
+        vic_x_col = self._find_col(kills_df, ["user_X", "victim_X", "user_x", "victim_x"])
+        vic_y_col = self._find_col(kills_df, ["user_Y", "victim_Y", "user_y", "victim_y"])
+        vic_z_col = self._find_col(kills_df, ["user_Z", "victim_Z", "user_z", "victim_z"])
+
+        # Find weapon column for sniper detection
+        weapon_col = self._find_col(kills_df, ["weapon", "weapon_name", "attacker_weapon"])
+
         entry_kills_count = 0
+        dry_peek_entries = 0
+        dry_peek_deaths = 0
 
         # Get first kill of each round
         for round_num in kills_df[self._round_col].unique():
+            round_num_int = safe_int(round_num)
             round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
             if round_kills.empty:
                 continue
@@ -2500,10 +3245,27 @@ class DemoAnalyzer:
 
             # Get attacker side for T/CT classification using normalized team values
             attacker_side = ""
+            victim_side = ""
             if self._att_side_col and self._att_side_col in kills_df.columns:
                 attacker_side = self._normalize_team(first_kill.get(self._att_side_col))
                 if attacker_side == "Unknown":
                     attacker_side = ""
+            if self._vic_side_col and self._vic_side_col in kills_df.columns:
+                victim_side = self._normalize_team(first_kill.get(self._vic_side_col))
+                if victim_side == "Unknown":
+                    victim_side = ""
+
+            # Get position data for dry peek detection
+            att_x = safe_float(first_kill.get(att_x_col)) if att_x_col else None
+            att_y = safe_float(first_kill.get(att_y_col)) if att_y_col else None
+            att_z = safe_float(first_kill.get(att_z_col)) if att_z_col else None
+            vic_x = safe_float(first_kill.get(vic_x_col)) if vic_x_col else None
+            vic_y = safe_float(first_kill.get(vic_y_col)) if vic_y_col else None
+            vic_z = safe_float(first_kill.get(vic_z_col)) if vic_z_col else None
+
+            # Get weapon for sniper check
+            weapon = safe_str(first_kill.get(weapon_col)) if weapon_col else None
+            is_sniper_kill = self._is_sniper_weapon(weapon)
 
             if attacker_id in self._players:
                 self._players[attacker_id].opening_duels.attempts += 1
@@ -2515,6 +3277,18 @@ class DemoAnalyzer:
                     self._players[attacker_id].opening_duels.t_side_entries += 1
                 elif attacker_side == "CT":
                     self._players[attacker_id].opening_duels.ct_side_entries += 1
+
+                # Dry peek detection for attacker (the one who got the kill)
+                # Skip sniper weapons - they legitimately hold angles without utility
+                if not is_sniper_kill and attacker_side:
+                    is_supported = self._is_utility_supported(
+                        kill_tick, att_x, att_y, att_z, attacker_side, round_num_int
+                    )
+                    if is_supported:
+                        self._players[attacker_id].opening_duels.supported_entries += 1
+                    else:
+                        self._players[attacker_id].opening_duels.unsupported_entries += 1
+                        dry_peek_entries += 1
 
                 # Calculate Entry TTD (time from first damage to kill)
                 if dmg_att_col and dmg_vic_col and not damages_df.empty:
@@ -2539,9 +3313,255 @@ class DemoAnalyzer:
                 self._players[victim_id].opening_duels.attempts += 1
                 self._players[victim_id].opening_duels.losses += 1
 
+                # Dry peek detection for victim (the one who died)
+                # This tracks if they died while dry peeking (no utility support)
+                # Skip if victim was holding with sniper (check weapon that killed them isn't relevant,
+                # but we can check if they were likely peeking vs holding based on context)
+                if victim_side:
+                    is_supported = self._is_utility_supported(
+                        kill_tick, vic_x, vic_y, vic_z, victim_side, round_num_int
+                    )
+                    if is_supported:
+                        self._players[victim_id].opening_duels.supported_deaths += 1
+                    else:
+                        self._players[victim_id].opening_duels.unsupported_deaths += 1
+                        dry_peek_deaths += 1
+
         logger.info(
-            f"Detected {entry_kills_count} entry kills across {len(kills_df[self._round_col].unique())} rounds"
+            f"Detected {entry_kills_count} entry kills across {len(kills_df[self._round_col].unique())} rounds, "
+            f"dry peek entries: {dry_peek_entries}, dry peek deaths: {dry_peek_deaths}"
         )
+
+    def _detect_opening_engagements(self) -> None:
+        """Detect opening engagements - who FOUGHT first, not just who DIED first.
+
+        Identifies:
+        1. First damage tick of each round
+        2. All players who dealt/took damage before first kill
+        3. Opening phase damage totals
+
+        This captures true engagement participation even when a player
+        initiates combat but doesn't secure the kill.
+        """
+        kills_df = self.data.kills_df
+        damages_df = self.data.damages_df
+
+        if kills_df.empty or damages_df.empty:
+            logger.info("Skipping opening engagements - missing kill or damage data")
+            return
+
+        if not self._round_col or not self._att_id_col:
+            logger.info("Skipping opening engagements - missing columns")
+            return
+
+        # Find damage columns
+        dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS)
+        dmg_vic_col = self._find_col(damages_df, self.VIC_ID_COLS)
+        dmg_round_col = self._find_col(damages_df, self.ROUND_COLS)
+        dmg_val_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+
+        if not all([dmg_att_col, dmg_vic_col, dmg_round_col, dmg_val_col]):
+            logger.info("Skipping opening engagements - missing damage columns")
+            return
+
+        engagement_count = 0
+
+        for round_num in kills_df[self._round_col].unique():
+            # Get first kill tick for this round
+            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
+            if round_kills.empty:
+                continue
+
+            first_kill_tick = safe_int(round_kills.iloc[0]["tick"])
+            first_kill_attacker = safe_int(round_kills.iloc[0].get(self._att_id_col))
+
+            # Get all damage events before (and including) first kill
+            round_damages = damages_df[
+                (damages_df[dmg_round_col] == round_num) & (damages_df["tick"] <= first_kill_tick)
+            ].sort_values("tick")
+
+            if round_damages.empty:
+                continue
+
+            # Find first damage tick and who dealt it
+            first_damage_attacker = safe_int(round_damages.iloc[0].get(dmg_att_col))
+            first_damage_victim = safe_int(round_damages.iloc[0].get(dmg_vic_col))
+
+            # Track all players involved in opening phase damage
+            opening_phase_damage: dict[int, int] = {}  # steam_id -> damage dealt
+            players_took_damage: set[int] = set()
+
+            for _, dmg_row in round_damages.iterrows():
+                attacker_id = safe_int(dmg_row.get(dmg_att_col))
+                victim_id = safe_int(dmg_row.get(dmg_vic_col))
+                damage = safe_int(dmg_row.get(dmg_val_col))
+
+                if attacker_id:
+                    opening_phase_damage[attacker_id] = (
+                        opening_phase_damage.get(attacker_id, 0) + damage
+                    )
+                if victim_id:
+                    players_took_damage.add(victim_id)
+
+            # Determine winner team (team of the player who got first kill)
+            winner_team = self._get_player_team_for_engagement(first_kill_attacker)
+
+            # Update stats for all involved players
+            all_participants = set(opening_phase_damage.keys()) | players_took_damage
+            for steam_id in all_participants:
+                if steam_id not in self._players:
+                    continue
+
+                player = self._players[steam_id]
+                player.opening_engagements.engagement_attempts += 1
+
+                # First damage tracking
+                if steam_id == first_damage_attacker:
+                    player.opening_engagements.first_damage_dealt += 1
+                if steam_id == first_damage_victim:
+                    player.opening_engagements.first_damage_taken += 1
+
+                # Damage accumulation
+                if steam_id in opening_phase_damage:
+                    dmg = opening_phase_damage[steam_id]
+                    player.opening_engagements.opening_damage_total += dmg
+                    player.opening_engagements.opening_damage_values.append(dmg)
+
+                # Win/loss tracking based on team
+                player_team = self._get_player_team_for_engagement(steam_id)
+                if player_team and winner_team and player_team == winner_team:
+                    player.opening_engagements.engagement_wins += 1
+                else:
+                    player.opening_engagements.engagement_losses += 1
+
+                engagement_count += 1
+
+        logger.info(f"Detected {engagement_count} opening engagement participations")
+
+    def _detect_entry_frags(self) -> None:
+        """Detect zone-aware entry frags using position data.
+
+        Entry Frag = First kill in a specific bombsite for a round.
+        Uses get_zone_for_position() to classify kill locations.
+
+        This distinguishes:
+        - Map control kills: First kills in mid/connectors/routes
+        - Entry frags: First kills inside bombsite zones
+        """
+        from opensight.visualization.radar import MAP_ZONES, get_zone_for_position
+
+        kills_df = self.data.kills_df
+        if kills_df.empty:
+            logger.info("Skipping entry frag detection - no kills")
+            return
+
+        if not self._round_col or not self._att_id_col or not self._vic_id_col:
+            logger.info("Skipping entry frag detection - missing columns")
+            return
+
+        # Check if we have position data
+        has_positions = all(
+            col in kills_df.columns for col in ["attacker_x", "attacker_y", "victim_x", "victim_y"]
+        )
+        if not has_positions:
+            logger.info("Skipping entry frag detection - no position data")
+            return
+
+        map_name = self.data.map_name.lower() if self.data.map_name else ""
+        if map_name not in MAP_ZONES:
+            logger.info(f"Skipping entry frag detection - unknown map: {map_name}")
+            return
+
+        zones = MAP_ZONES[map_name]
+        bombsite_zones = {name for name, data in zones.items() if data.get("type") == "bombsite"}
+
+        entry_frag_count = 0
+        map_control_count = 0
+
+        for round_num in kills_df[self._round_col].unique():
+            round_kills = kills_df[kills_df[self._round_col] == round_num].sort_values("tick")
+            if round_kills.empty:
+                continue
+
+            # Track first kill in each bombsite for this round
+            bombsite_first_kills: dict[str, bool] = dict.fromkeys(bombsite_zones, False)
+            is_first_kill_of_round = True
+
+            for _, kill in round_kills.iterrows():
+                victim_x = safe_float(kill.get("victim_x"))
+                victim_y = safe_float(kill.get("victim_y"))
+                victim_z = safe_float(kill.get("victim_z"), default=0.0)
+
+                if victim_x == 0.0 and victim_y == 0.0:
+                    is_first_kill_of_round = False
+                    continue
+
+                # Determine zone of kill
+                zone = get_zone_for_position(map_name, victim_x, victim_y, victim_z)
+
+                attacker_id = safe_int(kill.get(self._att_id_col))
+                victim_id = safe_int(kill.get(self._vic_id_col))
+
+                # Check if this is a bombsite zone
+                is_bombsite = zone in bombsite_zones
+
+                # Update kill zone tracking for attacker
+                if attacker_id in self._players:
+                    self._players[attacker_id].opening_duels.kill_zones[zone] = (
+                        self._players[attacker_id].opening_duels.kill_zones.get(zone, 0) + 1
+                    )
+
+                # Entry frag = first kill in this specific bombsite this round
+                if is_bombsite and not bombsite_first_kills.get(zone, True):
+                    bombsite_first_kills[zone] = True
+
+                    # Determine if A or B site
+                    is_a_site = "A" in zone.upper() or "SITE A" in zone.upper()
+
+                    if attacker_id in self._players:
+                        player = self._players[attacker_id]
+                        player.entry_frags.total_entry_frags += 1
+                        if is_a_site:
+                            player.entry_frags.a_site_entries += 1
+                        else:
+                            player.entry_frags.b_site_entries += 1
+                        player.opening_duels.site_kills += 1
+                        entry_frag_count += 1
+
+                    if victim_id in self._players:
+                        player = self._players[victim_id]
+                        player.entry_frags.total_entry_deaths += 1
+                        if is_a_site:
+                            player.entry_frags.a_site_entry_deaths += 1
+                        else:
+                            player.entry_frags.b_site_entry_deaths += 1
+
+                # First kill of round in non-bombsite = map control
+                elif is_first_kill_of_round and not is_bombsite:
+                    if attacker_id in self._players:
+                        self._players[attacker_id].opening_duels.map_control_kills += 1
+                        map_control_count += 1
+
+                is_first_kill_of_round = False
+
+        logger.info(
+            f"Detected {entry_frag_count} entry frags and {map_control_count} map control kills"
+        )
+
+    def _get_player_team_for_engagement(self, steam_id: int) -> str | None:
+        """Get player's team for engagement tracking.
+
+        Args:
+            steam_id: Player's Steam ID
+
+        Returns:
+            Team string ("CT" or "T") or None if not found
+        """
+        if steam_id in self._players:
+            player = self._players[steam_id]
+            if player.team in ("CT", "T"):
+                return player.team
+        return None
 
     def _detect_trades(self) -> None:
         """Detect trade kills with Leetify-style opportunity/attempt/success tracking.
@@ -3552,11 +4572,13 @@ class DemoAnalyzer:
                     # Convert view angles to direction vector
                     pitch_rad = np.radians(pitch)
                     yaw_rad = np.radians(yaw)
-                    view_dir = np.array([
-                        np.cos(yaw_rad) * np.cos(pitch_rad),
-                        np.sin(yaw_rad) * np.cos(pitch_rad),
-                        -np.sin(pitch_rad),
-                    ])
+                    view_dir = np.array(
+                        [
+                            np.cos(yaw_rad) * np.cos(pitch_rad),
+                            np.sin(yaw_rad) * np.cos(pitch_rad),
+                            -np.sin(pitch_rad),
+                        ]
+                    )
 
                     # Calculate angle to target
                     target_dir = direction / distance
@@ -4792,6 +5814,103 @@ class DemoAnalyzer:
 
         logger.info("Calculated mistakes")
 
+    def _detect_greedy_repeeks(self) -> None:
+        """
+        Detect greedy re-peek deaths (static repeek discipline).
+
+        A greedy re-peek occurs when a player:
+        1. Gets a kill
+        2. Dies within 3 seconds (192 ticks at 64 tick rate)
+        3. Their death position is within 150 units of their kill position
+
+        This indicates the player re-peeked the same angle after getting a kill
+        instead of repositioning - a common mistake that gets punished.
+        """
+        kills_df = self.data.kills_df
+        if kills_df.empty:
+            logger.debug("No kills data for greedy repeek detection")
+            return
+
+        # Check for required columns
+        att_id_col = self._att_id_col
+        vic_id_col = self._vic_id_col
+        tick_col = self._find_col(kills_df, ["tick", "game_tick", "time_tick"])
+
+        # Find position columns
+        att_x_col = self._find_col(kills_df, ["attacker_X", "attacker_x", "X", "x"])
+        att_y_col = self._find_col(kills_df, ["attacker_Y", "attacker_y", "Y", "y"])
+        vic_x_col = self._find_col(kills_df, ["user_X", "victim_X", "user_x", "victim_x"])
+        vic_y_col = self._find_col(kills_df, ["user_Y", "victim_Y", "user_y", "victim_y"])
+
+        if not all([att_id_col, vic_id_col, tick_col, att_x_col, att_y_col, vic_x_col, vic_y_col]):
+            logger.debug("Missing columns for greedy repeek detection")
+            return
+
+        # Constants
+        REPEEK_WINDOW_TICKS = 192  # 3 seconds at 64 tick
+        STATIC_DISTANCE_THRESHOLD = 150  # units (approx 1.5 steps)
+
+        for steam_id, player in self._players.items():
+            greedy_count = 0
+
+            # Get kills by this player (they are attacker)
+            player_kills = kills_df[kills_df[att_id_col] == steam_id].copy()
+
+            # Get deaths of this player (they are victim)
+            player_deaths = kills_df[kills_df[vic_id_col] == steam_id].copy()
+
+            if player_kills.empty or player_deaths.empty:
+                continue
+
+            # Sort by tick
+            player_kills = player_kills.sort_values(tick_col)
+            player_deaths = player_deaths.sort_values(tick_col)
+
+            # For each kill, check if player died shortly after in similar position
+            for _, kill_row in player_kills.iterrows():
+                kill_tick = kill_row[tick_col]
+                kill_x = kill_row[att_x_col]
+                kill_y = kill_row[att_y_col]
+
+                # Skip if position data is missing
+                if pd.isna(kill_x) or pd.isna(kill_y):
+                    continue
+
+                # Find deaths within the time window after this kill
+                subsequent_deaths = player_deaths[
+                    (player_deaths[tick_col] > kill_tick)
+                    & (player_deaths[tick_col] <= kill_tick + REPEEK_WINDOW_TICKS)
+                ]
+
+                for _, death_row in subsequent_deaths.iterrows():
+                    death_x = death_row[vic_x_col]
+                    death_y = death_row[vic_y_col]
+
+                    # Skip if position data is missing
+                    if pd.isna(death_x) or pd.isna(death_y):
+                        continue
+
+                    # Calculate distance between kill position and death position
+                    distance = np.sqrt((kill_x - death_x) ** 2 + (kill_y - death_y) ** 2)
+
+                    # If player was still in roughly the same spot, it's a greedy repeek
+                    if distance < STATIC_DISTANCE_THRESHOLD:
+                        greedy_count += 1
+                        break  # Only count one greedy death per kill
+
+            # Update player stats
+            player.greedy_repeeks = greedy_count
+
+            # Calculate discipline rating: (safe kills / total kills) * 100
+            if player.kills > 0:
+                safe_kills = player.kills - greedy_count
+                player.discipline_rating = round((safe_kills / player.kills) * 100, 1)
+            else:
+                player.discipline_rating = 100.0  # No kills = no mistakes possible
+
+        total_greedy = sum(p.greedy_repeeks for p in self._players.values())
+        logger.info(f"Detected {total_greedy} greedy re-peek deaths across all players")
+
     def _run_state_machine(self) -> None:
         """
         Run State Machine analysis for pro-level metrics.
@@ -4966,23 +6085,40 @@ class DemoAnalyzer:
         return matrix_entries
 
     def _build_round_timeline(self) -> list:
-        """Build round-by-round timeline with key events."""
+        """Build round-by-round timeline with key events and win probability."""
         timeline = []
 
         if not self.data.rounds:
             return timeline
 
         kills_df = self.data.kills_df
+        tick_rate = getattr(self.data, "tick_rate", CS2_TICK_RATE)
+
+        # Build lookup for victim side from kills
+        victim_side_col = self._find_col(kills_df, ["victim_team_name", "user_team_name"])
 
         for round_info in self.data.rounds:
             try:
                 round_num = round_info.round_num
                 winner = round_info.winner or "Unknown"
                 win_reason = round_info.win_reason or "unknown"
+                round_start_tick = round_info.start_tick
 
                 # Get first kill of round
                 first_kill_player = ""
                 first_death_player = ""
+
+                # Build win probability timeline for this round
+                momentum = self._build_round_momentum(
+                    round_num=round_num,
+                    round_info=round_info,
+                    kills_df=kills_df,
+                    winner=winner,
+                    round_start_tick=round_start_tick,
+                    tick_rate=tick_rate,
+                    victim_side_col=victim_side_col,
+                )
+
                 if not kills_df.empty and self._round_col and self._att_id_col and self._vic_id_col:
                     round_kills = kills_df[kills_df[self._round_col] == round_num]
                     if not round_kills.empty:
@@ -5002,14 +6138,169 @@ class DemoAnalyzer:
                         t_score=round_info.t_score,
                         first_kill_player=first_kill_player,
                         first_death_player=first_death_player,
+                        momentum=momentum,
                     )
                 )
             except Exception as e:
                 logger.debug(f"Error building timeline for round: {e}")
                 continue
 
-        logger.info(f"Built round timeline with {len(timeline)} rounds")
+        # Log throw/heroic summary
+        throws = sum(1 for t in timeline if t.momentum and t.momentum.round_tag)
+        logger.info(
+            f"Built round timeline with {len(timeline)} rounds, {throws} throw/heroic rounds"
+        )
         return timeline
+
+    def _build_round_momentum(
+        self,
+        round_num: int,
+        round_info,
+        kills_df: pd.DataFrame,
+        winner: str,
+        round_start_tick: int,
+        tick_rate: int,
+        victim_side_col: str | None,
+    ) -> RoundMomentum:
+        """
+        Build win probability timeline for a single round.
+
+        Tracks probability at each state change (kill, bomb plant, etc.)
+        to identify throw/heroic rounds.
+        """
+        momentum = RoundMomentum(round_num=round_num, winner=winner)
+        prob_events: list[WinProbEvent] = []
+
+        # Initial state: 5v5, no bomb
+        ct_alive = 5
+        t_alive = 5
+        bomb_planted = False
+
+        # Add round start event
+        ct_prob = calculate_win_probability("CT", ct_alive, t_alive, bomb_planted)
+        t_prob = calculate_win_probability("T", ct_alive, t_alive, bomb_planted)
+        prob_events.append(
+            WinProbEvent(
+                tick=round_start_tick,
+                time_seconds=0.0,
+                event_type="round_start",
+                ct_alive=ct_alive,
+                t_alive=t_alive,
+                bomb_planted=bomb_planted,
+                ct_win_prob=ct_prob,
+                t_win_prob=t_prob,
+                description="Round start (5v5)",
+            )
+        )
+
+        # Collect all state-changing events for this round
+        state_events = []
+
+        # Add kills
+        if not kills_df.empty and self._round_col:
+            round_kills = kills_df[kills_df[self._round_col] == round_num].copy()
+            if not round_kills.empty:
+                for _, kill in round_kills.iterrows():
+                    tick = safe_int(kill.get("tick", 0))
+                    victim_side = ""
+                    if victim_side_col and victim_side_col in kill.index:
+                        victim_side = str(kill.get(victim_side_col, "")).upper()
+
+                    # Fallback to KillEvent data if DataFrame doesn't have side
+                    if not victim_side or victim_side not in (
+                        "CT",
+                        "T",
+                        "COUNTERTERRORIST",
+                        "TERRORIST",
+                    ):
+                        # Try to find in kills list
+                        for k in self.data.kills:
+                            if k.round_num == round_num and k.tick == tick:
+                                victim_side = k.victim_side or ""
+                                break
+
+                    # Normalize side names
+                    if "CT" in victim_side or "COUNTER" in victim_side:
+                        victim_side = "CT"
+                    else:
+                        victim_side = "T"
+
+                    att_id = safe_int(kill.get(self._att_id_col)) if self._att_id_col else 0
+                    vic_id = safe_int(kill.get(self._vic_id_col)) if self._vic_id_col else 0
+                    att_name = self.data.player_names.get(att_id, "Unknown")
+                    vic_name = self.data.player_names.get(vic_id, "Unknown")
+
+                    state_events.append(
+                        {
+                            "tick": tick,
+                            "type": "kill",
+                            "victim_side": victim_side,
+                            "description": f"{att_name} killed {vic_name}",
+                        }
+                    )
+
+        # Add bomb plant event
+        bomb_plant_tick = getattr(round_info, "bomb_plant_tick", None)
+        if bomb_plant_tick:
+            state_events.append(
+                {
+                    "tick": bomb_plant_tick,
+                    "type": "bomb_plant",
+                    "description": "Bomb planted",
+                }
+            )
+
+        # Sort events by tick
+        state_events.sort(key=lambda e: e["tick"])
+
+        # Process events in order and calculate probability after each
+        for event in state_events:
+            tick = event["tick"]
+            time_seconds = (tick - round_start_tick) / tick_rate if tick_rate > 0 else 0.0
+
+            if event["type"] == "kill":
+                # Update alive count
+                if event["victim_side"] == "CT":
+                    ct_alive = max(0, ct_alive - 1)
+                else:
+                    t_alive = max(0, t_alive - 1)
+                event_type = "kill"
+            elif event["type"] == "bomb_plant":
+                bomb_planted = True
+                event_type = "bomb_plant"
+            else:
+                event_type = event["type"]
+
+            # Calculate new probabilities
+            ct_prob = calculate_win_probability("CT", ct_alive, t_alive, bomb_planted)
+            t_prob = calculate_win_probability("T", ct_alive, t_alive, bomb_planted)
+
+            prob_events.append(
+                WinProbEvent(
+                    tick=tick,
+                    time_seconds=time_seconds,
+                    event_type=event_type,
+                    ct_alive=ct_alive,
+                    t_alive=t_alive,
+                    bomb_planted=bomb_planted,
+                    ct_win_prob=ct_prob,
+                    t_win_prob=t_prob,
+                    description=event.get("description", ""),
+                )
+            )
+
+        # Store timeline and compute peak/min values
+        momentum.win_prob_timeline = prob_events
+
+        if prob_events:
+            ct_probs = [e.ct_win_prob for e in prob_events]
+            t_probs = [e.t_win_prob for e in prob_events]
+            momentum.ct_peak_prob = max(ct_probs)
+            momentum.ct_min_prob = min(ct_probs)
+            momentum.t_peak_prob = max(t_probs)
+            momentum.t_min_prob = min(t_probs)
+
+        return momentum
 
     def _extract_position_data(self) -> tuple[list, list]:
         """Extract position data for heatmap and kill map visualization."""
@@ -5217,16 +6508,51 @@ class DemoAnalyzer:
                         }
                     )
 
-            # Trade insights
+            # Trade insights - with lurker exception
             if player.untraded_deaths > player.deaths * 0.6 and player.deaths > 3:
-                player_insights.append(
-                    {
-                        "type": "warning",
-                        "category": "positioning",
-                        "message": f"Too many untraded deaths ({player.untraded_deaths}/{player.deaths}). Stay closer to teammates.",
-                        "priority": "medium",
-                    }
+                # Build stats dict for lurker detection
+                player_stats_for_lurk = {
+                    "deaths": player.deaths,
+                    "untraded_deaths": player.untraded_deaths,
+                    "kills": player.kills,
+                    "hltv_rating": player.hltv_rating,
+                    "backstab_kills": getattr(player, "backstab_kills", 0),
+                    "impact_rating": getattr(player, "impact_rating", 0),
+                    "rounds_played": player.rounds_played,
+                }
+
+                # Check if this player is an effective lurker
+                is_lurker = (
+                    HAS_PERSONA
+                    and _is_effective_lurker
+                    and _is_effective_lurker(player_stats_for_lurk)
                 )
+
+                if is_lurker:
+                    # Lurker with impact - no spacing warning needed
+                    # Only warn if they have lurk kills but low conversion
+                    lurk_kills = getattr(player.lurk, "kills", 0) if hasattr(player, "lurk") else 0
+                    if lurk_kills == 0 and player.kills < player.rounds_played * 0.5:
+                        # Lurking without getting kills - this IS a problem
+                        player_insights.append(
+                            {
+                                "type": "warning",
+                                "category": "positioning",
+                                "message": f"Lurking without impact ({player.untraded_deaths} solo deaths, {player.kills} kills). Lurking requires getting picks.",
+                                "priority": "medium",
+                            }
+                        )
+                    # else: Effective lurker - suppress spacing warning
+                else:
+                    # Not a lurker - standard spacing warning applies
+                    player_insights.append(
+                        {
+                            "type": "warning",
+                            "category": "positioning",
+                            "message": f"Too many untraded deaths ({player.untraded_deaths}/{player.deaths}). Stay closer to teammates.",
+                            "priority": "medium",
+                        }
+                    )
 
             # Utility insights
             if (

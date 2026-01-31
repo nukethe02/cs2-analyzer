@@ -833,7 +833,13 @@ class CachedAnalyzer:
         }
 
     def _build_round_timeline(self, demo_data, analysis) -> list[dict]:
-        """Build round-by-round timeline data with detailed events."""
+        """Build round-by-round timeline data with detailed events and win probability."""
+        # Import win probability calculation
+        try:
+            from opensight.analysis.analytics import calculate_win_probability
+        except ImportError:
+            calculate_win_probability = None
+
         timeline = []
         kills = getattr(demo_data, "kills", [])
         rounds_data = getattr(demo_data, "rounds", [])
@@ -1037,6 +1043,19 @@ class CachedAnalyzer:
                 first_kill = kill_events[0].get("killer")
                 first_death = kill_events[0].get("victim")
 
+            # Calculate win probability timeline for this round
+            momentum = None
+            if calculate_win_probability is not None:
+                momentum = self._calculate_round_momentum(events, winner, calculate_win_probability)
+                # Add win probability to each event
+                if momentum:
+                    prob_by_tick = {p["tick"]: p for p in momentum.get("timeline", [])}
+                    for event in events:
+                        tick = event.get("tick", 0)
+                        if tick in prob_by_tick:
+                            event["ct_prob"] = prob_by_tick[tick]["ct_prob"]
+                            event["t_prob"] = prob_by_tick[tick]["t_prob"]
+
             timeline.append(
                 {
                     "round_num": round_num,
@@ -1048,18 +1067,149 @@ class CachedAnalyzer:
                     "ct_kills": stats["ct_kills"],
                     "t_kills": stats["t_kills"],
                     "events": events,
+                    "momentum": momentum,
                 }
             )
 
         # Log timeline generation stats
         total_events = sum(len(r.get("events", [])) for r in timeline)
         rounds_with_events = sum(1 for r in timeline if r.get("events"))
+        throws = sum(1 for r in timeline if r.get("momentum", {}).get("round_tag"))
         logger.info(
             f"Built round timeline: {len(timeline)} rounds, "
-            f"{rounds_with_events} with events, {total_events} total events"
+            f"{rounds_with_events} with events, {total_events} total events, "
+            f"{throws} throw/heroic rounds"
         )
 
         return timeline
+
+    def _calculate_round_momentum(self, events: list[dict], winner: str, calc_prob_fn) -> dict:
+        """
+        Calculate win probability timeline for a single round.
+
+        Tracks probability at each state change (kill, bomb plant) to identify
+        "throw" rounds (had >=80% prob, lost) and "heroic" rounds (had <=20%, won).
+
+        Args:
+            events: List of round events (kills, bomb plants, etc.)
+            winner: Round winner ("CT" or "T")
+            calc_prob_fn: Win probability calculation function
+
+        Returns:
+            Dict with momentum data including timeline, peak/min probs, and flags
+        """
+        prob_timeline = []
+
+        # Initial state: 5v5, no bomb planted
+        ct_alive = 5
+        t_alive = 5
+        bomb_planted = False
+
+        # Add round start
+        ct_prob = calc_prob_fn("CT", ct_alive, t_alive, bomb_planted)
+        t_prob = calc_prob_fn("T", ct_alive, t_alive, bomb_planted)
+        prob_timeline.append(
+            {
+                "tick": 0,
+                "time": 0.0,
+                "event": "round_start",
+                "ct_alive": ct_alive,
+                "t_alive": t_alive,
+                "bomb_planted": bomb_planted,
+                "ct_prob": round(ct_prob, 2),
+                "t_prob": round(t_prob, 2),
+                "desc": "Round start (5v5)",
+            }
+        )
+
+        # Process each event in order
+        for event in events:
+            event_type = event.get("type", "")
+            tick = event.get("tick", 0)
+            time_sec = event.get("time_seconds", 0.0)
+
+            if event_type == "kill":
+                # Update alive count
+                victim_team = event.get("victim_team", "")
+                if victim_team == "CT":
+                    ct_alive = max(0, ct_alive - 1)
+                elif victim_team == "T":
+                    t_alive = max(0, t_alive - 1)
+
+                desc = f"{event.get('killer', 'Unknown')} killed {event.get('victim', 'Unknown')}"
+
+            elif event_type == "bomb_plant":
+                bomb_planted = True
+                desc = "Bomb planted"
+
+            elif event_type == "bomb_defuse":
+                bomb_planted = False
+                desc = "Bomb defused"
+
+            elif event_type == "bomb_explode":
+                desc = "Bomb exploded"
+
+            else:
+                continue  # Skip unknown events
+
+            # Calculate new probabilities
+            ct_prob = calc_prob_fn("CT", ct_alive, t_alive, bomb_planted)
+            t_prob = calc_prob_fn("T", ct_alive, t_alive, bomb_planted)
+
+            prob_timeline.append(
+                {
+                    "tick": tick,
+                    "time": round(time_sec, 1),
+                    "event": event_type,
+                    "ct_alive": ct_alive,
+                    "t_alive": t_alive,
+                    "bomb_planted": bomb_planted,
+                    "ct_prob": round(ct_prob, 2),
+                    "t_prob": round(t_prob, 2),
+                    "desc": desc,
+                }
+            )
+
+        # Calculate peak/min probabilities
+        ct_probs = [p["ct_prob"] for p in prob_timeline]
+        t_probs = [p["t_prob"] for p in prob_timeline]
+
+        ct_peak = max(ct_probs) if ct_probs else 0.5
+        ct_min = min(ct_probs) if ct_probs else 0.5
+        t_peak = max(t_probs) if t_probs else 0.5
+        t_min = min(t_probs) if t_probs else 0.5
+
+        # Determine throw/heroic status
+        ct_is_throw = ct_peak >= 0.80 and winner == "T"
+        ct_is_heroic = ct_min <= 0.20 and winner == "CT"
+        t_is_throw = t_peak >= 0.80 and winner == "CT"
+        t_is_heroic = t_min <= 0.20 and winner == "T"
+
+        # Determine round tag
+        if ct_is_throw:
+            round_tag = "CT_THROW"
+        elif t_is_throw:
+            round_tag = "T_THROW"
+        elif ct_is_heroic:
+            round_tag = "CT_HEROIC"
+        elif t_is_heroic:
+            round_tag = "T_HEROIC"
+        else:
+            round_tag = ""
+
+        return {
+            "winner": winner,
+            "ct_peak_prob": ct_peak,
+            "ct_min_prob": ct_min,
+            "t_peak_prob": t_peak,
+            "t_min_prob": t_min,
+            "ct_is_throw": ct_is_throw,
+            "ct_is_heroic": ct_is_heroic,
+            "t_is_throw": t_is_throw,
+            "t_is_heroic": t_is_heroic,
+            "round_tag": round_tag,
+            "timeline": prob_timeline,
+        }
 
     def _calculate_multikills(self, demo_data) -> dict[int, dict]:
         """Calculate multi-kill counts (2K, 3K, 4K, 5K) per player per round."""
@@ -2390,73 +2540,214 @@ class CachedAnalyzer:
 
     def _detect_role_detailed(self, player: dict, match_stats: dict) -> tuple[str, str]:
         """
-        Detect player role with confidence level.
+        Detect player role with confidence level using behavioral scoring.
+
+        Uses the unified Role Scoring Engine approach:
+        1. AWPer check (35%+ kills with sniper) - overrides everything
+        2. Entry score (high opening attempts + first contact patterns)
+        3. Support score (high utility + low first contact)
+        4. Lurker score (high isolation + impact)
+        5. Rifler (default high-frag role)
+
         Returns (role, confidence) where confidence is 'high', 'medium', or 'low'.
         """
         advanced = player.get("advanced", {})
         utility = player.get("utility", {})
         stats = player.get("stats", {})
         entry = player.get("entry", {})
+        trades = player.get("trades", {})
+        weapons = player.get("weapons", {})
 
-        opening_kills = advanced.get("opening_kills", 0)
+        # Extract metrics
+        kills = stats.get("kills", 0)
+        deaths = stats.get("deaths", 0)
+        rounds_played = stats.get("rounds_played", 1) or 1
+        hs_pct = stats.get("headshot_pct", 0)
+        adr = stats.get("adr", 0)
+
         entry_attempts = entry.get("entry_attempts", 0)
+        entry_kills = entry.get("entry_kills", 0)
+        entry_success_pct = entry.get("entry_success_pct", 0)
+
         flashes_thrown = utility.get("flashbangs_thrown", 0)
         smokes_thrown = utility.get("smokes_thrown", 0)
-        kills = stats.get("kills", 0)
-        hs_pct = stats.get("headshot_pct", 0)
+        he_thrown = utility.get("he_thrown", 0)
+        molotovs_thrown = utility.get("molotovs_thrown", 0)
+        flash_assists = utility.get("flash_assists", 0)
+        effective_flashes = utility.get("effective_flashes", 0)
 
-        # Score each role
+        untraded_deaths = (
+            trades.get("untraded_deaths", 0) or advanced.get("untraded_deaths", 0) or 0
+        )
+
+        # AWP kills from weapon breakdown
+        awp_kills = weapons.get("awp", 0) + weapons.get("AWP", 0)
+        ssg_kills = weapons.get("ssg08", 0) + weapons.get("SSG08", 0)
+        sniper_kills = awp_kills + ssg_kills
+
+        # Score each role (0-100 scale)
         scores = {
-            "entry": 0,
-            "support": 0,
-            "rifler": 0,
-            "awp": 0,
-            "lurker": 0,
-            "flex": 0,
+            "entry": 0.0,
+            "support": 0.0,
+            "rifler": 0.0,
+            "awper": 0.0,
+            "lurker": 0.0,
         }
 
-        # Entry scoring
-        if entry_attempts >= 5:
-            scores["entry"] += 3
-        elif entry_attempts >= 3:
-            scores["entry"] += 2
-        if opening_kills >= 5:
-            scores["entry"] += 2
-        elif opening_kills >= 3:
-            scores["entry"] += 1
+        # =====================================================================
+        # STEP 1: AWPer Detection (Highest Priority)
+        # If 35%+ of kills are with AWP/SSG08, this defines the player's role
+        # =====================================================================
+        if kills > 0:
+            awp_kill_pct = (sniper_kills / kills) * 100
+            if awp_kill_pct >= 35:
+                scores["awper"] = 85.0 + min(awp_kill_pct - 35, 15)  # 85-100
 
-        # Support scoring
-        if flashes_thrown >= 10:
-            scores["support"] += 3
-        elif flashes_thrown >= 6:
-            scores["support"] += 2
-        if smokes_thrown >= 8:
-            scores["support"] += 2
-        if utility.get("flash_assists", 0) >= 3:
-            scores["support"] += 2
+        # =====================================================================
+        # STEP 2: Entry Score
+        # Based on: opening duel attempts (NOT just kills), aggression patterns
+        # =====================================================================
+        entry_score = 0.0
 
-        # Rifler scoring
-        if kills >= 20 and hs_pct >= 45:
-            scores["rifler"] += 3
-        elif kills >= 15 and hs_pct >= 40:
-            scores["rifler"] += 2
+        # Opening duel ATTEMPTS (shows aggression, not just success)
+        attempts_per_round = entry_attempts / rounds_played
+        entry_score += min(attempts_per_round / 0.3, 1.0) * 40  # Up to 40 points
 
-        # AWP scoring (would need weapon data for accuracy)
-        # For now, low entry + high kills might indicate AWP
-        if kills >= 15 and entry_attempts <= 2:
-            scores["awp"] += 1
+        # Entry success rate (reward winning, not just attempting)
+        if entry_attempts >= 3:
+            entry_score += min(entry_success_pct / 50, 1.0) * 25  # Up to 25 points
 
-        # Find highest score
+        # Opening kills as proxy for first contact
+        opening_kill_rate = entry_kills / rounds_played * 100
+        entry_score += min(opening_kill_rate / 25, 1.0) * 20  # Up to 20 points
+
+        # Bonus: High effective flashes (utility-supported entries)
+        if effective_flashes > 3:
+            entry_score += 10
+
+        scores["entry"] = min(entry_score, 100)
+
+        # =====================================================================
+        # STEP 3: Support Score
+        # Based on: utility effectiveness, flash assists, passive positioning
+        # =====================================================================
+        support_score = 0.0
+
+        # Effective flashes (shows intentional team support)
+        support_score += min(effective_flashes / 8, 1.0) * 25  # Up to 25 points
+
+        # Flash assists (direct team contribution)
+        support_score += min(flash_assists / 4, 1.0) * 25  # Up to 25 points
+
+        # Total utility usage
+        total_utility = flashes_thrown + smokes_thrown + he_thrown + molotovs_thrown
+        utility_per_round = total_utility / rounds_played
+        support_score += min(utility_per_round / 3, 1.0) * 20  # Up to 20 points
+
+        # LOW entry attempts = passive player (support indicator)
+        if attempts_per_round < 0.15:
+            support_score += 15
+
+        # Trade attempt rate (being in position to support)
+        trade_opps = trades.get("trade_kill_opportunities", 0)
+        trade_attempts = trades.get("trade_kill_attempts", 0)
+        if trade_opps > 0:
+            trade_attempt_rate = trade_attempts / trade_opps
+            support_score += trade_attempt_rate * 15  # Up to 15 points
+
+        scores["support"] = min(support_score, 100)
+
+        # =====================================================================
+        # STEP 4: Lurker Score
+        # Based on: high isolation (untraded deaths), but WITH IMPACT
+        # =====================================================================
+        lurker_score = 0.0
+
+        # Isolation indicator: untraded deaths
+        if deaths > 3:
+            isolation_rate = untraded_deaths / deaths
+            if isolation_rate > 0.5:
+                lurker_score += (isolation_rate - 0.5) * 2 * 35  # Up to 35 points
+
+        # LOW entry attempts = not taking first contact
+        if entry_attempts <= 2 and rounds_played >= 10:
+            lurker_score += 20
+
+        # CRITICAL: Must have IMPACT to be a lurker, not a feeder
+        kpr = kills / rounds_played
+        hltv_rating = stats.get("hltv_rating", 0) or player.get("rating", {}).get("hltv_rating", 0)
+        has_impact = kpr >= 0.5 or hltv_rating >= 0.9
+
+        if has_impact:
+            lurker_score += 25  # Impact bonus
+        elif lurker_score > 30:
+            lurker_score *= 0.3  # Penalize if no impact (feeding, not lurking)
+
+        # Multi-kills (lurkers often catch rotations)
+        multikills = (
+            stats.get("2k", 0) + stats.get("3k", 0) + stats.get("4k", 0) + stats.get("5k", 0)
+        )
+        if multikills >= 3:
+            lurker_score += 15
+
+        scores["lurker"] = min(lurker_score, 100)
+
+        # =====================================================================
+        # STEP 5: Rifler Score (Default High-Frag Role)
+        # Based on: high kills, high HS%, consistent damage
+        # =====================================================================
+        rifler_score = 0.0
+
+        # Kill rate
+        rifler_score += min(kpr / 0.8, 1.0) * 30  # Up to 30 points for 0.8+ KPR
+
+        # ADR (consistent damage)
+        rifler_score += min(adr / 85, 1.0) * 25  # Up to 25 points
+
+        # Headshot percentage
+        rifler_score += min(hs_pct / 50, 1.0) * 20  # Up to 20 points
+
+        # Multi-kills
+        mk_score = (
+            multikills
+            if "multikills" in dir()
+            else (
+                stats.get("2k", 0)
+                + stats.get("3k", 0) * 2
+                + stats.get("4k", 0) * 3
+                + stats.get("5k", 0) * 4
+            )
+        )
+        rifler_score += min(mk_score / 8, 1.0) * 15  # Up to 15 points
+
+        # HLTV rating bonus
+        if hltv_rating >= 1.15:
+            rifler_score += 10
+
+        scores["rifler"] = min(rifler_score, 100)
+
+        # =====================================================================
+        # Determine primary role
+        # =====================================================================
         best_role = max(scores, key=scores.get)
         best_score = scores[best_role]
 
-        if best_score >= 4:
+        # Confidence based on score
+        if best_score >= 70:
             confidence = "high"
-        elif best_score >= 2:
+        elif best_score >= 40:
             confidence = "medium"
         else:
+            confidence = "low"
+
+        # Check for tie (within 10% of each other) - default to flex
+        second_best_score = sorted(scores.values(), reverse=True)[1]
+        if best_score > 0 and best_score < 20:
             best_role = "flex"
             confidence = "low"
+        elif best_score > 0 and (best_score - second_best_score) / best_score < 0.10:
+            best_role = "flex"
+            confidence = "medium"
 
         return best_role, confidence
 
@@ -2560,17 +2851,55 @@ class CachedAnalyzer:
             }
 
     def _detect_role(self, player: dict) -> str:
-        """Detect player role from stats."""
-        advanced = player["advanced"]
-        utility = player["utility"]
-        stats = player["stats"]
+        """
+        Detect player role from stats using behavioral scoring.
 
-        if advanced["opening_kills"] >= 5:
+        Priority:
+        1. AWPer (35%+ kills with sniper)
+        2. Entry (high opening attempts)
+        3. Support (high utility + flash assists)
+        4. Rifler (high kills + HS%)
+        5. Flex (default)
+        """
+        utility = player.get("utility", {})
+        stats = player.get("stats", {})
+        entry = player.get("entry", {})
+        weapons = player.get("weapons", {})
+
+        kills = stats.get("kills", 0)
+        rounds_played = stats.get("rounds_played", 1) or 1
+
+        # AWPer check first (highest priority)
+        awp_kills = weapons.get("awp", 0) + weapons.get("AWP", 0)
+        ssg_kills = weapons.get("ssg08", 0) + weapons.get("SSG08", 0)
+        if kills > 0 and (awp_kills + ssg_kills) / kills >= 0.35:
+            return "awper"
+
+        # Entry: high opening attempts (behavior, not just kills)
+        entry_attempts = entry.get("entry_attempts", 0)
+        if entry_attempts >= 4 or (entry_attempts >= 3 and entry.get("entry_success_pct", 0) >= 50):
             return "entry"
-        if utility["flashbangs_thrown"] >= 10 or utility["smokes_thrown"] >= 8:
+
+        # Support: high utility + flash assists (team contribution)
+        flash_assists = utility.get("flash_assists", 0)
+        effective_flashes = utility.get("effective_flashes", 0)
+        total_utility = (
+            utility.get("flashbangs_thrown", 0)
+            + utility.get("smokes_thrown", 0)
+            + utility.get("he_thrown", 0)
+            + utility.get("molotovs_thrown", 0)
+        )
+        if (
+            flash_assists >= 3
+            or effective_flashes >= 5
+            or (total_utility / rounds_played >= 2.5 and entry_attempts <= 2)
+        ):
             return "support"
-        if stats["kills"] >= 20 and stats["headshot_pct"] >= 50:
+
+        # Rifler: high kills + consistent fragging
+        if kills >= 15 and stats.get("headshot_pct", 0) >= 40:
             return "rifler"
+
         return "flex"
 
     def _get_tactical_summary(self, demo_data, analysis) -> dict:
