@@ -901,7 +901,4 @@ function renderMapZones(containerId, heatmapData, playerSteamId = null, options 
     return mapZones;
 }
 
-// Export for module usage
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { MapZones, renderMapZones, DEFAULT_MAP_ZONES, MAP_PARAMS, RADAR_URLS };
-}
+

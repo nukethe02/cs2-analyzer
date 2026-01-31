@@ -566,7 +566,4 @@ function renderClutchesTab(players, myTeam, enemyTeam, containerId = 'clutches-c
     `;
 }
 
-// Export for use in modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { StatsTable, createStatsTableFromAnalysis, renderClutchesTab };
-}
+

@@ -465,7 +465,4 @@ function renderOverviewTab(players, myTeamIds, myTeamScore, enemyTeamScore, cont
     return overview;
 }
 
-// Export for use in modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { OverviewTab, renderOverviewTab };
-}
+
