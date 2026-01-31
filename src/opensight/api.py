@@ -229,6 +229,9 @@ def player_stats_to_dict(player: Any) -> dict:
         # Legacy utility fields for backwards compatibility
         "flashbangs_thrown": player.utility.flashbangs_thrown,
         "enemies_flashed": player.utility.enemies_flashed,
+        "effective_flashes": player.utility.effective_flashes,
+        "avg_enemies_per_flash": player.utility.avg_enemies_per_flash,
+        "flash_effectiveness_pct": player.utility.flash_effectiveness_pct,
         "flash_assists": player.utility.flash_assists,
         "flash_assist_pct": player.utility.flash_assist_pct,
         "enemies_flashed_per_round": player.utility.enemies_flashed_per_round,
@@ -960,6 +963,9 @@ async def about() -> dict[str, Any]:
                     "Average enemies blinded per flashbang (Leetify metric)"
                 ),
                 "avg_blind_time": "Average enemy blind duration per flash",
+                "effective_flashes": "Unique flashbangs with >= 1 significant enemy blind",
+                "avg_enemies_per_flash": "Average enemies blinded per effective flash",
+                "flash_effectiveness_pct": "% of flashes that were effective",
                 "times_blinded": "Times you were blinded by enemies",
                 "avg_time_blinded": "Average time you were blinded (Leetify Avg Blind Time)",
                 "he_damage": "Total HE grenade damage to enemies",

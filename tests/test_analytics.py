@@ -700,14 +700,15 @@ class TestAimStats:
         assert stats.spray_accuracy == 0.0
 
     def test_counter_strafe_pct_calculation(self):
-        """Counter-strafing percentage calculated correctly."""
+        """Counter-strafing percentage calculated correctly (shot-based, Leetify parity)."""
         from opensight.analysis.analytics import AimStats
 
-        stats = AimStats(counter_strafe_kills=8, total_kills_for_cs=10)
+        # NEW: Shot-based tracking - 80 stationary shots out of 100 total = 80%
+        stats = AimStats(shots_stationary=80, shots_with_velocity=100)
         assert stats.counter_strafe_pct == 80.0
 
-    def test_counter_strafe_pct_zero_kills(self):
-        """Counter-strafing percentage is 0 when no tracked kills."""
+    def test_counter_strafe_pct_zero_shots(self):
+        """Counter-strafing percentage is 0 when no tracked shots."""
         from opensight.analysis.analytics import AimStats
 
         stats = AimStats()
@@ -786,6 +787,10 @@ class TestAimStats:
             headshot_hits=12,
             spray_shots_fired=30,
             spray_shots_hit=10,
+            # NEW: Shot-based counter-strafe tracking (Leetify parity)
+            shots_stationary=50,
+            shots_with_velocity=80,
+            # DEPRECATED: Kill-based tracking (kept for backward compatibility)
             counter_strafe_kills=5,
             total_kills_for_cs=8,
             ttd_median_ms=280.0,
@@ -799,7 +804,11 @@ class TestAimStats:
         assert result["accuracy_all"] == 40.0
         assert result["head_accuracy"] == 30.0
         assert result["spray_accuracy"] == pytest.approx(33.3, abs=0.1)
+        # NEW: Shot-based counter-strafe % (50/80 = 62.5%)
         assert result["counter_strafe_pct"] == 62.5
+        # NEW: Raw shot counts in output
+        assert result["shots_stationary"] == 50
+        assert result["shots_with_velocity"] == 80
         assert result["time_to_damage_ms"] == 280.0
         assert result["crosshair_placement_deg"] == 8.5
         assert result["ttd_rating"] == "good"
@@ -829,7 +838,7 @@ class TestPlayerMatchStatsAimProperties:
         assert player.spray_accuracy == 40.0
 
     def test_counter_strafe_pct_property(self):
-        """Counter-strafing percentage property calculated correctly."""
+        """Counter-strafing percentage property calculated correctly (shot-based, Leetify parity)."""
         from opensight.analysis.analytics import PlayerMatchStats
 
         player = PlayerMatchStats(
@@ -843,8 +852,9 @@ class TestPlayerMatchStatsAimProperties:
             total_damage=1000,
             rounds_played=10,
         )
-        player.counter_strafe_kills = 6
-        player.total_kills_with_velocity = 8
+        # NEW: Shot-based tracking - 60 stationary shots out of 80 total = 75%
+        player.shots_stationary = 60
+        player.shots_with_velocity = 80
         assert player.counter_strafe_pct == 75.0
 
     def test_aim_stats_property(self):
@@ -867,6 +877,10 @@ class TestPlayerMatchStatsAimProperties:
         player.headshot_hits = 10
         player.spray_shots_fired = 30
         player.spray_shots_hit = 12
+        # NEW: Shot-based counter-strafe tracking
+        player.shots_stationary = 70
+        player.shots_with_velocity = 100
+        # DEPRECATED: Kill-based tracking (kept for backward compatibility)
         player.counter_strafe_kills = 7
         player.total_kills_with_velocity = 10
         player.ttd_values = [250.0, 300.0, 350.0]
@@ -879,6 +893,10 @@ class TestPlayerMatchStatsAimProperties:
         assert aim_stats.shots_hit == 35
         assert aim_stats.spray_shots_fired == 30
         assert aim_stats.spray_shots_hit == 12
+        # NEW: Shot-based tracking
+        assert aim_stats.shots_stationary == 70
+        assert aim_stats.shots_with_velocity == 100
+        # DEPRECATED: Kill-based tracking (still passed through for backward compat)
         assert aim_stats.counter_strafe_kills == 7
         assert aim_stats.total_kills_for_cs == 10
         assert aim_stats.total_kills == 10

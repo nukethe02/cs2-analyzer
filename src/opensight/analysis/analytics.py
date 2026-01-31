@@ -541,10 +541,11 @@ class UtilityStats:
     molotovs_thrown: int = 0
 
     # Flash effectiveness (attacker-side)
-    enemies_flashed: int = 0  # Enemies blinded > 1.1s (significant)
-    teammates_flashed: int = 0  # Teammates blinded (mistake)
+    enemies_flashed: int = 0  # Enemies blinded > 1.5s (significant)
+    teammates_flashed: int = 0  # Teammates blinded > 1.5s (mistake)
     flash_assists: int = 0  # Kills within 3s of blinding enemy
     total_blind_time: float = 0.0  # Total seconds enemies were blinded
+    effective_flashes: int = 0  # Unique flashbangs with >= 1 significant enemy blind
 
     # Flash received (victim-side) - Leetify "Avg Blind Time"
     times_blinded: int = 0  # How many times player was blinded by enemies
@@ -585,6 +586,20 @@ class UtilityStats:
         if self.flashbangs_thrown <= 0:
             return 0.0
         return self.teammates_flashed / self.flashbangs_thrown
+
+    @property
+    def avg_enemies_per_flash(self) -> float:
+        """Average enemies significantly blinded per effective flash (Flash Efficiency)."""
+        if self.effective_flashes <= 0:
+            return 0.0
+        return round(self.enemies_flashed / self.effective_flashes, 2)
+
+    @property
+    def flash_effectiveness_pct(self) -> float:
+        """Percentage of flashes that were effective (had >= 1 significant blind)."""
+        if self.flashbangs_thrown <= 0:
+            return 0.0
+        return round(self.effective_flashes / self.flashbangs_thrown * 100, 1)
 
     @property
     def enemies_flashed_per_round(self) -> float:
@@ -779,6 +794,9 @@ class UtilityStats:
             "total_utility": self.total_utility,
             "enemies_flashed": self.enemies_flashed,
             "teammates_flashed": self.teammates_flashed,
+            "effective_flashes": self.effective_flashes,
+            "avg_enemies_per_flash": self.avg_enemies_per_flash,
+            "flash_effectiveness_pct": self.flash_effectiveness_pct,
             "flash_assists": self.flash_assists,
             "flash_assist_pct": self.flash_assist_pct,
             "enemies_flashed_per_round": self.enemies_flashed_per_round,
@@ -1020,7 +1038,11 @@ class AimStats:
     spray_shots_fired: int = 0
     spray_shots_hit: int = 0
 
-    # Counter-strafing (kills while near-stationary)
+    # Counter-strafing (shots while near-stationary)
+    # NEW: Shot-based tracking (Leetify parity)
+    shots_stationary: int = 0  # Shots fired with velocity < 34 u/s
+    shots_with_velocity: int = 0  # Total shots where velocity was measurable
+    # DEPRECATED: Kill-based tracking (kept for backward compatibility)
     counter_strafe_kills: int = 0
     total_kills_for_cs: int = 0  # Total kills where velocity was tracked
 
@@ -1062,10 +1084,14 @@ class AimStats:
 
     @property
     def counter_strafe_pct(self) -> float:
-        """Counter-Strafing % - % of kills while near-stationary (< 34 velocity)."""
+        """Counter-Strafing % - % of shots fired while near-stationary (< 34 velocity).
+
+        This is the Leetify-style metric measuring movement discipline on ALL shots,
+        not just kill shots. Higher is better - indicates proper counter-strafing.
+        """
         return (
-            round(self.counter_strafe_kills / self.total_kills_for_cs * 100, 1)
-            if self.total_kills_for_cs > 0
+            round(self.shots_stationary / self.shots_with_velocity * 100, 1)
+            if self.shots_with_velocity > 0
             else 0.0
         )
 
@@ -1078,6 +1104,10 @@ class AimStats:
             "headshot_hits": self.headshot_hits,
             "spray_shots_fired": self.spray_shots_fired,
             "spray_shots_hit": self.spray_shots_hit,
+            # NEW: Shot-based counter-strafe tracking
+            "shots_stationary": self.shots_stationary,
+            "shots_with_velocity": self.shots_with_velocity,
+            # DEPRECATED: Kill-based tracking (kept for backward compatibility)
             "counter_strafe_kills": self.counter_strafe_kills,
             "total_kills_for_cs": self.total_kills_for_cs,
             # Computed percentages (Leetify format)
@@ -1183,7 +1213,11 @@ class PlayerMatchStats:
     spray_shots_fired: int = 0
     spray_shots_hit: int = 0
 
-    # Counter-strafing (kills while near-stationary)
+    # Counter-strafing (shots while near-stationary) - Leetify parity
+    # NEW: Shot-based tracking (measures technique across ALL shots)
+    shots_stationary: int = 0  # Shots fired with velocity < 34 u/s
+    shots_with_velocity: int = 0  # Total shots where velocity was measurable
+    # DEPRECATED: Kill-based tracking (kept for backward compatibility)
     counter_strafe_kills: int = 0
     total_kills_with_velocity: int = 0  # Kills where velocity was trackable
 
@@ -1351,10 +1385,14 @@ class PlayerMatchStats:
 
     @property
     def counter_strafe_pct(self) -> float:
-        """Counter-Strafing % - % of kills while near-stationary (< 34 velocity)."""
+        """Counter-Strafing % - % of shots fired while near-stationary (< 34 velocity).
+
+        This is the Leetify-style metric measuring movement discipline on ALL shots,
+        not just kill shots. Higher is better - indicates proper counter-strafing.
+        """
         return (
-            round(self.counter_strafe_kills / self.total_kills_with_velocity * 100, 1)
-            if self.total_kills_with_velocity > 0
+            round(self.shots_stationary / self.shots_with_velocity * 100, 1)
+            if self.shots_with_velocity > 0
             else 0.0
         )
 
@@ -1367,6 +1405,10 @@ class PlayerMatchStats:
             headshot_hits=self.headshot_hits,
             spray_shots_fired=self.spray_shots_fired,
             spray_shots_hit=self.spray_shots_hit,
+            # NEW: Shot-based counter-strafe tracking
+            shots_stationary=self.shots_stationary,
+            shots_with_velocity=self.shots_with_velocity,
+            # DEPRECATED: Kill-based tracking (kept for backward compatibility)
             counter_strafe_kills=self.counter_strafe_kills,
             total_kills_for_cs=self.total_kills_with_velocity,
             ttd_median_ms=self.ttd_median_ms,
@@ -3781,7 +3823,7 @@ class DemoAnalyzer:
         # Constants for validation
         MIN_BLIND_DURATION = 0.0
         MAX_BLIND_DURATION = 10.0  # Max 10 seconds is reasonable
-        SIGNIFICANT_BLIND_THRESHOLD = 1.1  # Leetify threshold
+        SIGNIFICANT_BLIND_THRESHOLD = 1.5  # Significant blind threshold (full direct hit)
 
         # ===========================================
         # Use BLINDS data for accurate flash stats
@@ -3812,13 +3854,17 @@ class DemoAnalyzer:
                 enemy_blinds = [b for b in player_blinds if not b.is_teammate]
                 team_blinds = [b for b in player_blinds if b.is_teammate]
 
-                # Only count blinds > 1.1 seconds as "significant" (Leetify threshold)
+                # Only count blinds > 1.5 seconds as "significant" (full direct hit)
                 significant_enemy_blinds = [
                     b for b in enemy_blinds if b.blind_duration >= SIGNIFICANT_BLIND_THRESHOLD
                 ]
+                # Apply same threshold to teammates (don't shame for 0.1s glances)
+                significant_team_blinds = [
+                    b for b in team_blinds if b.blind_duration >= SIGNIFICANT_BLIND_THRESHOLD
+                ]
 
                 player.utility.enemies_flashed = len(significant_enemy_blinds)
-                player.utility.teammates_flashed = len(team_blinds)
+                player.utility.teammates_flashed = len(significant_team_blinds)
                 player.utility.total_blind_time = sum(b.blind_duration for b in enemy_blinds)
 
                 # Count unique flashbangs (group blinds by tick proximity)
@@ -3832,6 +3878,20 @@ class DemoAnalyzer:
                             flash_count += 1
                         prev_tick = tick
                     player.utility.flashbangs_thrown = flash_count
+
+                # Calculate effective_flashes: unique flashbangs with >= 1 significant enemy blind
+                # Group significant enemy blinds by tick proximity to count unique effective flashes
+                sig_blind_ticks = sorted({b.tick for b in significant_enemy_blinds})
+                if sig_blind_ticks:
+                    effective_count = 1
+                    prev_tick = sig_blind_ticks[0]
+                    for tick in sig_blind_ticks[1:]:
+                        if tick - prev_tick > 10:  # Same 10-tick window for grouping
+                            effective_count += 1
+                        prev_tick = tick
+                    player.utility.effective_flashes = effective_count
+                else:
+                    player.utility.effective_flashes = 0
 
             # ===========================================
             # Victim-side blind metrics (Leetify "Avg Blind Time")
@@ -4223,51 +4283,98 @@ class DemoAnalyzer:
     ) -> None:
         """Calculate counter-strafing percentage for a player.
 
-        Counter-strafing = kills while near-stationary (velocity < 34 units/s).
+        Leetify-style metric: measures movement discipline across ALL shots fired,
+        not just kill shots. A shot is "stationary" if velocity < 34 units/s.
+
+        Excludes non-gun weapons (knife, grenades, C4) since movement doesn't
+        affect their accuracy.
         """
+        # Velocity threshold - standard CS2 "stopped" speed for accurate shooting
         cs_velocity_threshold = 34.0
 
-        kills_by_player = [k for k in self.data.kills if k.attacker_steamid == steam_id]
-
-        if not kills_by_player:
-            return
+        # Weapons to EXCLUDE from counter-strafe tracking (movement doesn't matter)
+        excluded_weapons = {
+            "knife",
+            "knife_t",
+            "bayonet",
+            "hegrenade",
+            "flashbang",
+            "smokegrenade",
+            "molotov",
+            "incgrenade",
+            "decoy",
+            "c4",
+            "taser",  # Zeus
+        }
 
         if not hasattr(self.data, "weapon_fires") or not self.data.weapon_fires:
             return
 
-        # Build velocity lookup from weapon_fire events
-        velocity_by_tick: dict[int, float] = {}
-        for fire in self.data.weapon_fires:
-            if fire.player_steamid == steam_id:
-                if fire.velocity_x is not None and fire.velocity_y is not None:
-                    vel_x = fire.velocity_x or 0
-                    vel_y = fire.velocity_y or 0
-                    velocity = math.sqrt(vel_x**2 + vel_y**2)
-                    velocity_by_tick[fire.tick] = velocity
+        # Count stationary vs moving shots across ALL weapon_fire events
+        shots_stationary = 0
+        shots_with_velocity = 0
 
-        if not velocity_by_tick:
-            return
-
-        counter_strafe_count = 0
+        # Also track kill-based stats for backward compatibility
+        counter_strafe_kills = 0
         tracked_kills = 0
 
-        for kill in kills_by_player:
-            kill_tick = kill.tick
-            closest_velocity = None
-            min_tick_diff = float("inf")
+        # Build velocity lookup for kill-based tracking (backward compat)
+        velocity_by_tick: dict[int, float] = {}
 
-            for fire_tick, velocity in velocity_by_tick.items():
-                tick_diff = abs(fire_tick - kill_tick)
-                if tick_diff < min_tick_diff and fire_tick <= kill_tick and tick_diff <= 10:
-                    min_tick_diff = tick_diff
-                    closest_velocity = velocity
+        for fire in self.data.weapon_fires:
+            if fire.player_steamid != steam_id:
+                continue
 
-            if closest_velocity is not None:
-                tracked_kills += 1
-                if closest_velocity < cs_velocity_threshold:
-                    counter_strafe_count += 1
+            # Get weapon name, normalize it
+            weapon = (fire.weapon or "").lower().replace("weapon_", "")
 
-        player.counter_strafe_kills = counter_strafe_count
+            # Skip non-gun weapons
+            if weapon in excluded_weapons:
+                continue
+
+            # Check if velocity data is available
+            if fire.velocity_x is None or fire.velocity_y is None:
+                continue
+
+            # Calculate 2D velocity (horizontal movement)
+            vel_x = fire.velocity_x or 0.0
+            vel_y = fire.velocity_y or 0.0
+            velocity_2d = math.sqrt(vel_x**2 + vel_y**2)
+
+            # Track for shot-based metric (NEW - Leetify parity)
+            shots_with_velocity += 1
+            if velocity_2d < cs_velocity_threshold:
+                shots_stationary += 1
+
+            # Store for kill-based lookup (backward compat)
+            velocity_by_tick[fire.tick] = velocity_2d
+
+        # Set shot-based stats (NEW - Leetify parity)
+        player.shots_stationary = shots_stationary
+        player.shots_with_velocity = shots_with_velocity
+
+        # Calculate kill-based stats for backward compatibility
+        if velocity_by_tick:
+            kills_by_player = [k for k in self.data.kills if k.attacker_steamid == steam_id]
+
+            for kill in kills_by_player:
+                kill_tick = kill.tick
+                closest_velocity = None
+                min_tick_diff = float("inf")
+
+                for fire_tick, velocity in velocity_by_tick.items():
+                    tick_diff = abs(fire_tick - kill_tick)
+                    if tick_diff < min_tick_diff and fire_tick <= kill_tick and tick_diff <= 10:
+                        min_tick_diff = tick_diff
+                        closest_velocity = velocity
+
+                if closest_velocity is not None:
+                    tracked_kills += 1
+                    if closest_velocity < cs_velocity_threshold:
+                        counter_strafe_kills += 1
+
+        # Set kill-based stats (DEPRECATED but kept for backward compatibility)
+        player.counter_strafe_kills = counter_strafe_kills
         player.total_kills_with_velocity = tracked_kills
 
     def _calculate_mistakes(self) -> None:
@@ -4659,7 +4766,7 @@ class DemoAnalyzer:
         # Count enemies flashed from blinds data
         if hasattr(self.data, "blinds") and self.data.blinds:
             for blind in self.data.blinds:
-                if not blind.is_teammate and blind.blind_duration >= 1.1:
+                if not blind.is_teammate and blind.blind_duration >= 1.5:
                     attacker_team = self.data.player_teams.get(blind.attacker_steamid, "Unknown")
                     if attacker_team in team_stats:
                         team_stats[attacker_team]["enemies_flashed"] += 1
@@ -4951,8 +5058,8 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
             if steam_id not in result:
                 continue
 
-            # Only count significant blinds (>1.1 seconds per Leetify standard)
-            if blind.blind_duration >= 1.1:
+            # Only count significant blinds (>1.5 seconds for full direct hit)
+            if blind.blind_duration >= 1.5:
                 if blind.is_teammate:
                     result[steam_id].flashes_teammates_total += 1
                 else:

@@ -1015,11 +1015,20 @@ class CachedAnalyzer:
                     winner = "CT" if stats["ct_kills"] > stats["t_kills"] else "T"
                 win_reason = getattr(r, "win_reason", win_reason) or win_reason
 
-            # Determine round type
-            if round_num in [1, 13]:
-                round_type = "pistol"
-            elif stats["ct_kills"] + stats["t_kills"] <= 2:
-                round_type = "eco"
+                # Use round_type from parser (populated from equipment values)
+                stored_round_type = getattr(r, "round_type", "")
+                if stored_round_type:
+                    round_type = stored_round_type
+
+            # Fallback pistol detection if round_type not set from parser
+            # Use is_pistol_round() for proper OT handling
+            if round_type == "full_buy":
+                from opensight.core.parser import is_pistol_round
+
+                # Detect MR format from total rounds
+                rounds_per_half = 12 if total_rounds <= 30 else 15
+                if is_pistol_round(round_num, rounds_per_half):
+                    round_type = "pistol"
 
             # Get first kill/death info
             first_kill = None
@@ -1573,6 +1582,18 @@ class CachedAnalyzer:
                 _ = equipment_value, is_pistol_round  # Unused in fallback
                 return "unknown"
 
+        # Import pistol round detection
+        try:
+            from opensight.core.parser import is_pistol_round as check_pistol
+        except ImportError:
+            # Simple fallback if import fails
+            def check_pistol(rn: int, rph: int = 12) -> bool:
+                return rn == 1 or rn == rph + 1
+
+        # Detect MR format from total rounds
+        total_rounds = len(rounds)
+        rounds_per_half = 12 if total_rounds <= 30 else 15
+
         kill_positions = []
         death_positions = []
         zone_stats: dict[str, dict] = {}
@@ -1590,7 +1611,7 @@ class CachedAnalyzer:
 
             # Determine economy round type
             attacker_side = getattr(kill, "attacker_side", "") or ""
-            is_pistol = round_num in [1, 13]
+            is_pistol = check_pistol(round_num, rounds_per_half)
             eq_key = "t_equipment" if "T" in attacker_side.upper() else "ct_equipment"
             eq_raw = r_info.get(eq_key, 0)  # type: ignore[union-attr]
             eq_value = int(eq_raw) if eq_raw else 0  # type: ignore[arg-type]

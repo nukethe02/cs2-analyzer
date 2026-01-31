@@ -360,17 +360,24 @@ class EconomyAnalyzer:
             logger.warning("Missing columns for economy analysis")
             return
 
-        # Determine pistol rounds from DemoData.rounds if available
-        pistol_rounds = {1, 16}  # Default: first round and after halftime
-        if hasattr(self.data, "rounds") and self.data.rounds:
-            pistol_rounds = {1}  # Round 1 is always pistol
-            # MR15 format: round 16 is second half pistol
-            # MR12 format: round 13 is second half pistol
-            num_rounds = self.data.num_rounds
-            if num_rounds >= 24:  # MR12
-                pistol_rounds.add(13)
-            else:  # MR15 or shorter
-                pistol_rounds.add(16)
+        # Determine pistol rounds using proper detection
+        # Import is_pistol_round for proper OT handling
+        try:
+            from opensight.core.parser import is_pistol_round
+        except ImportError:
+            # Fallback if import fails
+            def is_pistol_round(rn: int, rph: int = 12) -> bool:
+                return rn == 1 or rn == rph + 1
+
+        # Detect MR format: MR12 has max 24 regulation rounds, MR15 has max 30
+        num_rounds = self.data.num_rounds
+        rounds_per_half = 12 if num_rounds <= 30 else 15
+
+        # Build set of pistol rounds (needed for set membership check)
+        pistol_rounds = set()
+        for rn in range(1, num_rounds + 10):  # Include potential OT rounds
+            if is_pistol_round(rn, rounds_per_half):
+                pistol_rounds.add(rn)
 
         # Pre-calculate grenade usage per player per round if available
         grenade_counts: dict[tuple[int, int], int] = {}  # (steam_id, round_num) -> count
@@ -496,6 +503,18 @@ class EconomyAnalyzer:
 
     def _build_team_economies(self) -> None:
         """Build team-level economy data from player economies."""
+        # Import pistol round detection
+        try:
+            from opensight.core.parser import is_pistol_round
+        except ImportError:
+
+            def is_pistol_round(rn: int, rph: int = 12) -> bool:
+                return rn == 1 or rn == rph + 1
+
+        # Detect MR format
+        num_rounds = self.data.num_rounds
+        rounds_per_half = 12 if num_rounds <= 30 else 15
+
         # Group players by team
         t_players = [sid for sid, team in self.data.player_teams.items() if team == 2]
         ct_players = [sid for sid, team in self.data.player_teams.items() if team == 3]
@@ -520,7 +539,7 @@ class EconomyAnalyzer:
                                 break
 
                 if player_economies:
-                    is_pistol = round_num in [1, 16]
+                    is_pistol = is_pistol_round(round_num, rounds_per_half)
                     team_round = TeamRoundEconomy(
                         round_num=round_num,
                         team=team,

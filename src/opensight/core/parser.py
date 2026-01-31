@@ -1718,12 +1718,8 @@ class DemoParser:
                     t_weapons.append(weapon)
 
         # Estimate per-player equipment from best weapon, multiply by 5 for team
-        ct_max_equip = max(
-            (estimate_equipment_from_weapon(w) for w in ct_weapons), default=800
-        )
-        t_max_equip = max(
-            (estimate_equipment_from_weapon(w) for w in t_weapons), default=800
-        )
+        ct_max_equip = max((estimate_equipment_from_weapon(w) for w in ct_weapons), default=800)
+        t_max_equip = max((estimate_equipment_from_weapon(w) for w in t_weapons), default=800)
 
         # Estimate team total (assume similar loadouts for teammates)
         # This is rough - multiply by 4-5 players
