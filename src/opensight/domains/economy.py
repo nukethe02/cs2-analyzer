@@ -95,6 +95,22 @@ PLAYER_ECO_THRESHOLD = 300
 PLAYER_FORCE_THRESHOLD = 700
 PLAYER_FULL_THRESHOLD = 2500
 
+# CS2 Loss Bonus System
+# After a loss, teams receive increasing bonus money
+# Formula: BASE_LOSS_BONUS + (consecutive_losses * LOSS_BONUS_INCREMENT)
+BASE_LOSS_BONUS = 1400  # First loss bonus
+LOSS_BONUS_INCREMENT = 500  # Additional per consecutive loss
+MAX_LOSS_BONUS = 3400  # Cap at 5 consecutive losses (1400 + 4*500)
+MAX_CONSECUTIVE_LOSSES = 5  # Bonus caps at 5 losses
+
+# Loss bonus thresholds for buy decisions
+LOW_LOSS_BONUS = 1900  # 1-2 consecutive losses - risky to force
+HIGH_LOSS_BONUS = 2900  # 4+ consecutive losses - safer to force
+
+# Team equipment thresholds for total team value
+TEAM_FORCE_MIN = 12000  # Below this with 5 players isn't really a force
+TEAM_FORCE_MAX = 20000  # Above this is closer to full buy
+
 
 @dataclass
 class PlayerRoundEconomy:
@@ -127,6 +143,15 @@ class TeamRoundEconomy:
     buy_type: BuyType
     player_economies: list[PlayerRoundEconomy] = field(default_factory=list)
 
+    # Loss bonus tracking
+    loss_bonus: int = BASE_LOSS_BONUS  # Current loss bonus ($1400-$3400)
+    consecutive_losses: int = 0  # Number of consecutive losses (0-5)
+
+    # Buy decision quality
+    is_bad_force: bool = False  # Force buy with low loss bonus
+    is_good_force: bool = False  # Force buy with high loss bonus or broken enemy
+    round_won: bool = False  # Did we win this round?
+
 
 @dataclass
 class EconomyStats:
@@ -142,6 +167,15 @@ class EconomyStats:
     full_buy_win_rate: dict[int, float]  # team -> win rate on full buy rounds
     avg_equipment_value: dict[int, float]  # team -> avg equipment
     damage_per_dollar: dict[int, float]  # player steam_id -> efficiency
+
+    # Buy decision quality stats
+    bad_buy_count: dict[int, int] = field(default_factory=lambda: {2: 0, 3: 0})
+    good_buy_count: dict[int, int] = field(default_factory=lambda: {2: 0, 3: 0})
+    total_force_buys: dict[int, int] = field(default_factory=lambda: {2: 0, 3: 0})
+
+    # Economy Grade (A-F)
+    economy_grade: dict[int, str] = field(default_factory=lambda: {2: "C", 3: "C"})
+    economy_grade_reason: dict[int, str] = field(default_factory=lambda: {2: "", 3: ""})
 
 
 @dataclass
@@ -215,6 +249,147 @@ def classify_team_buy(total_equipment: int, is_pistol_round: bool = False) -> Bu
         return BuyType.HALF_BUY
     else:
         return BuyType.FULL_BUY
+
+
+def calculate_loss_bonus(consecutive_losses: int) -> int:
+    """
+    Calculate loss bonus based on consecutive losses.
+
+    CS2 Loss Bonus System:
+    - 1 loss: $1400
+    - 2 losses: $1900
+    - 3 losses: $2400
+    - 4 losses: $2900
+    - 5+ losses: $3400 (capped)
+
+    Args:
+        consecutive_losses: Number of consecutive round losses (0-5+)
+
+    Returns:
+        Loss bonus amount in dollars ($1400-$3400)
+    """
+    # Clamp to max
+    losses = min(consecutive_losses, MAX_CONSECUTIVE_LOSSES)
+
+    if losses == 0:
+        return BASE_LOSS_BONUS  # Default to first loss bonus
+
+    # Formula: $1400 + ((losses - 1) * $500)
+    # 1 loss = $1400, 2 losses = $1900, etc.
+    bonus = BASE_LOSS_BONUS + ((losses - 1) * LOSS_BONUS_INCREMENT)
+    return min(bonus, MAX_LOSS_BONUS)
+
+
+def is_bad_force(buy_type: BuyType, loss_bonus: int) -> bool:
+    """
+    Determine if a force buy was a bad decision.
+
+    Bad Force Criteria:
+    - Team is force buying (FORCE or HALF_BUY type)
+    - Loss bonus is low ($1400-$1900, meaning 1-2 consecutive losses)
+    - Risk: If you lose, you'll have to double-eco
+
+    Args:
+        buy_type: The team's buy classification
+        loss_bonus: Current loss bonus for the team
+
+    Returns:
+        True if this is a risky/bad force buy
+    """
+    if buy_type not in (BuyType.FORCE, BuyType.HALF_BUY):
+        return False
+
+    # Low loss bonus = bad time to force
+    return loss_bonus <= LOW_LOSS_BONUS
+
+
+def is_good_force(buy_type: BuyType, loss_bonus: int, enemy_economy_broken: bool = False) -> bool:
+    """
+    Determine if a force buy was a justified decision.
+
+    Good Force Criteria:
+    - Team is force buying
+    - Loss bonus is high ($2900+, meaning 4+ consecutive losses) - max money anyway
+    - OR enemy economy is broken (post-loss after their win streak)
+
+    Args:
+        buy_type: The team's buy classification
+        loss_bonus: Current loss bonus for the team
+        enemy_economy_broken: Whether enemy team just lost and has low money
+
+    Returns:
+        True if this force buy is justified
+    """
+    if buy_type not in (BuyType.FORCE, BuyType.HALF_BUY):
+        return False
+
+    # High loss bonus = might as well force (getting max money anyway)
+    if loss_bonus >= HIGH_LOSS_BONUS:
+        return True
+
+    # Enemy is broke = good time to force
+    if enemy_economy_broken:
+        return True
+
+    return False
+
+
+def calculate_economy_grade(
+    force_win_rate: float,
+    bad_buy_count: int,
+    total_force_buys: int,
+) -> tuple[str, str]:
+    """
+    Calculate Economy Grade (A-F) based on buying decisions.
+
+    Grading Criteria:
+    - A: High force win % (>40%) AND low bad buys (≤1)
+    - B: Decent force win % (>30%) AND few bad buys (≤2)
+    - C: Average performance
+    - D: Low force win % (<25%) OR many bad buys (>2)
+    - F: Very low force win % (<20%) AND many bad buys (>3)
+
+    Args:
+        force_win_rate: Win rate when force buying (0.0-1.0)
+        bad_buy_count: Number of bad force buys
+        total_force_buys: Total number of force buy rounds
+
+    Returns:
+        Tuple of (grade, reason)
+    """
+    # Convert to percentage for readability
+    win_pct = force_win_rate * 100
+
+    # Not enough data
+    if total_force_buys < 2:
+        return ("C", "Not enough force buy rounds to grade")
+
+    # Grade F: Terrible economy management
+    if win_pct < 20 and bad_buy_count > 3:
+        return ("F", f"Poor force win rate ({win_pct:.0f}%) with {bad_buy_count} bad force buys")
+
+    # Grade D: Below average
+    if win_pct < 25 or bad_buy_count > 2:
+        reasons = []
+        if win_pct < 25:
+            reasons.append(f"low force win rate ({win_pct:.0f}%)")
+        if bad_buy_count > 2:
+            reasons.append(f"{bad_buy_count} bad force buys")
+        return ("D", " and ".join(reasons).capitalize())
+
+    # Grade A: Excellent economy management
+    if win_pct > 40 and bad_buy_count <= 1:
+        return ("A", f"Strong force win rate ({win_pct:.0f}%) with disciplined buying")
+
+    # Grade B: Good economy management
+    if win_pct > 30 and bad_buy_count <= 2:
+        return (
+            "B",
+            f"Solid force performance ({win_pct:.0f}%) with {bad_buy_count} questionable buys",
+        )
+
+    # Grade C: Average
+    return ("C", f"Average economy ({win_pct:.0f}% force win rate)")
 
 
 # Weapon name variations for better matching
@@ -525,7 +700,24 @@ class EconomyAnalyzer:
             for pr in player_rounds:
                 all_rounds.add(pr.round_num)
 
+        # Build round winner lookup from DemoData.rounds
+        round_winners: dict[int, str] = {}
+        if hasattr(self.data, "rounds") and self.data.rounds:
+            for round_info in self.data.rounds:
+                round_winners[round_info.round_num] = round_info.winner
+
+        # Track consecutive losses for loss bonus calculation
+        ct_consecutive_losses = 0
+        t_consecutive_losses = 0
+
         for round_num in sorted(all_rounds):
+            # Get round winner for this round
+            winner = round_winners.get(round_num, "Unknown")
+
+            # Determine if each team won this round
+            ct_won = winner == "CT"
+            t_won = winner == "T"
+
             for team, players in [(2, t_players), (3, ct_players)]:
                 team_equipment = 0
                 player_economies = []
@@ -540,6 +732,31 @@ class EconomyAnalyzer:
 
                 if player_economies:
                     is_pistol = is_pistol_round(round_num, rounds_per_half)
+                    buy_type = classify_team_buy(team_equipment, is_pistol)
+
+                    # Get loss bonus for this team at start of round
+                    if team == 2:  # T side
+                        consecutive_losses = t_consecutive_losses
+                        team_won = t_won
+                    else:  # CT side
+                        consecutive_losses = ct_consecutive_losses
+                        team_won = ct_won
+
+                    loss_bonus = calculate_loss_bonus(consecutive_losses)
+
+                    # Check enemy economy state (is enemy broken?)
+                    # Enemy is "broken" if they just lost with high equipment (full buy loss)
+                    enemy_broken = False
+                    # Simple heuristic: if enemy has 0-1 consecutive losses after we won
+                    if team == 2 and ct_consecutive_losses <= 1:
+                        enemy_broken = ct_won  # CT just lost after winning
+                    elif team == 3 and t_consecutive_losses <= 1:
+                        enemy_broken = t_won  # T just lost after winning
+
+                    # Judge buy decision quality
+                    bad_force = is_bad_force(buy_type, loss_bonus)
+                    good_force = is_good_force(buy_type, loss_bonus, enemy_broken)
+
                     team_round = TeamRoundEconomy(
                         round_num=round_num,
                         team=team,
@@ -547,10 +764,24 @@ class EconomyAnalyzer:
                         avg_equipment=team_equipment // len(player_economies),
                         total_money=0,  # Unknown
                         total_spent=team_equipment,
-                        buy_type=classify_team_buy(team_equipment, is_pistol),
+                        buy_type=buy_type,
                         player_economies=player_economies,
+                        loss_bonus=loss_bonus,
+                        consecutive_losses=consecutive_losses,
+                        is_bad_force=bad_force,
+                        is_good_force=good_force,
+                        round_won=team_won,
                     )
                     self._team_economies[team].append(team_round)
+
+            # Update consecutive losses AFTER processing the round
+            # (loss bonus applies to the CURRENT round, based on PREVIOUS losses)
+            if ct_won:
+                ct_consecutive_losses = 0
+                t_consecutive_losses = min(t_consecutive_losses + 1, MAX_CONSECUTIVE_LOSSES)
+            elif t_won:
+                t_consecutive_losses = 0
+                ct_consecutive_losses = min(ct_consecutive_losses + 1, MAX_CONSECUTIVE_LOSSES)
 
     def _build_stats(self) -> EconomyStats:
         """Build final statistics from analyzed data."""
@@ -582,13 +813,69 @@ class EconomyAnalyzer:
                     if total_spent > 0:
                         damage_per_dollar[steam_id] = total_damage / total_spent
 
+        # Calculate win rates by buy type for each team
+        eco_round_win_rate: dict[int, float] = {2: 0.0, 3: 0.0}
+        force_buy_win_rate: dict[int, float] = {2: 0.0, 3: 0.0}
+        full_buy_win_rate: dict[int, float] = {2: 0.0, 3: 0.0}
+
+        # Buy decision quality stats
+        bad_buy_count: dict[int, int] = {2: 0, 3: 0}
+        good_buy_count: dict[int, int] = {2: 0, 3: 0}
+        total_force_buys: dict[int, int] = {2: 0, 3: 0}
+
+        for team in [2, 3]:
+            team_rounds = self._team_economies.get(team, [])
+
+            # Count rounds and wins by buy type
+            eco_total, eco_wins = 0, 0
+            force_total, force_wins = 0, 0
+            full_total, full_wins = 0, 0
+
+            for tr in team_rounds:
+                if tr.buy_type == BuyType.ECO:
+                    eco_total += 1
+                    if tr.round_won:
+                        eco_wins += 1
+                elif tr.buy_type in (BuyType.FORCE, BuyType.HALF_BUY):
+                    force_total += 1
+                    if tr.round_won:
+                        force_wins += 1
+                    # Track bad/good force buys
+                    if tr.is_bad_force:
+                        bad_buy_count[team] += 1
+                    if tr.is_good_force:
+                        good_buy_count[team] += 1
+                elif tr.buy_type == BuyType.FULL_BUY:
+                    full_total += 1
+                    if tr.round_won:
+                        full_wins += 1
+
+            # Calculate win rates
+            eco_round_win_rate[team] = eco_wins / eco_total if eco_total > 0 else 0.0
+            force_buy_win_rate[team] = force_wins / force_total if force_total > 0 else 0.0
+            full_buy_win_rate[team] = full_wins / full_total if full_total > 0 else 0.0
+            total_force_buys[team] = force_total
+
+        # Calculate Economy Grades
+        economy_grade: dict[int, str] = {2: "C", 3: "C"}
+        economy_grade_reason: dict[int, str] = {2: "", 3: ""}
+
+        for team in [2, 3]:
+            grade, reason = calculate_economy_grade(
+                force_buy_win_rate[team],
+                bad_buy_count[team],
+                total_force_buys[team],
+            )
+            economy_grade[team] = grade
+            economy_grade_reason[team] = reason
+
         return EconomyStats(
             rounds_analyzed=self.data.num_rounds,
             team_economies=self._team_economies,
             player_economies=self._player_economies,
-            eco_round_win_rate={2: 0.0, 3: 0.0},  # Would need round win data
-            force_buy_win_rate={2: 0.0, 3: 0.0},
-            full_buy_win_rate={2: 0.0, 3: 0.0},
+            eco_round_win_rate=eco_round_win_rate,
+            force_buy_win_rate=force_buy_win_rate,
+            full_buy_win_rate=full_buy_win_rate,
             avg_equipment_value={
                 2: sum(tr.avg_equipment for tr in self._team_economies[2])
                 / max(len(self._team_economies[2]), 1),
@@ -596,6 +883,11 @@ class EconomyAnalyzer:
                 / max(len(self._team_economies[3]), 1),
             },
             damage_per_dollar=damage_per_dollar,
+            bad_buy_count=bad_buy_count,
+            good_buy_count=good_buy_count,
+            total_force_buys=total_force_buys,
+            economy_grade=economy_grade,
+            economy_grade_reason=economy_grade_reason,
         )
 
     def get_player_profile(self, steam_id: int) -> PlayerEconomyProfile | None:

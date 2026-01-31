@@ -175,7 +175,9 @@ class TestAboutEndpoint:
         assert "basic" in data["metrics"]
         assert "advanced" in data["metrics"]
         assert "kills" in data["metrics"]["basic"]
-        assert "ttd_median_ms" in data["metrics"]["advanced"]
+        # Check for new reaction time / engagement duration metrics
+        assert "reaction_time_median_ms" in data["metrics"]["advanced"]
+        assert "engagement_duration_median_ms" in data["metrics"]["advanced"]
 
     def test_about_includes_methodology(self):
         """About endpoint includes methodology explanations."""

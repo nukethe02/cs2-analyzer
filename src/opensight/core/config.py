@@ -111,9 +111,6 @@ class MetricsConfig:
     # Trade settings
     trade_window_ms: float = 2000.0
 
-    # Opening duel settings
-    opening_window_seconds: float = 30.0
-
     # Rating calculation weights
     rating_kd_weight: float = 0.30
     rating_cp_weight: float = 0.20
@@ -470,7 +467,6 @@ metrics:
   ttd_max_lookback_ms: 2000.0
   cp_sample_interval_ticks: 16
   trade_window_ms: 2000.0
-  opening_window_seconds: 30.0
 
 # Replay watcher settings
 watcher:

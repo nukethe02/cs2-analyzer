@@ -174,20 +174,25 @@ class MetricCalculator:
         kills: list[KillContext], round_duration: float = 115.0
     ) -> dict[int, dict]:
         """
-        Detect entry frags (first kill in round by attacker).
+        Detect opening duels (first kill/death of each round).
 
-        Entry frags are critical for round analysis - shows who gets first pick.
+        This is a simplified version that tracks the first kill of each round
+        as an "opening duel" (5v5 -> 5v4). For zone-aware entry frags
+        (first kill INTO a bombsite), see DemoAnalyzer._detect_entry_frags().
+
+        Note: The round_duration parameter is kept for backwards compatibility
+        but is no longer used (time-based windows have been removed).
         """
-        entry_stats = {}
+        entry_stats: dict[int, dict] = {}
 
         # Group kills by round
-        kills_by_round = {}
+        kills_by_round: dict[int, list] = {}
         for kill in kills:
             if kill.round_num not in kills_by_round:
                 kills_by_round[kill.round_num] = []
             kills_by_round[kill.round_num].append(kill)
 
-        # For each round, find first kill (entry frag)
+        # For each round, find first kill (opening duel)
         for _round_num, round_kills in kills_by_round.items():
             if not round_kills:
                 continue
@@ -196,12 +201,11 @@ class MetricCalculator:
             sorted_kills = sorted(round_kills, key=lambda k: k.tick)
             first_kill = sorted_kills[0]
 
-            # Entry frag is first kill if it happens in first 15 seconds
-            first_kill_time = MetricCalculator._get_time_in_round(first_kill)
-            if first_kill_time < 15:
-                attacker_id = getattr(
-                    first_kill, "attacker_id", getattr(first_kill, "attacker_steamid", 0)
-                )
+            # Track the attacker (winner) of the opening duel
+            attacker_id = getattr(
+                first_kill, "attacker_id", getattr(first_kill, "attacker_steamid", 0)
+            )
+            if attacker_id:
                 if attacker_id not in entry_stats:
                     entry_stats[attacker_id] = {
                         "name": getattr(first_kill, "attacker_name", "Unknown"),
@@ -212,31 +216,18 @@ class MetricCalculator:
                 entry_stats[attacker_id]["entry_attempts"] += 1
                 entry_stats[attacker_id]["entry_kills"] += 1
 
-        # Track entry deaths (died in first 15 seconds without entry kill)
-        for _round_num, round_kills in kills_by_round.items():
-            entry_kill_attacker = None
-            for kill in round_kills:
-                kill_time = MetricCalculator._get_time_in_round(kill)
-                if kill_time < 15:
-                    entry_kill_attacker = getattr(
-                        kill, "attacker_id", getattr(kill, "attacker_steamid", 0)
-                    )
-                    break
-
-            # Deaths in first 15 seconds are entry deaths
-            for kill in round_kills:
-                kill_time = MetricCalculator._get_time_in_round(kill)
-                attacker_id = getattr(kill, "attacker_id", getattr(kill, "attacker_steamid", 0))
-                if kill_time < 15 and attacker_id != entry_kill_attacker:
-                    victim_id = getattr(kill, "victim_id", getattr(kill, "victim_steamid", 0))
-                    if victim_id not in entry_stats:
-                        entry_stats[victim_id] = {
-                            "name": getattr(kill, "victim_name", "Unknown"),
-                            "entry_attempts": 0,
-                            "entry_kills": 0,
-                            "entry_deaths": 0,
-                        }
-                    entry_stats[victim_id]["entry_deaths"] += 1
+            # Track the victim (loser) of the opening duel
+            victim_id = getattr(first_kill, "victim_id", getattr(first_kill, "victim_steamid", 0))
+            if victim_id:
+                if victim_id not in entry_stats:
+                    entry_stats[victim_id] = {
+                        "name": getattr(first_kill, "victim_name", "Unknown"),
+                        "entry_attempts": 0,
+                        "entry_kills": 0,
+                        "entry_deaths": 0,
+                    }
+                entry_stats[victim_id]["entry_attempts"] += 1
+                entry_stats[victim_id]["entry_deaths"] += 1
 
         return entry_stats
 

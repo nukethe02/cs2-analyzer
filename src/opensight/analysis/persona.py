@@ -27,6 +27,13 @@ PERSONAS = {
         "color": "#4CAF50",
         "check": lambda s: _calc_trade_rate(s) > 0.5 and s.get("trade_kill_success", 0) >= 2,
     },
+    "the_lurker": {
+        "name": "The Lurker",
+        "description": "Operates alone for strategic advantage - timing-based kills",
+        "icon": "lurk",
+        "color": "#795548",
+        "check": lambda s: _is_effective_lurker(s),
+    },
     "the_opener": {
         "name": "The Opener",
         "description": "Leads the charge with entry frags",
@@ -153,6 +160,51 @@ def _calc_trade_rate(stats: dict[str, Any]) -> float:
     if opportunities == 0:
         return 0.0
     return success / opportunities
+
+
+def _is_effective_lurker(stats: dict[str, Any]) -> bool:
+    """
+    Identify effective lurkers - players who operate alone but with impact.
+
+    Criteria:
+    - High untraded deaths (indicates operating alone)
+    - BUT must have impact (kills, rating, or backstab kills)
+
+    A player who dies alone without impact is NOT a lurker - they're just feeding.
+    """
+    deaths = stats.get("deaths", 0)
+    untraded_deaths = stats.get("untraded_deaths", 0)
+
+    # Need enough deaths to establish pattern
+    if deaths < 3:
+        return False
+
+    # Calculate isolation rate (what % of deaths were untraded)
+    isolation_rate = untraded_deaths / deaths if deaths > 0 else 0
+
+    # Must be frequently isolated (>50% untraded deaths)
+    if isolation_rate < 0.5:
+        return False
+
+    # NOW check for impact - this distinguishes lurkers from feeders
+    # Check multiple impact indicators
+    kills = stats.get("kills", 0)
+    hltv_rating = stats.get("hltv_rating", 0)
+    backstab_kills = stats.get("backstab_kills", 0)  # Kills from behind
+    impact_rating = stats.get("impact_rating", 0)
+    rounds_played = stats.get("rounds_played", 1)
+
+    # Calculate kills per round
+    kpr = kills / rounds_played if rounds_played > 0 else 0
+
+    # Effective lurker must have at least ONE of:
+    # 1. Decent kill rate (>0.5 KPR) - getting picks while alone
+    # 2. Good rating (>0.9) - positive overall impact
+    # 3. Backstab kills (>=2) - catching rotations/flanks
+    # 4. Positive impact rating
+    has_impact = kpr >= 0.5 or hltv_rating >= 0.9 or backstab_kills >= 2 or impact_rating > 0
+
+    return has_impact
 
 
 def _calc_entry_rate(stats: dict[str, Any]) -> float:

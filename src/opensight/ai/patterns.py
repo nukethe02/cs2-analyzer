@@ -50,6 +50,7 @@ class MistakeType(Enum):
     WIDE_PEEK = "wide_peek"
     EXPOSED_POSITION = "exposed_position"
     SAME_ANGLE_HOLD = "same_angle_hold"
+    STATIC_REPEEK = "static_repeek"  # Greedy play: Got kill, re-peeked same angle, died
     OVER_ROTATION = "over_rotation"
     UNDER_ROTATION = "under_rotation"
     LATE_ROTATION = "late_rotation"

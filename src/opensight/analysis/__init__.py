@@ -6,6 +6,25 @@ This module contains:
 - metrics: TTD, Crosshair Placement calculations
 - metrics_optimized: Vectorized/optimized metric computations
 - detection: Demo source and game mode detection
+- rotation: CT rotation latency analysis
 """
 
-__all__: list[str] = []
+from opensight.analysis.rotation import (
+    CTRotationAnalyzer,
+    analyze_ct_rotations,
+    get_rotation_summary,
+    SiteContactEvent,
+    RotationLatency,
+    PlayerRotationStats,
+    TeamRotationStats,
+)
+
+__all__: list[str] = [
+    "CTRotationAnalyzer",
+    "analyze_ct_rotations",
+    "get_rotation_summary",
+    "SiteContactEvent",
+    "RotationLatency",
+    "PlayerRotationStats",
+    "TeamRotationStats",
+]

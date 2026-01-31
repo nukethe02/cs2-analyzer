@@ -10,8 +10,8 @@ import pytest
 from opensight.analysis.analytics import (
     CrosshairPlacementResult,
     DemoAnalyzer,
+    EngagementResult,
     PlayerAnalytics,
-    TTDResult,
     analyze_demo,
     safe_float,
 )
@@ -49,24 +49,23 @@ class TestSafeFloat:
 
 
 class TestTTDResult:
-    """Tests for TTDResult dataclass."""
+    """Tests for EngagementResult (legacy TTDResult) dataclass."""
 
     def test_ttd_result_creation(self):
-        """TTDResult can be created with required fields."""
-        result = TTDResult(
-            tick_spotted=1000,
-            tick_damage=1100,
-            ttd_ticks=100,
-            ttd_ms=1562.5,
+        """EngagementResult can be created with required fields."""
+        result = EngagementResult(
+            tick_first_damage=1000,
+            tick_kill=1100,
+            duration_ticks=100,
+            duration_ms=1562.5,
             attacker_steamid=12345,
             victim_steamid=67890,
             weapon="ak47",
             headshot=True,
-            is_prefire=False,
         )
-        assert result.tick_spotted == 1000
-        assert result.ttd_ms == 1562.5
-        assert result.is_prefire is False
+        assert result.tick_first_damage == 1000
+        assert result.duration_ms == 1562.5
+        assert result.tick_kill == 1100
 
 
 class TestCrosshairPlacementResult:
@@ -102,7 +101,7 @@ class TestPlayerAnalytics:
             total_damage=1280,
             rounds_played=15,
             weapon_kills={"ak47": 8, "awp": 5, "usp_silencer": 2},
-            ttd_values=[300.0, 350.0, 400.0],
+            engagement_duration_values=[300.0, 350.0, 400.0],
             cp_values=[3.0, 4.5, 6.0],
             prefire_count=2,
         )
@@ -364,6 +363,163 @@ class TestOpeningDuelStats:
         stats = OpeningDuelStats()
         assert stats.entry_ttd_median_ms is None
         assert stats.entry_ttd_mean_ms is None
+
+    def test_zone_fields_default(self):
+        """Zone-based fields have correct defaults."""
+        from opensight.analysis.analytics import OpeningDuelStats
+
+        stats = OpeningDuelStats()
+        assert stats.map_control_kills == 0
+        assert stats.site_kills == 0
+        assert stats.kill_zones == {}
+
+    def test_map_control_rate(self):
+        """Map control rate calculated correctly."""
+        from opensight.analysis.analytics import OpeningDuelStats
+
+        stats = OpeningDuelStats(wins=10, map_control_kills=7, site_kills=3)
+        assert stats.map_control_rate == 70.0
+
+    def test_map_control_rate_zero_wins(self):
+        """Map control rate is 0 when no wins."""
+        from opensight.analysis.analytics import OpeningDuelStats
+
+        stats = OpeningDuelStats()
+        assert stats.map_control_rate == 0.0
+
+
+class TestOpeningEngagementStats:
+    """Tests for OpeningEngagementStats - damage-based engagement tracking."""
+
+    def test_creation_with_defaults(self):
+        """OpeningEngagementStats can be created with default values."""
+        from opensight.analysis.analytics import OpeningEngagementStats
+
+        stats = OpeningEngagementStats()
+        assert stats.engagement_attempts == 0
+        assert stats.engagement_wins == 0
+        assert stats.engagement_losses == 0
+        assert stats.first_damage_dealt == 0
+        assert stats.first_damage_taken == 0
+        assert stats.opening_damage_total == 0
+        assert stats.opening_damage_values == []
+
+    def test_engagement_win_rate(self):
+        """Engagement win rate calculated correctly."""
+        from opensight.analysis.analytics import OpeningEngagementStats
+
+        stats = OpeningEngagementStats(engagement_attempts=10, engagement_wins=6)
+        assert stats.engagement_win_rate == 60.0
+
+    def test_engagement_win_rate_zero_attempts(self):
+        """Engagement win rate is 0 when no attempts."""
+        from opensight.analysis.analytics import OpeningEngagementStats
+
+        stats = OpeningEngagementStats()
+        assert stats.engagement_win_rate == 0.0
+
+    def test_first_damage_rate(self):
+        """First damage rate calculated correctly."""
+        from opensight.analysis.analytics import OpeningEngagementStats
+
+        stats = OpeningEngagementStats(engagement_attempts=10, first_damage_dealt=3)
+        assert stats.first_damage_rate == 30.0
+
+    def test_first_damage_rate_zero_attempts(self):
+        """First damage rate is 0 when no attempts."""
+        from opensight.analysis.analytics import OpeningEngagementStats
+
+        stats = OpeningEngagementStats()
+        assert stats.first_damage_rate == 0.0
+
+    def test_opening_damage_avg(self):
+        """Opening damage average calculated correctly."""
+        from opensight.analysis.analytics import OpeningEngagementStats
+
+        stats = OpeningEngagementStats()
+        stats.opening_damage_values = [50, 100, 75]
+        assert stats.opening_damage_avg == 75.0
+
+    def test_opening_damage_avg_empty(self):
+        """Opening damage average is 0 when no values."""
+        from opensight.analysis.analytics import OpeningEngagementStats
+
+        stats = OpeningEngagementStats()
+        assert stats.opening_damage_avg == 0.0
+
+
+class TestEntryFragStats:
+    """Tests for EntryFragStats - zone-aware entry frag tracking."""
+
+    def test_creation_with_defaults(self):
+        """EntryFragStats can be created with default values."""
+        from opensight.analysis.analytics import EntryFragStats
+
+        stats = EntryFragStats()
+        assert stats.a_site_entries == 0
+        assert stats.a_site_entry_deaths == 0
+        assert stats.b_site_entries == 0
+        assert stats.b_site_entry_deaths == 0
+        assert stats.total_entry_frags == 0
+        assert stats.total_entry_deaths == 0
+        assert stats.entry_rounds_won == 0
+        assert stats.entry_rounds_lost == 0
+
+    def test_entry_frag_rate(self):
+        """Entry frag rate calculated correctly."""
+        from opensight.analysis.analytics import EntryFragStats
+
+        stats = EntryFragStats(total_entry_frags=7, total_entry_deaths=3)
+        assert stats.entry_frag_rate == 70.0
+
+    def test_entry_frag_rate_zero_total(self):
+        """Entry frag rate is 0 when no entries."""
+        from opensight.analysis.analytics import EntryFragStats
+
+        stats = EntryFragStats()
+        assert stats.entry_frag_rate == 0.0
+
+    def test_a_site_success_rate(self):
+        """A site success rate calculated correctly."""
+        from opensight.analysis.analytics import EntryFragStats
+
+        stats = EntryFragStats(a_site_entries=4, a_site_entry_deaths=1)
+        assert stats.a_site_success_rate == 80.0
+
+    def test_a_site_success_rate_zero(self):
+        """A site success rate is 0 when no A site action."""
+        from opensight.analysis.analytics import EntryFragStats
+
+        stats = EntryFragStats()
+        assert stats.a_site_success_rate == 0.0
+
+    def test_b_site_success_rate(self):
+        """B site success rate calculated correctly."""
+        from opensight.analysis.analytics import EntryFragStats
+
+        stats = EntryFragStats(b_site_entries=3, b_site_entry_deaths=2)
+        assert stats.b_site_success_rate == 60.0
+
+    def test_b_site_success_rate_zero(self):
+        """B site success rate is 0 when no B site action."""
+        from opensight.analysis.analytics import EntryFragStats
+
+        stats = EntryFragStats()
+        assert stats.b_site_success_rate == 0.0
+
+    def test_entry_round_win_rate(self):
+        """Entry round win rate calculated correctly."""
+        from opensight.analysis.analytics import EntryFragStats
+
+        stats = EntryFragStats(entry_rounds_won=8, entry_rounds_lost=2)
+        assert stats.entry_round_win_rate == 80.0
+
+    def test_entry_round_win_rate_zero(self):
+        """Entry round win rate is 0 when no entry rounds."""
+        from opensight.analysis.analytics import EntryFragStats
+
+        stats = EntryFragStats()
+        assert stats.entry_round_win_rate == 0.0
 
 
 class TestTradeStats:
@@ -883,7 +1039,7 @@ class TestPlayerMatchStatsAimProperties:
         # DEPRECATED: Kill-based tracking (kept for backward compatibility)
         player.counter_strafe_kills = 7
         player.total_kills_with_velocity = 10
-        player.ttd_values = [250.0, 300.0, 350.0]
+        player.engagement_duration_values = [250.0, 300.0, 350.0]
         player.cp_values = [5.0, 8.0, 10.0]
 
         aim_stats = player.aim_stats

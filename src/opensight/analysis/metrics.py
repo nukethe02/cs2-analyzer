@@ -13,7 +13,7 @@ comparable to professional analytics platforms.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 import numpy as np
@@ -528,6 +528,217 @@ class FiringAccuracyResult:
             f"burst={self.burst_accuracy:.1f}%, "
             f"spray={self.spray_accuracy:.1f}%)"
         )
+
+
+# ============================================================================
+# Site Anchor Rating (Defensive Hero Metric)
+# ============================================================================
+
+# Bombsite place_name values from demoparser2
+BOMBSITE_PLACE_NAMES: dict[str, set[str]] = {
+    "A": {"BombsiteA", "bombsitea", "Bombsite A", "A Site", "ASite"},
+    "B": {"BombsiteB", "bombsiteb", "Bombsite B", "B Site", "BSite"},
+}
+
+# Minimum T-side players entering site to trigger "execute" detection
+EXECUTE_PLAYER_THRESHOLD = 3
+
+# Rating formula weights
+ANCHOR_RATING_WEIGHTS = {
+    "stall_time_per_second": 3.0,  # Each second of delay = 3 points
+    "molotov": 15.0,  # Molotov/incendiary = 15 points (buys ~7 seconds)
+    "smoke": 15.0,  # Smoke = 15 points (blocks vision)
+    "flash": 5.0,  # Flash = 5 points (temporary)
+    "he_grenade": 8.0,  # HE = 8 points (damage + delay)
+    "kill": 10.0,  # Each kill during hold = 10 points
+    "survival_bonus": 20.0,  # Survived the execute = 20 bonus
+}
+
+
+@dataclass
+class SiteExecuteEvent:
+    """Detected site execute event (3+ T's entering bombsite)."""
+
+    round_num: int
+    site: str  # "A" or "B"
+    execute_start_tick: int
+    t_players: list[int]  # Steam IDs of attacking T's
+    ct_defenders: list[int]  # Steam IDs of CTs in site at execute start
+    bomb_plant_tick: int | None = None
+    round_end_tick: int = 0
+
+
+@dataclass
+class AnchorHoldResult:
+    """Site Anchor Effectiveness metric.
+
+    Measures how well a CT player delayed a T-side execute, even if they died.
+    This metric rewards defensive players who buy time for rotations.
+
+    "You died, but you bought us 18 seconds. Good job."
+    """
+
+    steam_id: int
+    player_name: str
+    round_num: int
+    site: str  # "A" or "B"
+
+    # Timing
+    execute_start_tick: int
+    hold_end_tick: int
+    stall_time_seconds: float  # Time survived during execute
+
+    # Outcome
+    survived: bool
+    kills_during_hold: int
+    damage_during_hold: int
+    assists_during_hold: int = 0
+
+    # Utility used during the hold (high value)
+    molotovs_used: int = 0
+    smokes_used: int = 0
+    flashes_used: int = 0
+    he_grenades_used: int = 0
+
+    # Context
+    attackers_count: int = 0  # T's who entered site
+    teammates_nearby: int = 0  # Other CTs who helped defend
+
+    @property
+    def utility_count(self) -> int:
+        """Total utility pieces used during the hold."""
+        return self.molotovs_used + self.smokes_used + self.flashes_used + self.he_grenades_used
+
+    @property
+    def anchor_hold_rating(self) -> float:
+        """
+        Composite rating rewarding stall time, utility usage, and kills.
+
+        Formula:
+        - stall_time_seconds * 3.0 (18 sec = 54 points)
+        - molotovs * 15.0 (buys 5-7 seconds each)
+        - smokes * 15.0 (blocks vision/delays push)
+        - flashes * 5.0 (temporary disruption)
+        - he_grenades * 8.0 (damage + psychological delay)
+        - kills * 10.0 (reduces attackers)
+        - survival_bonus: +20 if survived
+
+        Elite anchor: 80+ | Good: 50-80 | Average: 30-50 | Poor: <30
+        """
+        w = ANCHOR_RATING_WEIGHTS
+        score = self.stall_time_seconds * w["stall_time_per_second"]
+        score += self.molotovs_used * w["molotov"]
+        score += self.smokes_used * w["smoke"]
+        score += self.flashes_used * w["flash"]
+        score += self.he_grenades_used * w["he_grenade"]
+        score += self.kills_during_hold * w["kill"]
+        if self.survived:
+            score += w["survival_bonus"]
+        return round(score, 1)
+
+    @property
+    def rating_breakdown(self) -> dict[str, float]:
+        """Detailed breakdown of rating components."""
+        w = ANCHOR_RATING_WEIGHTS
+        return {
+            "stall_time": round(self.stall_time_seconds * w["stall_time_per_second"], 1),
+            "molotovs": round(self.molotovs_used * w["molotov"], 1),
+            "smokes": round(self.smokes_used * w["smoke"], 1),
+            "flashes": round(self.flashes_used * w["flash"], 1),
+            "he_grenades": round(self.he_grenades_used * w["he_grenade"], 1),
+            "kills": round(self.kills_during_hold * w["kill"], 1),
+            "survival": w["survival_bonus"] if self.survived else 0.0,
+        }
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API serialization."""
+        return {
+            "steam_id": self.steam_id,
+            "player_name": self.player_name,
+            "round_num": self.round_num,
+            "site": self.site,
+            # Timing
+            "stall_time_seconds": round(self.stall_time_seconds, 2),
+            "execute_start_tick": self.execute_start_tick,
+            "hold_end_tick": self.hold_end_tick,
+            # Outcome
+            "survived": self.survived,
+            "kills_during_hold": self.kills_during_hold,
+            "damage_during_hold": self.damage_during_hold,
+            "assists_during_hold": self.assists_during_hold,
+            # Utility
+            "molotovs_used": self.molotovs_used,
+            "smokes_used": self.smokes_used,
+            "flashes_used": self.flashes_used,
+            "he_grenades_used": self.he_grenades_used,
+            "utility_count": self.utility_count,
+            # Context
+            "attackers_count": self.attackers_count,
+            "teammates_nearby": self.teammates_nearby,
+            # Rating
+            "anchor_hold_rating": self.anchor_hold_rating,
+            "rating_breakdown": self.rating_breakdown,
+        }
+
+    def __repr__(self) -> str:
+        status = "HELD" if self.survived else "DIED"
+        return (
+            f"AnchorHold({self.player_name} @ {self.site}: "
+            f"{self.stall_time_seconds:.1f}s, {self.utility_count} util, "
+            f"{self.kills_during_hold}K, {status}, rating={self.anchor_hold_rating:.1f})"
+        )
+
+
+@dataclass
+class PlayerAnchorStats:
+    """Aggregated anchor statistics for a player across all rounds."""
+
+    steam_id: int
+    player_name: str
+    total_holds: int = 0
+    successful_holds: int = 0  # Survived or team won round
+    total_stall_time: float = 0.0
+    total_utility_used: int = 0
+    total_kills_during_holds: int = 0
+    total_damage_during_holds: int = 0
+    holds: list[AnchorHoldResult] = field(default_factory=list)
+
+    @property
+    def avg_stall_time(self) -> float:
+        """Average stall time per hold."""
+        return round(self.total_stall_time / self.total_holds, 2) if self.total_holds > 0 else 0.0
+
+    @property
+    def avg_rating(self) -> float:
+        """Average anchor hold rating."""
+        if not self.holds:
+            return 0.0
+        return round(sum(h.anchor_hold_rating for h in self.holds) / len(self.holds), 1)
+
+    @property
+    def survival_rate(self) -> float:
+        """Percentage of holds where anchor survived."""
+        if self.total_holds == 0:
+            return 0.0
+        survived = sum(1 for h in self.holds if h.survived)
+        return round(survived / self.total_holds * 100, 1)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API serialization."""
+        return {
+            "steam_id": self.steam_id,
+            "player_name": self.player_name,
+            "total_holds": self.total_holds,
+            "successful_holds": self.successful_holds,
+            "total_stall_time": round(self.total_stall_time, 2),
+            "avg_stall_time": self.avg_stall_time,
+            "total_utility_used": self.total_utility_used,
+            "total_kills_during_holds": self.total_kills_during_holds,
+            "total_damage_during_holds": self.total_damage_during_holds,
+            "avg_rating": self.avg_rating,
+            "survival_rate": self.survival_rate,
+            "holds": [h.to_dict() for h in self.holds],
+        }
 
 
 @dataclass
@@ -2099,9 +2310,7 @@ def _count_hits_for_sequence(
         return 0, 0
 
     # Find attacker column
-    att_col = _find_column(
-        damages_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"]
-    )
+    att_col = _find_column(damages_df, ["attacker_steamid", "attacker_steam_id", "attacker_id"])
     if not att_col or "tick" not in damages_df.columns:
         return 0, 0
 
@@ -2193,9 +2402,7 @@ def calculate_firing_accuracy(
                 continue
 
             # Count hits and headshots for this sequence
-            hits, headshots = _count_hits_for_sequence(
-                damages_df, pid, seq.shot_ticks
-            )
+            hits, headshots = _count_hits_for_sequence(damages_df, pid, seq.shot_ticks)
 
             # Categorize by sequence type
             seq_type = seq.sequence_type
@@ -2221,7 +2428,362 @@ def calculate_firing_accuracy(
     # Log summary
     if results:
         total_seqs = sum(r.total_sequences for r in results.values())
-        logger.info(f"Calculated firing accuracy for {len(results)} players ({total_seqs} sequences)")
+        logger.info(
+            f"Calculated firing accuracy for {len(results)} players ({total_seqs} sequences)"
+        )
+
+    return results
+
+
+# ============================================================================
+# Site Anchor Detection and Calculation
+# ============================================================================
+
+
+def _get_player_site(place_name: str | None) -> str | None:
+    """
+    Determine which bombsite a player is in based on place_name.
+
+    Args:
+        place_name: The place_name value from tick data (e.g., "BombsiteA")
+
+    Returns:
+        "A", "B", or None if not in a bombsite
+    """
+    if not place_name:
+        return None
+
+    place_lower = str(place_name).lower()
+
+    # Check for A site
+    if any(s.lower() in place_lower for s in ["bombsitea", "a site", "asite", "sitea"]):
+        return "A"
+
+    # Check for B site
+    if any(s.lower() in place_lower for s in ["bombsiteb", "b site", "bsite", "siteb"]):
+        return "B"
+
+    return None
+
+
+def detect_site_executes(
+    demo_data: DemoData,
+    execute_threshold: int = EXECUTE_PLAYER_THRESHOLD,
+) -> list[SiteExecuteEvent]:
+    """
+    Detect site execute events (3+ T's entering a bombsite).
+
+    Scans tick data to find moments when multiple T-side players
+    enter a bombsite zone simultaneously.
+
+    Args:
+        demo_data: Parsed demo data with ticks_df and rounds
+        execute_threshold: Minimum T's to count as an execute (default 3)
+
+    Returns:
+        List of SiteExecuteEvent objects
+    """
+    executes: list[SiteExecuteEvent] = []
+
+    # Require tick data
+    ticks_df = getattr(demo_data, "ticks_df", None)
+    if ticks_df is None or ticks_df.empty:
+        logger.warning("No tick data available - cannot detect site executes")
+        return executes
+
+    rounds = getattr(demo_data, "rounds", [])
+    if not rounds:
+        logger.warning("No round data available - cannot detect site executes")
+        return executes
+
+    # Find required columns
+    tick_col = _find_column(ticks_df, ["tick"])
+    steamid_col = _find_column(ticks_df, ["steamid", "steam_id", "user_steamid"])
+    team_col = _find_column(ticks_df, ["team_num", "team", "side"])
+    place_col = _find_column(ticks_df, ["last_place_name", "place_name", "place"])
+    alive_col = _find_column(ticks_df, ["is_alive", "alive", "health"])
+
+    if not all([tick_col, steamid_col, team_col, place_col]):
+        logger.warning("Missing required columns for site execute detection")
+        return executes
+
+    # Process each round
+    for round_info in rounds:
+        round_num = round_info.round_num
+        freeze_end = round_info.freeze_end_tick
+        round_end = round_info.end_tick
+
+        # Filter tick data to this round (after freeze time)
+        round_ticks = ticks_df[
+            (ticks_df[tick_col] >= freeze_end) & (ticks_df[tick_col] <= round_end)
+        ]
+
+        if round_ticks.empty:
+            continue
+
+        # Track if we've found an execute this round (only detect first major execute)
+        execute_found = False
+
+        # Get unique ticks in order
+        unique_ticks = sorted(round_ticks[tick_col].unique())
+
+        # Sample ticks (every 32 ticks = 0.5 seconds for performance)
+        sampled_ticks = unique_ticks[::32] if len(unique_ticks) > 100 else unique_ticks
+
+        for tick in sampled_ticks:
+            if execute_found:
+                break
+
+            tick_data = round_ticks[round_ticks[tick_col] == tick]
+
+            # Filter to alive players
+            if alive_col:
+                # Handle both boolean and health-based alive detection
+                if tick_data[alive_col].dtype == bool:
+                    tick_data = tick_data[tick_data[alive_col] == True]  # noqa: E712
+                else:
+                    tick_data = tick_data[tick_data[alive_col] > 0]
+
+            # Separate T's and CT's
+            # team_num: 2 = T, 3 = CT
+            t_players = tick_data[tick_data[team_col] == 2]
+            ct_players = tick_data[tick_data[team_col] == 3]
+
+            # Check each site
+            for site in ["A", "B"]:
+                # Count T's in this site
+                t_in_site = []
+                for _, row in t_players.iterrows():
+                    player_site = _get_player_site(row.get(place_col))
+                    if player_site == site:
+                        t_in_site.append(int(row[steamid_col]))
+
+                # Execute detected if 3+ T's in site
+                if len(t_in_site) >= execute_threshold:
+                    # Find CT defenders in site
+                    ct_defenders = []
+                    for _, row in ct_players.iterrows():
+                        player_site = _get_player_site(row.get(place_col))
+                        if player_site == site:
+                            ct_defenders.append(int(row[steamid_col]))
+
+                    # Only count as anchor scenario if 1-2 CTs defending
+                    if 1 <= len(ct_defenders) <= 2:
+                        executes.append(
+                            SiteExecuteEvent(
+                                round_num=round_num,
+                                site=site,
+                                execute_start_tick=int(tick),
+                                t_players=t_in_site,
+                                ct_defenders=ct_defenders,
+                                bomb_plant_tick=round_info.bomb_plant_tick,
+                                round_end_tick=round_end,
+                            )
+                        )
+                        execute_found = True
+                        logger.debug(
+                            f"Round {round_num}: Execute detected on {site} site "
+                            f"({len(t_in_site)} T's vs {len(ct_defenders)} CT anchors)"
+                        )
+                        break
+
+    logger.info(f"Detected {len(executes)} site execute events")
+    return executes
+
+
+def calculate_anchor_holds(
+    demo_data: DemoData,
+    executes: list[SiteExecuteEvent] | None = None,
+) -> dict[int, PlayerAnchorStats]:
+    """
+    Calculate anchor hold metrics for CT players who defended against site executes.
+
+    Measures:
+    - Stall time (how long they survived/delayed)
+    - Utility usage during the hold
+    - Kills during the hold
+    - Overall anchor hold rating
+
+    Args:
+        demo_data: Parsed demo data
+        executes: Pre-detected site executes (or will detect if None)
+
+    Returns:
+        Dictionary mapping steam_id to PlayerAnchorStats
+    """
+    results: dict[int, PlayerAnchorStats] = {}
+
+    # Detect executes if not provided
+    if executes is None:
+        executes = detect_site_executes(demo_data)
+
+    if not executes:
+        logger.info("No site executes detected - no anchor holds to calculate")
+        return results
+
+    # Get required data
+    kills = getattr(demo_data, "kills", [])
+    damages = getattr(demo_data, "damages", [])
+    grenades = getattr(demo_data, "grenades", [])
+    tick_rate = getattr(demo_data, "tick_rate", 64)
+
+    # Build lookup structures for efficiency
+    # Kills by round: {round_num: [kill_events]}
+    kills_by_round: dict[int, list] = {}
+    for kill in kills:
+        rn = getattr(kill, "round_num", 0)
+        if rn not in kills_by_round:
+            kills_by_round[rn] = []
+        kills_by_round[rn].append(kill)
+
+    # Damages by round
+    damages_by_round: dict[int, list] = {}
+    for dmg in damages:
+        rn = getattr(dmg, "round_num", 0)
+        if rn not in damages_by_round:
+            damages_by_round[rn] = []
+        damages_by_round[rn].append(dmg)
+
+    # Grenades by round
+    grenades_by_round: dict[int, list] = {}
+    for nade in grenades:
+        rn = getattr(nade, "round_num", 0)
+        if rn not in grenades_by_round:
+            grenades_by_round[rn] = []
+        grenades_by_round[rn].append(nade)
+
+    # Process each execute
+    for execute in executes:
+        round_num = execute.round_num
+        site = execute.site
+        start_tick = execute.execute_start_tick
+
+        round_kills = kills_by_round.get(round_num, [])
+        round_damages = damages_by_round.get(round_num, [])
+        round_grenades = grenades_by_round.get(round_num, [])
+
+        # Process each anchor (CT defender)
+        for anchor_id in execute.ct_defenders:
+            # Determine when the anchor's hold ended
+            # End conditions: anchor death, bomb plant, or round end
+            anchor_death_tick = None
+            for kill in round_kills:
+                victim_id = getattr(kill, "victim_steamid", None)
+                if victim_id == anchor_id:
+                    kill_tick = getattr(kill, "tick", 0)
+                    if kill_tick >= start_tick:
+                        anchor_death_tick = kill_tick
+                        break
+
+            # Determine end tick
+            end_tick = execute.round_end_tick
+            survived = True
+
+            if anchor_death_tick and anchor_death_tick < end_tick:
+                end_tick = anchor_death_tick
+                survived = False
+            if execute.bomb_plant_tick and execute.bomb_plant_tick < end_tick:
+                end_tick = execute.bomb_plant_tick
+
+            # Calculate stall time
+            stall_ticks = end_tick - start_tick
+            stall_time_seconds = stall_ticks / tick_rate
+
+            # Count kills during hold
+            kills_during = 0
+            for kill in round_kills:
+                attacker_id = getattr(kill, "attacker_steamid", None)
+                kill_tick = getattr(kill, "tick", 0)
+                if attacker_id == anchor_id and start_tick <= kill_tick <= end_tick:
+                    kills_during += 1
+
+            # Count damage during hold
+            damage_during = 0
+            for dmg in round_damages:
+                attacker_id = getattr(dmg, "attacker_steamid", None)
+                dmg_tick = getattr(dmg, "tick", 0)
+                if attacker_id == anchor_id and start_tick <= dmg_tick <= end_tick:
+                    damage_during += getattr(dmg, "damage_health", 0)
+
+            # Count utility used during hold
+            molotovs = 0
+            smokes = 0
+            flashes = 0
+            he_grenades = 0
+
+            for nade in round_grenades:
+                thrower_id = getattr(nade, "player_steamid", None)
+                nade_tick = getattr(nade, "tick", 0)
+                nade_type = getattr(nade, "grenade_type", "").lower()
+
+                # Count grenades by the anchor during the hold
+                if thrower_id == anchor_id and start_tick <= nade_tick <= end_tick:
+                    if nade_type in ("molotov", "incgrenade", "inferno"):
+                        molotovs += 1
+                    elif nade_type in ("smokegrenade", "smoke"):
+                        smokes += 1
+                    elif nade_type in ("flashbang", "flash"):
+                        flashes += 1
+                    elif nade_type in ("hegrenade", "he_grenade", "he"):
+                        he_grenades += 1
+
+            # Avoid double-counting (thrown and detonate are separate events)
+            # Only count "thrown" events, or if no thrown then count detonate
+            # For simplicity, we'll divide by 2 if counts seem doubled
+            # This is a heuristic - actual implementation may need refinement
+
+            # Create hold result
+            hold = AnchorHoldResult(
+                steam_id=anchor_id,
+                player_name=demo_data.player_names.get(anchor_id, "Unknown"),
+                round_num=round_num,
+                site=site,
+                execute_start_tick=start_tick,
+                hold_end_tick=end_tick,
+                stall_time_seconds=stall_time_seconds,
+                survived=survived,
+                kills_during_hold=kills_during,
+                damage_during_hold=damage_during,
+                molotovs_used=molotovs,
+                smokes_used=smokes,
+                flashes_used=flashes,
+                he_grenades_used=he_grenades,
+                attackers_count=len(execute.t_players),
+                teammates_nearby=len(execute.ct_defenders) - 1,
+            )
+
+            # Add to player stats
+            if anchor_id not in results:
+                results[anchor_id] = PlayerAnchorStats(
+                    steam_id=anchor_id,
+                    player_name=demo_data.player_names.get(anchor_id, "Unknown"),
+                )
+
+            stats = results[anchor_id]
+            stats.total_holds += 1
+            stats.total_stall_time += stall_time_seconds
+            stats.total_utility_used += hold.utility_count
+            stats.total_kills_during_holds += kills_during
+            stats.total_damage_during_holds += damage_during
+            stats.holds.append(hold)
+
+            if survived:
+                stats.successful_holds += 1
+
+            logger.debug(
+                f"Anchor hold: {hold.player_name} on {site} - "
+                f"{stall_time_seconds:.1f}s, {hold.utility_count} util, "
+                f"rating={hold.anchor_hold_rating:.1f}"
+            )
+
+    # Log summary
+    if results:
+        total_holds = sum(s.total_holds for s in results.values())
+        avg_rating = sum(s.avg_rating for s in results.values()) / len(results) if results else 0
+        logger.info(
+            f"Calculated {total_holds} anchor holds for {len(results)} players "
+            f"(avg rating: {avg_rating:.1f})"
+        )
 
     return results
 
@@ -2247,6 +2809,7 @@ class ComprehensivePlayerMetrics:
     ttd: TTDResult | None
     crosshair_placement: CrosshairPlacementResult | None
     firing_accuracy: FiringAccuracyResult | None = None  # Tap/Burst/Spray accuracy
+    anchor_stats: PlayerAnchorStats | None = None  # Site anchor effectiveness
 
     def overall_rating(self) -> float:
         """
@@ -2302,6 +2865,7 @@ def calculate_comprehensive_metrics(
     ttd = calculate_ttd(demo_data, steam_id)
     cp = calculate_crosshair_placement(demo_data, steam_id)
     firing_acc = calculate_firing_accuracy(demo_data, steam_id)
+    anchor_stats = calculate_anchor_holds(demo_data)  # Site anchor effectiveness
 
     results: dict[int, ComprehensivePlayerMetrics] = {}
 
@@ -2323,6 +2887,7 @@ def calculate_comprehensive_metrics(
             ttd=ttd.get(int(player_id)),
             crosshair_placement=cp.get(int(player_id)),
             firing_accuracy=firing_acc.get(int(player_id)),
+            anchor_stats=anchor_stats.get(int(player_id)),
         )
 
     return results

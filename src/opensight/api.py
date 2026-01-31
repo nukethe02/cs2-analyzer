@@ -209,9 +209,7 @@ def player_stats_to_dict(player: Any) -> dict:
         "engagement_samples": len(player.engagement_duration_values),
         # True TTD / Reaction Time (visibility to first damage)
         "reaction_time_median_ms": (
-            round(player.reaction_time_median_ms, 1)
-            if player.reaction_time_median_ms
-            else None
+            round(player.reaction_time_median_ms, 1) if player.reaction_time_median_ms else None
         ),
         "reaction_time_mean_ms": (
             round(player.reaction_time_mean_ms, 1) if player.reaction_time_mean_ms else None
@@ -236,6 +234,12 @@ def player_stats_to_dict(player: Any) -> dict:
         "opening_duel_losses": player.opening_duels.losses,
         "opening_duel_attempts": player.opening_duels.attempts,
         "opening_duel_win_rate": player.opening_duels.win_rate,
+        # Dry peek tracking
+        "dry_peek_rate": player.opening_duels.dry_peek_rate,
+        "unsupported_entries": player.opening_duels.unsupported_entries,
+        "unsupported_deaths": player.opening_duels.unsupported_deaths,
+        "supported_entries": player.opening_duels.supported_entries,
+        "supported_deaths": player.opening_duels.supported_deaths,
         # Trades
         "kills_traded": player.trades.kills_traded,
         "deaths_traded": player.trades.deaths_traded,
@@ -323,7 +327,7 @@ def build_player_response(player: Any) -> dict:
         "cp_median_error": (
             round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None
         ),
-        # Opening duels (nested) with entry TTD stats
+        # Opening duels (nested) with entry TTD, dry peek stats, and zone classification
         "opening_duels": {
             "attempts": player.opening_duels.attempts,
             "wins": player.opening_duels.wins,
@@ -342,6 +346,43 @@ def build_player_response(player: Any) -> dict:
                 if player.opening_duels.entry_ttd_mean_ms
                 else None
             ),
+            # Dry peek tracking (entries without utility support)
+            "supported_entries": player.opening_duels.supported_entries,
+            "unsupported_entries": player.opening_duels.unsupported_entries,
+            "supported_deaths": player.opening_duels.supported_deaths,
+            "unsupported_deaths": player.opening_duels.unsupported_deaths,
+            "dry_peek_rate": round(player.opening_duels.dry_peek_rate, 1),
+            "dry_peek_death_rate": round(player.opening_duels.dry_peek_death_rate, 1),
+            # Zone-based classification (map control vs site kills)
+            "map_control_kills": player.opening_duels.map_control_kills,
+            "site_kills": player.opening_duels.site_kills,
+            "map_control_rate": round(player.opening_duels.map_control_rate, 1),
+            "kill_zones": player.opening_duels.kill_zones,
+        },
+        # Opening engagements - who FOUGHT first (damage-based tracking)
+        "opening_engagements": {
+            "engagement_attempts": player.opening_engagements.engagement_attempts,
+            "engagement_wins": player.opening_engagements.engagement_wins,
+            "engagement_losses": player.opening_engagements.engagement_losses,
+            "engagement_win_rate": round(player.opening_engagements.engagement_win_rate, 1),
+            "first_damage_dealt": player.opening_engagements.first_damage_dealt,
+            "first_damage_taken": player.opening_engagements.first_damage_taken,
+            "first_damage_rate": round(player.opening_engagements.first_damage_rate, 1),
+            "opening_damage_total": player.opening_engagements.opening_damage_total,
+            "opening_damage_avg": round(player.opening_engagements.opening_damage_avg, 1),
+        },
+        # Zone-aware entry frags (first kills INTO bombsites)
+        "entry_frags": {
+            "total_entry_frags": player.entry_frags.total_entry_frags,
+            "total_entry_deaths": player.entry_frags.total_entry_deaths,
+            "entry_frag_rate": round(player.entry_frags.entry_frag_rate, 1),
+            "a_site_entries": player.entry_frags.a_site_entries,
+            "a_site_entry_deaths": player.entry_frags.a_site_entry_deaths,
+            "a_site_success_rate": round(player.entry_frags.a_site_success_rate, 1),
+            "b_site_entries": player.entry_frags.b_site_entries,
+            "b_site_entry_deaths": player.entry_frags.b_site_entry_deaths,
+            "b_site_success_rate": round(player.entry_frags.b_site_success_rate, 1),
+            "entry_round_win_rate": round(player.entry_frags.entry_round_win_rate, 1),
         },
         # Trades (Leetify-style nested stats)
         "trades": {
@@ -1894,3 +1935,137 @@ async def get_player_metrics(steam_id: str, demo_id: str = Query(None, max_lengt
     except Exception as e:
         logger.exception("Failed to retrieve player metrics")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve metrics: {e!s}") from e
+
+
+# =============================================================================
+# Tactical Analysis Endpoints - CT Rotation Latency
+# =============================================================================
+
+
+@app.post("/tactical/rotations")
+@rate_limit("3/minute")
+async def analyze_rotations(
+    request: Request,
+    file: Annotated[UploadFile, File(...)],
+) -> dict[str, Any]:
+    """
+    Analyze CT rotation latency from a demo file.
+
+    Returns rotation timing metrics for each player:
+    - Reaction time: How fast they start moving after contact
+    - Travel time: How fast they reach the opposite site
+    - Classification: over_rotator, balanced, slow_rotator, anchor
+
+    This helps IGLs identify rotation tendencies and improve team coordination.
+
+    Rate limit: 3 requests per minute per IP address.
+    """
+    # Validate file extension
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    filename_lower = file.filename.lower()
+    if not filename_lower.endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="File must be a .dem or .dem.gz file")
+
+    try:
+        from opensight.analysis.rotation import CTRotationAnalyzer, get_rotation_summary
+        from opensight.core.parser import DemoParser
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Rotation module not available: {e}") from e
+
+    tmp_path = None
+    try:
+        content = await file.read()
+        file_size_bytes = len(content)
+
+        if file_size_bytes > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(status_code=413, detail="File too large")
+
+        if file_size_bytes == 0:
+            raise HTTPException(status_code=400, detail="Empty file")
+
+        suffix = ".dem.gz" if filename_lower.endswith(".dem.gz") else ".dem"
+        with NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
+        # Parse demo with tick data for position tracking
+        parser = DemoParser(tmp_path)
+        data = parser.parse()
+
+        # Run rotation analysis
+        analyzer = CTRotationAnalyzer(data)
+        team_stats = analyzer.analyze()
+        advice = analyzer.get_rotation_advice()
+        summary = get_rotation_summary(team_stats)
+
+        # Build response
+        player_stats = []
+        for player in team_stats.player_stats:
+            player_stats.append(
+                {
+                    "steam_id": str(player.steam_id),
+                    "name": player.name,
+                    "rotation_count": player.rotation_count,
+                    "avg_reaction_time_ms": round(player.avg_reaction_time_ms, 0)
+                    if player.avg_reaction_time_ms
+                    else None,
+                    "avg_travel_time_ms": round(player.avg_travel_time_ms, 0)
+                    if player.avg_travel_time_ms
+                    else None,
+                    "fastest_rotation_ms": round(player.fastest_rotation_ms, 0)
+                    if player.fastest_rotation_ms
+                    else None,
+                    "slowest_rotation_ms": round(player.slowest_rotation_ms, 0)
+                    if player.slowest_rotation_ms
+                    else None,
+                    "classification": player.classification.value
+                    if player.classification
+                    else "unknown",
+                    "over_rotations": player.over_rotations,
+                    "late_rotations": player.late_rotations,
+                }
+            )
+
+        contact_events = []
+        for event in team_stats.contact_events[:50]:  # Limit to 50 events
+            contact_events.append(
+                {
+                    "round_num": event.round_num,
+                    "site": event.site,
+                    "trigger": event.trigger.value,
+                    "tick": event.tick,
+                    "t_players_present": event.t_players_present,
+                }
+            )
+
+        return {
+            "map_name": data.map_name,
+            "team_stats": {
+                "team_avg_reaction_ms": round(team_stats.team_avg_reaction_ms, 0)
+                if team_stats.team_avg_reaction_ms
+                else None,
+                "team_avg_travel_ms": round(team_stats.team_avg_travel_ms, 0)
+                if team_stats.team_avg_travel_ms
+                else None,
+                "total_rotations": team_stats.total_rotations,
+                "successful_rotations": team_stats.successful_rotations,
+            },
+            "player_stats": player_stats,
+            "contact_events": contact_events,
+            "advice": advice,
+            "summary": summary,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Rotation analysis failed")
+        raise HTTPException(status_code=500, detail=f"Rotation analysis failed: {e!s}") from e
+    finally:
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass

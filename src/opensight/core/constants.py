@@ -176,9 +176,6 @@ TRADE_WINDOW_SECONDS = 5.0
 # Flash assist minimum duration (seconds)
 FLASH_ASSIST_MIN_DURATION = 0.5
 
-# Opening duel timeframe (seconds from round start)
-OPENING_DUEL_WINDOW = 45.0
-
 # Clutch timing (last player alive threshold in seconds)
 CLUTCH_TIME_THRESHOLD = 60.0
 

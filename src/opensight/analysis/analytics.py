@@ -6621,6 +6621,26 @@ class DemoAnalyzer:
                     }
                 )
 
+            # Greedy re-peek discipline insights
+            if player.greedy_repeeks >= 2:
+                player_insights.append(
+                    {
+                        "type": "mistake",
+                        "category": "positioning",
+                        "message": f"Greedy plays detected. You died {player.greedy_repeeks} times by re-peeking the same angle after getting a kill. Reposition after kills.",
+                        "priority": "high",
+                    }
+                )
+            elif player.discipline_rating < 90.0 and player.kills >= 5:
+                player_insights.append(
+                    {
+                        "type": "warning",
+                        "category": "positioning",
+                        "message": f"Discipline rating: {player.discipline_rating:.0f}%. After kills, reposition instead of re-peeking.",
+                        "priority": "medium",
+                    }
+                )
+
             if player_insights:
                 insights.append(
                     {
