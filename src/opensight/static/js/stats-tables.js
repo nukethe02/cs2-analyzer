@@ -402,7 +402,171 @@ function calculatePersonalPerformance(p) {
     return ((killDiff + deathDiff * 0.5 + assistValue) / rounds * 10);
 }
 
+/**
+ * Render the Clutches tab with team summaries and player clutch cards
+ * @param {Array} players - All players from analysis
+ * @param {Array} myTeam - Players on user's team
+ * @param {Array} enemyTeam - Players on enemy team
+ * @param {string} containerId - Container element ID
+ */
+function renderClutchesTab(players, myTeam, enemyTeam, containerId = 'clutches-content') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Helper to escape HTML
+    const escapeHtml = (str) => {
+        if (typeof str !== 'string') return str;
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    };
+
+    // Calculate team clutch summary
+    const calculateTeamSummary = (teamPlayers) => {
+        let totalWins = 0;
+        let totalLosses = 0;
+        let totalSaves = 0;
+        let totalKills = 0;
+
+        teamPlayers.forEach(player => {
+            const clutches = player.clutches || {};
+            const details = clutches.details || [];
+
+            details.forEach(c => {
+                totalKills += c.enemies_killed || 0;
+                if (c.outcome === 'won') totalWins++;
+                else if (c.outcome === 'lost') totalLosses++;
+                else if (c.outcome === 'saved') totalSaves++;
+            });
+        });
+
+        const total = totalWins + totalLosses + totalSaves;
+        const wonPct = total > 0 ? Math.round((totalWins / total) * 100) : 0;
+        const lostPct = total > 0 ? Math.round((totalLosses / total) * 100) : 0;
+
+        // Rating thresholds
+        let killsRating = 'Poor';
+        if (totalKills > 10) killsRating = 'Great';
+        else if (totalKills >= 5) killsRating = 'Average';
+
+        return { totalWins, totalLosses, totalSaves, totalKills, wonPct, lostPct, killsRating };
+    };
+
+    // Render team summary bar
+    const renderTeamSummary = (summary) => {
+        return `
+            <div class="clutch-summary">
+                <div class="clutch-percentages">
+                    <span class="clutch-won-pct">${summary.wonPct}%</span>
+                    <div class="clutch-bar">
+                        <div class="clutch-bar-won" style="width: ${summary.wonPct}%"></div>
+                        <div class="clutch-bar-lost" style="width: ${summary.lostPct}%"></div>
+                    </div>
+                    <span class="clutch-lost-pct">${summary.lostPct}%</span>
+                </div>
+                <div class="clutch-total-kills">
+                    <div class="clutch-kills-circle">
+                        <span class="kills-count">${summary.totalKills}</span>
+                        <span class="kills-label">TOTAL KILLS</span>
+                    </div>
+                    <span class="kills-rating kills-rating-${summary.killsRating.toLowerCase()}">${summary.killsRating}</span>
+                </div>
+                <div class="clutch-saves">
+                    ${summary.totalWins} CLUTCHES WON | ${summary.totalLosses} CLUTCHES LOST | ${summary.totalSaves} SAVES
+                </div>
+            </div>
+        `;
+    };
+
+    // Render individual clutch card
+    const renderClutchCard = (clutch) => {
+        const outcome = clutch.outcome || 'lost';
+        const type = clutch.type || '1v1';
+        const kills = clutch.enemies_killed || 0;
+        const round = clutch.round_number || 0;
+
+        return `
+            <div class="clutch-card clutch-${outcome}">
+                <div class="clutch-type">${escapeHtml(type)}</div>
+                <div class="clutch-kills">
+                    <span class="skull-icon">💀</span> ${kills}
+                </div>
+                <div class="clutch-round">Round ${round}</div>
+                <div class="clutch-outcome ${outcome}">${outcome.toUpperCase()}</div>
+            </div>
+        `;
+    };
+
+    // Render player clutch section
+    const renderPlayerClutchSection = (player) => {
+        const name = player.name || 'Unknown';
+        const initial = (name[0] || '?').toUpperCase();
+        const clutches = player.clutches || {};
+        const details = clutches.details || [];
+
+        // Sort by round number
+        const sortedDetails = [...details].sort((a, b) => (a.round_number || 0) - (b.round_number || 0));
+
+        const cardsHtml = sortedDetails.length > 0
+            ? sortedDetails.map(c => renderClutchCard(c)).join('')
+            : '<div class="no-clutches">No clutch situations</div>';
+
+        return `
+            <div class="player-clutch-section">
+                <div class="player-header">
+                    <div class="player-avatar">${escapeHtml(initial)}</div>
+                    <span class="player-name">${escapeHtml(name)}</span>
+                </div>
+                <div class="clutch-cards-grid">
+                    ${cardsHtml}
+                </div>
+            </div>
+        `;
+    };
+
+    // Render team section
+    const renderTeamSection = (teamPlayers, teamLabel, teamResult, teamScore) => {
+        if (!teamPlayers || teamPlayers.length === 0) return '';
+
+        const summary = calculateTeamSummary(teamPlayers);
+
+        return `
+            <div class="team-section clutch-team-section">
+                <div class="team-header">
+                    <span class="team-name">${escapeHtml(teamLabel)}</span>
+                    <div class="team-result-group">
+                        <span class="team-score">${teamScore || 0}</span>
+                        <span class="result-badge ${(teamResult || 'tie').toLowerCase()}">${teamResult || 'TIE'}</span>
+                    </div>
+                </div>
+                ${renderTeamSummary(summary)}
+                <div class="player-clutches-list">
+                    ${teamPlayers.map(p => renderPlayerClutchSection(p)).join('')}
+                </div>
+            </div>
+        `;
+    };
+
+    // Determine team results
+    const myTeamScore = myTeam.length > 0 && myTeam[0].team_score !== undefined
+        ? myTeam[0].team_score : 0;
+    const enemyTeamScore = enemyTeam.length > 0 && enemyTeam[0].team_score !== undefined
+        ? enemyTeam[0].team_score : 0;
+
+    const myResult = myTeamScore > enemyTeamScore ? 'WIN' :
+                     myTeamScore < enemyTeamScore ? 'LOSS' : 'TIE';
+    const enemyResult = enemyTeamScore > myTeamScore ? 'WIN' :
+                        enemyTeamScore < myTeamScore ? 'LOSS' : 'TIE';
+
+    container.innerHTML = `
+        <div class="clutches-tab-wrapper">
+            ${renderTeamSection(myTeam, 'My Team', myResult, myTeamScore)}
+            ${renderTeamSection(enemyTeam, 'Enemy Team', enemyResult, enemyTeamScore)}
+        </div>
+    `;
+}
+
 // Export for use in modules
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { StatsTable, createStatsTableFromAnalysis };
+    module.exports = { StatsTable, createStatsTableFromAnalysis, renderClutchesTab };
 }

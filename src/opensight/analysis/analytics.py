@@ -887,6 +887,18 @@ class SideStats:
     def adr(self) -> float:
         return round(self.damage / self.rounds_played, 1) if self.rounds_played > 0 else 0.0
 
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API serialization."""
+        return {
+            "kills": self.kills,
+            "deaths": self.deaths,
+            "assists": self.assists,
+            "damage": self.damage,
+            "rounds_played": self.rounds_played,
+            "kd_ratio": self.kd_ratio,
+            "adr": self.adr,
+        }
+
 
 @dataclass
 class MistakesStats:
@@ -1282,6 +1294,16 @@ class PlayerMatchStats:
     @property
     def ttd_mean_ms(self) -> float | None:
         return float(np.mean(self.ttd_values)) if self.ttd_values else None
+
+    @property
+    def prefire_percentage(self) -> float:
+        """Percentage of kills that were prefires (TTD < 50ms).
+
+        Prefires indicate high game-sense - anticipating enemy positions.
+        """
+        if not self.ttd_values:
+            return 0.0
+        return round(self.prefire_count / len(self.ttd_values) * 100, 1)
 
     # CP properties
     @property

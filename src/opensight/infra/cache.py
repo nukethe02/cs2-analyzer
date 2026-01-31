@@ -1296,9 +1296,55 @@ class CachedAnalyzer:
         # Sort players by team for better grouping
         players_timeline.sort(key=lambda p: (p["team"] != "CT", p["name"]))
 
+        # Build round scores from rounds data (for Round Difference chart)
+        round_scores = []
+        ct_score = 0
+        t_score = 0
+        for r in range(1, max_round + 1):
+            round_info = None
+            for rd in rounds:
+                if getattr(rd, "round_num", 0) == r:
+                    round_info = rd
+                    break
+
+            if round_info:
+                winner = str(getattr(round_info, "winner", "")).upper()
+                if "CT" in winner:
+                    ct_score += 1
+                elif "T" in winner:
+                    t_score += 1
+                else:
+                    # Infer from kill differential if no winner
+                    ct_kills = sum(
+                        1
+                        for k in kills
+                        if getattr(k, "round_num", 0) == r
+                        and "CT" in str(getattr(k, "attacker_side", "")).upper()
+                    )
+                    t_kills = sum(
+                        1
+                        for k in kills
+                        if getattr(k, "round_num", 0) == r
+                        and "T" in str(getattr(k, "attacker_side", "")).upper()
+                    )
+                    if ct_kills > t_kills:
+                        ct_score += 1
+                    elif t_kills > ct_kills:
+                        t_score += 1
+
+            round_scores.append(
+                {
+                    "round": r,
+                    "ct_score": ct_score,
+                    "t_score": t_score,
+                    "diff": ct_score - t_score,  # Positive = CT leading
+                }
+            )
+
         return {
             "max_rounds": max_round,
             "players": players_timeline,
+            "round_scores": round_scores,
         }
 
     def _calculate_rws_direct(self, demo_data) -> dict[int, dict]:

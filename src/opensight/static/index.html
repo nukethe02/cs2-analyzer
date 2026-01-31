@@ -2512,30 +2512,34 @@
                 <div class="detailed-stats-section" style="margin-top: 32px;">
                     <div class="stats-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; flex-wrap: wrap;">
                         <button class="stats-tab-btn active" data-stats-tab="general" style="padding: 8px 16px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">General</button>
-                        <button class="stats-tab-btn" data-stats-tab="entry" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Entry Stats</button>
-                        <button class="stats-tab-btn" data-stats-tab="trade" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Trade Stats</button>
-                        <button class="stats-tab-btn" data-stats-tab="clutch" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Clutch Stats</button>
-                        <button class="stats-tab-btn" data-stats-tab="ttd" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">TTD (Timing)</button>
-                        <button class="stats-tab-btn" data-stats-tab="cp" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">CP (Positioning)</button>
+                        <button class="stats-tab-btn" data-stats-tab="aim" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Aim</button>
+                        <button class="stats-tab-btn" data-stats-tab="trade" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Trades</button>
+                        <button class="stats-tab-btn" data-stats-tab="entry" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Opening Duels</button>
+                        <button class="stats-tab-btn" data-stats-tab="activity" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Activity</button>
+                        <button class="stats-tab-btn" data-stats-tab="utility" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Utility</button>
+                        <button class="stats-tab-btn" data-stats-tab="clutch" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Clutch</button>
                     </div>
 
                     <div class="stats-tab-content" id="stats-general" style="display: block;">
                         ${renderGeneralStatsTable(players, teamA, teamB, ctTeamName, tTeamName)}
                     </div>
-                    <div class="stats-tab-content" id="stats-entry" style="display: none;">
-                        ${renderEntryStatsTable(teamA, teamB, ctTeamName, tTeamName)}
+                    <div class="stats-tab-content" id="stats-aim" style="display: none;">
+                        ${renderAimStatsTable(teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                     <div class="stats-tab-content" id="stats-trade" style="display: none;">
-                        ${renderTradeStatsTable(teamA, teamB, ctTeamName, tTeamName)}
+                        ${renderTradesTable(teamA, teamB, ctTeamName, tTeamName)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-entry" style="display: none;">
+                        ${renderOpeningDuelsTable(teamA, teamB, ctTeamName, tTeamName)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-activity" style="display: none;">
+                        ${renderActivityStatsTable(teamA, teamB, ctTeamName, tTeamName)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-utility" style="display: none;">
+                        ${renderUtilityStatsTable(teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                     <div class="stats-tab-content" id="stats-clutch" style="display: none;">
                         ${renderClutchStatsTable(teamA, teamB, ctTeamName, tTeamName)}
-                    </div>
-                    <div class="stats-tab-content" id="stats-ttd" style="display: none;">
-                        ${renderTTDStatsTable(teamA, teamB, ctTeamName, tTeamName)}
-                    </div>
-                    <div class="stats-tab-content" id="stats-cp" style="display: none;">
-                        ${renderCPStatsTable(teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                 </div>
             `;
@@ -2564,96 +2568,538 @@
             return html;
         }
 
-        // Render Entry Stats Table (like FACEIT)
-        function renderEntryStatsTable(team1, team2, team1Name, team2Name) {
+        // Render Aim Stats Table (Leetify style)
+        function renderAimStatsTable(team1, team2, team1Name, team2Name) {
             const ctTeamName = team1Name || 'Team 1';
             const tTeamName = team2Name || 'Team 2';
+
+            // Find best values across all players for star indicators
+            const allPlayers = [...team1, ...team2];
+            const best = {
+                ttd: Math.min(...allPlayers.map(p => p.advanced?.ttd_median_ms || p.ttd_median_ms || 9999).filter(v => v > 0)),
+                cp: Math.min(...allPlayers.map(p => p.advanced?.cp_median_error_deg || p.cp_median_error || 9999).filter(v => v > 0)),
+                hs_pct: Math.max(...allPlayers.map(p => p.aim_stats?.hs_kill_pct || p.headshot_percentage || p.stats?.headshot_pct || 0)),
+                accuracy: Math.max(...allPlayers.map(p => p.aim_stats?.accuracy_all || p.accuracy_all || 0)),
+                spray: Math.max(...allPlayers.map(p => p.aim_stats?.spray_accuracy || p.spray_accuracy || 0)),
+                counter_strafe: Math.max(...allPlayers.map(p => p.aim_stats?.counter_strafe_pct || p.counter_strafe_pct || 0))
+            };
+
+            const renderStar = (val, bestVal, lowerIsBetter = false) => {
+                if (lowerIsBetter) {
+                    return val === bestVal && val > 0 && val < 9999 ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+                }
+                return val === bestVal && val > 0 ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+            };
+
+            const colorTTD = (val) => {
+                if (!val || val <= 0) return 'var(--text-muted)';
+                return val < 400 ? 'var(--success)' : val < 600 ? 'var(--warning)' : 'var(--danger)';
+            };
+
+            const colorCP = (val) => {
+                if (!val || val <= 0) return 'var(--text-muted)';
+                return val < 8 ? 'var(--success)' : val < 15 ? 'var(--warning)' : 'var(--danger)';
+            };
+
             const renderTeamTable = (players, teamName) => {
                 if (!players || players.length === 0) return '';
-                let html = '<div style="margin-bottom: 24px;">' +
-                    '<h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">' + teamName + '</h4>' +
-                    '<table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">' +
-                    '<thead>' +
-                    '<tr style="background: var(--bg-secondary);">' +
-                    '<th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry Attempts</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry Kills</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry Deaths</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry Diff</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Entry %</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Success %</th>' +
-                    '</tr>' +
-                    '</thead>' +
-                    '<tbody>';
-                
-                players.forEach(p => {
-                    const e = p.entry || {};
-                    const diff = (e.entry_diff || 0);
-                    const diffColor = diff > 0 ? 'var(--success)' : diff < 0 ? 'var(--danger)' : 'var(--text-muted)';
-                    html += '<tr style="border-bottom: 1px solid var(--border);">' +
-                        '<td style="padding: 12px; display: flex; align-items: center; gap: 8px;">' +
-                        '<div class="player-avatar-sm" style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">' + 
-                        (p.name || 'U')[0].toUpperCase() + 
-                        '</div>' +
-                        esc(p.name) +
-                        '</td>' +
-                        '<td style="text-align: center; padding: 12px;">' + (e.entry_attempts || 0) + '</td>' +
-                        '<td style="text-align: center; padding: 12px; color: var(--success);">' + (e.entry_kills || 0) + '</td>' +
-                        '<td style="text-align: center; padding: 12px; color: var(--danger);">' + (e.entry_deaths || 0) + '</td>' +
-                        '<td style="text-align: center; padding: 12px; color: ' + diffColor + ';">' + (diff >= 0 ? '+' : '') + diff + '</td>' +
-                        '<td style="text-align: center; padding: 12px;">' + (e.entry_attempts_pct || 0) + '%</td>' +
-                        '<td style="text-align: center; padding: 12px; color: ' + ((e.entry_success_pct || 0) >= 50 ? 'var(--success)' : 'var(--text-muted)') + ';">' + (e.entry_success_pct || 0) + '%</td>' +
-                        '</tr>';
+
+                // Sort by TTD (best timing first)
+                const sorted = [...players].sort((a, b) => {
+                    const aVal = a.advanced?.ttd_median_ms || a.ttd_median_ms || 9999;
+                    const bVal = b.advanced?.ttd_median_ms || b.ttd_median_ms || 9999;
+                    return aVal - bVal;
                 });
-                
+
+                let html = `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${teamName}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Time to Damage (ms)">TTD</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Crosshair Placement Error (degrees)">CP</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Headshot Kill Percentage">HS Kill %</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Overall Accuracy">Accuracy</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Spray Accuracy">Spray</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Counter-Strafing Percentage">C-Strafe</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+
+                sorted.forEach(p => {
+                    const ttd = p.advanced?.ttd_median_ms || p.ttd_median_ms || 0;
+                    const cp = p.advanced?.cp_median_error_deg || p.cp_median_error || 0;
+                    const hsPct = p.aim_stats?.hs_kill_pct || p.headshot_percentage || p.stats?.headshot_pct || 0;
+                    const accuracy = p.aim_stats?.accuracy_all || p.accuracy_all || 0;
+                    const spray = p.aim_stats?.spray_accuracy || p.spray_accuracy || 0;
+                    const counterStrafe = p.aim_stats?.counter_strafe_pct || p.counter_strafe_pct || 0;
+
+                    html += `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">
+                                        ${(p.name || 'U')[0].toUpperCase()}
+                                    </div>
+                                    ${esc(p.name)}
+                                </div>
+                            </td>
+                            <td style="text-align: center; padding: 12px; color: ${colorTTD(ttd)}; font-family: 'JetBrains Mono', monospace;">
+                                ${renderStar(ttd, best.ttd, true)}${ttd > 0 ? Math.round(ttd) + 'ms' : '-'}
+                            </td>
+                            <td style="text-align: center; padding: 12px; color: ${colorCP(cp)}; font-family: 'JetBrains Mono', monospace;">
+                                ${renderStar(cp, best.cp, true)}${cp > 0 ? cp.toFixed(1) + '°' : '-'}
+                            </td>
+                            <td style="text-align: center; padding: 12px; color: ${hsPct >= 50 ? 'var(--success)' : hsPct >= 30 ? 'var(--warning)' : 'var(--text-secondary)'}; font-family: 'JetBrains Mono', monospace;">
+                                ${renderStar(hsPct, best.hs_pct)}${hsPct.toFixed(1)}%
+                            </td>
+                            <td style="text-align: center; padding: 12px; color: ${accuracy >= 25 ? 'var(--success)' : accuracy >= 15 ? 'var(--warning)' : 'var(--text-secondary)'}; font-family: 'JetBrains Mono', monospace;">
+                                ${renderStar(accuracy, best.accuracy)}${accuracy.toFixed(1)}%
+                            </td>
+                            <td style="text-align: center; padding: 12px; color: ${spray >= 20 ? 'var(--success)' : spray >= 10 ? 'var(--warning)' : 'var(--text-secondary)'}; font-family: 'JetBrains Mono', monospace;">
+                                ${renderStar(spray, best.spray)}${spray.toFixed(1)}%
+                            </td>
+                            <td style="text-align: center; padding: 12px; color: ${counterStrafe >= 60 ? 'var(--success)' : counterStrafe >= 40 ? 'var(--warning)' : 'var(--text-secondary)'}; font-family: 'JetBrains Mono', monospace;">
+                                ${renderStar(counterStrafe, best.counter_strafe)}${counterStrafe.toFixed(1)}%
+                            </td>
+                        </tr>`;
+                });
+
                 html += '</tbody></table></div>';
                 return html;
             };
 
-            return renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
+            // Legend
+            let html = `
+                <div style="display: flex; gap: 16px; padding: 12px 16px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted); flex-wrap: wrap;">
+                    <div><span style="color: var(--warning);">★</span> Best in match</div>
+                    <div><span style="color: var(--success);">Green</span> = Good</div>
+                    <div><span style="color: var(--warning);">Yellow</span> = Average</div>
+                    <div><span style="color: var(--danger);">Red</span> = Needs work</div>
+                    <div style="margin-left: auto; font-style: italic;">Lower TTD & CP = Better</div>
+                </div>
+            `;
+
+            return html + renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
         }
 
-        // Render Trade Stats Table (like FACEIT)
-        function renderTradeStatsTable(team1, team2, team1Name, team2Name) {
+        // Render Trades Table (Leetify style with opportunities and success rates)
+        function renderTradesTable(team1, team2, team1Name, team2Name) {
             const ctTeamName = team1Name || 'Team 1';
             const tTeamName = team2Name || 'Team 2';
+
+            const allPlayers = [...team1, ...team2];
+            const best = {
+                trade_success: Math.max(...allPlayers.map(p => p.trades?.trade_kill_success_pct || 0)),
+                traded_death_success: Math.max(...allPlayers.map(p => p.trades?.traded_death_success_pct || 0))
+            };
+
+            const renderStar = (val, bestVal) => {
+                return val === bestVal && val > 0 ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+            };
+
             const renderTeamTable = (players, teamName) => {
                 if (!players || players.length === 0) return '';
-                let html = '<div style="margin-bottom: 24px;">' +
-                    '<h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">' + teamName + '</h4>' +
-                    '<table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">' +
-                    '<thead>' +
-                    '<tr style="background: var(--bg-secondary);">' +
-                    '<th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Trade Kills</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Deaths Traded</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Traded Entry Kills</th>' +
-                    '<th style="padding: 12px; color: var(--text-muted); font-weight: 500;">Traded Entry Deaths</th>' +
-                    '</tr>' +
-                    '</thead>' +
-                    '<tbody>';
-                
-                players.forEach(p => {
-                    const t = p.trades || {};
-                    html += '<tr style="border-bottom: 1px solid var(--border);">' +
-                        '<td style="padding: 12px; display: flex; align-items: center; gap: 8px;">' +
-                        '<div class="player-avatar-sm" style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">' + 
-                        (p.name || 'U')[0].toUpperCase() + 
-                        '</div>' +
-                        esc(p.name) +
-                        '</td>' +
-                        '<td style="text-align: center; padding: 12px; color: var(--success);">' + (t.trade_kills || 0) + '</td>' +
-                        '<td style="text-align: center; padding: 12px;">' + (t.deaths_traded || 0) + '</td>' +
-                        '<td style="text-align: center; padding: 12px;">' + (t.traded_entry_kills || 0) + '</td>' +
-                        '<td style="text-align: center; padding: 12px;">' + (t.traded_entry_deaths || 0) + '</td>' +
-                        '</tr>';
+
+                // Sort by trade kill success rate
+                const sorted = [...players].sort((a, b) => {
+                    const aVal = a.trades?.trade_kill_success_pct || 0;
+                    const bVal = b.trades?.trade_kill_success_pct || 0;
+                    return bVal - aVal;
                 });
-                
+
+                let html = `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${teamName}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Opportunities to trade a teammate's death">Trade Opps</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Trade attempts (with %)">Attempts</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Successful trades (with %)">Success</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Times you died and teammates could trade">Death Opps</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Times teammates attempted to trade your death">Traded Attempts</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Times your death was successfully traded">Traded</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+
+                sorted.forEach(p => {
+                    const t = p.trades || {};
+                    const tradeOpps = t.trade_kill_opportunities || 0;
+                    const tradeAttempts = t.trade_kill_attempts || 0;
+                    const tradeAttemptsPct = t.trade_kill_attempts_pct || 0;
+                    const tradeSuccess = t.trade_kill_success || 0;
+                    const tradeSuccessPct = t.trade_kill_success_pct || 0;
+                    const deathOpps = t.traded_death_opportunities || 0;
+                    const deathAttempts = t.traded_death_attempts || 0;
+                    const deathAttemptsPct = t.traded_death_attempts_pct || 0;
+                    const deathSuccess = t.traded_death_success || 0;
+                    const deathSuccessPct = t.traded_death_success_pct || 0;
+
+                    const tradeSuccessColor = tradeSuccessPct >= 60 ? 'var(--success)' : tradeSuccessPct >= 40 ? 'var(--warning)' : 'var(--text-secondary)';
+                    const deathSuccessColor = deathSuccessPct >= 50 ? 'var(--success)' : deathSuccessPct >= 30 ? 'var(--warning)' : 'var(--text-secondary)';
+
+                    html += `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">
+                                        ${(p.name || 'U')[0].toUpperCase()}
+                                    </div>
+                                    ${esc(p.name)}
+                                </div>
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">${tradeOpps}</td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">
+                                ${tradeAttempts} <span style="color: var(--text-muted);">(${tradeAttemptsPct.toFixed(0)}%)</span>
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${tradeSuccessColor};">
+                                ${renderStar(tradeSuccessPct, best.trade_success)}${tradeSuccess} <span style="opacity: 0.8;">(${tradeSuccessPct.toFixed(0)}%)</span>
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">${deathOpps}</td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">
+                                ${deathAttempts} <span style="color: var(--text-muted);">(${deathAttemptsPct.toFixed(0)}%)</span>
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${deathSuccessColor};">
+                                ${renderStar(deathSuccessPct, best.traded_death_success)}${deathSuccess} <span style="opacity: 0.8;">(${deathSuccessPct.toFixed(0)}%)</span>
+                            </td>
+                        </tr>`;
+                });
+
                 html += '</tbody></table></div>';
                 return html;
             };
 
-            return renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
+            let html = `
+                <div style="display: flex; gap: 16px; padding: 12px 16px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted);">
+                    <div><span style="color: var(--warning);">★</span> Best in match (>60% trade kill or >50% traded death)</div>
+                    <div style="margin-left: auto;"><span style="color: var(--success);">Green</span> = Excellent | <span style="color: var(--warning);">Yellow</span> = Good</div>
+                </div>
+            `;
+
+            return html + renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
+        }
+
+        // Render Opening Duels Table (Leetify style)
+        function renderOpeningDuelsTable(team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
+
+            const allPlayers = [...team1, ...team2];
+            const best = {
+                success_rate: Math.max(...allPlayers.map(p => {
+                    const od = p.opening_duels || p.entry || {};
+                    return od.win_rate || od.entry_success_pct || 0;
+                }))
+            };
+
+            const renderStar = (val, bestVal) => {
+                return val === bestVal && val > 0 ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+            };
+
+            const renderTeamTable = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+
+                // Sort by success rate
+                const sorted = [...players].sort((a, b) => {
+                    const aOd = a.opening_duels || a.entry || {};
+                    const bOd = b.opening_duels || b.entry || {};
+                    return (bOd.win_rate || bOd.entry_success_pct || 0) - (aOd.win_rate || aOd.entry_success_pct || 0);
+                });
+
+                let html = `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${teamName}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Opening duel attempts">Attempts</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Opening duel wins">Wins</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Opening duel losses">Losses</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Win/Loss difference">Diff</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Success rate">Success %</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Attempts as % of rounds played">Attempt %</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+
+                sorted.forEach(p => {
+                    const od = p.opening_duels || p.entry || {};
+                    const attempts = od.attempts || od.entry_attempts || 0;
+                    const wins = od.wins || od.entry_kills || 0;
+                    const losses = od.losses || od.entry_deaths || 0;
+                    const diff = wins - losses;
+                    const successRate = od.win_rate || od.entry_success_pct || 0;
+                    const attemptPct = od.entry_attempts_pct || (p.rounds_played ? (attempts / p.rounds_played * 100) : 0);
+
+                    const diffColor = diff > 0 ? 'var(--success)' : diff < 0 ? 'var(--danger)' : 'var(--text-muted)';
+                    const successColor = successRate >= 50 ? 'var(--success)' : successRate >= 40 ? 'var(--warning)' : 'var(--danger)';
+
+                    html += `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">
+                                        ${(p.name || 'U')[0].toUpperCase()}
+                                    </div>
+                                    ${esc(p.name)}
+                                </div>
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">${attempts}</td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: var(--success);">${wins}</td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: var(--danger);">${losses}</td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${diffColor};">${diff >= 0 ? '+' : ''}${diff}</td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${successColor};">
+                                ${renderStar(successRate, best.success_rate)}${successRate.toFixed(1)}%
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: var(--text-muted);">${attemptPct.toFixed(1)}%</td>
+                        </tr>`;
+                });
+
+                html += '</tbody></table></div>';
+                return html;
+            };
+
+            let html = `
+                <div style="display: flex; gap: 16px; padding: 12px 16px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted);">
+                    <div><span style="color: var(--warning);">★</span> Best success rate in match</div>
+                    <div style="margin-left: auto;"><span style="color: var(--success);">Green</span> = >50% | <span style="color: var(--warning);">Yellow</span> = 40-50% | <span style="color: var(--danger);">Red</span> = <40%</div>
+                </div>
+            `;
+
+            return html + renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
+        }
+
+        // Render Activity Stats Table (Leetify style with damage breakdown and bars)
+        function renderActivityStatsTable(team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
+
+            const allPlayers = [...team1, ...team2];
+            const maxDamage = Math.max(...allPlayers.map(p => p.total_damage || p.stats?.total_damage || 0));
+            const best = {
+                total_damage: maxDamage,
+                he_damage: Math.max(...allPlayers.map(p => p.utility?.he_damage || p.he_damage || 0)),
+                molotov_damage: Math.max(...allPlayers.map(p => p.utility?.molotov_damage || p.molotov_damage || 0)),
+                enemies_flashed: Math.max(...allPlayers.map(p => p.utility?.enemies_flashed || p.enemies_flashed || 0))
+            };
+
+            const renderStar = (val, bestVal) => {
+                return val === bestVal && val > 0 ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+            };
+
+            const renderTeamTable = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+
+                // Sort by total damage
+                const sorted = [...players].sort((a, b) => {
+                    return (b.total_damage || b.stats?.total_damage || 0) - (a.total_damage || a.stats?.total_damage || 0);
+                });
+
+                let html = `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${teamName}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500; min-width: 180px;" title="Total damage dealt">Total Damage</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="HE grenade damage">HE Dmg</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Molotov/Incendiary damage">Fire Dmg</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Enemies flashed">Flashed</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Shots fired">Shots</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Damage per shot fired">Dmg/Shot</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Rounds survived">Survived</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+
+                sorted.forEach(p => {
+                    const totalDamage = p.total_damage || p.stats?.total_damage || 0;
+                    const heDamage = p.utility?.he_damage || p.he_damage || 0;
+                    const molotovDamage = p.utility?.molotov_damage || p.molotov_damage || 0;
+                    const enemiesFlashed = p.utility?.enemies_flashed || p.enemies_flashed || 0;
+                    const shotsFired = p.aim_stats?.shots_fired || p.shots_fired || 0;
+                    const dmgPerShot = shotsFired > 0 ? (totalDamage / shotsFired) : 0;
+                    const roundsPlayed = p.rounds_played || p.stats?.rounds_played || 1;
+                    const deaths = p.deaths || p.stats?.deaths || 0;
+                    const roundsSurvived = roundsPlayed - deaths;
+                    const survivalPct = (roundsSurvived / roundsPlayed * 100);
+                    const damageBarWidth = maxDamage > 0 ? (totalDamage / maxDamage * 100) : 0;
+
+                    html += `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">
+                                        ${(p.name || 'U')[0].toUpperCase()}
+                                    </div>
+                                    ${esc(p.name)}
+                                </div>
+                            </td>
+                            <td style="padding: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-family: 'JetBrains Mono', monospace; min-width: 50px;">${renderStar(totalDamage, best.total_damage)}${totalDamage}</span>
+                                    <div style="flex: 1; height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden;">
+                                        <div style="width: ${damageBarWidth}%; height: 100%; background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${heDamage > 50 ? 'var(--warning)' : 'var(--text-secondary)'};">
+                                ${renderStar(heDamage, best.he_damage)}${heDamage}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${molotovDamage > 50 ? 'var(--danger)' : 'var(--text-secondary)'};">
+                                ${renderStar(molotovDamage, best.molotov_damage)}${molotovDamage}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${enemiesFlashed > 5 ? 'var(--success)' : 'var(--text-secondary)'};">
+                                ${renderStar(enemiesFlashed, best.enemies_flashed)}${enemiesFlashed}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">${shotsFired}</td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${dmgPerShot >= 15 ? 'var(--success)' : dmgPerShot >= 10 ? 'var(--warning)' : 'var(--text-secondary)'};">
+                                ${dmgPerShot.toFixed(1)}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">
+                                ${roundsSurvived} <span style="color: var(--text-muted);">(${survivalPct.toFixed(0)}%)</span>
+                            </td>
+                        </tr>`;
+                });
+
+                html += '</tbody></table></div>';
+                return html;
+            };
+
+            let html = `
+                <div style="display: flex; gap: 16px; padding: 12px 16px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted);">
+                    <div><span style="color: var(--warning);">★</span> Best in match</div>
+                    <div style="margin-left: auto;">Damage bar shows relative performance</div>
+                </div>
+            `;
+
+            return html + renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
+        }
+
+        // Render Utility Stats Table (Leetify style comprehensive utility analysis)
+        function renderUtilityStatsTable(team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
+
+            const allPlayers = [...team1, ...team2];
+            const best = {
+                flash_assist_pct: Math.max(...allPlayers.map(p => p.utility?.flash_assist_pct || p.flash_assist_pct || 0)),
+                avg_blind_time: Math.max(...allPlayers.map(p => p.utility?.avg_blind_time || p.avg_blind_time || 0)),
+                utility_quality: Math.max(...allPlayers.map(p => p.utility?.utility_quality_rating || p.utility_quality_rating || 0)),
+                utility_quantity: Math.max(...allPlayers.map(p => p.utility?.utility_quantity_rating || p.utility_quantity_rating || 0))
+            };
+
+            const renderStar = (val, bestVal) => {
+                return val === bestVal && val > 0 ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+            };
+
+            const renderTeamTable = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+
+                // Sort by utility quality rating
+                const sorted = [...players].sort((a, b) => {
+                    return (b.utility?.utility_quality_rating || b.utility_quality_rating || 0) - (a.utility?.utility_quality_rating || a.utility_quality_rating || 0);
+                });
+
+                let html = `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${teamName}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Flash Assists / Flashbangs Thrown">Flash %</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Enemies flashed per round">Enemies/R</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Friends flashed per round (lower is better)">Friends/R</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Average blind time on enemies">Blind Time</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Average HE damage per grenade">Avg HE</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="HE team damage (lower is better)">HE Team</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Unused utility value at death">Unused $</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Utility Quality Rating (0-100)">Quality</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Utility Quantity Rating (0-100)">Quantity</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+
+                sorted.forEach(p => {
+                    const u = p.utility || {};
+                    const flashAssistPct = u.flash_assist_pct || p.flash_assist_pct || 0;
+                    const enemiesFlashedPerRound = u.enemies_flashed_per_round || p.enemies_flashed_per_round || 0;
+                    const friendsFlashedPerRound = u.friends_flashed_per_round || p.friends_flashed_per_round || 0;
+                    const avgBlindTime = u.avg_blind_time || p.avg_blind_time || 0;
+                    const avgHeDamage = u.avg_he_damage || p.avg_he_damage || 0;
+                    const heTeamDamage = u.he_team_damage || p.he_team_damage || 0;
+                    const unusedUtility = u.unused_utility_value || p.unused_utility_value || 0;
+                    const qualityRating = u.utility_quality_rating || p.utility_quality_rating || 0;
+                    const quantityRating = u.utility_quantity_rating || p.utility_quantity_rating || 0;
+
+                    // Color coding for negative metrics (red = bad)
+                    const friendsColor = friendsFlashedPerRound > 0.5 ? 'var(--danger)' : friendsFlashedPerRound > 0.2 ? 'var(--warning)' : 'var(--text-secondary)';
+                    const heTeamColor = heTeamDamage > 20 ? 'var(--danger)' : heTeamDamage > 5 ? 'var(--warning)' : 'var(--text-secondary)';
+                    const unusedColor = unusedUtility > 500 ? 'var(--danger)' : unusedUtility > 200 ? 'var(--warning)' : 'var(--text-secondary)';
+                    const qualityColor = qualityRating >= 60 ? 'var(--success)' : qualityRating >= 40 ? 'var(--warning)' : 'var(--text-muted)';
+                    const quantityColor = quantityRating >= 60 ? 'var(--success)' : quantityRating >= 40 ? 'var(--warning)' : 'var(--text-muted)';
+
+                    html += `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">
+                                        ${(p.name || 'U')[0].toUpperCase()}
+                                    </div>
+                                    ${esc(p.name)}
+                                </div>
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${flashAssistPct >= 30 ? 'var(--success)' : 'var(--text-secondary)'};">
+                                ${renderStar(flashAssistPct, best.flash_assist_pct)}${flashAssistPct.toFixed(0)}%
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">
+                                ${enemiesFlashedPerRound.toFixed(2)}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${friendsColor};">
+                                ${friendsFlashedPerRound.toFixed(2)}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${avgBlindTime >= 2 ? 'var(--success)' : 'var(--text-secondary)'};">
+                                ${renderStar(avgBlindTime, best.avg_blind_time)}${avgBlindTime.toFixed(1)}s
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${avgHeDamage >= 30 ? 'var(--success)' : 'var(--text-secondary)'};">
+                                ${avgHeDamage.toFixed(0)}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${heTeamColor};">
+                                ${heTeamDamage}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${unusedColor};">
+                                $${unusedUtility}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${qualityColor}; font-weight: 600;">
+                                ${renderStar(qualityRating, best.utility_quality)}${qualityRating}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${quantityColor}; font-weight: 600;">
+                                ${renderStar(quantityRating, best.utility_quantity)}${quantityRating}
+                            </td>
+                        </tr>`;
+                });
+
+                html += '</tbody></table></div>';
+                return html;
+            };
+
+            let html = `
+                <div style="display: flex; gap: 16px; padding: 12px 16px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted); flex-wrap: wrap;">
+                    <div><span style="color: var(--warning);">★</span> Best in match</div>
+                    <div><span style="color: var(--danger);">Red</span> = Bad (Friends flashed, HE team dmg, Unused $)</div>
+                    <div style="margin-left: auto;">Quality/Quantity: 0-100 scale</div>
+                </div>
+            `;
+
+            return html + renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
         }
 
         // Render Clutch Stats with Visual Cards (like Leetify)
@@ -2728,155 +3174,6 @@
                     const aWins = (a.clutches?.clutch_wins || 0);
                     const bWins = (b.clutches?.clutch_wins || 0);
                     return bWins - aWins;
-                });
-
-                return `
-                    <div style="margin-bottom: 32px;">
-                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em;">${teamName}</h4>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
-                            ${sorted.map(p => renderPlayerCard(p)).join('')}
-                        </div>
-                    </div>
-                `;
-            };
-
-            return renderTeamSection(team1, ctTeamName) + renderTeamSection(team2, tTeamName);
-        }
-
-        // Render TTD (Time to Damage) Stats Table
-        function renderTTDStatsTable(team1, team2, team1Name, team2Name) {
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
-            const renderPlayerCard = (player) => {
-                const a = player.advanced || {};
-                const median = a.ttd_median_ms || 0;
-                const mean = a.ttd_mean_ms || 0;
-                const p95 = a.ttd_95th_ms || 0;
-
-                // Professional range: 150-350ms
-                const rating = median < 200 ? 'Excellent' : median < 300 ? 'Good' : median < 400 ? 'Average' : 'Slow';
-                const color = median < 200 ? 'var(--success)' : median < 300 ? '#00d4ff' : median < 400 ? 'var(--warning)' : 'var(--danger)';
-
-                return `
-                    <div class="ttd-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; min-width: 280px;">
-                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-                            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1rem;">
-                                ${(player.name || 'U')[0].toUpperCase()}
-                            </div>
-                            <div>
-                                <div style="font-weight: 600; font-size: 1rem;">${esc(player.name)}</div>
-                                <div style="font-size: 0.75rem; color: var(--text-muted);">Reaction Time Metrics</div>
-                            </div>
-                        </div>
-
-                        <div style="text-align: center; margin-bottom: 16px;">
-                            <div style="font-size: 2.5rem; font-weight: 800; color: ${color};">
-                                ${Math.round(median)}ms
-                            </div>
-                            <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">${rating} Timing</div>
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;">
-                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
-                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Median</div>
-                                <div style="font-size: 1rem; font-weight: 700; color: ${color};">${Math.round(median)}ms</div>
-                            </div>
-                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
-                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Mean</div>
-                                <div style="font-size: 1rem; font-weight: 700; color: #00d4ff;">${Math.round(mean)}ms</div>
-                            </div>
-                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
-                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">95th %ile</div>
-                                <div style="font-size: 1rem; font-weight: 700; color: var(--text-secondary);">${Math.round(p95)}ms</div>
-                            </div>
-                        </div>
-
-                        <div style="padding: 8px 12px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; font-size: 0.75rem; color: var(--text-muted);">
-                            <span style="color: var(--accent-primary);">Pro Range: 150-350ms</span> · Lower is better
-                        </div>
-                    </div>
-                `;
-            };
-
-            const renderTeamSection = (players, teamName) => {
-                if (!players || players.length === 0) return '';
-
-                const sorted = [...players].sort((a, b) => {
-                    const aTime = (a.advanced?.ttd_median_ms || 0);
-                    const bTime = (b.advanced?.ttd_median_ms || 0);
-                    return aTime - bTime;
-                });
-
-                return `
-                    <div style="margin-bottom: 32px;">
-                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em;">${teamName}</h4>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
-                            ${sorted.map(p => renderPlayerCard(p)).join('')}
-                        </div>
-                    </div>
-                `;
-            };
-
-            return renderTeamSection(team1, ctTeamName) + renderTeamSection(team2, tTeamName);
-        }
-
-        // Render CP (Crosshair Placement) Stats Table
-        function renderCPStatsTable(team1, team2, team1Name, team2Name) {
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
-            const renderPlayerCard = (player) => {
-                const a = player.advanced || {};
-                const median = a.cp_median_error_deg || 0;
-                const mean = a.cp_mean_error_deg || 0;
-
-                // Professional range: 3-8 degrees
-                const rating = median < 4 ? 'Excellent' : median < 6 ? 'Good' : median < 8 ? 'Average' : 'Poor';
-                const color = median < 4 ? 'var(--success)' : median < 6 ? '#00d4ff' : median < 8 ? 'var(--warning)' : 'var(--danger)';
-
-                return `
-                    <div class="cp-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; min-width: 280px;">
-                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-                            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #7c4dff, #ff4081); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1rem;">
-                                ${(player.name || 'U')[0].toUpperCase()}
-                            </div>
-                            <div>
-                                <div style="font-weight: 600; font-size: 1rem;">${esc(player.name)}</div>
-                                <div style="font-size: 0.75rem; color: var(--text-muted);">Positioning Accuracy</div>
-                            </div>
-                        </div>
-
-                        <div style="text-align: center; margin-bottom: 16px;">
-                            <div style="font-size: 2.5rem; font-weight: 800; color: ${color};">
-                                ${median.toFixed(1)}°
-                            </div>
-                            <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">${rating} Placement</div>
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
-                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
-                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Median Error</div>
-                                <div style="font-size: 1rem; font-weight: 700; color: ${color};">${median.toFixed(1)}°</div>
-                            </div>
-                            <div style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
-                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Mean Error</div>
-                                <div style="font-size: 1rem; font-weight: 700; color: #7c4dff;">${mean.toFixed(1)}°</div>
-                            </div>
-                        </div>
-
-                        <div style="padding: 8px 12px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 6px; font-size: 0.75rem; color: var(--text-muted);">
-                            <span style="color: var(--accent-secondary);">Pro Range: 3-8°</span> · Lower is better
-                        </div>
-                    </div>
-                `;
-            };
-
-            const renderTeamSection = (players, teamName) => {
-                if (!players || players.length === 0) return '';
-
-                const sorted = [...players].sort((a, b) => {
-                    const aError = (a.advanced?.cp_median_error_deg || 0);
-                    const bError = (b.advanced?.cp_median_error_deg || 0);
-                    return aError - bError;
                 });
 
                 return `
@@ -3081,7 +3378,9 @@
                 { id: 'deaths', label: 'Deaths', icon: '💀' },
                 { id: 'damage', label: 'Damage', icon: '💥' },
                 { id: 'awp_kills', label: 'AWP Kills', icon: '🔫' },
-                { id: 'enemies_flashed', label: 'Flashes', icon: '✨' }
+                { id: 'enemies_flashed', label: 'Flashes', icon: '✨' },
+                { id: 'round_diff', label: 'Round Diff', icon: '📊', isTeamMetric: true },
+                { id: 'score', label: 'Score', icon: '🏆', isTeamMetric: true }
             ];
 
             // Build player checkboxes HTML
@@ -3277,7 +3576,96 @@
             let currentMetric = 'kills';
             let visiblePlayers = new Set(timelineData.players.map(p => String(p.steam_id)));
 
+            // Team metrics that don't use player data
+            const teamMetrics = ['round_diff', 'score'];
+
             const buildDatasets = (metric) => {
+                // Handle team-level metrics (Round Difference, Score)
+                if (metric === 'round_diff') {
+                    const roundScores = timelineData.round_scores || [];
+                    if (roundScores.length === 0) {
+                        // Fallback if no round_scores data
+                        return [{
+                            label: 'Round Difference',
+                            data: Array(timelineData.max_rounds).fill(0),
+                            borderColor: '#ff4081',
+                            backgroundColor: 'rgba(255, 64, 129, 0.2)',
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 7,
+                            borderWidth: 3,
+                            fill: true,
+                        }];
+                    }
+                    return [{
+                        label: 'CT Lead',
+                        data: roundScores.map(r => r.diff || 0),
+                        borderColor: '#ff4081',
+                        backgroundColor: (context) => {
+                            const value = context.raw || 0;
+                            return value >= 0 ? 'rgba(92, 156, 255, 0.3)' : 'rgba(255, 140, 0, 0.3)';
+                        },
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 7,
+                        borderWidth: 3,
+                        fill: true,
+                        segment: {
+                            borderColor: ctx => {
+                                const value = ctx.p1.raw;
+                                return value >= 0 ? 'var(--ct-color)' : 'var(--t-color)';
+                            }
+                        }
+                    }];
+                }
+
+                if (metric === 'score') {
+                    const roundScores = timelineData.round_scores || [];
+                    if (roundScores.length === 0) {
+                        return [{
+                            label: 'CT Score',
+                            data: Array(timelineData.max_rounds).fill(0),
+                            borderColor: 'var(--ct-color)',
+                            backgroundColor: 'rgba(92, 156, 255, 0.2)',
+                            tension: 0.3,
+                            pointRadius: 3,
+                            borderWidth: 2,
+                            fill: false,
+                        }, {
+                            label: 'T Score',
+                            data: Array(timelineData.max_rounds).fill(0),
+                            borderColor: 'var(--t-color)',
+                            backgroundColor: 'rgba(255, 140, 0, 0.2)',
+                            tension: 0.3,
+                            pointRadius: 3,
+                            borderWidth: 2,
+                            fill: false,
+                        }];
+                    }
+                    return [{
+                        label: 'CT Score',
+                        data: roundScores.map(r => r.ct_score || 0),
+                        borderColor: '#5c9cff',
+                        backgroundColor: 'rgba(92, 156, 255, 0.2)',
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 3,
+                        fill: false,
+                    }, {
+                        label: 'T Score',
+                        data: roundScores.map(r => r.t_score || 0),
+                        borderColor: '#ff8c00',
+                        backgroundColor: 'rgba(255, 140, 0, 0.2)',
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 3,
+                        fill: false,
+                    }];
+                }
+
+                // Standard player metrics
                 return timelineData.players
                     .filter(p => visiblePlayers.has(String(p.steam_id)))
                     .map((player) => {

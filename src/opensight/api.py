@@ -288,12 +288,25 @@ def build_player_response(player: Any) -> dict:
         "cp_median_error": (
             round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None
         ),
-        # Opening duels (nested)
+        # Opening duels (nested) with entry TTD stats
         "opening_duels": {
             "attempts": player.opening_duels.attempts,
             "wins": player.opening_duels.wins,
             "losses": player.opening_duels.losses,
             "win_rate": round(player.opening_duels.win_rate, 1),
+            "t_side_entries": player.opening_duels.t_side_entries,
+            "ct_side_entries": player.opening_duels.ct_side_entries,
+            # Entry-specific TTD (reaction time on first contact)
+            "entry_ttd_median_ms": (
+                round(player.opening_duels.entry_ttd_median_ms, 1)
+                if player.opening_duels.entry_ttd_median_ms
+                else None
+            ),
+            "entry_ttd_mean_ms": (
+                round(player.opening_duels.entry_ttd_mean_ms, 1)
+                if player.opening_duels.entry_ttd_mean_ms
+                else None
+            ),
         },
         # Trades (Leetify-style nested stats)
         "trades": {
@@ -385,6 +398,13 @@ def build_player_response(player: Any) -> dict:
             "crosshair_placement_deg": (
                 round(player.cp_median_error_deg, 1) if player.cp_median_error_deg else None
             ),
+            # Prefire percentage (game sense indicator)
+            "prefire_percentage": player.prefire_percentage,
+        },
+        # Side-specific stats (Leetify CT/T breakdown)
+        "side_stats": {
+            "ct": player.ct_stats.to_dict(),
+            "t": player.t_stats.to_dict(),
         },
     }
 
