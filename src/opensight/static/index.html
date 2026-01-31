@@ -5711,6 +5711,61 @@
 
             // Update bomb status
             updateBombStatus(frame);
+
+            // Update round timer and score overlays
+            updateRoundTimerOverlay(frame);
+        }
+
+        // Update round timer and score overlay
+        function updateRoundTimerOverlay(frame) {
+            const timerEl = document.getElementById('replay-round-timer');
+            const scoreEl = document.getElementById('replay-score-display');
+            const roundLabel = document.getElementById('replay-round-label');
+            const timerValue = document.getElementById('replay-timer-value');
+            const ctScoreOverlay = document.getElementById('replay-ct-score-overlay');
+            const tScoreOverlay = document.getElementById('replay-t-score-overlay');
+
+            if (!frame) {
+                if (timerEl) timerEl.style.display = 'none';
+                if (scoreEl) scoreEl.style.display = 'none';
+                return;
+            }
+
+            // Show overlays when replay is loaded
+            if (timerEl) timerEl.style.display = 'flex';
+            if (scoreEl) scoreEl.style.display = 'flex';
+
+            // Update round label
+            if (roundLabel) roundLabel.textContent = 'ROUND ' + (frame.round || 1);
+
+            // Update timer - calculate time remaining in round
+            if (timerValue) {
+                const timeInRound = frame.time_in_round || frame.time || 0;
+                const roundTime = 115; // CS2 round time 1:55
+                const remaining = Math.max(0, roundTime - timeInRound);
+                const minutes = Math.floor(remaining / 60);
+                const seconds = Math.floor(remaining % 60);
+                timerValue.textContent = minutes + ':' + seconds.toString().padStart(2, '0');
+                timerValue.classList.remove('warning', 'danger');
+                if (remaining <= 10) timerValue.classList.add('danger');
+                else if (remaining <= 30) timerValue.classList.add('warning');
+            }
+
+            // Update score overlay
+            const ctScore = calculateScoreForRound(frame.round, 'CT');
+            const tScore = calculateScoreForRound(frame.round, 'T');
+            if (ctScoreOverlay) ctScoreOverlay.textContent = ctScore;
+            if (tScoreOverlay) tScoreOverlay.textContent = tScore;
+        }
+
+        function calculateScoreForRound(roundNum, team) {
+            if (!replayState.rounds || !roundNum) return 0;
+            let score = 0;
+            for (const r of replayState.rounds) {
+                if (r.round_num >= roundNum) break;
+                if (r.winner === team) score++;
+            }
+            return score;
         }
 
         // Update bomb status display
