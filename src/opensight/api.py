@@ -280,6 +280,9 @@ def build_player_response(player: Any) -> dict:
         # Percentages
         "hs_percentage": round(player.headshot_percentage, 1),
         "kast_percentage": round(player.kast_percentage, 1),
+        "survival_rate": round(player.survival_rate, 1)
+        if hasattr(player, "survival_rate") and player.survival_rate
+        else 0.0,
         # Ratings
         "impact_rating": round(player.impact_rating, 2),
         "hltv_rating": round(player.hltv_rating, 2),
@@ -405,6 +408,47 @@ def build_player_response(player: Any) -> dict:
         "side_stats": {
             "ct": player.ct_stats.to_dict(),
             "t": player.t_stats.to_dict(),
+        },
+        # Lurk statistics (State Machine tracked)
+        "lurk_stats": {
+            "kills": player.lurk.kills if hasattr(player, "lurk") and player.lurk else 0,
+            "deaths": player.lurk.deaths if hasattr(player, "lurk") and player.lurk else 0,
+            "rounds_lurking": player.lurk.rounds_lurking
+            if hasattr(player, "lurk") and player.lurk
+            else 0,
+        },
+        # Mistake tracking (Scope.gg style)
+        "mistakes": {
+            "team_kills": player.mistakes.team_kills
+            if hasattr(player, "mistakes") and player.mistakes
+            else 0,
+            "team_damage": player.mistakes.team_damage
+            if hasattr(player, "mistakes") and player.mistakes
+            else 0,
+            "teammates_flashed": player.mistakes.teammates_flashed
+            if hasattr(player, "mistakes") and player.mistakes
+            else 0,
+            "suicides": player.mistakes.suicides
+            if hasattr(player, "mistakes") and player.mistakes
+            else 0,
+            "total_score": player.mistakes.total_mistakes
+            if hasattr(player, "mistakes") and player.mistakes
+            else 0,
+        },
+        # Economy efficiency (from domains/economy)
+        "economy": {
+            "avg_equipment_value": round(player.avg_equipment_value, 0)
+            if hasattr(player, "avg_equipment_value") and player.avg_equipment_value
+            else 0,
+            "damage_per_dollar": round(player.damage_per_dollar, 2)
+            if hasattr(player, "damage_per_dollar") and player.damage_per_dollar
+            else 0.0,
+            "kills_per_dollar": round(player.kills_per_dollar, 4)
+            if hasattr(player, "kills_per_dollar") and player.kills_per_dollar
+            else 0.0,
+            "eco_rounds": player.eco_rounds if hasattr(player, "eco_rounds") else 0,
+            "force_rounds": player.force_rounds if hasattr(player, "force_rounds") else 0,
+            "full_buy_rounds": player.full_buy_rounds if hasattr(player, "full_buy_rounds") else 0,
         },
     }
 
