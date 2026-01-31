@@ -1184,6 +1184,76 @@
             font-family: 'JetBrains Mono', monospace;
         }
 
+        /* Leetify-style Player Panel Enhancement */
+        .replay-player-item {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .replay-player-item .health-bg {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background: var(--success);
+            opacity: 0.15;
+            transition: width 0.3s ease, background-color 0.3s ease;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .replay-player-item .health-bg.warning {
+            background: var(--warning);
+        }
+
+        .replay-player-item .health-bg.danger {
+            background: var(--danger);
+        }
+
+        .replay-player-item .player-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .replay-player-health-value {
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 32px;
+            text-align: center;
+            color: var(--text-primary);
+        }
+
+        .replay-player-health-value.low {
+            color: var(--warning);
+        }
+
+        .replay-player-health-value.critical {
+            color: var(--danger);
+        }
+
+        .replay-player-armor {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .replay-player-armor svg {
+            width: 12px;
+            height: 12px;
+            fill: currentColor;
+        }
+
+        .replay-player-armor.has-helmet {
+            color: var(--ct-color);
+        }
+
         /* Kill Feed */
         .replay-killfeed {
             position: absolute;
@@ -2243,10 +2313,11 @@
                     <button class="tab-btn" data-tab="match-details" title="Press 2">Match Details</button>
                     <button class="tab-btn" data-tab="timeline" title="Press 3">Round Timeline</button>
                     <button class="tab-btn" data-tab="matrix" title="Press 4">Kill Matrix</button>
-                    <button class="tab-btn" data-tab="heatmap" title="Press 5">Heatmap</button>
-                    <button class="tab-btn" data-tab="statsgraph" title="Press 6">Stats Graph</button>
-                    <button class="tab-btn" data-tab="coaching" title="Press 7">AI Coaching</button>
-                    <button class="tab-btn" data-tab="replay" title="Press 8">2D Replay</button>
+                    <button class="tab-btn" data-tab="headtohead" title="Press 5">Head to Head</button>
+                    <button class="tab-btn" data-tab="heatmap" title="Press 6">Heatmap</button>
+                    <button class="tab-btn" data-tab="statsgraph" title="Press 7">Stats Graph</button>
+                    <button class="tab-btn" data-tab="coaching" title="Press 8">AI Coaching</button>
+                    <button class="tab-btn" data-tab="replay" title="Press 9">2D Replay</button>
                 </div>
 
                 <div class="tab-content active" id="tab-overview">
@@ -2263,6 +2334,10 @@
 
                 <div class="tab-content" id="tab-matrix">
                     ${renderKillMatrix(data.kill_matrix || [], players)}
+                </div>
+
+                <div class="tab-content" id="tab-headtohead">
+                    ${renderHeadToHeadTab(players, data.kill_matrix || [])}
                 </div>
 
                 <div class="tab-content" id="tab-heatmap">
