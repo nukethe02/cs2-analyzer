@@ -183,9 +183,18 @@ CP_VALID_CATEGORIES: set[WeaponCategory] = {
 
 # Grenade weapon names (for filtering)
 GRENADE_WEAPONS: set[str] = {
-    "hegrenade", "flashbang", "smokegrenade", "molotov",
-    "incgrenade", "decoy", "inferno", "he_grenade",
-    "flash", "smoke", "molly", "inc",
+    "hegrenade",
+    "flashbang",
+    "smokegrenade",
+    "molotov",
+    "incgrenade",
+    "decoy",
+    "inferno",
+    "he_grenade",
+    "flash",
+    "smoke",
+    "molly",
+    "inc",
 }
 
 
@@ -220,6 +229,7 @@ def _is_valid_cp_weapon(weapon_name: str | None) -> bool:
 
     # Only allow guns, not utility
     return category in CP_VALID_CATEGORIES
+
 
 # Map areas for positioning analysis (simplified, per-map data would be more accurate)
 MAP_AREAS: dict[str, list[tuple[str, tuple[float, float, float, float]]]] = {

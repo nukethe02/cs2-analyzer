@@ -93,11 +93,16 @@ class MetricsConfig:
     ttd_max_lookback_ms: float = 2000.0
     ttd_min_visibility_ticks: int = 4
 
-    # Crosshair placement settings
+    # Crosshair placement settings (Leetify-style)
     cp_sample_interval_ticks: int = 16
     cp_min_distance: float = 100.0
     cp_max_distance: float = 2000.0
     cp_eye_height: float = 64.0
+    # Pre-engagement window: measure CP this many ms BEFORE first damage
+    # to capture pre-aim quality, not recoil/flick adjustments
+    cp_pre_engagement_ms: float = 200.0
+    # Max shots in engagement to count as "clean" placement (filters sprays)
+    cp_max_shots_for_valid: int = 3
 
     # Economy settings
     eco_threshold: int = 1500

@@ -32,6 +32,8 @@ import pandas as pd
 if TYPE_CHECKING:
     pass
 
+# Import weapon filtering from metrics module
+from opensight.analysis.metrics import _is_valid_cp_weapon
 from opensight.core.constants import CS2_TICK_RATE
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,7 @@ TTD_MIN_MS = 0
 TTD_MAX_MS = 1500
 CP_MAX_DISTANCE = 2000  # Max distance for CP calculation (units)
 CP_MIN_DISTANCE = 50  # Min distance to avoid division issues
+CP_MAX_SHOTS_FOR_VALID = 3  # Max shots to count as "clean" kill (filter sprays)
 
 
 class MetricType(Flag):
@@ -294,7 +297,11 @@ def compute_angular_errors_batch(
 
 def compute_cp_vectorized(kills: list, player_ids: set[int]) -> CPMetrics:
     """
-    Compute Crosshair Placement using vectorized numpy operations.
+    Compute Crosshair Placement using vectorized numpy operations (Leetify-style).
+
+    IMPROVED IMPLEMENTATION:
+    - Filters out knife/grenade kills (only guns count for CP)
+    - Uses vectorized numpy for fast batch computation
 
     This is significantly faster than per-kill loops because:
     1. Extracts all position data into arrays upfront
@@ -310,19 +317,31 @@ def compute_cp_vectorized(kills: list, player_ids: set[int]) -> CPMetrics:
     """
     result = CPMetrics()
 
-    # Filter kills with position data
-    kills_with_pos = [
-        k
-        for k in kills
-        if k.attacker_x is not None and k.attacker_pitch is not None and k.victim_x is not None
-    ]
+    # Filter kills with position data AND valid weapons (no knives/grenades)
+    filtered_weapon = 0
+    kills_with_pos = []
+    for k in kills:
+        # Check position data
+        if k.attacker_x is None or k.attacker_pitch is None or k.victim_x is None:
+            continue
+
+        # WEAPON FILTER: Only primary/secondary weapons count for CP
+        weapon = getattr(k, "weapon", None)
+        if not _is_valid_cp_weapon(weapon):
+            filtered_weapon += 1
+            continue
+
+        kills_with_pos.append(k)
+
+    if filtered_weapon > 0:
+        logger.debug(f"CP: Filtered {filtered_weapon} kills with invalid weapons (knife/grenade)")
 
     if not kills_with_pos:
         logger.debug("No kills with position data for CP computation")
         return result
 
     # Extract data into arrays
-    len(kills_with_pos)
+    n_kills = len(kills_with_pos)
 
     attacker_ids = np.array([k.attacker_steamid for k in kills_with_pos])
 
@@ -347,9 +366,13 @@ def compute_cp_vectorized(kills: list, player_ids: set[int]) -> CPMetrics:
     attacker_pitch = np.array([k.attacker_pitch or 0.0 for k in kills_with_pos])
     attacker_yaw = np.array([k.attacker_yaw or 0.0 for k in kills_with_pos])
 
-    # Filter out invalid positions (zeros)
-    valid_mask = ((np.abs(attacker_pos[:, 0]) > 0.1) | (np.abs(attacker_pos[:, 1]) > 0.1)) & (
-        (np.abs(victim_pos[:, 0]) > 0.1) | (np.abs(victim_pos[:, 1]) > 0.1)
+    # Filter out invalid positions (zeros) and distance check
+    distances = np.linalg.norm(victim_pos - attacker_pos, axis=1)
+    valid_mask = (
+        ((np.abs(attacker_pos[:, 0]) > 0.1) | (np.abs(attacker_pos[:, 1]) > 0.1))
+        & ((np.abs(victim_pos[:, 0]) > 0.1) | (np.abs(victim_pos[:, 1]) > 0.1))
+        & (distances >= CP_MIN_DISTANCE)
+        & (distances <= CP_MAX_DISTANCE)
     )
 
     if not np.any(valid_mask):
@@ -385,7 +408,8 @@ def compute_cp_vectorized(kills: list, player_ids: set[int]) -> CPMetrics:
     result.total_kills_analyzed = len(attacker_ids_valid)
 
     logger.info(
-        f"CP computed (vectorized): {result.total_kills_analyzed} kills, "
+        f"CP computed (vectorized): {n_kills} kills after weapon filter, "
+        f"{result.total_kills_analyzed} with valid positions, "
         f"{sum(len(v) for v in player_cp_values.values())} valid CP values"
     )
 
@@ -394,7 +418,11 @@ def compute_cp_vectorized(kills: list, player_ids: set[int]) -> CPMetrics:
 
 def compute_cp_from_dataframe_vectorized(kills_df: pd.DataFrame, player_ids: set[int]) -> CPMetrics:
     """
-    Compute Crosshair Placement from DataFrame using vectorized operations.
+    Compute Crosshair Placement from DataFrame using vectorized operations (Leetify-style).
+
+    IMPROVED IMPLEMENTATION:
+    - Filters out knife/grenade kills (only guns count for CP)
+    - Distance filtering for valid engagements
 
     Alternative to compute_cp_vectorized when working with DataFrames.
 
@@ -426,6 +454,7 @@ def compute_cp_from_dataframe_vectorized(kills_df: pd.DataFrame, player_ids: set
     vic_x = find_col(kills_df, ["victim_X", "victim_x", "user_X", "user_x"])
     vic_y = find_col(kills_df, ["victim_Y", "victim_y", "user_Y", "user_y"])
     vic_z = find_col(kills_df, ["victim_Z", "victim_z", "user_Z", "user_z"])
+    weapon_col = find_col(kills_df, ["weapon", "weapon_name"])
 
     required_cols = [att_id_col, att_x, att_y, att_z, att_pitch, att_yaw, vic_x, vic_y, vic_z]
     if not all(required_cols):
@@ -433,21 +462,54 @@ def compute_cp_from_dataframe_vectorized(kills_df: pd.DataFrame, player_ids: set
         return result
 
     # Create working copy with standardized columns
-    df = kills_df[[att_id_col, att_x, att_y, att_z, att_pitch, att_yaw, vic_x, vic_y, vic_z]].copy()
-    df.columns = [
-        "attacker_id",
-        "att_x",
-        "att_y",
-        "att_z",
-        "att_pitch",
-        "att_yaw",
-        "vic_x",
-        "vic_y",
-        "vic_z",
-    ]
+    cols_to_copy = [att_id_col, att_x, att_y, att_z, att_pitch, att_yaw, vic_x, vic_y, vic_z]
+    if weapon_col:
+        cols_to_copy.append(weapon_col)
+
+    df = kills_df[cols_to_copy].copy()
+
+    if weapon_col:
+        df.columns = [
+            "attacker_id",
+            "att_x",
+            "att_y",
+            "att_z",
+            "att_pitch",
+            "att_yaw",
+            "vic_x",
+            "vic_y",
+            "vic_z",
+            "weapon",
+        ]
+    else:
+        df.columns = [
+            "attacker_id",
+            "att_x",
+            "att_y",
+            "att_z",
+            "att_pitch",
+            "att_yaw",
+            "vic_x",
+            "vic_y",
+            "vic_z",
+        ]
+
+    original_count = len(df)
 
     # Filter valid rows (non-null positions)
-    df = df.dropna()
+    df = df.dropna(
+        subset=["att_x", "att_y", "att_z", "att_pitch", "att_yaw", "vic_x", "vic_y", "vic_z"]
+    )
+
+    # WEAPON FILTER: Only primary/secondary weapons count for CP
+    if "weapon" in df.columns:
+        weapon_mask = df["weapon"].apply(lambda w: _is_valid_cp_weapon(w))
+        filtered_weapon = (~weapon_mask).sum()
+        df = df[weapon_mask]
+        if filtered_weapon > 0:
+            logger.debug(
+                f"CP: Filtered {filtered_weapon} kills with invalid weapons (knife/grenade)"
+            )
 
     # Filter out zero positions
     valid_mask = ((df["att_x"].abs() > 0.1) | (df["att_y"].abs() > 0.1)) & (
@@ -472,6 +534,20 @@ def compute_cp_from_dataframe_vectorized(kills_df: pd.DataFrame, player_ids: set
     attacker_pitch = df["att_pitch"].values
     attacker_yaw = df["att_yaw"].values
 
+    # Distance filter
+    distances = np.linalg.norm(victim_pos - attacker_pos, axis=1)
+    distance_mask = (distances >= CP_MIN_DISTANCE) & (distances <= CP_MAX_DISTANCE)
+
+    attacker_ids = attacker_ids[distance_mask]
+    attacker_pos = attacker_pos[distance_mask]
+    victim_pos = victim_pos[distance_mask]
+    attacker_pitch = attacker_pitch[distance_mask]
+    attacker_yaw = attacker_yaw[distance_mask]
+
+    if len(attacker_ids) == 0:
+        logger.debug("No kills within valid distance range for CP computation")
+        return result
+
     # Compute angular errors in batch
     angular_errors = compute_angular_errors_batch(
         attacker_pos, attacker_pitch, attacker_yaw, victim_pos
@@ -490,9 +566,13 @@ def compute_cp_from_dataframe_vectorized(kills_df: pd.DataFrame, player_ids: set
                 player_cp_values[sid].append(float(error))
 
     result.player_cp_values = player_cp_values
-    result.total_kills_analyzed = len(df)
+    result.total_kills_analyzed = len(attacker_ids)
 
-    logger.info(f"CP computed (DataFrame vectorized): {result.total_kills_analyzed} kills")
+    logger.info(
+        f"CP computed (DataFrame vectorized): {original_count} original kills, "
+        f"{result.total_kills_analyzed} after filtering, "
+        f"{sum(len(v) for v in player_cp_values.values())} valid CP values"
+    )
 
     return result
 
