@@ -2273,6 +2273,11 @@
                     if (btn.dataset.tab === 'replay') {
                         initReplayViewer(data.heatmap_data || {}, players);
                     }
+
+                    // Initialize sub-tabs when Match Details tab is shown
+                    if (btn.dataset.tab === 'match-details') {
+                        initSubTabs();
+                    }
                 });
             });
         }
@@ -5186,6 +5191,17 @@
                             <div class="replay-canvas-container">
                                 <canvas id="replay-canvas" class="replay-canvas" width="1024" height="1024"></canvas>
                                 <div id="replay-killfeed" class="replay-killfeed"></div>
+                                <!-- Score Display Overlay -->
+                                <div class="replay-score-display" id="replay-score-display" style="display: none;">
+                                    <div class="score-team"><span class="score-value ct" id="replay-ct-score-overlay">0</span><span class="score-label">CT</span></div>
+                                    <span class="score-separator">:</span>
+                                    <div class="score-team"><span class="score-value t" id="replay-t-score-overlay">0</span><span class="score-label">T</span></div>
+                                </div>
+                                <!-- Round Timer Overlay -->
+                                <div class="replay-round-timer" id="replay-round-timer" style="display: none;">
+                                    <span class="replay-round-label" id="replay-round-label">ROUND 1</span>
+                                    <span class="replay-timer-value" id="replay-timer-value">1:55</span>
+                                </div>
                                 <div id="replay-loading" class="replay-loading" style="display: none;">
                                     <div class="replay-loading-spinner"></div>
                                     <span id="replay-loading-text">Loading replay data...</span>
@@ -5906,12 +5922,13 @@
         const shortcutsPanel = document.getElementById('shortcuts-panel');
         const tabMapping = {
             '1': 'overview',
-            '2': 'timeline',
-            '3': 'matrix',
-            '4': 'heatmap',
-            '5': 'statsgraph',
-            '6': 'coaching',
-            '7': 'replay'
+            '2': 'match-details',
+            '3': 'timeline',
+            '4': 'matrix',
+            '5': 'heatmap',
+            '6': 'statsgraph',
+            '7': 'coaching',
+            '8': 'replay'
         };
 
         document.addEventListener('keydown', (e) => {
