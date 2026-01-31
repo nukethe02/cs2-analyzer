@@ -1792,6 +1792,9 @@
     <!-- Enhanced Stats Tables -->
     <link rel="stylesheet" href="/static/css/stats-tables.css">
     <script src="/static/js/stats-tables.js"></script>
+    <!-- Overview Tab with Podium -->
+    <link rel="stylesheet" href="/static/css/overview.css">
+    <script src="/static/js/overview.js"></script>
 </head>
 <body>
     <div class="bg-effects">
@@ -2169,16 +2172,21 @@
 
                 <div class="tabs">
                     <button class="tab-btn active" data-tab="overview" title="Press 1">Overview</button>
-                    <button class="tab-btn" data-tab="timeline" title="Press 2">Round Timeline</button>
-                    <button class="tab-btn" data-tab="matrix" title="Press 3">Kill Matrix</button>
-                    <button class="tab-btn" data-tab="heatmap" title="Press 4">Heatmap</button>
-                    <button class="tab-btn" data-tab="statsgraph" title="Press 5">Stats Graph</button>
-                    <button class="tab-btn" data-tab="coaching" title="Press 6">AI Coaching</button>
-                    <button class="tab-btn" data-tab="replay" title="Press 7">2D Replay</button>
+                    <button class="tab-btn" data-tab="match-details" title="Press 2">Match Details</button>
+                    <button class="tab-btn" data-tab="timeline" title="Press 3">Round Timeline</button>
+                    <button class="tab-btn" data-tab="matrix" title="Press 4">Kill Matrix</button>
+                    <button class="tab-btn" data-tab="heatmap" title="Press 5">Heatmap</button>
+                    <button class="tab-btn" data-tab="statsgraph" title="Press 6">Stats Graph</button>
+                    <button class="tab-btn" data-tab="coaching" title="Press 7">AI Coaching</button>
+                    <button class="tab-btn" data-tab="replay" title="Press 8">2D Replay</button>
                 </div>
 
                 <div class="tab-content active" id="tab-overview">
                     ${renderOverview(players, data.tactical || {}, team1Name, team2Name)}
+                </div>
+
+                <div class="tab-content" id="tab-match-details">
+                    ${renderMatchDetails(players, data, team1Name, team2Name)}
                 </div>
 
                 <div class="tab-content" id="tab-timeline">
@@ -2208,6 +2216,35 @@
 
             resultsDiv.innerHTML = html;
             resultsDiv.classList.add('show');
+
+            // Initialize overview podium
+            setTimeout(() => {
+                if (typeof renderOverviewTab === 'function') {
+                    // Transform players for podium
+                    const podiumPlayers = players.map(p => ({
+                        steam_id: p.steam_id || p.steamid || p.id,
+                        steamid: p.steam_id || p.steamid || p.id,
+                        name: p.name,
+                        team: p.team,
+                        hltv_rating: p.rating?.hltv_rating || p.hltv_rating || 0,
+                        kd_ratio: p.stats?.kd_ratio || p.kd_ratio || ((p.stats?.kills || p.kills || 0) / Math.max(p.stats?.deaths || p.deaths || 1, 1)),
+                        adr: p.stats?.adr || p.adr || 0,
+                        kills: p.stats?.kills || p.kills || 0,
+                        deaths: p.stats?.deaths || p.deaths || 0,
+                        assists: p.stats?.assists || p.assists || 0,
+                        aim_rating: p.rating?.aim_rating || p.aim_rating || 0,
+                        utility_rating: p.rating?.utility_rating || p.utility_rating || 0,
+                        rounds_played: info.rounds || 1
+                    }));
+
+                    // Determine team membership (first 5 = CT, rest = T by default)
+                    const ctPlayers = podiumPlayers.filter(p => p.team === 'CT');
+                    const tPlayers = podiumPlayers.filter(p => p.team === 'T');
+                    const myTeamIds = ctPlayers.length > 0 ? ctPlayers.map(p => p.steam_id) : podiumPlayers.slice(0, 5).map(p => p.steam_id);
+
+                    renderOverviewTab(podiumPlayers, myTeamIds, score.ct, score.t, 'overview-podium');
+                }
+            }, 100);
 
             // Tab switching
             document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -2240,12 +2277,201 @@
             });
         }
 
+        // Render Match Details Tab with Sub-Navigation (Leetify-style)
+        function renderMatchDetails(players, data, team1Name, team2Name) {
+            if (!players || players.length === 0) return '<p style="color: var(--text-muted); padding: 20px;">No player data available.</p>';
+
+            // Use provided team names or fallback to defaults
+            const ctTeamName = team1Name || 'Team 1';
+            const tTeamName = team2Name || 'Team 2';
+
+            // Separate teams
+            const team1 = players.filter(p => p.team === 'CT' || (players.indexOf(p) < 5 && !p.team));
+            const team2 = players.filter(p => p.team === 'T' || (players.indexOf(p) >= 5 && !p.team));
+
+            // If we can't determine teams, just use first 5 vs rest
+            const teamA = team1.length > 0 ? team1 : players.slice(0, 5);
+            const teamB = team2.length > 0 ? team2 : players.slice(5);
+
+            // Store match data globally for lazy-loaded sub-tabs
+            window.currentMatchData = {
+                players: players,
+                myTeam: teamA,
+                enemyTeam: teamB,
+                team1Name: ctTeamName,
+                team2Name: tTeamName,
+                data: data
+            };
+
+            let html = `
+                <div class="match-details-section" id="match-details">
+                    <!-- Sub-tab navigation -->
+                    <nav class="sub-tabs">
+                        <button class="sub-tab active" data-subtab="general">General</button>
+                        <button class="sub-tab" data-subtab="timeline">Timeline</button>
+                        <button class="sub-tab" data-subtab="aim">Aim</button>
+                        <button class="sub-tab" data-subtab="utility">Utility</button>
+                        <button class="sub-tab" data-subtab="activity">Activity</button>
+                        <button class="sub-tab" data-subtab="trades">Trades</button>
+                        <button class="sub-tab" data-subtab="opening-duels">Opening Duels</button>
+                        <button class="sub-tab" data-subtab="clutches">Clutches</button>
+                    </nav>
+
+                    <!-- Sub-tab content containers -->
+                    <div class="sub-tab-content active" id="subtab-general">
+                        ${renderGeneralStatsTable(players, teamA, teamB, ctTeamName, tTeamName)}
+                    </div>
+                    <div class="sub-tab-content" id="subtab-timeline">
+                        <div class="sub-tab-loading">Loading timeline data</div>
+                    </div>
+                    <div class="sub-tab-content" id="subtab-aim">
+                        <div class="sub-tab-loading">Loading aim statistics</div>
+                    </div>
+                    <div class="sub-tab-content" id="subtab-utility">
+                        <div class="sub-tab-loading">Loading utility statistics</div>
+                    </div>
+                    <div class="sub-tab-content" id="subtab-activity">
+                        <div class="sub-tab-loading">Loading activity data</div>
+                    </div>
+                    <div class="sub-tab-content" id="subtab-trades">
+                        <div class="sub-tab-loading">Loading trade statistics</div>
+                    </div>
+                    <div class="sub-tab-content" id="subtab-opening-duels">
+                        <div class="sub-tab-loading">Loading opening duel statistics</div>
+                    </div>
+                    <div class="sub-tab-content" id="subtab-clutches">
+                        <div class="sub-tab-loading">Loading clutch data</div>
+                    </div>
+                </div>
+            `;
+
+            return html;
+        }
+
+        // Initialize sub-tabs and lazy-load content
+        const renderedSubTabs = new Set(['general']); // General is rendered by default
+
+        function initSubTabs() {
+            const subTabs = document.querySelectorAll('.sub-tab');
+            const subContents = document.querySelectorAll('.sub-tab-content');
+
+            if (subTabs.length === 0) return;
+
+            subTabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // Remove active from all tabs and contents
+                    subTabs.forEach(t => t.classList.remove('active'));
+                    subContents.forEach(c => c.classList.remove('active'));
+
+                    // Add active to clicked tab
+                    tab.classList.add('active');
+
+                    // Show corresponding content
+                    const subtabId = tab.dataset.subtab;
+                    const content = document.getElementById(`subtab-${subtabId}`);
+                    if (content) {
+                        content.classList.add('active');
+                        // Render content if not already rendered
+                        renderSubTabContent(subtabId);
+                    }
+                });
+            });
+        }
+
+        function renderSubTabContent(subtabId) {
+            // Skip if already rendered
+            if (renderedSubTabs.has(subtabId)) return;
+
+            const container = document.getElementById(`subtab-${subtabId}`);
+            if (!container) return;
+
+            const matchData = window.currentMatchData;
+            if (!matchData) {
+                container.innerHTML = '<p style="color: var(--text-muted); padding: 20px;">No match data available.</p>';
+                return;
+            }
+
+            const { players, myTeam, enemyTeam, team1Name, team2Name, data } = matchData;
+
+            switch (subtabId) {
+                case 'general':
+                    container.innerHTML = renderGeneralStatsTable(players, myTeam, enemyTeam, team1Name, team2Name);
+                    break;
+                case 'timeline':
+                    container.innerHTML = renderSubTabTimeline(data);
+                    break;
+                case 'aim':
+                    container.innerHTML = renderAimStatsTable(myTeam, enemyTeam, team1Name, team2Name);
+                    break;
+                case 'utility':
+                    container.innerHTML = renderUtilityStatsTable(myTeam, enemyTeam, team1Name, team2Name);
+                    break;
+                case 'activity':
+                    container.innerHTML = renderActivityStatsTable(myTeam, enemyTeam, team1Name, team2Name);
+                    break;
+                case 'trades':
+                    container.innerHTML = renderTradesTable(myTeam, enemyTeam, team1Name, team2Name);
+                    break;
+                case 'opening-duels':
+                    container.innerHTML = renderOpeningDuelsTable(myTeam, enemyTeam, team1Name, team2Name);
+                    break;
+                case 'clutches':
+                    container.innerHTML = renderClutchStatsTable(myTeam, enemyTeam, team1Name, team2Name);
+                    break;
+                default:
+                    container.innerHTML = '<p style="color: var(--text-muted); padding: 20px;">Content not available.</p>';
+            }
+
+            renderedSubTabs.add(subtabId);
+        }
+
+        // Render sub-tab Timeline content
+        function renderSubTabTimeline(data) {
+            const roundTimeline = data.round_timeline || [];
+            if (roundTimeline.length === 0) {
+                return '<p style="color: var(--text-muted); padding: 20px;">No timeline data available.</p>';
+            }
+
+            let html = `
+                <div class="timeline-subtab-wrapper" style="max-height: 600px; overflow-y: auto;">
+                    <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; text-transform: uppercase;">Round-by-Round Timeline</h4>
+                    <div class="timeline-rounds" style="display: flex; flex-direction: column; gap: 8px;">
+            `;
+
+            roundTimeline.forEach((round, idx) => {
+                const roundNum = round.round || idx + 1;
+                const winner = round.winner || 'Unknown';
+                const winType = round.win_type || '';
+                const ctScore = round.ct_score || 0;
+                const tScore = round.t_score || 0;
+                const winColor = winner === 'CT' ? 'var(--ct-color)' : 'var(--t-color)';
+
+                html += `
+                    <div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--bg-elevated); border-radius: 6px;">
+                        <span style="font-weight: 600; min-width: 60px; color: var(--text-muted);">R${roundNum}</span>
+                        <span style="color: ${winColor}; font-weight: 600; min-width: 30px;">${winner}</span>
+                        <span style="color: var(--text-muted); font-size: 0.85rem; flex: 1;">${winType}</span>
+                        <span style="font-family: 'JetBrains Mono', monospace; color: var(--text-secondary);">${ctScore} - ${tScore}</span>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+
+            return html;
+        }
+
         // Render Overview Tab
         function renderOverview(players, tactical, team1Name, team2Name) {
             // Use provided team names or fallback to defaults
             const ctTeamName = team1Name || 'Team 1';
             const tTeamName = team2Name || 'Team 2';
-            let html = '';
+
+            // Add podium container at the top
+            let html = '<div id="overview-podium"></div>';
 
             // Helper function to render a single team's tactical card
             const renderTeamTacticalCard = (teamAnalysis, teamColor, teamBg, teamBorder) => {
@@ -3426,7 +3652,7 @@
 
                     <div style="display: flex; gap: 24px;">
                         <!-- Player Sidebar -->
-                        <div style="width: 200px; flex-shrink: 0; background: var(--bg-card); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--border);">
+                        <div class="timeline-player-list" style="width: 200px; flex-shrink: 0; background: var(--bg-card); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--border);">
                             <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Players</div>
                             <div style="display: flex; gap: 8px; margin-bottom: 12px;">
                                 <button id="timeline-select-all" style="flex: 1; padding: 6px; font-size: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); cursor: pointer;">All</button>
@@ -3766,6 +3992,18 @@
 
                     // Update chart
                     currentMetric = btn.dataset.metric;
+                    const isTeamMetric = teamMetrics.includes(currentMetric);
+
+                    // Show/hide player panel based on metric type
+                    const playerPanel = document.querySelector('.timeline-player-list');
+                    if (playerPanel) {
+                        playerPanel.style.display = isTeamMetric ? 'none' : 'block';
+                    }
+
+                    // Update legend visibility (show for team metrics)
+                    timelineChartInstance.options.plugins.legend.display = isTeamMetric;
+
+                    // Update datasets
                     timelineChartInstance.data.datasets = buildDatasets(currentMetric);
                     timelineChartInstance.update();
                 });
