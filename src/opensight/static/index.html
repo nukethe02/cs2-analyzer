@@ -2183,6 +2183,10 @@
 
         // Render results
         function renderResults(data) {
+            // Reset sub-tabs tracking for new analysis
+            renderedSubTabs.clear();
+            renderedSubTabs.add('general'); // General is rendered by default
+
             // DEBUG: Log timeline data received from API
             console.log('[DEBUG] renderResults called with data:', data);
             const timeline = data.round_timeline || [];
