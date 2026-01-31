@@ -1268,6 +1268,67 @@
             }
         }
 
+        /* Round Timer Overlay - Leetify style */
+        .replay-round-timer {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 24px;
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            z-index: 10;
+        }
+        .replay-round-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); }
+        .replay-timer-value { font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text-primary); }
+        .replay-timer-value.warning { color: var(--warning); }
+        .replay-timer-value.danger { color: var(--danger); }
+
+        /* Score Display on Canvas */
+        .replay-score-display {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            z-index: 10;
+        }
+        .score-team { display: flex; flex-direction: column; align-items: center; }
+        .score-value { font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .score-value.ct { color: var(--ct-color); }
+        .score-value.t { color: var(--t-color); }
+        .score-label { font-size: 0.6rem; text-transform: uppercase; color: var(--text-muted); }
+        .score-separator { font-size: 1.2rem; color: var(--text-muted); }
+
+        /* Round Highlight Panel */
+        .replay-highlight-panel { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 16px; text-align: center; }
+        .highlight-header { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+        .highlight-description { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 12px; }
+        .get-highlights-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--bg-primary);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .get-highlights-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 229, 255, 0.3); }
+
         /* Coaching Panel Styles */
         .coaching-panel {
             display: grid;
