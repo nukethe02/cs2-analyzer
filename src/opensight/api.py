@@ -111,9 +111,9 @@ app.add_middleware(
 
 
 # Simple in-memory job store and sharecode cache for tests and lightweight usage
-import uuid
-import time
 import threading
+import time
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -158,6 +158,7 @@ class JobStore:
 
     def _start_cleanup_thread(self) -> None:
         """Start background thread for periodic job cleanup."""
+
         def cleanup_loop():
             while True:
                 time.sleep(JOB_CLEANUP_INTERVAL)
@@ -170,8 +171,7 @@ class JobStore:
         """Remove expired jobs to prevent memory exhaustion."""
         with self._lock:
             expired_ids = [
-                jid for jid, job in self._jobs.items()
-                if job.is_expired(self._ttl_seconds)
+                jid for jid, job in self._jobs.items() if job.is_expired(self._ttl_seconds)
             ]
             for jid in expired_ids:
                 del self._jobs[jid]
@@ -240,8 +240,7 @@ class JobStore:
         with self._lock:
             # Filter out expired jobs
             valid_jobs = [
-                job for job in self._jobs.values()
-                if not job.is_expired(self._ttl_seconds)
+                job for job in self._jobs.values() if not job.is_expired(self._ttl_seconds)
             ]
             return valid_jobs
 
@@ -713,38 +712,57 @@ async def security_headers_middleware(request: Request, call_next) -> Response:
 
 
 # =============================================================================
-# Rate Limiting (REQUIRED for security)
+# Rate Limiting Configuration
 # =============================================================================
 import os
 
 # Check if we're in production (HF Spaces sets SPACE_ID env var)
 IS_PRODUCTION = os.getenv("SPACE_ID") is not None or os.getenv("PRODUCTION") == "true"
 
-try:
-    from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.errors import RateLimitExceeded
-    from slowapi.util import get_remote_address
+# Allow disabling rate limiting via environment variable (for development/testing)
+# Set DISABLE_RATE_LIMITING=true to disable
+RATE_LIMITING_DISABLED = os.getenv("DISABLE_RATE_LIMITING", "").lower() == "true"
 
-    limiter = Limiter(key_func=get_remote_address)
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    RATE_LIMITING_ENABLED = True
-    logger.info("Rate limiting enabled")
-except ImportError as e:
-    if IS_PRODUCTION:
-        # CRITICAL: Rate limiting is required in production
-        raise RuntimeError(
-            "SECURITY ERROR: slowapi is required for rate limiting in production. "
-            "Install with: pip install slowapi"
-        ) from e
-    else:
-        # Development mode - warn but continue
-        RATE_LIMITING_ENABLED = False
-        limiter = None
-        logger.warning(
-            "⚠️  SECURITY WARNING: slowapi not installed - rate limiting DISABLED. "
-            "This is acceptable for development but MUST be enabled in production."
+# Configurable rate limits via environment variables
+RATE_LIMIT_UPLOAD = os.getenv("RATE_LIMIT_UPLOAD", "30/minute")  # Default: 30 uploads/min
+RATE_LIMIT_REPLAY = os.getenv("RATE_LIMIT_REPLAY", "60/minute")  # Default: 60 replays/min
+RATE_LIMIT_API = os.getenv("RATE_LIMIT_API", "120/minute")  # Default: 120 API calls/min
+
+if RATE_LIMITING_DISABLED:
+    RATE_LIMITING_ENABLED = False
+    limiter = None
+    logger.warning(
+        "⚠️  Rate limiting DISABLED via DISABLE_RATE_LIMITING env var. "
+        "This should only be used for development/testing."
+    )
+else:
+    try:
+        from slowapi import Limiter, _rate_limit_exceeded_handler
+        from slowapi.errors import RateLimitExceeded
+        from slowapi.util import get_remote_address
+
+        limiter = Limiter(key_func=get_remote_address)
+        app.state.limiter = limiter
+        app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+        RATE_LIMITING_ENABLED = True
+        logger.info(
+            f"Rate limiting enabled (upload: {RATE_LIMIT_UPLOAD}, replay: {RATE_LIMIT_REPLAY}, api: {RATE_LIMIT_API})"
         )
+    except ImportError as e:
+        if IS_PRODUCTION:
+            # CRITICAL: Rate limiting is required in production
+            raise RuntimeError(
+                "SECURITY ERROR: slowapi is required for rate limiting in production. "
+                "Install with: pip install slowapi"
+            ) from e
+        else:
+            # Development mode - warn but continue
+            RATE_LIMITING_ENABLED = False
+            limiter = None
+            logger.warning(
+                "⚠️  SECURITY WARNING: slowapi not installed - rate limiting DISABLED. "
+                "This is acceptable for development but MUST be enabled in production."
+            )
 
 
 def rate_limit(limit_string: str):
@@ -923,7 +941,7 @@ async def decode_share_code(request: ShareCodeRequest) -> dict[str, int]:
 
 
 @app.post("/analyze", status_code=202)
-@rate_limit("5/minute")  # Limit uploads to 5 per minute per IP
+@rate_limit(RATE_LIMIT_UPLOAD)  # Configurable via RATE_LIMIT_UPLOAD env var
 async def analyze_demo(request: Request, file: UploadFile = File(...)):
     """
     Submit a CS2 demo file for analysis.
@@ -1576,7 +1594,7 @@ async def get_parallel_status() -> dict[str, Any]:
 
 
 @app.post("/replay/generate")
-@rate_limit("3/minute")  # Limit replay generation to 3 per minute per IP
+@rate_limit(RATE_LIMIT_REPLAY)  # Configurable via RATE_LIMIT_REPLAY env var
 async def generate_replay_data(
     request: Request,
     file: Annotated[UploadFile, File(...)],
@@ -1713,6 +1731,164 @@ async def generate_replay_data(
                 tmp_path.unlink()
             except OSError:
                 pass
+
+
+# =============================================================================
+# Per-Player Positioning Heatmaps
+# =============================================================================
+
+
+@app.get("/api/positioning/{job_id}/{steam_id}")
+async def get_player_positioning(job_id: str, steam_id: str) -> dict[str, object]:
+    """
+    Get per-player positioning heatmap data for a completed analysis.
+
+    Returns:
+    - presence_heatmap: 64x64 grid showing where player spends time
+    - kills_heatmap: Where they get kills
+    - deaths_heatmap: Where they die
+    - early_round_heatmap: First 30 seconds positioning
+    - late_round_heatmap: After 30 seconds
+    - favorite_zones: Top 5 zones by presence
+    - danger_zones: Top 5 zones where they die most
+
+    This is more useful than Leetify's team-aggregate heatmaps
+    for scouting specific opponents.
+    """
+    validate_demo_id(job_id)
+    validate_steam_id(steam_id)
+
+    # Check job exists and is completed
+    job = job_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job['status']}")
+
+    try:
+        from opensight.analysis.positioning import PositioningAnalyzer
+        from opensight.core.parser import DemoParser
+
+        # Get demo path from job
+        demo_path = job.get("demo_path")
+        if not demo_path or not Path(demo_path).exists():
+            raise HTTPException(status_code=404, detail="Demo file no longer available")
+
+        # Parse and analyze
+        parser = DemoParser(Path(demo_path))
+        data = parser.parse()
+        analyzer = PositioningAnalyzer(data)
+        result = analyzer.analyze_player(int(steam_id))
+
+        return result.to_dict()
+
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Positioning module not available: {e}") from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid steam_id: {e}") from e
+    except Exception as e:
+        logger.exception("Positioning analysis failed")
+        raise HTTPException(status_code=500, detail=f"Positioning analysis failed: {e!s}") from e
+
+
+@app.get("/api/positioning/{job_id}/compare/{steam_id_a}/{steam_id_b}")
+async def compare_player_positioning(
+    job_id: str, steam_id_a: str, steam_id_b: str
+) -> dict[str, object]:
+    """
+    Compare positioning of two players from a completed analysis.
+
+    Returns:
+    - player_a, player_b: Full heatmap data for each player
+    - overlap_score: 0-100, how similar their positioning
+    - unique_zones_a: Zones where A is but B isn't
+    - unique_zones_b: Zones where B is but A isn't
+    - shared_zones: Zones where both spend significant time
+
+    Useful for:
+    - Scouting opponent tendencies
+    - Comparing teammate positioning overlap
+    - Finding unique spots each player uses
+    """
+    validate_demo_id(job_id)
+    validate_steam_id(steam_id_a)
+    validate_steam_id(steam_id_b)
+
+    # Check job exists and is completed
+    job = job_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job['status']}")
+
+    try:
+        from opensight.analysis.positioning import PositioningAnalyzer
+        from opensight.core.parser import DemoParser
+
+        # Get demo path from job
+        demo_path = job.get("demo_path")
+        if not demo_path or not Path(demo_path).exists():
+            raise HTTPException(status_code=404, detail="Demo file no longer available")
+
+        # Parse and analyze
+        parser = DemoParser(Path(demo_path))
+        data = parser.parse()
+        analyzer = PositioningAnalyzer(data)
+        result = analyzer.compare_players(int(steam_id_a), int(steam_id_b))
+
+        return result.to_dict()
+
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Positioning module not available: {e}") from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid steam_id: {e}") from e
+    except Exception as e:
+        logger.exception("Positioning comparison failed")
+        raise HTTPException(status_code=500, detail=f"Positioning comparison failed: {e!s}") from e
+
+
+@app.get("/api/positioning/{job_id}/all")
+async def get_all_player_positioning(job_id: str) -> dict[str, object]:
+    """
+    Get positioning heatmaps for all players in a completed analysis.
+
+    Returns a dictionary keyed by steam_id with each player's full heatmap data.
+    """
+    validate_demo_id(job_id)
+
+    # Check job exists and is completed
+    job = job_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job['status']}")
+
+    try:
+        from opensight.analysis.positioning import PositioningAnalyzer
+        from opensight.core.parser import DemoParser
+
+        # Get demo path from job
+        demo_path = job.get("demo_path")
+        if not demo_path or not Path(demo_path).exists():
+            raise HTTPException(status_code=404, detail="Demo file no longer available")
+
+        # Parse and analyze
+        parser = DemoParser(Path(demo_path))
+        data = parser.parse()
+        analyzer = PositioningAnalyzer(data)
+        results = analyzer.analyze_all_players()
+
+        return {
+            "map_name": data.map_name,
+            "player_count": len(results),
+            "players": {str(sid): data.to_dict() for sid, data in results.items()},
+        }
+
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=f"Positioning module not available: {e}") from e
+    except Exception as e:
+        logger.exception("All players positioning analysis failed")
+        raise HTTPException(status_code=500, detail=f"Positioning analysis failed: {e!s}") from e
 
 
 # =============================================================================
@@ -1920,6 +2096,59 @@ async def get_player_persona_endpoint(steam_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to get persona: {e!s}") from e
 
 
+@app.get("/api/your-match/trends/{steam_id}")
+async def get_player_trends_endpoint(steam_id: str, days: int = 30) -> dict[str, Any]:
+    """
+    Get performance trends for a player over time.
+
+    Calculates rating/ADR/winrate trends, detects slumps, and identifies
+    improvement areas. This feature is 100% FREE - Leetify charges for it.
+
+    Args:
+        steam_id: Player's Steam ID (17 digits)
+        days: Number of days to analyze (default 30, max 365)
+
+    Returns:
+        Performance trend data including:
+        - rating_history: List of (date, rating) points
+        - rating_trend: "improving" | "declining" | "stable"
+        - slump_detected: bool
+        - slump_severity: "minor" | "major" | null
+        - improvement_areas: List of areas to work on
+        - map_performance: Per-map stats
+    """
+    validate_steam_id(steam_id)
+
+    # Clamp days to reasonable range
+    days = max(7, min(days, 365))
+
+    try:
+        from opensight.infra.database import get_db
+
+        db = get_db()
+        trends = db.get_player_trends(steam_id, days=days)
+
+        if not trends:
+            return {
+                "steam_id": steam_id,
+                "period_days": days,
+                "matches_analyzed": 0,
+                "message": "Insufficient match history. Play more matches to see trends.",
+                "rating": {"history": [], "trend": "stable", "change_pct": 0},
+                "adr": {"history": [], "trend": "stable", "change_pct": 0},
+                "winrate": {"history": [], "current": 0},
+                "slump": {"detected": False, "severity": None},
+                "improvement_areas": [],
+                "map_performance": {},
+            }
+
+        return trends
+
+    except Exception as e:
+        logger.exception("Failed to get player trends")
+        raise HTTPException(status_code=500, detail=f"Failed to get trends: {e!s}") from e
+
+
 # Parameterized route MUST come AFTER static routes
 @app.get("/api/your-match/{demo_id}/{steam_id}")
 async def get_your_match(demo_id: str, steam_id: str) -> dict[str, Any]:
@@ -2105,7 +2334,7 @@ async def get_player_metrics(steam_id: str, demo_id: str = Query(None, max_lengt
 
 
 @app.post("/tactical/rotations")
-@rate_limit("3/minute")
+@rate_limit(RATE_LIMIT_API)  # Configurable via RATE_LIMIT_API env var
 async def analyze_rotations(
     request: Request,
     file: Annotated[UploadFile, File(...)],
