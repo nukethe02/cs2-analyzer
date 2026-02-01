@@ -315,6 +315,16 @@ class OpeningDuelStats:
             return float(np.mean(self.entry_ttd_values))
         return None
 
+    @property
+    def kills(self) -> int:
+        """Alias for wins - opening kills count."""
+        return self.wins
+
+    @property
+    def deaths(self) -> int:
+        """Alias for losses - opening deaths count."""
+        return self.losses
+
 
 @dataclass
 class OpeningEngagementStats:
