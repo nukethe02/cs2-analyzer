@@ -1,0 +1,196 @@
+/**
+ * Per-Player Positioning Heatmaps Styles
+ */
+
+.player-heatmaps-container {
+    background: var(--bg-secondary, #1e1e1e);
+    border-radius: var(--radius, 8px);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.heatmap-header {
+    margin-bottom: 1rem;
+}
+
+.heatmap-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: var(--text-primary, #fff);
+}
+
+.heatmap-subtitle {
+    margin: 0.25rem 0 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted, #888);
+}
+
+.heatmap-controls {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.control-group label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-muted, #888);
+    letter-spacing: 0.05em;
+}
+
+.heatmap-select {
+    padding: 0.5rem 1rem;
+    background: var(--bg-tertiary, #2a2a2a);
+    border: 1px solid var(--border, #333);
+    border-radius: var(--radius-sm, 4px);
+    color: var(--text-primary, #fff);
+    font-size: 0.9rem;
+    min-width: 150px;
+}
+
+.heatmap-type-buttons {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.heatmap-type-btn {
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-tertiary, #2a2a2a);
+    border: 1px solid var(--border, #333);
+    border-radius: var(--radius-sm, 4px);
+    color: var(--text-muted, #888);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.heatmap-type-btn:hover {
+    background: var(--bg-hover, #333);
+    color: var(--text-primary, #fff);
+}
+
+.heatmap-type-btn.active {
+    background: var(--accent, #3b82f6);
+    color: #fff;
+    border-color: var(--accent, #3b82f6);
+}
+
+.heatmap-content {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+    .heatmap-content {
+        grid-template-columns: 1fr;
+    }
+}
+
+.heatmap-canvas-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+#player-heatmap-canvas {
+    width: 256px;
+    height: 256px;
+    border-radius: var(--radius, 8px);
+    border: 1px solid var(--border, #333);
+    background: #1a1a1a;
+}
+
+.heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted, #888);
+}
+
+.legend-gradient {
+    flex: 1;
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(to right, #0d47a1, #2196f3, #64b5f6, #90caf9, #e3f2fd);
+}
+
+.heatmap-zones-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.zones-section h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9rem;
+    color: var(--text-primary, #fff);
+}
+
+.zone-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.zone-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary, #ccc);
+}
+
+.zone-list li.no-data {
+    color: var(--text-muted, #666);
+    font-style: italic;
+}
+
+.zone-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    background: var(--bg-tertiary, #2a2a2a);
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted, #888);
+}
+
+.zone-list.danger .zone-rank {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+
+.heatmap-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.25rem 0;
+    font-size: 0.85rem;
+}
+
+.stat-label {
+    color: var(--text-muted, #888);
+}
+
+.stat-value {
+    color: var(--text-primary, #fff);
+    font-family: var(--font-mono, monospace);
+}
