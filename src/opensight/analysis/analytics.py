@@ -2096,7 +2096,7 @@ class RoleScores:
             "awper": self.awper,
             "rifler": self.rifler,
         }
-        best_role = max(scores, key=scores.get)
+        best_role = max(scores, key=lambda k: scores[k])
         best_score = scores[best_role]
 
         # If best score is very low, default to flex
@@ -2841,7 +2841,7 @@ class DemoAnalyzer:
         # Metrics configuration
         self._use_cache = use_cache
         self._use_optimized = use_optimized and HAS_OPTIMIZED_METRICS
-        self._metrics_computer: OptimizedMetricsComputer | None = None
+        self._metrics_computer: Any = None  # OptimizedMetricsComputer | None
         self._requested_metrics = self._parse_metrics_config(metrics)
 
     def _parse_metrics_config(self, metrics: str | list[str] | None) -> set[str]:
@@ -2999,7 +2999,7 @@ class DemoAnalyzer:
         self._calculate_rws()
 
         # Initialize optimized metrics computer if using optimized implementations
-        if self._use_optimized:
+        if self._use_optimized and OptimizedMetricsComputer is not None:
             self._metrics_computer = OptimizedMetricsComputer(self.data, use_cache=self._use_cache)
 
         # Calculate multi-kill rounds

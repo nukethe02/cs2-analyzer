@@ -3028,6 +3028,7 @@
                         <button class="stats-tab-btn" data-stats-tab="activity" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Activity</button>
                         <button class="stats-tab-btn" data-stats-tab="utility" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Utility</button>
                         <button class="stats-tab-btn" data-stats-tab="clutch" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Clutch</button>
+                        <button class="stats-tab-btn" data-stats-tab="rating" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Rating</button>
                     </div>
 
                     <div class="stats-tab-content" id="stats-general" style="display: block;">
@@ -3050,6 +3051,9 @@
                     </div>
                     <div class="stats-tab-content" id="stats-clutch" style="display: none;">
                         ${renderClutchStatsTable(teamA, teamB, ctTeamName, tTeamName)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-rating" style="display: none;">
+                        ${renderRatingBreakdownTable(teamA, teamB, ctTeamName, tTeamName)}
                     </div>
                 </div>
             `;
@@ -3773,10 +3777,54 @@
             // HLTV 2.0 formula:
             // Rating = 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + 0.2372*Impact + 0.0032*ADR + 0.1587*RMK
 
+            // Helper for safe number extraction (handles NaN)
+            const safeNum = (val, fallback = 0) => Number.isFinite(val) ? val : fallback;
+
+            // Helper to calculate derived stats with NaN safety
+            const getPlayerStats = (p) => {
+                const rounds = safeNum(p.rounds_played, 1) || 1;
+                const kills = safeNum(p.kills, 0);
+                const deaths = safeNum(p.deaths, 0);
+                const mk2 = safeNum(p.multi_kills?.['2k'], 0);
+                const mk3 = safeNum(p.multi_kills?.['3k'], 0);
+                const mk4 = safeNum(p.multi_kills?.['4k'], 0);
+                const mk5 = safeNum(p.multi_kills?.['5k'], 0);
+
+                return {
+                    kast: safeNum(p.kast_percentage, 0),
+                    kpr: safeNum(p.kpr, kills / rounds),
+                    dpr: safeNum(p.dpr, deaths / rounds),
+                    impact: safeNum(p.impact_rating, 0),
+                    adr: safeNum(p.adr, 0),
+                    rmk: (mk2 + mk3 + mk4 + mk5) / rounds,
+                    rating: safeNum(p.hltv_rating, 0)
+                };
+            };
+
+            // Calculate best values across ALL players for star indicators
+            const allPlayers = [...(team1 || []), ...(team2 || [])];
+            const allStats = allPlayers.map(p => getPlayerStats(p));
+            const best = {
+                kast: Math.max(...allStats.map(s => s.kast)),
+                kpr: Math.max(...allStats.map(s => s.kpr)),
+                dpr: Math.min(...allStats.map(s => s.dpr)),  // Lower is better for DPR
+                impact: Math.max(...allStats.map(s => s.impact)),
+                adr: Math.max(...allStats.map(s => s.adr)),
+                rmk: Math.max(...allStats.map(s => s.rmk)),
+                rating: Math.max(...allStats.map(s => s.rating))
+            };
+
+            const renderStar = (val, bestVal, lowerIsBetter = false) => {
+                if (lowerIsBetter) {
+                    return val === bestVal && val < Infinity ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+                }
+                return val === bestVal && val > 0 ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+            };
+
             const renderTeamTable = (players, teamName) => {
                 if (!players || players.length === 0) return '';
 
-                const sorted = [...players].sort((a, b) => (b.hltv_rating || 0) - (a.hltv_rating || 0));
+                const sorted = [...players].sort((a, b) => safeNum(b.hltv_rating, 0) - safeNum(a.hltv_rating, 0));
 
                 let html = `
                     <div style="margin-bottom: 24px;">
@@ -3797,29 +3845,15 @@
                             <tbody>`;
 
                 sorted.forEach(p => {
-                    const kast = p.kast_percentage || 0;
-                    const kpr = p.kpr || (p.kills / (p.rounds_played || 1)) || 0;
-                    const dpr = p.dpr || (p.deaths / (p.rounds_played || 1)) || 0;
-                    const impact = p.impact_rating || 0;
-                    const adr = p.adr || 0;
+                    const stats = getPlayerStats(p);
 
-                    // Calculate RMK from multi-kills
-                    const rounds = p.rounds_played || 1;
-                    const mk2 = p.multi_kills?.['2k'] || 0;
-                    const mk3 = p.multi_kills?.['3k'] || 0;
-                    const mk4 = p.multi_kills?.['4k'] || 0;
-                    const mk5 = p.multi_kills?.['5k'] || 0;
-                    const rmk = ((mk2 + mk3 + mk4 + mk5) / rounds) || 0;
-
-                    const rating = p.hltv_rating || 0;
-
-                    // Color coding
-                    const kastColor = kast >= 75 ? 'var(--success)' : kast >= 65 ? 'var(--warning)' : 'var(--danger)';
-                    const kprColor = kpr >= 0.8 ? 'var(--success)' : kpr >= 0.6 ? 'var(--warning)' : 'var(--text-muted)';
-                    const dprColor = dpr <= 0.6 ? 'var(--success)' : dpr <= 0.75 ? 'var(--warning)' : 'var(--danger)';
-                    const impactColor = impact >= 1.2 ? 'var(--success)' : impact >= 0.9 ? 'var(--warning)' : 'var(--danger)';
-                    const adrColor = adr >= 85 ? 'var(--success)' : adr >= 65 ? 'var(--warning)' : 'var(--danger)';
-                    const ratingColor = rating >= 1.15 ? 'var(--success)' : rating >= 0.95 ? 'var(--warning)' : 'var(--danger)';
+                    // Color coding (fixed: KPR now uses --danger for bad values)
+                    const kastColor = stats.kast >= 75 ? 'var(--success)' : stats.kast >= 65 ? 'var(--warning)' : 'var(--danger)';
+                    const kprColor = stats.kpr >= 0.8 ? 'var(--success)' : stats.kpr >= 0.6 ? 'var(--warning)' : 'var(--danger)';
+                    const dprColor = stats.dpr <= 0.6 ? 'var(--success)' : stats.dpr <= 0.75 ? 'var(--warning)' : 'var(--danger)';
+                    const impactColor = stats.impact >= 1.2 ? 'var(--success)' : stats.impact >= 0.9 ? 'var(--warning)' : 'var(--danger)';
+                    const adrColor = stats.adr >= 85 ? 'var(--success)' : stats.adr >= 65 ? 'var(--warning)' : 'var(--danger)';
+                    const ratingColor = stats.rating >= 1.15 ? 'var(--success)' : stats.rating >= 0.95 ? 'var(--warning)' : 'var(--danger)';
 
                     html += `
                         <tr style="border-bottom: 1px solid var(--border);">
@@ -3829,13 +3863,13 @@
                                     <span style="color: var(--text-primary);">${escapeHtml(p.name || 'Unknown')}</span>
                                 </div>
                             </td>
-                            <td style="text-align: center; padding: 12px; color: ${kastColor}; font-weight: 500;">${kast.toFixed(1)}%</td>
-                            <td style="text-align: center; padding: 12px; color: ${kprColor}; font-weight: 500;">${kpr.toFixed(2)}</td>
-                            <td style="text-align: center; padding: 12px; color: ${dprColor}; font-weight: 500;">${dpr.toFixed(2)}</td>
-                            <td style="text-align: center; padding: 12px; color: ${impactColor}; font-weight: 500;">${impact.toFixed(2)}</td>
-                            <td style="text-align: center; padding: 12px; color: ${adrColor}; font-weight: 500;">${adr.toFixed(0)}</td>
-                            <td style="text-align: center; padding: 12px; color: var(--text-muted);">${rmk.toFixed(2)}</td>
-                            <td style="text-align: center; padding: 12px; color: ${ratingColor}; font-weight: 700; font-size: 1.1rem;">${rating.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 12px; color: ${kastColor}; font-weight: 500;">${renderStar(stats.kast, best.kast)}${stats.kast.toFixed(1)}%</td>
+                            <td style="text-align: center; padding: 12px; color: ${kprColor}; font-weight: 500;">${renderStar(stats.kpr, best.kpr)}${stats.kpr.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 12px; color: ${dprColor}; font-weight: 500;">${renderStar(stats.dpr, best.dpr, true)}${stats.dpr.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 12px; color: ${impactColor}; font-weight: 500;">${renderStar(stats.impact, best.impact)}${stats.impact.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 12px; color: ${adrColor}; font-weight: 500;">${renderStar(stats.adr, best.adr)}${stats.adr.toFixed(0)}</td>
+                            <td style="text-align: center; padding: 12px; color: var(--text-muted);">${renderStar(stats.rmk, best.rmk)}${stats.rmk.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 12px; color: ${ratingColor}; font-weight: 700; font-size: 1.1rem;">${renderStar(stats.rating, best.rating)}${stats.rating.toFixed(2)}</td>
                         </tr>
                     `;
                 });
