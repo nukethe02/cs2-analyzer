@@ -1747,6 +1747,135 @@
             color: var(--accent-primary);
         }
 
+        /* Export Buttons Container */
+        .export-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .export-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .export-btn:hover {
+            background: var(--bg-surface);
+            color: var(--text-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .export-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .export-btn.discord:hover {
+            border-color: #5865F2;
+            color: #5865F2;
+        }
+
+        .export-btn.slack:hover {
+            border-color: #4A154B;
+            color: #E01E5A;
+        }
+
+        .export-btn.plain:hover {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        /* Economy Prediction Display */
+        .economy-prediction {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            border: 1px solid transparent;
+            margin-left: 8px;
+        }
+
+        .economy-prediction.pred-full {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .economy-prediction.pred-force {
+            background: rgba(245, 158, 11, 0.15);
+            color: #f59e0b;
+            border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .economy-prediction.pred-eco {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .economy-prediction.pred-pistol {
+            background: rgba(139, 92, 246, 0.15);
+            color: #8b5cf6;
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+
+        .economy-prediction .confidence {
+            opacity: 0.8;
+            font-size: 0.65rem;
+        }
+
+        /* Toast Notification */
+        .toast-notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            z-index: 9999;
+            opacity: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .toast-notification.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast-success {
+            background: var(--success);
+            color: #fff;
+        }
+
+        .toast-error {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        .toast-info {
+            background: var(--accent-primary);
+            color: #fff;
+        }
+
         /* Economy Badge Styles */
         .economy-badge {
             display: inline-flex;
@@ -2219,6 +2348,177 @@
             return div.innerHTML;
         }
 
+        // =====================================================
+        // Clipboard Export Functions (Discord/Slack/Plain Text)
+        // =====================================================
+
+        function generateDiscordExport(data) {
+            const info = data.demo_info || {};
+            const map = info.map || 'Unknown';
+            const score = `${info.score_ct || 0} - ${info.score_t || 0}`;
+
+            // Get players sorted by rating
+            const players = Array.isArray(data.players) ? data.players :
+                Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0));
+
+            let output = `**Match Report: ${map}**\n`;
+            output += `Score: **${score}**\n\n`;
+            output += `**Player Stats:**\n\`\`\`\n`;
+            output += `${'Player'.padEnd(15)} | Rating | K/D   | ADR  | KAST\n`;
+            output += `${'-'.repeat(52)}\n`;
+
+            for (const p of players) {
+                const name = (p.name || 'Unknown').substring(0, 14).padEnd(15);
+                const rating = (p.rating?.hltv_rating || 0).toFixed(2).padStart(6);
+                const kd = `${p.stats?.kills || 0}/${p.stats?.deaths || 0}`.padStart(5);
+                const adr = (p.stats?.adr || 0).toFixed(0).padStart(4);
+                const kast = `${(p.rating?.kast_percentage || 0).toFixed(0)}%`.padStart(4);
+
+                output += `${name} | ${rating} | ${kd} | ${adr} | ${kast}\n`;
+            }
+
+            output += `\`\`\`\n`;
+
+            // Add MVP
+            if (players[0]) {
+                output += `**MVP:** ${players[0].name} (${players[0].rating?.hltv_rating?.toFixed(2)} rating)\n`;
+            }
+
+            output += `\n_Analyzed with OpenSight_`;
+
+            return output;
+        }
+
+        function generateSlackExport(data) {
+            const info = data.demo_info || {};
+            const map = info.map || 'Unknown';
+            const score = `${info.score_ct || 0} - ${info.score_t || 0}`;
+
+            const players = Array.isArray(data.players) ? data.players :
+                Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0));
+
+            let output = `:bar_chart: *Match Report: ${map}*\n`;
+            output += `Score: *${score}*\n\n`;
+            output += `*Player Stats:*\n\`\`\`\n`;
+            output += `${'Player'.padEnd(15)} | Rating | K/D   | ADR  | KAST\n`;
+            output += `${'-'.repeat(52)}\n`;
+
+            for (const p of players) {
+                const name = (p.name || 'Unknown').substring(0, 14).padEnd(15);
+                const rating = (p.rating?.hltv_rating || 0).toFixed(2).padStart(6);
+                const kd = `${p.stats?.kills || 0}/${p.stats?.deaths || 0}`.padStart(5);
+                const adr = (p.stats?.adr || 0).toFixed(0).padStart(4);
+                const kast = `${(p.rating?.kast_percentage || 0).toFixed(0)}%`.padStart(4);
+
+                output += `${name} | ${rating} | ${kd} | ${adr} | ${kast}\n`;
+            }
+
+            output += `\`\`\`\n`;
+
+            if (players[0]) {
+                output += `:trophy: *MVP:* ${players[0].name} (${players[0].rating?.hltv_rating?.toFixed(2)} rating)\n`;
+            }
+
+            output += `\n_Analyzed with OpenSight_`;
+
+            return output;
+        }
+
+        function generatePlainExport(data) {
+            const info = data.demo_info || {};
+            const map = info.map || 'Unknown';
+            const score = `${info.score_ct || 0} - ${info.score_t || 0}`;
+
+            const players = Array.isArray(data.players) ? data.players :
+                Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            players.sort((a, b) => (b.rating?.hltv_rating || 0) - (a.rating?.hltv_rating || 0));
+
+            let output = `Match Report: ${map}\n`;
+            output += `Score: ${score}\n\n`;
+            output += `Player Stats:\n`;
+            output += `${'Player'.padEnd(15)} | Rating | K/D   | ADR  | KAST\n`;
+            output += `${'-'.repeat(52)}\n`;
+
+            for (const p of players) {
+                const name = (p.name || 'Unknown').substring(0, 14).padEnd(15);
+                const rating = (p.rating?.hltv_rating || 0).toFixed(2).padStart(6);
+                const kd = `${p.stats?.kills || 0}/${p.stats?.deaths || 0}`.padStart(5);
+                const adr = (p.stats?.adr || 0).toFixed(0).padStart(4);
+                const kast = `${(p.rating?.kast_percentage || 0).toFixed(0)}%`.padStart(4);
+
+                output += `${name} | ${rating} | ${kd} | ${adr} | ${kast}\n`;
+            }
+
+            output += `\n`;
+
+            if (players[0]) {
+                output += `MVP: ${players[0].name} (${players[0].rating?.hltv_rating?.toFixed(2)} rating)\n`;
+            }
+
+            output += `\nAnalyzed with OpenSight`;
+
+            return output;
+        }
+
+        async function copyToClipboard(format) {
+            if (!analysisData) {
+                showToast('No analysis data available', 'error');
+                return;
+            }
+
+            let text;
+            switch (format) {
+                case 'discord':
+                    text = generateDiscordExport(analysisData);
+                    break;
+                case 'slack':
+                    text = generateSlackExport(analysisData);
+                    break;
+                case 'plain':
+                default:
+                    text = generatePlainExport(analysisData);
+                    break;
+            }
+
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast(`Copied to clipboard (${format} format)`, 'success');
+            } catch (err) {
+                // Fallback for older browsers
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showToast(`Copied to clipboard (${format} format)`, 'success');
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            // Remove existing toast
+            const existing = document.querySelector('.toast-notification');
+            if (existing) existing.remove();
+
+            const toast = document.createElement('div');
+            toast.className = `toast-notification toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            // Trigger animation
+            setTimeout(() => toast.classList.add('show'), 10);
+
+            // Auto-remove
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
         // Show error
         function showError(title, message) {
             resultsDiv.innerHTML = `
@@ -2431,6 +2731,27 @@
                             <span class="mvp-rating">${data.mvp.rating?.toFixed(2) || '-'}</span>
                         </div>
                     ` : ''}
+                    <div class="export-buttons">
+                        <button class="export-btn discord" onclick="copyToClipboard('discord')" title="Copy formatted stats for Discord">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                            </svg>
+                            Discord
+                        </button>
+                        <button class="export-btn slack" onclick="copyToClipboard('slack')" title="Copy formatted stats for Slack">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                            </svg>
+                            Slack
+                        </button>
+                        <button class="export-btn plain" onclick="copyToClipboard('plain')" title="Copy plain text stats">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                            Copy
+                        </button>
+                    </div>
                 </div>
 
                 ${data.ai_summary ? `
@@ -2454,6 +2775,7 @@
                     <button class="tab-btn" data-tab="statsgraph" title="Press 7">Stats Graph</button>
                     <button class="tab-btn" data-tab="coaching" title="Press 8">AI Coaching</button>
                     <button class="tab-btn" data-tab="replay" title="Press 9">2D Replay</button>
+                    <button class="tab-btn" data-tab="trends" title="Press 0">Trends</button>
                 </div>
 
                 <div class="tab-content active" id="tab-overview">
@@ -2490,6 +2812,10 @@
 
                 <div class="tab-content" id="tab-replay">
                     ${renderReplayViewer(players, formatMapName(info.map), info.map)}
+                </div>
+
+                <div class="tab-content" id="tab-trends">
+                    ${renderTrendsDashboard(players)}
                 </div>
             `;
 
@@ -2553,6 +2879,11 @@
                         initReplayViewer(data.heatmap_data || {}, players);
                     }
 
+                    // Initialize trends dashboard when tab is shown
+                    if (btn.dataset.tab === 'trends') {
+                        initTrendsTab();
+                    }
+
                     // Initialize sub-tabs when Match Details tab is shown
                     if (btn.dataset.tab === 'match-details') {
                         initSubTabs();
@@ -2599,6 +2930,7 @@
                         <button class="sub-tab" data-subtab="trades">Trades</button>
                         <button class="sub-tab" data-subtab="opening-duels">Opening Duels</button>
                         <button class="sub-tab" data-subtab="clutches">Clutches</button>
+                        <button class="sub-tab" data-subtab="synergy">Synergy <span class="badge-new">NEW</span></button>
                     </nav>
 
                     <!-- Sub-tab content containers -->
@@ -2625,6 +2957,9 @@
                     </div>
                     <div class="sub-tab-content" id="subtab-clutches">
                         <div class="sub-tab-loading">Loading clutch data</div>
+                    </div>
+                    <div class="sub-tab-content" id="subtab-synergy">
+                        <div class="sub-tab-loading">Loading synergy data</div>
                     </div>
                 </div>
             `;
@@ -2701,6 +3036,9 @@
                     break;
                 case 'clutches':
                     container.innerHTML = renderClutchStatsTable(myTeam, enemyTeam, team1Name, team2Name);
+                    break;
+                case 'synergy':
+                    container.innerHTML = renderSynergyTab(data.synergy, myTeam, enemyTeam);
                     break;
                 default:
                     container.innerHTML = '<p style="color: var(--text-muted); padding: 20px;">Content not available.</p>';
@@ -3769,6 +4107,221 @@
             return renderTeamSection(team1, ctTeamName) + renderTeamSection(team2, tTeamName);
         }
 
+        // Render Synergy Tab - Team synergy analysis (NOT in Leetify)
+        function renderSynergyTab(synergyData, team1, team2) {
+            if (!synergyData || !synergyData.pair_synergies || synergyData.pair_synergies.length === 0) {
+                return `
+                    <div style="padding: 40px; text-align: center;">
+                        <div style="font-size: 3rem; margin-bottom: 16px;">🤝</div>
+                        <h3 style="color: var(--text-primary); margin-bottom: 8px;">No Synergy Data Available</h3>
+                        <p style="color: var(--text-muted);">Team synergy analysis requires team-based match data.</p>
+                    </div>
+                `;
+            }
+
+            const pairs = synergyData.pair_synergies.sort((a, b) => b.synergy_score - a.synergy_score);
+            const bestDuo = synergyData.best_duo;
+
+            // Helper for synergy score color
+            const getSynergyColor = (score) => {
+                if (score >= 70) return 'var(--success)';
+                if (score >= 50) return 'var(--accent-primary)';
+                if (score >= 30) return 'var(--warning)';
+                return 'var(--danger)';
+            };
+
+            const getSynergyLabel = (score) => {
+                if (score >= 70) return 'Excellent';
+                if (score >= 50) return 'Good';
+                if (score >= 30) return 'Average';
+                return 'Needs Work';
+            };
+
+            let html = `
+                <div class="synergy-container" style="padding: 20px;">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+                        <h3 style="margin: 0; color: var(--text-primary);">Team Synergy Analysis</h3>
+                        <span style="background: linear-gradient(135deg, #ff4081, #7c4dff); padding: 4px 12px; border-radius: 100px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                            Exclusive
+                        </span>
+                    </div>
+                    <p style="color: var(--text-muted); margin-bottom: 24px; font-size: 0.9rem;">
+                        Analyze how well teammates work together through trades, flash assists, and duo performance. <strong>Not available in Leetify or Scope.gg.</strong>
+                    </p>
+            `;
+
+            // Best Duo Highlight Card
+            if (bestDuo) {
+                html += `
+                    <div class="best-duo-card" style="background: linear-gradient(135deg, rgba(255, 64, 129, 0.15), rgba(124, 77, 255, 0.15)); border: 1px solid rgba(255, 64, 129, 0.3); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 32px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+                            <span style="font-size: 1.5rem;">🤝</span>
+                            <span style="font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent-primary);">Best Duo</span>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 20px;">
+                            <div style="text-align: center;">
+                                <div style="width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.2rem; margin: 0 auto 8px;">
+                                    ${esc((bestDuo.player_a || 'A')[0])}
+                                </div>
+                                <div style="font-weight: 600; font-size: 0.95rem;">${esc(bestDuo.player_a)}</div>
+                            </div>
+                            <div style="font-size: 1.5rem; color: var(--text-muted);">+</div>
+                            <div style="text-align: center;">
+                                <div style="width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.2rem; margin: 0 auto 8px;">
+                                    ${esc((bestDuo.player_b || 'B')[0])}
+                                </div>
+                                <div style="font-weight: 600; font-size: 0.95rem;">${esc(bestDuo.player_b)}</div>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; text-align: center;">
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 800; color: ${getSynergyColor(bestDuo.synergy_score)};">${bestDuo.synergy_score}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Synergy Score</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 800; color: var(--text-primary);">${bestDuo.duo_win_rate}%</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Duo Win Rate</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 800; color: var(--text-primary);">${bestDuo.trades_for_each_other}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Trades</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 800; color: var(--text-primary);">${bestDuo.flash_assists_for_each_other}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Flash Assists</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // All Pairs Table
+            html += `
+                <div style="margin-bottom: 24px;">
+                    <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em;">All Player Pairs</h4>
+                    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                            <thead>
+                                <tr style="background: var(--bg-elevated);">
+                                    <th style="padding: 14px 16px; text-align: left; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); border-bottom: 1px solid var(--border);">Player Pair</th>
+                                    <th style="padding: 14px 16px; text-align: center; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); border-bottom: 1px solid var(--border);">Synergy</th>
+                                    <th style="padding: 14px 16px; text-align: center; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); border-bottom: 1px solid var(--border);">Trades</th>
+                                    <th style="padding: 14px 16px; text-align: center; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); border-bottom: 1px solid var(--border);">Flash Assists</th>
+                                    <th style="padding: 14px 16px; text-align: center; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); border-bottom: 1px solid var(--border);">Duo Win %</th>
+                                    <th style="padding: 14px 16px; text-align: center; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); border-bottom: 1px solid var(--border);">Avg Trade Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+
+            pairs.forEach((pair, idx) => {
+                const bgColor = idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
+                const synergyColor = getSynergyColor(pair.synergy_score);
+                const synergyLabel = getSynergyLabel(pair.synergy_score);
+
+                html += `
+                    <tr style="background: ${bgColor};">
+                        <td style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600;">
+                                    ${esc((pair.player_a || 'A')[0])}
+                                </div>
+                                <span style="font-weight: 500;">${esc(pair.player_a)}</span>
+                                <span style="color: var(--text-muted);">+</span>
+                                <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600;">
+                                    ${esc((pair.player_b || 'B')[0])}
+                                </div>
+                                <span style="font-weight: 500;">${esc(pair.player_b)}</span>
+                            </div>
+                        </td>
+                        <td style="padding: 12px 16px; text-align: center; border-bottom: 1px solid var(--border);">
+                            <span style="display: inline-block; padding: 4px 12px; background: ${synergyColor}22; color: ${synergyColor}; border-radius: 100px; font-weight: 600; font-size: 0.85rem;">
+                                ${pair.synergy_score}
+                            </span>
+                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">${synergyLabel}</div>
+                        </td>
+                        <td style="padding: 12px 16px; text-align: center; border-bottom: 1px solid var(--border);">
+                            <span style="font-weight: 600;">${pair.trades_for_each_other}</span>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">${pair.trades_a_for_b} / ${pair.trades_b_for_a}</div>
+                        </td>
+                        <td style="padding: 12px 16px; text-align: center; border-bottom: 1px solid var(--border);">
+                            <span style="font-weight: 600;">${pair.flash_assists_for_each_other}</span>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">${pair.flashes_a_for_b} / ${pair.flashes_b_for_a}</div>
+                        </td>
+                        <td style="padding: 12px 16px; text-align: center; border-bottom: 1px solid var(--border);">
+                            <span style="font-weight: 600; color: ${pair.duo_win_rate >= 50 ? 'var(--success)' : 'var(--text-primary)'};">${pair.duo_win_rate}%</span>
+                        </td>
+                        <td style="padding: 12px 16px; text-align: center; border-bottom: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
+                            ${pair.avg_trade_time_ms > 0 ? pair.avg_trade_time_ms + 'ms' : '-'}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            // Trade Network Summary
+            if (synergyData.trade_network && Object.keys(synergyData.trade_network).length > 0) {
+                html += `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+                        <div>
+                            <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">🔄 Trade Network</h4>
+                            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px;">
+                `;
+
+                Object.entries(synergyData.trade_network).forEach(([player, trades]) => {
+                    const tradeList = trades.map(t => `${esc(t.traded_for)} (${t.count})`).join(', ');
+                    html += `
+                        <div style="margin-bottom: 8px;">
+                            <span style="font-weight: 600;">${esc(player)}</span>
+                            <span style="color: var(--text-muted);"> trades for: </span>
+                            <span style="color: var(--success);">${tradeList}</span>
+                        </div>
+                    `;
+                });
+
+                html += `
+                            </div>
+                        </div>
+                `;
+
+                // Flash Network
+                if (synergyData.flash_network && Object.keys(synergyData.flash_network).length > 0) {
+                    html += `
+                        <div>
+                            <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">💥 Flash Assist Network</h4>
+                            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px;">
+                    `;
+
+                    Object.entries(synergyData.flash_network).forEach(([player, flashes]) => {
+                        const flashList = flashes.map(f => `${esc(f.flashed_for)} (${f.count})`).join(', ');
+                        html += `
+                            <div style="margin-bottom: 8px;">
+                                <span style="font-weight: 600;">${esc(player)}</span>
+                                <span style="color: var(--text-muted);"> flashes for: </span>
+                                <span style="color: var(--accent-primary);">${flashList}</span>
+                            </div>
+                        `;
+                    });
+
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+
+                html += `</div>`;
+            }
+
+            html += `</div>`;
+            return html;
+        }
+
         // Render Rating Breakdown Table - HLTV 2.0 formula components
         function renderRatingBreakdownTable(team1, team2, team1Name, team2Name) {
             const ctTeamName = team1Name || 'Counter-Terrorists';
@@ -4237,6 +4790,43 @@
             return html;
         }
 
+        // Render Economy Prediction (OpenSight Unique Feature)
+        function renderEconomyPrediction(prediction, team) {
+            if (!prediction) return '';
+
+            const buyType = prediction.predicted_buy || 'eco';
+            const confidence = Math.round((prediction.confidence || 0) * 100);
+            const money = prediction.estimated_money || 0;
+            const reasoning = prediction.reasoning || '';
+
+            // Map buy type to CSS class
+            const buyClasses = {
+                'full': 'pred-full',
+                'force': 'pred-force',
+                'eco': 'pred-eco',
+                'pistol': 'pred-pistol'
+            };
+            const cssClass = buyClasses[buyType] || 'pred-eco';
+
+            // Map buy type to display label
+            const buyLabels = {
+                'full': 'FULL',
+                'force': 'FORCE',
+                'eco': 'ECO',
+                'pistol': 'PISTOL'
+            };
+            const label = buyLabels[buyType] || buyType.toUpperCase();
+
+            const tooltip = `${team} Prediction:\\n${reasoning}\\nEst. money: $${money.toLocaleString()}`;
+
+            return `
+                <span class="economy-prediction ${cssClass}" title="${tooltip}">
+                    <span>⚡ ${label}</span>
+                    <span class="confidence">${confidence}%</span>
+                </span>
+            `;
+        }
+
         // Render round events (old timeline format, now collapsible)
         function renderRoundEvents(timeline) {
             let html = '';
@@ -4248,10 +4838,12 @@
                 const roundType = round.round_type || 'full_buy';
                 const roundTypeLabel = roundType === 'pistol' ? 'Pistol' : roundType === 'eco' ? 'Eco' : roundType === 'force' ? 'Force' : 'Full Buy';
 
-                // Economy IQ grades
+                // Economy IQ grades and predictions
                 const economy = round.economy || {};
                 const ctEcon = economy.ct || {};
                 const tEcon = economy.t || {};
+                const ctPred = ctEcon.prediction || null;
+                const tPred = tEcon.prediction || null;
 
                 html += `<div class="round-detail" style="margin-bottom: 12px;">`;
                 html += `<div class="round-detail-header ${winClass}">`;
@@ -4264,6 +4856,21 @@
                 html += `<span class="round-detail-winner" style="color: ${winColor}">${round.winner} WIN</span>`;
                 html += `<span class="round-detail-score">${round.ct_kills || 0} CT / ${round.t_kills || 0} T</span>`;
                 html += '</div>';
+
+                // Add Economy Predictions row (OpenSight Unique)
+                if (ctPred || tPred) {
+                    html += `<div style="display: flex; gap: 12px; padding: 6px 12px; background: rgba(0,0,0,0.2); border-radius: 0 0 6px 6px; margin-top: -4px;">`;
+                    html += `<span style="font-size: 0.7rem; color: var(--text-muted);">💰 Predicted:</span>`;
+                    if (ctPred) {
+                        html += `<span style="color: var(--ct-color); font-size: 0.7rem;">CT</span>`;
+                        html += renderEconomyPrediction(ctPred, 'CT');
+                    }
+                    if (tPred) {
+                        html += `<span style="color: var(--t-color); font-size: 0.7rem;">T</span>`;
+                        html += renderEconomyPrediction(tPred, 'T');
+                    }
+                    html += `</div>`;
+                }
 
                 if (events.length > 0) {
                     html += '<div class="round-detail-events">';
@@ -6051,6 +6658,341 @@
                 .replace(/\n/g, '<br>')
                 .replace(/^/, '<p>')
                 .replace(/$/, '</p>');
+        }
+
+        // Render Performance Trends Dashboard (FREE - Leetify charges for this)
+        function renderTrendsDashboard(players) {
+            // Get list of players for selection
+            const playerOptions = players.map(p => {
+                const steamId = p.steam_id || p.steamid || p.id || '';
+                const name = p.name || 'Unknown';
+                return `<option value="${escapeHtml(steamId)}">${escapeHtml(name)} (${escapeHtml(steamId.slice(-4))})</option>`;
+            }).join('');
+
+            return `
+                <div class="trends-dashboard" style="padding: 24px;">
+                    <div class="section-header" style="margin-bottom: 24px;">
+                        <h3 class="section-title" style="font-size: 1.2rem; color: var(--text-primary);">
+                            Performance Trends
+                            <span style="font-size: 0.75rem; color: var(--success); margin-left: 8px;">FREE</span>
+                        </h3>
+                        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">
+                            Track your performance over time - rating trends, slump detection, and improvement areas
+                        </p>
+                    </div>
+
+                    <div class="trends-controls" style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; align-items: center;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="display: block; color: var(--text-muted); font-size: 0.8rem; margin-bottom: 4px;">Select Player</label>
+                            <select id="trends-player-select" style="width: 100%; padding: 10px 12px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.9rem;">
+                                <option value="">-- Select a player --</option>
+                                ${playerOptions}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; color: var(--text-muted); font-size: 0.8rem; margin-bottom: 4px;">Time Period</label>
+                            <select id="trends-timeframe" style="padding: 10px 12px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.9rem;">
+                                <option value="7">Last 7 days</option>
+                                <option value="30" selected>Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                            </select>
+                        </div>
+                        <div style="align-self: flex-end;">
+                            <button id="trends-load-btn" style="padding: 10px 20px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.9rem;">
+                                Load Trends
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="trends-content" style="display: none;">
+                        <!-- Will be populated by loadPlayerTrends() -->
+                    </div>
+
+                    <div id="trends-loading" style="display: none; text-align: center; padding: 40px; color: var(--text-muted);">
+                        <div style="font-size: 2rem; margin-bottom: 8px;">Loading...</div>
+                        <p>Fetching performance trends</p>
+                    </div>
+
+                    <div id="trends-empty" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                        <div style="font-size: 2rem; margin-bottom: 8px;">Select a Player</div>
+                        <p>Choose a player and click "Load Trends" to see their performance over time</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Load and display player trends
+        async function loadPlayerTrends() {
+            const steamId = document.getElementById('trends-player-select')?.value;
+            const days = document.getElementById('trends-timeframe')?.value || 30;
+
+            if (!steamId) {
+                alert('Please select a player');
+                return;
+            }
+
+            const contentDiv = document.getElementById('trends-content');
+            const loadingDiv = document.getElementById('trends-loading');
+            const emptyDiv = document.getElementById('trends-empty');
+
+            if (!contentDiv || !loadingDiv || !emptyDiv) return;
+
+            emptyDiv.style.display = 'none';
+            contentDiv.style.display = 'none';
+            loadingDiv.style.display = 'block';
+
+            try {
+                const response = await fetch(\`/api/your-match/trends/\${steamId}?days=\${days}\`);
+                const data = await response.json();
+
+                loadingDiv.style.display = 'none';
+                contentDiv.style.display = 'block';
+
+                if (!data || data.matches_analyzed < 2) {
+                    contentDiv.innerHTML = \`
+                        <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            <div style="font-size: 2rem; margin-bottom: 8px;">Not Enough Data</div>
+                            <p>\${data.message || 'This player needs at least 2 analyzed matches to show trends.'}</p>
+                            <p style="margin-top: 8px;">Matches found: \${data.matches_analyzed || 0}</p>
+                        </div>
+                    \`;
+                    return;
+                }
+
+                // Build trends content
+                contentDiv.innerHTML = renderTrendsContent(data);
+
+                // Initialize the rating chart
+                initTrendsChart(data);
+
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                contentDiv.style.display = 'block';
+                contentDiv.innerHTML = \`
+                    <div style="text-align: center; padding: 40px; color: var(--danger);">
+                        <div style="font-size: 2rem; margin-bottom: 8px;">Error</div>
+                        <p>Failed to load trends: \${error.message}</p>
+                    </div>
+                \`;
+            }
+        }
+
+        function renderTrendsContent(data) {
+            const getTrendIcon = (trend) => {
+                switch(trend) {
+                    case 'improving': return '<span style="color: var(--success);">Improving</span>';
+                    case 'declining': return '<span style="color: var(--danger);">Declining</span>';
+                    default: return '<span style="color: var(--text-muted);">Stable</span>';
+                }
+            };
+
+            const getTrendArrow = (trend) => {
+                switch(trend) {
+                    case 'improving': return '<span style="color: var(--success); font-size: 1.5rem;">&#x2191;</span>';
+                    case 'declining': return '<span style="color: var(--danger); font-size: 1.5rem;">&#x2193;</span>';
+                    default: return '<span style="color: var(--text-muted); font-size: 1.5rem;">&#x2192;</span>';
+                }
+            };
+
+            // Improvement areas
+            const improvementHtml = (data.improvement_areas || []).length > 0 ? \`
+                <div style="margin-top: 24px;">
+                    <h4 style="color: var(--text-primary); margin-bottom: 12px;">Areas to Improve</h4>
+                    <div style="display: grid; gap: 12px;">
+                        \${data.improvement_areas.map(area => \`
+                            <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <span style="font-weight: 600; color: var(--text-primary);">\${escapeHtml(area.area)}</span>
+                                    <span style="color: var(--warning);">\${area.current} &rarr; \${area.target}</span>
+                                </div>
+                                <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">\${escapeHtml(area.suggestion)}</p>
+                            </div>
+                        \`).join('')}
+                    </div>
+                </div>
+            \` : '';
+
+            // Map performance
+            const mapPerf = data.map_performance || {};
+            const mapHtml = Object.keys(mapPerf).length > 0 ? \`
+                <div style="margin-top: 24px;">
+                    <h4 style="color: var(--text-primary); margin-bottom: 12px;">Map Performance</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;">
+                        \${Object.entries(mapPerf).map(([map, stats]) => \`
+                            <div style="background: var(--bg-card); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); text-align: center;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">\${escapeHtml(map)}</div>
+                                <div style="color: \${stats.win_rate >= 50 ? 'var(--success)' : 'var(--danger)'}; font-size: 1.2rem;">\${stats.win_rate}%</div>
+                                <div style="color: var(--text-muted); font-size: 0.75rem;">\${stats.wins}W - \${stats.losses}L (\${stats.matches} games)</div>
+                                <div style="color: var(--accent-primary); font-size: 0.85rem; margin-top: 4px;">\${stats.avg_rating} rating</div>
+                            </div>
+                        \`).join('')}
+                    </div>
+                </div>
+            \` : '';
+
+            return \`
+                <!-- Trend Cards -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                    <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border); text-align: center;">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Rating Trend</div>
+                        <div style="font-size: 1.5rem; font-weight: 700;">\${getTrendArrow(data.rating?.trend)}</div>
+                        <div>\${getTrendIcon(data.rating?.trend)}</div>
+                        <div style="color: \${data.rating?.change_pct >= 0 ? 'var(--success)' : 'var(--danger)'}; font-size: 0.9rem; margin-top: 4px;">
+                            \${data.rating?.change_pct >= 0 ? '+' : ''}\${data.rating?.change_pct || 0}%
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 0.75rem;">Avg: \${data.rating?.current_avg || '1.00'}</div>
+                    </div>
+
+                    <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border); text-align: center;">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">ADR Trend</div>
+                        <div style="font-size: 1.5rem; font-weight: 700;">\${getTrendArrow(data.adr?.trend)}</div>
+                        <div>\${getTrendIcon(data.adr?.trend)}</div>
+                        <div style="color: \${data.adr?.change_pct >= 0 ? 'var(--success)' : 'var(--danger)'}; font-size: 0.9rem; margin-top: 4px;">
+                            \${data.adr?.change_pct >= 0 ? '+' : ''}\${data.adr?.change_pct || 0}%
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 0.75rem;">Avg: \${data.adr?.current_avg || '0'}</div>
+                    </div>
+
+                    <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border); text-align: center;">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Win Rate</div>
+                        <div style="font-size: 1.8rem; font-weight: 700; color: \${(data.winrate?.current || 0) >= 50 ? 'var(--success)' : 'var(--danger)'};">
+                            \${data.winrate?.current || 0}%
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 0.75rem;">\${data.matches_analyzed || 0} matches</div>
+                    </div>
+
+                    \${data.slump?.detected ? \`
+                    <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--warning); text-align: center;">
+                        <div style="font-size: 0.8rem; color: var(--warning); margin-bottom: 8px;">Slump Detected</div>
+                        <div style="font-size: 1.8rem; font-weight: 700; color: var(--warning);">&#9888;</div>
+                        <div style="color: var(--warning); font-size: 0.9rem; text-transform: uppercase;">\${data.slump.severity}</div>
+                        <div style="color: var(--text-muted); font-size: 0.75rem;">Performance below average</div>
+                    </div>
+                    \` : ''}
+                </div>
+
+                <!-- Rating Chart -->
+                <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border); margin-bottom: 24px;">
+                    <h4 style="color: var(--text-primary); margin-bottom: 16px;">Rating Over Time</h4>
+                    <div style="height: 300px;">
+                        <canvas id="trends-rating-chart"></canvas>
+                    </div>
+                </div>
+
+                \${improvementHtml}
+                \${mapHtml}
+            \`;
+        }
+
+        function initTrendsChart(data) {
+            const canvas = document.getElementById('trends-rating-chart');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            const ratingHistory = data.rating?.history || [];
+            const adrHistory = data.adr?.history || [];
+
+            // Extract labels and data
+            const labels = ratingHistory.map(p => {
+                const date = new Date(p.date);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+
+            const ratingData = ratingHistory.map(p => p.value);
+            const adrData = adrHistory.map(p => p.value);
+
+            // Destroy existing chart if any
+            if (window.trendsChartInstance) {
+                window.trendsChartInstance.destroy();
+            }
+
+            window.trendsChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Rating',
+                            data: ratingData,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                            tension: 0.3,
+                            fill: true,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'ADR',
+                            data: adrData,
+                            borderColor: 'rgb(255, 159, 64)',
+                            backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                            tension: 0.3,
+                            fill: false,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: { color: 'rgba(255,255,255,0.7)' }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            titleColor: 'white',
+                            bodyColor: 'white'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: 'rgba(255,255,255,0.6)' }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: 'rgba(255,255,255,0.6)' },
+                            title: {
+                                display: true,
+                                text: 'Rating',
+                                color: 'rgb(75, 192, 192)'
+                            },
+                            min: 0,
+                            max: 2.5
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: 'rgba(255,255,255,0.6)' },
+                            title: {
+                                display: true,
+                                text: 'ADR',
+                                color: 'rgb(255, 159, 64)'
+                            },
+                            min: 0,
+                            max: 150
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize trends tab button handler
+        function initTrendsTab() {
+            const loadBtn = document.getElementById('trends-load-btn');
+            if (loadBtn) {
+                loadBtn.addEventListener('click', loadPlayerTrends);
+            }
         }
 
         // Render 2D Replay Viewer Tab

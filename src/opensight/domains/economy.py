@@ -1273,3 +1273,457 @@ def analyze_economy(demo_data: DemoData) -> EconomyStats:
     """
     analyzer = EconomyAnalyzer(demo_data)
     return analyzer.analyze()
+
+
+# =============================================================================
+# ECONOMY PREDICTION ENGINE
+# =============================================================================
+# Unique to OpenSight - predicts enemy buy type for upcoming rounds
+# based on loss bonus tracking and statistical patterns.
+
+
+@dataclass
+class EconomyPrediction:
+    """Prediction for an enemy team's economy in the next round."""
+
+    round_num: int  # The round being predicted
+    team: str  # "CT" or "T"
+    predicted_buy: str  # "full", "force", "eco", "pistol"
+    confidence: float  # 0.0-1.0
+    reasoning: str  # Human-readable explanation
+    estimated_team_money: int  # Estimated total team money
+    estimated_avg_loadout: int  # Expected average player loadout value
+    loss_bonus: int  # Current loss bonus ($1400-$3400)
+    consecutive_losses: int  # Number of consecutive losses
+
+
+@dataclass
+class PredictionAccuracy:
+    """Accuracy metrics for economy predictions after a match."""
+
+    total_predictions: int
+    correct_predictions: int
+    accuracy_pct: float  # 0-100%
+    by_buy_type: dict[str, dict[str, int]]  # {predicted: {actual: count}}
+    avg_confidence_when_correct: float
+    avg_confidence_when_wrong: float
+
+
+# CS2 Economy Constants for Prediction
+ROUND_WIN_BONUS = 3250  # Standard round win bonus
+ROUND_LOSS_BONUS_BASE = 1400  # Base loss bonus
+BOMB_PLANT_BONUS = 800  # Bonus for T side if bomb planted (even on loss)
+DEFUSE_KIT_COST = 400
+FULL_ARMOR_COST = 1000
+PISTOL_ROUND_MONEY = 800  # Starting money for pistol rounds
+
+# Average loadout values by buy type
+AVG_LOADOUT_FULL = 4500  # Rifle + armor + full utility
+AVG_LOADOUT_FORCE = 2500  # SMG/cheap rifle + armor + some utility
+AVG_LOADOUT_ECO = 800  # Pistol maybe + minimal utility
+AVG_LOADOUT_PISTOL = 800  # Pistol round buy
+
+# Team money thresholds (5 players)
+TEAM_FULL_BUY_THRESHOLD = 20000  # $4000/player minimum for full buy
+TEAM_FORCE_THRESHOLD = 12000  # $2400/player for force buy
+TEAM_ECO_THRESHOLD = 6000  # Below this, forced eco
+
+
+class EconomyPredictor:
+    """
+    Predict enemy economy for upcoming rounds.
+
+    Uses loss bonus tracking + statistical patterns to predict enemy buy type.
+    IGLs need this information during matches for tactical decisions.
+
+    Usage:
+        predictor = EconomyPredictor()
+        for round_num in range(1, total_rounds + 1):
+            # Make prediction BEFORE the round starts
+            pred = predictor.predict_next_round(round_num, "T", history)
+            # After round, record what actually happened
+            predictor.record_actual_buy(round_num, "T", actual_buy_type)
+        # Get accuracy stats
+        accuracy = predictor.get_accuracy()
+    """
+
+    def __init__(self):
+        # Track predictions and actuals for accuracy calculation
+        self._predictions: list[EconomyPrediction] = []
+        self._actuals: dict[tuple[int, str], str] = {}  # (round, team) -> actual buy
+
+        # Track economy state
+        self._tracker = EconomyTracker()
+
+        # Track force tendencies per team (rolling history)
+        self._ct_force_history: list[bool] = []  # True if forced when could eco
+        self._t_force_history: list[bool] = []
+
+    def predict_next_round(
+        self,
+        round_num: int,
+        team: str,
+        round_history: list[TeamRoundEconomy],
+    ) -> EconomyPrediction:
+        """
+        Predict economy for a team in the upcoming round.
+
+        Args:
+            round_num: The round number to predict (1-indexed)
+            team: "CT" or "T"
+            round_history: List of TeamRoundEconomy for this team (previous rounds)
+
+        Returns:
+            EconomyPrediction with buy type, confidence, and reasoning
+        """
+        # Handle pistol rounds (round 1 and first round of second half)
+        halftime_round = 13  # MR12 format
+        if round_num == 1 or round_num == halftime_round:
+            return self._pistol_round_prediction(round_num, team)
+
+        # Get loss bonus state
+        loss_bonus = self._tracker.get_loss_bonus(team)
+        consecutive_losses = (
+            self._tracker.ct_loss_counter if team == "CT" else self._tracker.t_loss_counter
+        )
+
+        # Estimate team money
+        estimated_money = self._estimate_team_money(round_history, loss_bonus)
+
+        # Calculate force tendency
+        force_tendency = self._calculate_force_tendency(team)
+
+        # Make prediction based on estimated money and tendencies
+        prediction = self._make_prediction(
+            round_num,
+            team,
+            estimated_money,
+            loss_bonus,
+            consecutive_losses,
+            force_tendency,
+        )
+
+        self._predictions.append(prediction)
+        return prediction
+
+    def _pistol_round_prediction(self, round_num: int, team: str) -> EconomyPrediction:
+        """Generate prediction for pistol rounds."""
+        return EconomyPrediction(
+            round_num=round_num,
+            team=team,
+            predicted_buy="pistol",
+            confidence=1.0,
+            reasoning="Pistol round - all players start with $800",
+            estimated_team_money=4000,  # 5 * $800
+            estimated_avg_loadout=AVG_LOADOUT_PISTOL,
+            loss_bonus=ROUND_LOSS_BONUS_BASE,
+            consecutive_losses=0,
+        )
+
+    def _estimate_team_money(
+        self,
+        history: list[TeamRoundEconomy],
+        current_loss_bonus: int,
+    ) -> int:
+        """
+        Estimate total team money based on recent history.
+
+        Uses simplified estimation:
+        - Win: +$3250 base + equipment sold back (~50% of loadout)
+        - Loss: +loss_bonus + ~$300 for surviving equipment
+        """
+        if not history:
+            return PISTOL_ROUND_MONEY * 5  # Default for no history
+
+        last_round = history[-1]
+
+        # Start from what we know about their last spend
+        base_money = 0
+
+        if last_round.round_won:
+            # They won: $3250 + they keep their equipment
+            base_money = ROUND_WIN_BONUS * 5 + last_round.total_equipment
+        else:
+            # They lost: loss_bonus + minimal saved equipment
+            base_money = current_loss_bonus * 5 + 1500  # ~$300/player saved on average
+
+        # Cap at reasonable maximums ($16k/player max)
+        return min(base_money, 80000)
+
+    def _calculate_force_tendency(self, team: str) -> float:
+        """
+        Calculate how often a team forces vs ecos when they could do either.
+
+        Returns value 0.0-1.0 where 1.0 = always forces.
+        """
+        history = self._ct_force_history if team == "CT" else self._t_force_history
+
+        if len(history) < 3:
+            return 0.5  # Default to neutral if not enough data
+
+        # Use last 5 decisions max
+        recent = history[-5:]
+        return sum(recent) / len(recent)
+
+    def _make_prediction(
+        self,
+        round_num: int,
+        team: str,
+        estimated_money: int,
+        loss_bonus: int,
+        consecutive_losses: int,
+        force_tendency: float,
+    ) -> EconomyPrediction:
+        """
+        Make the actual buy prediction based on all factors.
+
+        Rules:
+        - $20k+ team total = likely full buy (85% confidence)
+        - $12-20k + high force tendency = likely force (70%)
+        - $12-20k + low force tendency = likely eco (65%)
+        - <$12k = forced eco (90%)
+        """
+        if estimated_money >= TEAM_FULL_BUY_THRESHOLD:
+            return EconomyPrediction(
+                round_num=round_num,
+                team=team,
+                predicted_buy="full",
+                confidence=0.85,
+                reasoning=(
+                    f"Estimated ${estimated_money:,} team economy "
+                    f"(${loss_bonus:,} loss bonus) - expect full buy"
+                ),
+                estimated_team_money=estimated_money,
+                estimated_avg_loadout=AVG_LOADOUT_FULL,
+                loss_bonus=loss_bonus,
+                consecutive_losses=consecutive_losses,
+            )
+
+        elif estimated_money >= TEAM_FORCE_THRESHOLD:
+            # Could go either way - check tendency
+            if force_tendency > 0.6:
+                return EconomyPrediction(
+                    round_num=round_num,
+                    team=team,
+                    predicted_buy="force",
+                    confidence=0.70,
+                    reasoning=(
+                        f"${estimated_money:,} economy + high force tendency "
+                        f"({force_tendency:.0%}) - expect force buy"
+                    ),
+                    estimated_team_money=estimated_money,
+                    estimated_avg_loadout=AVG_LOADOUT_FORCE,
+                    loss_bonus=loss_bonus,
+                    consecutive_losses=consecutive_losses,
+                )
+            elif loss_bonus >= HIGH_LOSS_BONUS:
+                # High loss bonus makes force more likely
+                return EconomyPrediction(
+                    round_num=round_num,
+                    team=team,
+                    predicted_buy="force",
+                    confidence=0.75,
+                    reasoning=(
+                        f"${estimated_money:,} economy + high loss bonus "
+                        f"(${loss_bonus:,}) - justified force buy likely"
+                    ),
+                    estimated_team_money=estimated_money,
+                    estimated_avg_loadout=AVG_LOADOUT_FORCE,
+                    loss_bonus=loss_bonus,
+                    consecutive_losses=consecutive_losses,
+                )
+            else:
+                return EconomyPrediction(
+                    round_num=round_num,
+                    team=team,
+                    predicted_buy="eco",
+                    confidence=0.65,
+                    reasoning=(
+                        f"${estimated_money:,} economy, historically saves "
+                        f"(force tendency {force_tendency:.0%})"
+                    ),
+                    estimated_team_money=estimated_money,
+                    estimated_avg_loadout=AVG_LOADOUT_ECO,
+                    loss_bonus=loss_bonus,
+                    consecutive_losses=consecutive_losses,
+                )
+
+        else:
+            # Low money - forced eco
+            return EconomyPrediction(
+                round_num=round_num,
+                team=team,
+                predicted_buy="eco",
+                confidence=0.90,
+                reasoning=f"Low economy (${estimated_money:,}) - forced eco",
+                estimated_team_money=estimated_money,
+                estimated_avg_loadout=AVG_LOADOUT_ECO,
+                loss_bonus=loss_bonus,
+                consecutive_losses=consecutive_losses,
+            )
+
+    def record_round_result(self, winner: str) -> None:
+        """
+        Update loss counters after a round completes.
+
+        Args:
+            winner: "CT" or "T"
+        """
+        self._tracker.process_round_result(winner)
+
+    def record_actual_buy(
+        self,
+        round_num: int,
+        team: str,
+        actual_buy: BuyType,
+        was_force_opportunity: bool = False,
+    ) -> None:
+        """
+        Record the actual buy type for accuracy calculation.
+
+        Args:
+            round_num: Round number
+            team: "CT" or "T"
+            actual_buy: The actual BuyType that occurred
+            was_force_opportunity: True if team could have forced but chose eco
+        """
+        # Map BuyType to simple category
+        buy_map = {
+            BuyType.FULL_BUY: "full",
+            BuyType.FORCE: "force",
+            BuyType.HALF_BUY: "force",  # Count half-buy as force
+            BuyType.ECO: "eco",
+            BuyType.PISTOL: "pistol",
+            BuyType.UNKNOWN: "eco",
+        }
+        self._actuals[(round_num, team)] = buy_map.get(actual_buy, "eco")
+
+        # Track force tendency
+        if was_force_opportunity:
+            was_force = actual_buy in (BuyType.FORCE, BuyType.HALF_BUY)
+            if team == "CT":
+                self._ct_force_history.append(was_force)
+            else:
+                self._t_force_history.append(was_force)
+
+    def reset_half(self) -> None:
+        """Reset economy state at half-time."""
+        self._tracker.reset_half()
+
+    def get_accuracy(self) -> PredictionAccuracy:
+        """
+        Calculate prediction accuracy after match.
+
+        Returns:
+            PredictionAccuracy with overall and per-type stats
+        """
+        if not self._predictions:
+            return PredictionAccuracy(
+                total_predictions=0,
+                correct_predictions=0,
+                accuracy_pct=0.0,
+                by_buy_type={},
+                avg_confidence_when_correct=0.0,
+                avg_confidence_when_wrong=0.0,
+            )
+
+        correct = 0
+        correct_confidences: list[float] = []
+        wrong_confidences: list[float] = []
+
+        # Track confusion matrix: {predicted: {actual: count}}
+        by_buy_type: dict[str, dict[str, int]] = {
+            "full": {"full": 0, "force": 0, "eco": 0, "pistol": 0},
+            "force": {"full": 0, "force": 0, "eco": 0, "pistol": 0},
+            "eco": {"full": 0, "force": 0, "eco": 0, "pistol": 0},
+            "pistol": {"full": 0, "force": 0, "eco": 0, "pistol": 0},
+        }
+
+        for pred in self._predictions:
+            actual = self._actuals.get((pred.round_num, pred.team))
+            if actual is None:
+                continue
+
+            by_buy_type[pred.predicted_buy][actual] += 1
+
+            if pred.predicted_buy == actual:
+                correct += 1
+                correct_confidences.append(pred.confidence)
+            else:
+                wrong_confidences.append(pred.confidence)
+
+        total = len([p for p in self._predictions if (p.round_num, p.team) in self._actuals])
+
+        return PredictionAccuracy(
+            total_predictions=total,
+            correct_predictions=correct,
+            accuracy_pct=round((correct / total * 100) if total > 0 else 0.0, 1),
+            by_buy_type=by_buy_type,
+            avg_confidence_when_correct=(
+                sum(correct_confidences) / len(correct_confidences) if correct_confidences else 0.0
+            ),
+            avg_confidence_when_wrong=(
+                sum(wrong_confidences) / len(wrong_confidences) if wrong_confidences else 0.0
+            ),
+        )
+
+    def get_all_predictions(self) -> list[EconomyPrediction]:
+        """Get all predictions made during the match."""
+        return self._predictions.copy()
+
+
+def predict_economy_for_match(
+    round_timeline: list[TeamRoundEconomy],
+    team: str,
+) -> list[EconomyPrediction]:
+    """
+    Generate economy predictions for all rounds in a match.
+
+    Convenience function that runs the predictor through all rounds.
+
+    Args:
+        round_timeline: List of TeamRoundEconomy for the team
+        team: "CT" or "T"
+
+    Returns:
+        List of EconomyPrediction for each round
+    """
+    predictor = EconomyPredictor()
+    predictions: list[EconomyPrediction] = []
+
+    # Group history by round
+    history_so_far: list[TeamRoundEconomy] = []
+
+    for round_eco in round_timeline:
+        # Predict before we know this round's outcome
+        pred = predictor.predict_next_round(
+            round_num=round_eco.round_num,
+            team=team,
+            round_history=history_so_far,
+        )
+        predictions.append(pred)
+
+        # Record actual and update state
+        predictor.record_actual_buy(
+            round_eco.round_num,
+            team,
+            round_eco.buy_type,
+            was_force_opportunity=(
+                round_eco.buy_type in (BuyType.FORCE, BuyType.ECO)
+                and round_eco.total_equipment >= TEAM_ECO_THRESHOLD
+            ),
+        )
+
+        winner = "CT" if round_eco.round_won and team == "CT" else "T"
+        if not round_eco.round_won:
+            winner = "CT" if team == "T" else "T"
+        predictor.record_round_result(winner)
+
+        # Add to history for next prediction
+        history_so_far.append(round_eco)
+
+        # Reset at halftime
+        if round_eco.round_num == 12:  # Last round of first half
+            predictor.reset_half()
+
+    return predictions

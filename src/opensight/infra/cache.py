@@ -741,6 +741,23 @@ class CachedAnalyzer:
         # Get tactical summary
         tactical = self._get_tactical_summary(demo_data, analysis)
 
+        # Analyze team synergy (NOT in Leetify - our differentiator)
+        try:
+            from opensight.domains.synergy import analyze_synergy
+
+            synergy = analyze_synergy(demo_data)
+            logger.debug(
+                f"Synergy analysis: {len(synergy.get('pair_synergies', []))} pairs analyzed"
+            )
+        except Exception as e:
+            logger.debug(f"Synergy analysis not available: {e}")
+            synergy = {
+                "pair_synergies": [],
+                "best_duo": None,
+                "trade_network": {},
+                "flash_network": {},
+            }
+
         # Find MVP
         mvp = None
         if players:
@@ -773,6 +790,7 @@ class CachedAnalyzer:
             "heatmap_data": heatmap_data,
             "coaching": coaching,
             "tactical": tactical,
+            "synergy": synergy,
             "timeline_graph": timeline_graph,
             "analyzed_at": datetime.now().isoformat(),
         }
@@ -880,23 +898,70 @@ class CachedAnalyzer:
         except ImportError:
             calculate_win_probability = None
 
-        # Import Economy IQ analysis
+        # Import Economy IQ analysis and Prediction Engine
+        economy_by_round: dict[int, dict[int, Any]] = {}
+        economy_predictions: dict[int, dict[str, dict]] = {}  # round -> {team: prediction}
         try:
-            from opensight.domains.economy import EconomyAnalyzer
+            from opensight.domains.economy import EconomyAnalyzer, EconomyPredictor
 
             economy_analyzer = EconomyAnalyzer(demo_data)
             economy_stats = economy_analyzer.analyze()
             # Build lookup: round_num -> {team: TeamRoundEconomy}
-            economy_by_round: dict[int, dict[int, Any]] = {}
             for team, team_rounds in economy_stats.team_economies.items():
                 for tr in team_rounds:
                     if tr.round_num not in economy_by_round:
                         economy_by_round[tr.round_num] = {}
                     economy_by_round[tr.round_num][team] = tr
             logger.debug(f"Economy IQ loaded for {len(economy_by_round)} rounds")
+
+            # Generate economy predictions for each team
+            predictor = EconomyPredictor()
+            ct_history: list = []
+            t_history: list = []
+
+            # Sort rounds by number for proper prediction ordering
+            sorted_rounds = sorted(economy_by_round.keys())
+            for round_num in sorted_rounds:
+                round_econ = economy_by_round[round_num]
+                economy_predictions[round_num] = {}
+
+                # Predict for CT (team 3)
+                if 3 in round_econ:
+                    ct_pred = predictor.predict_next_round(round_num, "CT", ct_history)
+                    economy_predictions[round_num]["ct"] = {
+                        "predicted_buy": ct_pred.predicted_buy,
+                        "confidence": round(ct_pred.confidence, 2),
+                        "reasoning": ct_pred.reasoning,
+                        "estimated_money": ct_pred.estimated_team_money,
+                        "estimated_loadout": ct_pred.estimated_avg_loadout,
+                    }
+                    ct_history.append(round_econ[3])
+
+                # Predict for T (team 2)
+                if 2 in round_econ:
+                    t_pred = predictor.predict_next_round(round_num, "T", t_history)
+                    economy_predictions[round_num]["t"] = {
+                        "predicted_buy": t_pred.predicted_buy,
+                        "confidence": round(t_pred.confidence, 2),
+                        "reasoning": t_pred.reasoning,
+                        "estimated_money": t_pred.estimated_team_money,
+                        "estimated_loadout": t_pred.estimated_avg_loadout,
+                    }
+                    t_history.append(round_econ[2])
+
+                # Update predictor with round result
+                winner = "CT" if round_econ.get(3, round_econ.get(2)).round_won else "T"
+                if 2 in round_econ and round_econ[2].round_won:
+                    winner = "T"
+                predictor.record_round_result(winner)
+
+                # Reset at halftime (round 12 -> 13 is halftime in MR12)
+                if round_num == 12:
+                    predictor.reset_half()
+
+            logger.debug(f"Generated {len(economy_predictions)} round predictions")
         except Exception as e:
             logger.debug(f"Economy analysis not available: {e}")
-            economy_by_round = {}
 
         timeline = []
         kills = getattr(demo_data, "kills", [])
@@ -1123,14 +1188,16 @@ class CachedAnalyzer:
                             event["ct_prob"] = prob_by_tick[tick]["ct_prob"]
                             event["t_prob"] = prob_by_tick[tick]["t_prob"]
 
-            # Build Economy IQ data for this round
+            # Build Economy IQ data for this round (includes predictions)
             economy_iq = None
             if round_num in economy_by_round:
                 round_econ = economy_by_round[round_num]
+                round_preds = economy_predictions.get(round_num, {})
                 economy_iq = {}
                 for team_id, team_name in [(2, "t"), (3, "ct")]:
                     if team_id in round_econ:
                         tr = round_econ[team_id]
+                        team_pred = round_preds.get(team_name, {})
                         economy_iq[team_name] = {
                             "loss_bonus": tr.loss_bonus,
                             "consecutive_losses": tr.consecutive_losses,
@@ -1141,6 +1208,8 @@ class CachedAnalyzer:
                             "loss_bonus_next": tr.loss_bonus_next,
                             "is_bad_force": tr.is_bad_force,
                             "is_good_force": tr.is_good_force,
+                            # Economy Prediction Engine data
+                            "prediction": team_pred if team_pred else None,
                         }
 
             timeline.append(

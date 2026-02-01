@@ -464,3 +464,229 @@ class TestBuyDecisionDataclass:
         assert decision.reason == "Full buy"
         assert decision.loss_bonus == 1400
         assert decision.spend_ratio == 0.9
+
+
+# =============================================================================
+# ECONOMY PREDICTION ENGINE TESTS
+# =============================================================================
+
+
+from opensight.domains.economy import (
+    EconomyPrediction,
+    EconomyPredictor,
+)
+
+
+class TestEconomyPredictionDataclass:
+    """Tests for the EconomyPrediction dataclass."""
+
+    def test_prediction_fields(self):
+        """EconomyPrediction should have all required fields."""
+        pred = EconomyPrediction(
+            round_num=5,
+            team="CT",
+            predicted_buy="full",
+            confidence=0.85,
+            reasoning="High economy",
+            estimated_team_money=25000,
+            estimated_avg_loadout=4500,
+            loss_bonus=1400,
+            consecutive_losses=0,
+        )
+
+        assert pred.round_num == 5
+        assert pred.team == "CT"
+        assert pred.predicted_buy == "full"
+        assert pred.confidence == 0.85
+        assert pred.estimated_team_money == 25000
+
+
+class TestEconomyPredictor:
+    """Tests for the EconomyPredictor class."""
+
+    def test_pistol_round_prediction(self):
+        """Pistol rounds should always predict 'pistol' with 100% confidence."""
+        predictor = EconomyPredictor()
+
+        pred = predictor.predict_next_round(1, "CT", [])
+        assert pred.predicted_buy == "pistol"
+        assert pred.confidence == 1.0
+
+        # Halftime pistol (round 13 in MR12)
+        pred = predictor.predict_next_round(13, "T", [])
+        assert pred.predicted_buy == "pistol"
+        assert pred.confidence == 1.0
+
+    def test_after_pistol_loss_predicts_eco(self):
+        """After losing pistol, expect eco (low money)."""
+        predictor = EconomyPredictor()
+
+        # Simulate losing pistol round
+        predictor.record_round_result("CT")  # T lost
+
+        # Create minimal history showing T lost round 1
+        history = [
+            TeamRoundEconomy(
+                round_num=1,
+                team=2,
+                total_equipment=4000,
+                avg_equipment=800,
+                total_money=4000,
+                total_spent=4000,
+                buy_type=BuyType.PISTOL,
+                round_won=False,
+            )
+        ]
+
+        pred = predictor.predict_next_round(2, "T", history)
+        assert pred.predicted_buy == "eco"
+        assert pred.confidence >= 0.65
+
+    def test_high_money_predicts_full_buy(self):
+        """With high team money, expect full buy."""
+        predictor = EconomyPredictor()
+
+        # Create history showing team has lots of money (won previous rounds)
+        history = [
+            TeamRoundEconomy(
+                round_num=i,
+                team=3,
+                total_equipment=20000,
+                avg_equipment=4000,
+                total_money=25000,
+                total_spent=20000,
+                buy_type=BuyType.FULL_BUY,
+                round_won=True,
+            )
+            for i in range(1, 5)
+        ]
+
+        pred = predictor.predict_next_round(5, "CT", history)
+        assert pred.predicted_buy == "full"
+        assert pred.confidence >= 0.80
+
+    def test_consecutive_losses_tracked(self):
+        """Predictor should track consecutive losses correctly."""
+        predictor = EconomyPredictor()
+
+        # T loses 3 rounds in a row
+        for _ in range(3):
+            predictor.record_round_result("CT")
+
+        assert predictor._tracker.t_loss_counter == 3
+        assert predictor._tracker.ct_loss_counter == 0
+
+        # CT loses once
+        predictor.record_round_result("T")
+
+        assert predictor._tracker.t_loss_counter == 0  # Reset after win
+        assert predictor._tracker.ct_loss_counter == 1
+
+    def test_halftime_reset(self):
+        """Loss counters should reset at halftime."""
+        predictor = EconomyPredictor()
+
+        # Build up losses
+        predictor.record_round_result("CT")
+        predictor.record_round_result("CT")
+        predictor.record_round_result("CT")
+
+        assert predictor._tracker.t_loss_counter == 3
+
+        # Reset at halftime
+        predictor.reset_half()
+
+        assert predictor._tracker.t_loss_counter == 0
+        assert predictor._tracker.ct_loss_counter == 0
+
+    def test_high_loss_bonus_favors_force(self):
+        """With high loss bonus, prediction should favor force buy."""
+        predictor = EconomyPredictor()
+
+        # Simulate 4 consecutive losses (max loss bonus)
+        for _ in range(4):
+            predictor.record_round_result("CT")
+
+        # Create history with medium economy (force range)
+        history = [
+            TeamRoundEconomy(
+                round_num=i,
+                team=2,
+                total_equipment=3000,
+                avg_equipment=600,
+                total_money=15000,
+                total_spent=3000,
+                buy_type=BuyType.ECO,
+                round_won=False,
+            )
+            for i in range(1, 5)
+        ]
+
+        pred = predictor.predict_next_round(5, "T", history)
+        # With $3400 loss bonus and medium economy, should predict force
+        assert pred.predicted_buy in ("force", "eco")
+        assert pred.loss_bonus == 3400  # Max loss bonus
+
+
+class TestPredictionAccuracy:
+    """Tests for prediction accuracy calculation."""
+
+    def test_accuracy_with_no_predictions(self):
+        """Empty predictor should return 0% accuracy."""
+        predictor = EconomyPredictor()
+        accuracy = predictor.get_accuracy()
+
+        assert accuracy.total_predictions == 0
+        assert accuracy.accuracy_pct == 0.0
+
+    def test_accuracy_calculation(self):
+        """Accuracy should be correctly calculated."""
+        predictor = EconomyPredictor()
+
+        # Make some predictions
+        predictor._predictions = [
+            EconomyPrediction(
+                round_num=1,
+                team="CT",
+                predicted_buy="pistol",
+                confidence=1.0,
+                reasoning="",
+                estimated_team_money=4000,
+                estimated_avg_loadout=800,
+                loss_bonus=1400,
+                consecutive_losses=0,
+            ),
+            EconomyPrediction(
+                round_num=2,
+                team="CT",
+                predicted_buy="eco",
+                confidence=0.9,
+                reasoning="",
+                estimated_team_money=8000,
+                estimated_avg_loadout=800,
+                loss_bonus=1900,
+                consecutive_losses=1,
+            ),
+            EconomyPrediction(
+                round_num=3,
+                team="CT",
+                predicted_buy="full",
+                confidence=0.85,
+                reasoning="",
+                estimated_team_money=25000,
+                estimated_avg_loadout=4500,
+                loss_bonus=1400,
+                consecutive_losses=0,
+            ),
+        ]
+
+        # Record actuals
+        predictor._actuals[(1, "CT")] = "pistol"  # Correct
+        predictor._actuals[(2, "CT")] = "eco"  # Correct
+        predictor._actuals[(3, "CT")] = "force"  # Wrong
+
+        accuracy = predictor.get_accuracy()
+
+        assert accuracy.total_predictions == 3
+        assert accuracy.correct_predictions == 2
+        assert accuracy.accuracy_pct == 66.7  # 2/3 = 66.7%
