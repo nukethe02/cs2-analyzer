@@ -3652,7 +3652,7 @@
                                         <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">4K</th>
                                         <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">5K</th>
                                         <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Rating</th>
-                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" title="Impact +/-: Entry kills, clutches, trades, multi-kills vs entry deaths, untraded deaths. +5 = carry, 0 = avg, -5 = liability">+/-</th>
+                                        <th style="padding: 12px 16px; text-align: center; font-weight: 500; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" title="Kill-Death Difference: Kills minus Deaths">+/-</th>
                                     </tr>
                                 </thead>
                                 <tbody>`;
@@ -3672,8 +3672,12 @@
                     const multi3k = s['3k'] || 0;
                     const multi4k = s['4k'] || 0;
                     const multi5k = s['5k'] || 0;
-                    const perf = getImpactRating(p);
                     const kdNum = kills / Math.max(deaths, 1);
+
+                    // Calculate K-D difference for +/- column
+                    const kdDiff = kills - deaths;
+                    const kdDiffColor = kdDiff >= 0 ? 'var(--success)' : 'var(--danger)';
+                    const kdDiffFormatted = (kdDiff >= 0 ? '+' : '') + kdDiff;
 
                     // Trade stats - support nested trades object
                     const trades = p.trades || {};
@@ -3684,8 +3688,6 @@
                     const tradeColor = tradeOpps === 0 ? 'var(--text-muted)' : tradeRate >= 20 ? 'var(--success)' : 'inherit';
 
                     const kdColor = kdNum >= 1.0 ? 'var(--success)' : 'var(--danger)';
-                    const perfColor = perf >= 0 ? 'var(--success)' : 'var(--danger)';
-                    const perfFormatted = (perf >= 0 ? '+' : '') + perf.toFixed(2);
 
                     html += `
                         <tr style="border-bottom: 1px solid var(--border);">
@@ -3708,7 +3710,7 @@
                             <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${multi4k > 0 ? 'var(--warning)' : 'inherit'};">${renderStar(multi4k, best.multi_4k)}${multi4k}</td>
                             <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${multi5k > 0 ? 'var(--accent-tertiary)' : 'inherit'};">${renderStar(multi5k, best.multi_5k)}${multi5k}</td>
                             <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; font-weight: 700;">${renderStar(rating, best.hltv_rating)}${rating.toFixed(2)}</td>
-                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${perfColor};">${perfFormatted}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${kdDiffColor}; font-weight: 600;">${kdDiffFormatted}</td>
                         </tr>`;
                 });
 
