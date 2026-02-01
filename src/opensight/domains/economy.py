@@ -152,6 +152,78 @@ class TeamRoundEconomy:
     is_good_force: bool = False  # Force buy with high loss bonus or broken enemy
     round_won: bool = False  # Did we win this round?
 
+    # Per-round Economy IQ grading
+    decision_flag: str = "ok"  # "ok", "bad_force", "full_save_error"
+    decision_grade: str = "B"  # A-F per round
+    loss_bonus_next: int = BASE_LOSS_BONUS  # Loss bonus if this round is lost
+
+
+@dataclass
+class BuyDecision:
+    """Result of analyzing a team's buy decision for a single round."""
+
+    grade: str  # A-F grade
+    flag: str  # "ok", "bad_force", "bad_eco"
+    reason: str
+    loss_bonus: int
+    spend_ratio: float
+
+
+@dataclass
+class EconomyTracker:
+    """
+    Stateful tracker for loss bonus across rounds.
+
+    Tracks CT and T loss counters independently and provides
+    methods to update state and analyze buy decisions.
+
+    Usage:
+        tracker = EconomyTracker()
+        for round_info in rounds:
+            ct_bonus = tracker.get_loss_bonus("CT")
+            t_bonus = tracker.get_loss_bonus("T")
+            # ... analyze buys ...
+            tracker.process_round_result(round_info.winner)
+    """
+
+    ct_loss_counter: int = 0  # 0-4, capped at MAX_CONSECUTIVE_LOSSES
+    t_loss_counter: int = 0  # 0-4, capped at MAX_CONSECUTIVE_LOSSES
+
+    def process_round_result(self, winner: str) -> None:
+        """
+        Update loss counters after a round completes.
+
+        Win = Reset to 0
+        Loss = Increment (max 4)
+
+        Args:
+            winner: "CT" or "T"
+        """
+        if winner == "CT":
+            self.ct_loss_counter = 0
+            self.t_loss_counter = min(self.t_loss_counter + 1, MAX_CONSECUTIVE_LOSSES - 1)
+        elif winner == "T":
+            self.t_loss_counter = 0
+            self.ct_loss_counter = min(self.ct_loss_counter + 1, MAX_CONSECUTIVE_LOSSES - 1)
+
+    def get_loss_bonus(self, team: str) -> int:
+        """
+        Get current loss bonus for a team.
+
+        Args:
+            team: "CT" or "T"
+
+        Returns:
+            Loss bonus in dollars ($1400-$3400)
+        """
+        counter = self.ct_loss_counter if team == "CT" else self.t_loss_counter
+        return calculate_loss_bonus(counter)
+
+    def reset_half(self) -> None:
+        """Reset both counters at half-time, match start, or OT start."""
+        self.ct_loss_counter = 0
+        self.t_loss_counter = 0
+
 
 @dataclass
 class EconomyStats:
@@ -255,28 +327,25 @@ def calculate_loss_bonus(consecutive_losses: int) -> int:
     """
     Calculate loss bonus based on consecutive losses.
 
-    CS2 Loss Bonus System:
-    - 1 loss: $1400
-    - 2 losses: $1900
-    - 3 losses: $2400
-    - 4 losses: $2900
-    - 5+ losses: $3400 (capped)
+    CS2 Loss Bonus System (MR12):
+    - 0 losses (just won): $1400
+    - 1 loss: $1900
+    - 2 losses: $2400
+    - 3 losses: $2900
+    - 4+ losses: $3400 (capped)
 
     Args:
-        consecutive_losses: Number of consecutive round losses (0-5+)
+        consecutive_losses: Number of consecutive round losses (0-4)
 
     Returns:
         Loss bonus amount in dollars ($1400-$3400)
     """
-    # Clamp to max
-    losses = min(consecutive_losses, MAX_CONSECUTIVE_LOSSES)
+    # Clamp to max (4 losses = max bonus)
+    losses = min(consecutive_losses, 4)
 
-    if losses == 0:
-        return BASE_LOSS_BONUS  # Default to first loss bonus
-
-    # Formula: $1400 + ((losses - 1) * $500)
-    # 1 loss = $1400, 2 losses = $1900, etc.
-    bonus = BASE_LOSS_BONUS + ((losses - 1) * LOSS_BONUS_INCREMENT)
+    # Formula: $1400 + (losses * $500)
+    # 0 losses = $1400, 1 loss = $1900, 2 losses = $2400, etc.
+    bonus = BASE_LOSS_BONUS + (losses * LOSS_BONUS_INCREMENT)
     return min(bonus, MAX_LOSS_BONUS)
 
 
@@ -332,6 +401,193 @@ def is_good_force(buy_type: BuyType, loss_bonus: int, enemy_economy_broken: bool
         return True
 
     return False
+
+
+# Full Save Error thresholds (used in analyze_round_buy and is_full_save_error)
+FULL_SAVE_BANK_THRESHOLD = 10000  # Team has >$10k combined
+FULL_SAVE_SPEND_RATIO = 0.10  # Spent <10% of available
+FULL_SAVE_EQUIPMENT_MIN = 3000  # Equipment below this = saving
+
+
+def analyze_round_buy(
+    team_spend: int,
+    team_bank: int,
+    loss_bonus: int,
+    is_pistol_round: bool = False,
+) -> BuyDecision:
+    """
+    Judge a team's buy decision for a single round.
+
+    Flags:
+    - BAD_FORCE: Loss Bonus < $1900 AND Spend > 60% (risking reset)
+    - BAD_ECO: Bank > $10k AND Spend < 10% (hoarding when rich)
+
+    Args:
+        team_spend: Total team equipment value / spending
+        team_bank: Total team money at round start
+        loss_bonus: Current loss bonus for the team
+        is_pistol_round: Whether this is a pistol round
+
+    Returns:
+        BuyDecision with grade, flag, and reason
+    """
+    if is_pistol_round:
+        return BuyDecision(
+            grade="B",
+            flag="ok",
+            reason="Pistol round",
+            loss_bonus=loss_bonus,
+            spend_ratio=1.0,
+        )
+
+    spend_ratio = team_spend / max(team_bank, 1)
+
+    # Check BAD_FORCE: Risky force with low loss bonus
+    # Loss Bonus < $1900 means 0-1 consecutive losses - bad time to force
+    if loss_bonus < LOW_LOSS_BONUS and spend_ratio > 0.60:
+        return BuyDecision(
+            grade="D",
+            flag="bad_force",
+            reason=f"Risky force at ${loss_bonus} bonus (spend {spend_ratio:.0%})",
+            loss_bonus=loss_bonus,
+            spend_ratio=spend_ratio,
+        )
+
+    # Check BAD_ECO: Hoarding money when rich
+    if team_bank > FULL_SAVE_BANK_THRESHOLD and spend_ratio < FULL_SAVE_SPEND_RATIO:
+        return BuyDecision(
+            grade="D",
+            flag="bad_eco",
+            reason=f"Saving with ${team_bank:,} bank",
+            loss_bonus=loss_bonus,
+            spend_ratio=spend_ratio,
+        )
+
+    # Good decisions
+    if spend_ratio > 0.80:
+        grade = "A"
+        reason = "Full buy"
+    elif spend_ratio < 0.20:
+        grade = "B" if loss_bonus < 2400 else "C"
+        reason = "Eco round"
+    elif loss_bonus >= HIGH_LOSS_BONUS:
+        grade = "A"
+        reason = f"Justified force at ${loss_bonus} bonus"
+    else:
+        grade = "B"
+        reason = "Normal buy"
+
+    return BuyDecision(
+        grade=grade,
+        flag="ok",
+        reason=reason,
+        loss_bonus=loss_bonus,
+        spend_ratio=spend_ratio,
+    )
+
+
+def is_full_save_error(
+    team_money: int,
+    total_spent: int,
+    total_equipment: int,
+    is_pistol_round: bool = False,
+) -> bool:
+    """
+    Detect unnecessary saving when team is rich.
+
+    Full Save Error Criteria:
+    - Team bank > $10,000 (rich enough to buy)
+    - Spend ratio < 10% of available funds
+    - Equipment < $3,000 (didn't buy meaningful items)
+    - Not a pistol round
+
+    This catches teams that save when they could force or full buy,
+    which is a strategic mistake (wasting economic advantage).
+
+    Args:
+        team_money: Total team money at start of round
+        total_spent: Amount team spent this round
+        total_equipment: Total equipment value for team
+        is_pistol_round: Whether this is a pistol round
+
+    Returns:
+        True if team saved unnecessarily when rich
+    """
+    if is_pistol_round:
+        return False
+
+    # Not rich enough to be an error
+    if team_money < FULL_SAVE_BANK_THRESHOLD:
+        return False
+
+    # They did buy something meaningful
+    if total_equipment >= FULL_SAVE_EQUIPMENT_MIN:
+        return False
+
+    # Check spend ratio
+    spend_ratio = total_spent / max(team_money, 1)
+    return spend_ratio < FULL_SAVE_SPEND_RATIO
+
+
+def calculate_round_economy_grade(
+    buy_type: BuyType,
+    loss_bonus: int,
+    is_bad_force_flag: bool,
+    is_full_save_flag: bool,
+    round_won: bool,
+) -> tuple[str, str]:
+    """
+    Calculate per-round Economy Grade (A-F) based on the buy decision.
+
+    Grading considers:
+    - Was the buy appropriate for the loss bonus state?
+    - Did the decision lead to a win?
+    - Was it a clear mistake (bad force, unnecessary save)?
+
+    Args:
+        buy_type: Team's buy classification
+        loss_bonus: Current loss bonus for the team
+        is_bad_force_flag: Whether this was flagged as bad force
+        is_full_save_flag: Whether this was flagged as full save error
+        round_won: Whether the team won this round
+
+    Returns:
+        Tuple of (grade, reason)
+    """
+    # Clear mistakes get D/F
+    if is_full_save_flag:
+        grade = "D" if round_won else "F"
+        return (grade, "Saved with $10k+ bank")
+
+    if is_bad_force_flag:
+        if round_won:
+            return ("C", "Risky force paid off")
+        else:
+            return ("D", f"Bad force at ${loss_bonus} loss bonus")
+
+    # Proper full buys
+    if buy_type == BuyType.FULL_BUY:
+        return ("A" if round_won else "B", "Full buy")
+
+    # Pistol rounds are neutral
+    if buy_type == BuyType.PISTOL:
+        return ("B", "Pistol round")
+
+    # Smart ecos
+    if buy_type == BuyType.ECO:
+        if round_won:
+            return ("A", "Won eco round!")
+        else:
+            return ("B", "Proper eco")
+
+    # Force buys with high loss bonus are fine
+    if buy_type in (BuyType.FORCE, BuyType.HALF_BUY):
+        if loss_bonus >= HIGH_LOSS_BONUS:
+            return ("A" if round_won else "B", f"Justified force at ${loss_bonus}")
+        else:
+            return ("B" if round_won else "C", "Force buy")
+
+    return ("C", "")
 
 
 def calculate_economy_grade(
@@ -757,6 +1013,31 @@ class EconomyAnalyzer:
                     bad_force = is_bad_force(buy_type, loss_bonus)
                     good_force = is_good_force(buy_type, loss_bonus, enemy_broken)
 
+                    # Check for full save error (rich team saving unnecessarily)
+                    # Estimate team money from equipment (rough approximation)
+                    est_team_money = team_equipment + 5000  # Base assumption
+                    full_save_err = is_full_save_error(
+                        est_team_money, team_equipment, team_equipment, is_pistol
+                    )
+
+                    # Determine decision flag
+                    if bad_force:
+                        decision_flag = "bad_force"
+                    elif full_save_err:
+                        decision_flag = "full_save_error"
+                    else:
+                        decision_flag = "ok"
+
+                    # Calculate per-round economy grade
+                    round_grade, _reason = calculate_round_economy_grade(
+                        buy_type, loss_bonus, bad_force, full_save_err, team_won
+                    )
+
+                    # Calculate what loss bonus would be if this round is lost
+                    loss_bonus_next = calculate_loss_bonus(
+                        min(consecutive_losses + 1, MAX_CONSECUTIVE_LOSSES)
+                    )
+
                     team_round = TeamRoundEconomy(
                         round_num=round_num,
                         team=team,
@@ -771,6 +1052,9 @@ class EconomyAnalyzer:
                         is_bad_force=bad_force,
                         is_good_force=good_force,
                         round_won=team_won,
+                        decision_flag=decision_flag,
+                        decision_grade=round_grade,
+                        loss_bonus_next=loss_bonus_next,
                     )
                     self._team_economies[team].append(team_round)
 
