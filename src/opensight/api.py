@@ -1892,6 +1892,87 @@ async def get_all_player_positioning(job_id: str) -> dict[str, object]:
 
 
 # =============================================================================
+# Trade Chain Visualization - Unique to OpenSight
+# =============================================================================
+
+
+@app.get("/api/trade-chains/{job_id}")
+async def get_trade_chains(
+    job_id: str,
+    round_num: int | None = Query(None, description="Filter by round number"),
+    min_chain_length: int = Query(2, ge=2, description="Minimum chain length"),
+) -> dict[str, object]:
+    """
+    Get trade chain analysis for a completed demo.
+
+    Trade chains are sequences of linked trade kills:
+    - A kills B (trigger)
+    - C kills A (trade for B) within 5 seconds
+    - D kills C (trade for A) within 5 seconds
+    - ... continues until no trade occurs
+
+    Returns:
+    - chains: List of trade chain data with animation frames
+    - stats: Aggregate statistics (avg length, max length, team win rates)
+    - map_name: Map name for visualization
+
+    This is UNIQUE to OpenSight - no other tool visualizes trade chains.
+    """
+    validate_demo_id(job_id)
+
+    # Check job exists and is completed
+    job = job_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job['status']}")
+
+    try:
+        from opensight.core.parser import DemoParser
+        from opensight.domains.combat import CombatAnalyzer
+
+        # Get demo path from job
+        demo_path = job.get("demo_path")
+        if not demo_path or not Path(demo_path).exists():
+            raise HTTPException(status_code=404, detail="Demo file no longer available")
+
+        # Parse and analyze
+        parser = DemoParser(Path(demo_path))
+        data = parser.parse()
+        analyzer = CombatAnalyzer(data)
+        result = analyzer.analyze()
+
+        # Get chains and apply filters
+        chains = result.trade_chains
+
+        # Filter by round if specified
+        if round_num is not None:
+            chains = [c for c in chains if c.round_num == round_num]
+
+        # Filter by minimum length
+        chains = [c for c in chains if c.chain_length >= min_chain_length]
+
+        # Convert to JSON-serializable format
+        chains_data = [c.to_dict() for c in chains]
+
+        return {
+            "job_id": job_id,
+            "map_name": data.map_name,
+            "total_rounds": data.num_rounds,
+            "chains": chains_data,
+            "stats": result.trade_chain_stats.to_dict() if result.trade_chain_stats else None,
+            "filter_applied": {
+                "round_num": round_num,
+                "min_chain_length": min_chain_length,
+            },
+        }
+
+    except Exception as e:
+        logger.exception("Trade chain analysis failed")
+        raise HTTPException(status_code=500, detail=f"Trade chain analysis failed: {e!s}") from e
+
+
+# =============================================================================
 # Your Match - Personal Performance Dashboard
 # =============================================================================
 
@@ -2347,7 +2428,8 @@ def _cleanup_expired_scouting_sessions() -> None:
     now = time.time()
     with _scouting_sessions_lock:
         expired = [
-            sid for sid, sess in _scouting_sessions.items()
+            sid
+            for sid, sess in _scouting_sessions.items()
             if now - sess["created_at"] > SCOUTING_SESSION_TTL
         ]
         for sid in expired:
@@ -2360,10 +2442,7 @@ def _enforce_max_scouting_sessions() -> None:
     """Remove oldest sessions if max limit exceeded."""
     with _scouting_sessions_lock:
         if len(_scouting_sessions) >= MAX_SCOUTING_SESSIONS:
-            sorted_sessions = sorted(
-                _scouting_sessions.items(),
-                key=lambda x: x[1]["created_at"]
-            )
+            sorted_sessions = sorted(_scouting_sessions.items(), key=lambda x: x[1]["created_at"])
             to_remove = len(_scouting_sessions) - MAX_SCOUTING_SESSIONS + 1
             for sid, _ in sorted_sessions[:to_remove]:
                 del _scouting_sessions[sid]
@@ -2423,8 +2502,7 @@ async def add_demo_to_scouting_session(
 
         if len(session["demos"]) >= MAX_DEMOS_PER_SESSION:
             raise HTTPException(
-                status_code=400,
-                detail=f"Maximum {MAX_DEMOS_PER_SESSION} demos per session"
+                status_code=400, detail=f"Maximum {MAX_DEMOS_PER_SESSION} demos per session"
             )
 
     # Validate file
@@ -2450,8 +2528,8 @@ async def add_demo_to_scouting_session(
         temp_file.close()
 
         # Parse demo
-        from opensight.core.parser import DemoParser
         from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.core.parser import DemoParser
 
         parser = DemoParser()
         demo_data = parser.parse(temp_path)
@@ -2474,11 +2552,13 @@ async def add_demo_to_scouting_session(
             demo_info = engine.add_demo(demo_data, analysis)
 
             # Store demo reference
-            session["demos"].append({
-                "filename": file.filename,
-                "map_name": demo_data.map_name,
-                "rounds": analysis.total_rounds,
-            })
+            session["demos"].append(
+                {
+                    "filename": file.filename,
+                    "map_name": demo_data.map_name,
+                    "rounds": analysis.total_rounds,
+                }
+            )
 
             # Merge player list (dedupe by steamid)
             existing_steamids = {p["steamid"] for p in session["player_list"]}
@@ -2508,6 +2588,7 @@ async def add_demo_to_scouting_session(
 
 class ScoutingReportRequest(BaseModel):
     """Request body for generating scouting report."""
+
     opponent_steamids: list[int] = Field(..., description="Steam IDs of opponent players to scout")
     team_name: str = Field(default="Opponent", description="Name of the opponent team")
 

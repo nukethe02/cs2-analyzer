@@ -540,6 +540,11 @@ class ClutchEvent:
     type: str  # "1v1", "1v2", "1v3", "1v4", "1v5"
     outcome: str  # "WON", "LOST", "SAVED"
     enemies_killed: int = 0
+    # Tick information for replay bookmarks
+    tick_start: int = 0  # Tick when clutch situation began (last teammate died)
+    clutcher_steamid: int = 0  # Steam ID of clutcher
+    clutcher_team: str = ""  # "CT" or "T"
+    enemies_at_start: int = 0  # Number of enemies when clutch began
 
 
 @dataclass
@@ -698,6 +703,42 @@ class MultiKillStats:
     @property
     def total_multi_kill_rounds(self) -> int:
         return self.rounds_with_2k + self.rounds_with_3k + self.rounds_with_4k + self.rounds_with_5k
+
+
+@dataclass
+class SprayTransferStats:
+    """Spray transfer kill statistics - 2+ kills in a single spray."""
+
+    double_sprays: int = 0  # 2-kill sprays
+    triple_sprays: int = 0  # 3-kill sprays
+    quad_sprays: int = 0  # 4-kill sprays
+    ace_sprays: int = 0  # 5-kill sprays (full ace in one spray)
+    total_spray_kills: int = 0  # Total kills from spray transfers
+    _spray_times_ms: list = field(default_factory=list)  # Track times for average
+
+    @property
+    def total_sprays(self) -> int:
+        """Total spray transfer events."""
+        return self.double_sprays + self.triple_sprays + self.quad_sprays + self.ace_sprays
+
+    @property
+    def avg_spray_time_ms(self) -> float:
+        """Average time span of spray transfers."""
+        if not self._spray_times_ms:
+            return 0.0
+        return round(sum(self._spray_times_ms) / len(self._spray_times_ms), 1)
+
+    def to_dict(self) -> dict:
+        """Serialize to JSON-compatible dict."""
+        return {
+            "double_sprays": self.double_sprays,
+            "triple_sprays": self.triple_sprays,
+            "quad_sprays": self.quad_sprays,
+            "ace_sprays": self.ace_sprays,
+            "total_sprays": self.total_sprays,
+            "total_spray_kills": self.total_spray_kills,
+            "avg_spray_time_ms": self.avg_spray_time_ms,
+        }
 
 
 @dataclass
@@ -1378,6 +1419,7 @@ class PlayerMatchStats:
     trades: TradeStats = field(default_factory=TradeStats)
     clutches: ClutchStats = field(default_factory=ClutchStats)
     multi_kills: MultiKillStats = field(default_factory=MultiKillStats)
+    spray_transfers: SprayTransferStats = field(default_factory=SprayTransferStats)
     utility: UtilityStats = field(default_factory=UtilityStats)
 
     # Side-based stats (Leetify style)
@@ -4261,6 +4303,9 @@ class DemoAnalyzer:
                 elif victim_side == "T":
                     t_alive.discard(victim_id)
 
+                # Get tick from kill event for bookmark timestamps
+                kill_tick = safe_int(kill.get("tick"), default=0)
+
                 # Check for clutch situation after each death
                 # CT clutch: 1 CT alive, 1+ T alive, not already detected
                 if len(ct_alive) == 1 and len(t_alive) >= 1 and not clutch_detected["CT"]:
@@ -4270,6 +4315,8 @@ class DemoAnalyzer:
                         "clutcher_id": clutcher_id,
                         "enemies_at_start": len(t_alive),
                         "clutcher_died": False,
+                        "tick_start": kill_tick,  # Tick when clutch situation began
+                        "team": "CT",
                     }
 
                 # T clutch: 1 T alive, 1+ CT alive, not already detected
@@ -4280,6 +4327,8 @@ class DemoAnalyzer:
                         "clutcher_id": clutcher_id,
                         "enemies_at_start": len(ct_alive),
                         "clutcher_died": False,
+                        "tick_start": kill_tick,  # Tick when clutch situation began
+                        "team": "T",
                     }
 
                 # Check if a clutcher just died
@@ -4332,12 +4381,20 @@ class DemoAnalyzer:
                 # Create clutch type string
                 clutch_type = f"1v{enemies_at_start}"
 
-                # Create clutch event
+                # Get tick and team data for replay bookmarks
+                tick_start = info.get("tick_start", 0)
+                clutcher_team = info.get("team", side)
+
+                # Create clutch event with full bookmark data
                 clutch_event = ClutchEvent(
                     round_number=round_num_int,
                     type=clutch_type,
                     outcome=outcome,
                     enemies_killed=enemies_killed,
+                    tick_start=tick_start,
+                    clutcher_steamid=clutcher_id,
+                    clutcher_team=clutcher_team,
+                    enemies_at_start=enemies_at_start,
                 )
                 player.clutches.clutches.append(clutch_event)
 
@@ -6395,6 +6452,24 @@ class DemoAnalyzer:
                     cs = combat_stats.player_stats[steam_id]
                     player.trade_kill_time_avg_ms = cs.trade_kill_time_avg_ms
                     player.untraded_deaths = cs.untraded_deaths
+
+            # Process spray transfers
+            for spray in combat_stats.spray_transfers:
+                steam_id = spray.player_steamid
+                if steam_id in self._players:
+                    player = self._players[steam_id]
+                    kills = spray.kills_in_spray
+                    player.spray_transfers.total_spray_kills += kills
+                    player.spray_transfers._spray_times_ms.append(spray.time_span_ms)
+
+                    if kills == 2:
+                        player.spray_transfers.double_sprays += 1
+                    elif kills == 3:
+                        player.spray_transfers.triple_sprays += 1
+                    elif kills == 4:
+                        player.spray_transfers.quad_sprays += 1
+                    elif kills >= 5:
+                        player.spray_transfers.ace_sprays += 1
 
             # Build team-level stats
             trade_rates = {

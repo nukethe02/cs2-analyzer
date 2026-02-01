@@ -13,6 +13,7 @@ from opensight.visualization.radar import (
 )
 from opensight.visualization.replay import (
     BombFrame,
+    ClutchBookmark,
     GrenadeFrame,
     KillEvent,
     MatchReplay,
@@ -20,6 +21,7 @@ from opensight.visualization.replay import (
     ReplayExporter,
     ReplayFrame,
     RoundReplay,
+    extract_clutch_bookmarks,
 )
 
 client = TestClient(app)
@@ -667,3 +669,335 @@ class TestReplayDataFlow:
         # Should be within small tolerance
         assert abs(back_x - game_x) < 1.0
         assert abs(back_y - game_y) < 1.0
+
+
+# =============================================================================
+# Clutch Bookmark Tests
+# =============================================================================
+
+
+class TestClutchBookmark:
+    """Tests for ClutchBookmark dataclass."""
+
+    def test_clutch_bookmark_creation(self):
+        """ClutchBookmark can be created with all fields."""
+        bookmark = ClutchBookmark(
+            round_num=5,
+            tick_start=10000,
+            tick_end=12000,
+            clutcher_steamid=76561198012345678,
+            clutcher_name="TestPlayer",
+            clutcher_team="CT",
+            situation="1v2",
+            enemies_remaining=2,
+            outcome="WON",
+            kills_during_clutch=2,
+        )
+        assert bookmark.round_num == 5
+        assert bookmark.tick_start == 10000
+        assert bookmark.tick_end == 12000
+        assert bookmark.clutcher_steamid == 76561198012345678
+        assert bookmark.clutcher_name == "TestPlayer"
+        assert bookmark.clutcher_team == "CT"
+        assert bookmark.situation == "1v2"
+        assert bookmark.enemies_remaining == 2
+        assert bookmark.outcome == "WON"
+        assert bookmark.kills_during_clutch == 2
+
+    def test_clutch_bookmark_to_dict(self):
+        """ClutchBookmark serializes to expected dict format."""
+        bookmark = ClutchBookmark(
+            round_num=3,
+            tick_start=5000,
+            tick_end=7000,
+            clutcher_steamid=76561198012345678,
+            clutcher_name="Clutch_Master",
+            clutcher_team="T",
+            situation="1v3",
+            enemies_remaining=3,
+            outcome="LOST",
+            kills_during_clutch=1,
+        )
+        data = bookmark.to_dict()
+        assert data["round"] == 3
+        assert data["tick_start"] == 5000
+        assert data["tick_end"] == 7000
+        assert data["clutcher_sid"] == 76561198012345678
+        assert data["clutcher"] == "Clutch_Master"
+        assert data["team"] == "T"
+        assert data["situation"] == "1v3"
+        assert data["enemies"] == 3
+        assert data["outcome"] == "LOST"
+        assert data["kills"] == 1
+
+    def test_clutch_bookmark_duration(self):
+        """ClutchBookmark calculates duration correctly."""
+        bookmark = ClutchBookmark(
+            round_num=1,
+            tick_start=1000,
+            tick_end=3000,
+            clutcher_steamid=123,
+            clutcher_name="Test",
+            clutcher_team="CT",
+            situation="1v1",
+            enemies_remaining=1,
+            outcome="WON",
+            kills_during_clutch=1,
+        )
+        assert bookmark.duration_ticks == 2000
+
+    def test_clutch_bookmark_time_start_seconds(self):
+        """ClutchBookmark calculates start time in seconds."""
+        bookmark = ClutchBookmark(
+            round_num=1,
+            tick_start=6400,  # 100 seconds at 64 tick
+            tick_end=7000,
+            clutcher_steamid=123,
+            clutcher_name="Test",
+            clutcher_team="CT",
+            situation="1v1",
+            enemies_remaining=1,
+            outcome="WON",
+            kills_during_clutch=1,
+        )
+        assert bookmark.time_start_seconds == 100.0
+
+
+class TestMatchReplayWithClutchBookmarks:
+    """Tests for MatchReplay clutch bookmark integration."""
+
+    def test_match_replay_with_empty_clutch_bookmarks(self):
+        """MatchReplay handles empty clutch_bookmarks."""
+        replay = MatchReplay(
+            map_name="de_dust2",
+            tick_rate=64,
+            sample_rate=8,
+            total_rounds=24,
+            team1_score=13,
+            team2_score=11,
+            player_names={123: "Player1"},
+            player_teams={123: "CT"},
+        )
+        data = replay.to_dict()
+        # Empty bookmarks should not be in output
+        assert "clutch_bookmarks" not in data
+
+    def test_match_replay_with_clutch_bookmarks(self):
+        """MatchReplay includes clutch_bookmarks in output."""
+        bookmark = ClutchBookmark(
+            round_num=10,
+            tick_start=50000,
+            tick_end=55000,
+            clutcher_steamid=123,
+            clutcher_name="Player1",
+            clutcher_team="CT",
+            situation="1v2",
+            enemies_remaining=2,
+            outcome="WON",
+            kills_during_clutch=2,
+        )
+        replay = MatchReplay(
+            map_name="de_dust2",
+            tick_rate=64,
+            sample_rate=8,
+            total_rounds=24,
+            team1_score=13,
+            team2_score=11,
+            player_names={123: "Player1"},
+            player_teams={123: "CT"},
+            clutch_bookmarks=[bookmark],
+        )
+        data = replay.to_dict()
+        assert "clutch_bookmarks" in data
+        assert len(data["clutch_bookmarks"]) == 1
+        assert data["clutch_bookmarks"][0]["situation"] == "1v2"
+
+    def test_get_clutch_bookmarks_for_round(self):
+        """MatchReplay filters bookmarks by round."""
+        bookmarks = [
+            ClutchBookmark(
+                round_num=5,
+                tick_start=10000,
+                tick_end=12000,
+                clutcher_steamid=123,
+                clutcher_name="Player1",
+                clutcher_team="CT",
+                situation="1v1",
+                enemies_remaining=1,
+                outcome="WON",
+                kills_during_clutch=1,
+            ),
+            ClutchBookmark(
+                round_num=10,
+                tick_start=30000,
+                tick_end=32000,
+                clutcher_steamid=456,
+                clutcher_name="Player2",
+                clutcher_team="T",
+                situation="1v2",
+                enemies_remaining=2,
+                outcome="LOST",
+                kills_during_clutch=0,
+            ),
+        ]
+        replay = MatchReplay(
+            map_name="de_mirage",
+            tick_rate=64,
+            sample_rate=8,
+            total_rounds=24,
+            team1_score=13,
+            team2_score=11,
+            player_names={123: "Player1", 456: "Player2"},
+            player_teams={123: "CT", 456: "T"},
+            clutch_bookmarks=bookmarks,
+        )
+        round_5_clutches = replay.get_clutch_bookmarks_for_round(5)
+        assert len(round_5_clutches) == 1
+        assert round_5_clutches[0].clutcher_name == "Player1"
+
+        round_10_clutches = replay.get_clutch_bookmarks_for_round(10)
+        assert len(round_10_clutches) == 1
+        assert round_10_clutches[0].clutcher_name == "Player2"
+
+    def test_get_clutch_bookmarks_for_player(self):
+        """MatchReplay filters bookmarks by player."""
+        bookmarks = [
+            ClutchBookmark(
+                round_num=5,
+                tick_start=10000,
+                tick_end=12000,
+                clutcher_steamid=123,
+                clutcher_name="Player1",
+                clutcher_team="CT",
+                situation="1v1",
+                enemies_remaining=1,
+                outcome="WON",
+                kills_during_clutch=1,
+            ),
+            ClutchBookmark(
+                round_num=8,
+                tick_start=20000,
+                tick_end=22000,
+                clutcher_steamid=123,
+                clutcher_name="Player1",
+                clutcher_team="CT",
+                situation="1v3",
+                enemies_remaining=3,
+                outcome="WON",
+                kills_during_clutch=3,
+            ),
+            ClutchBookmark(
+                round_num=10,
+                tick_start=30000,
+                tick_end=32000,
+                clutcher_steamid=456,
+                clutcher_name="Player2",
+                clutcher_team="T",
+                situation="1v2",
+                enemies_remaining=2,
+                outcome="LOST",
+                kills_during_clutch=0,
+            ),
+        ]
+        replay = MatchReplay(
+            map_name="de_inferno",
+            tick_rate=64,
+            sample_rate=8,
+            total_rounds=24,
+            team1_score=13,
+            team2_score=11,
+            player_names={123: "Player1", 456: "Player2"},
+            player_teams={123: "CT", 456: "T"},
+            clutch_bookmarks=bookmarks,
+        )
+        player1_clutches = replay.get_clutch_bookmarks_for_player(123)
+        assert len(player1_clutches) == 2
+
+        player2_clutches = replay.get_clutch_bookmarks_for_player(456)
+        assert len(player2_clutches) == 1
+
+
+class TestExtractClutchBookmarks:
+    """Tests for extract_clutch_bookmarks function."""
+
+    def test_extract_from_dict_format(self):
+        """extract_clutch_bookmarks handles dict format clutch data."""
+        analysis_results = {
+            "players": {
+                "123": {
+                    "clutches": {
+                        "clutches": [
+                            {
+                                "round_number": 5,
+                                "type": "1v2",
+                                "outcome": "WON",
+                                "enemies_killed": 2,
+                                "tick_start": 10000,
+                                "clutcher_team": "CT",
+                                "enemies_at_start": 2,
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+        player_names = {123: "TestPlayer"}
+        round_end_ticks = {5: 12000}
+
+        bookmarks = extract_clutch_bookmarks(analysis_results, player_names, round_end_ticks)
+
+        assert len(bookmarks) == 1
+        assert bookmarks[0].round_num == 5
+        assert bookmarks[0].situation == "1v2"
+        assert bookmarks[0].outcome == "WON"
+        assert bookmarks[0].clutcher_name == "TestPlayer"
+
+    def test_extract_empty_when_no_clutches(self):
+        """extract_clutch_bookmarks returns empty list when no clutches."""
+        analysis_results = {"players": {"123": {"clutches": {"clutches": []}}}}
+        player_names = {123: "TestPlayer"}
+        round_end_ticks = {}
+
+        bookmarks = extract_clutch_bookmarks(analysis_results, player_names, round_end_ticks)
+        assert len(bookmarks) == 0
+
+    def test_extract_sorted_by_round_and_tick(self):
+        """extract_clutch_bookmarks returns bookmarks sorted by round then tick."""
+        analysis_results = {
+            "players": {
+                "123": {
+                    "clutches": {
+                        "clutches": [
+                            {
+                                "round_number": 10,
+                                "type": "1v1",
+                                "outcome": "WON",
+                                "enemies_killed": 1,
+                                "tick_start": 30000,
+                                "clutcher_team": "CT",
+                                "enemies_at_start": 1,
+                            },
+                            {
+                                "round_number": 5,
+                                "type": "1v2",
+                                "outcome": "LOST",
+                                "enemies_killed": 0,
+                                "tick_start": 10000,
+                                "clutcher_team": "CT",
+                                "enemies_at_start": 2,
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+        player_names = {123: "TestPlayer"}
+        round_end_ticks = {5: 12000, 10: 32000}
+
+        bookmarks = extract_clutch_bookmarks(analysis_results, player_names, round_end_ticks)
+
+        assert len(bookmarks) == 2
+        # First bookmark should be from round 5
+        assert bookmarks[0].round_num == 5
+        # Second should be from round 10
+        assert bookmarks[1].round_num == 10

@@ -2256,10 +2256,20 @@
                 Leetify Metrics
             </span>
         </div>
+        <!-- Mode Switcher -->
+        <div class="mode-switcher" style="display: flex; gap: 8px; margin-top: 16px;">
+            <button id="mode-analysis" class="mode-btn active" style="padding: 8px 20px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                Match Analysis
+            </button>
+            <button id="mode-scouting" class="mode-btn" style="padding: 8px 20px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                Opponent Scouting
+            </button>
+        </div>
     </header>
 
     <main class="container">
-        <section class="upload-section">
+        <!-- Standard Analysis Section -->
+        <section class="upload-section" id="analysis-section">
             <label class="upload-zone" id="upload-zone" for="demo-file">
                 <div class="upload-icon">
                     <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -2275,6 +2285,53 @@
                 </div>
                 <input type="file" id="demo-file" name="demo-file" accept=".dem,.dem.gz,application/octet-stream,application/gzip">
             </label>
+        </section>
+
+        <!-- Scouting Section (hidden by default) -->
+        <section class="scouting-section" id="scouting-section" style="display: none;">
+            <div class="scouting-container" style="background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 24px; border: 1px solid var(--border);">
+                <h2 style="margin: 0 0 8px 0; color: var(--text-primary); font-size: 1.5rem;">Opponent Scouting</h2>
+                <p style="margin: 0 0 20px 0; color: var(--text-muted);">Upload multiple demos of your opponent to generate scouting reports with player profiles and anti-strat recommendations.</p>
+
+                <!-- Session Status -->
+                <div id="scouting-session-info" style="display: none; margin-bottom: 20px; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius-md); border: 1px solid var(--border);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-muted);">Session Active</span>
+                        <span id="scouting-demo-count" style="color: var(--accent-primary); font-weight: 600;">0 demos loaded</span>
+                    </div>
+                </div>
+
+                <!-- Demo Upload Zone -->
+                <label class="upload-zone scouting-upload" id="scouting-upload-zone" for="scouting-demo-file" style="cursor: pointer; display: block; padding: 32px; background: var(--bg-tertiary); border: 2px dashed var(--border); border-radius: var(--radius-md); text-align: center; transition: all 0.2s;">
+                    <div style="margin-bottom: 12px;">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width: 48px; height: 48px; fill: var(--text-muted);">
+                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                        </svg>
+                    </div>
+                    <h3 style="margin: 0 0 4px 0; color: var(--text-primary);">Add Demo to Scouting Pool</h3>
+                    <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Upload demos of your opponent (up to 10)</p>
+                    <input type="file" id="scouting-demo-file" accept=".dem,.dem.gz" style="display: none;">
+                </label>
+
+                <!-- Loaded Demos List -->
+                <div id="scouting-demos-list" style="margin-top: 16px;"></div>
+
+                <!-- Player Selection -->
+                <div id="scouting-player-selection" style="display: none; margin-top: 20px; padding: 16px; background: var(--bg-tertiary); border-radius: var(--radius-md); border: 1px solid var(--border);">
+                    <h3 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 1.1rem;">Select Opponent Players</h3>
+                    <p style="margin: 0 0 12px 0; color: var(--text-muted); font-size: 0.9rem;">Click on players to add them to the opponent team for scouting.</p>
+                    <div id="scouting-player-list" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                    <div style="margin-top: 16px;">
+                        <input type="text" id="scouting-team-name" placeholder="Opponent Team Name" value="Opponent" style="padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); margin-right: 8px;">
+                        <button type="button" id="generate-scouting-report" style="padding: 10px 24px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 600;">
+                            Generate Report
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Scouting Report Display -->
+                <div id="scouting-report" style="display: none; margin-top: 20px;"></div>
+            </div>
         </section>
 
         <div id="results" class="results"></div>
@@ -2303,6 +2360,312 @@
         let analysisData = null;
         let uploadedDemoFile = null;  // Store the uploaded file for replay generation
         let replayData = null;  // Store fetched replay data
+
+        // =====================================================
+        // Mode Switching (Analysis vs Scouting)
+        // =====================================================
+        const modeAnalysisBtn = document.getElementById('mode-analysis');
+        const modeScoutingBtn = document.getElementById('mode-scouting');
+        const analysisSection = document.getElementById('analysis-section');
+        const scoutingSection = document.getElementById('scouting-section');
+
+        modeAnalysisBtn.addEventListener('click', () => {
+            modeAnalysisBtn.classList.add('active');
+            modeAnalysisBtn.style.background = 'var(--accent-primary)';
+            modeAnalysisBtn.style.color = 'white';
+            modeAnalysisBtn.style.border = 'none';
+            modeScoutingBtn.classList.remove('active');
+            modeScoutingBtn.style.background = 'var(--bg-secondary)';
+            modeScoutingBtn.style.color = 'var(--text-muted)';
+            modeScoutingBtn.style.border = '1px solid var(--border)';
+            analysisSection.style.display = 'block';
+            scoutingSection.style.display = 'none';
+            resultsDiv.style.display = 'block';
+        });
+
+        modeScoutingBtn.addEventListener('click', () => {
+            modeScoutingBtn.classList.add('active');
+            modeScoutingBtn.style.background = 'var(--accent-primary)';
+            modeScoutingBtn.style.color = 'white';
+            modeScoutingBtn.style.border = 'none';
+            modeAnalysisBtn.classList.remove('active');
+            modeAnalysisBtn.style.background = 'var(--bg-secondary)';
+            modeAnalysisBtn.style.color = 'var(--text-muted)';
+            modeAnalysisBtn.style.border = '1px solid var(--border)';
+            analysisSection.style.display = 'none';
+            scoutingSection.style.display = 'block';
+            resultsDiv.style.display = 'none';
+            // Initialize scouting session if needed
+            if (!scoutingState.sessionId) {
+                initScoutingSession();
+            }
+        });
+
+        // =====================================================
+        // Scouting Engine State & Functions
+        // =====================================================
+        const scoutingState = {
+            sessionId: null,
+            demos: [],
+            players: [],
+            selectedOpponents: new Set()
+        };
+
+        async function initScoutingSession() {
+            try {
+                const response = await fetch('/api/scouting/session', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to create session');
+                const data = await response.json();
+                scoutingState.sessionId = data.session_id;
+                scoutingState.demos = [];
+                scoutingState.players = [];
+                scoutingState.selectedOpponents.clear();
+                updateScoutingUI();
+            } catch (error) {
+                console.error('Failed to init scouting session:', error);
+                showError('Session Error', 'Failed to create scouting session');
+            }
+        }
+
+        function updateScoutingUI() {
+            const sessionInfo = document.getElementById('scouting-session-info');
+            const demoCount = document.getElementById('scouting-demo-count');
+            const demosList = document.getElementById('scouting-demos-list');
+            const playerSelection = document.getElementById('scouting-player-selection');
+            const playerList = document.getElementById('scouting-player-list');
+
+            if (scoutingState.sessionId) {
+                sessionInfo.style.display = 'block';
+                demoCount.textContent = `${scoutingState.demos.length} demo${scoutingState.demos.length !== 1 ? 's' : ''} loaded`;
+            }
+
+            // Update demos list
+            if (scoutingState.demos.length > 0) {
+                demosList.innerHTML = scoutingState.demos.map((d, i) => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-tertiary); border-radius: var(--radius-sm); margin-bottom: 8px; border: 1px solid var(--border);">
+                        <span style="color: var(--text-primary);">${esc(d.filename)}</span>
+                        <span style="color: var(--text-muted); font-size: 0.85rem;">${esc(d.map_name)} - ${d.rounds} rounds</span>
+                    </div>
+                `).join('');
+            } else {
+                demosList.innerHTML = '';
+            }
+
+            // Update player selection
+            if (scoutingState.players.length > 0) {
+                playerSelection.style.display = 'block';
+                playerList.innerHTML = scoutingState.players.map(p => {
+                    const isSelected = scoutingState.selectedOpponents.has(p.steamid);
+                    return `
+                        <button type="button" class="scouting-player-btn ${isSelected ? 'selected' : ''}"
+                            data-steamid="${p.steamid}"
+                            style="padding: 6px 12px; background: ${isSelected ? 'var(--accent-primary)' : 'var(--bg-secondary)'}; color: ${isSelected ? 'white' : 'var(--text-primary)'}; border: 1px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border)'}; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.9rem;">
+                            ${esc(p.name)} (${p.kills}/${p.deaths})
+                        </button>
+                    `;
+                }).join('');
+
+                // Add click handlers for player buttons
+                playerList.querySelectorAll('.scouting-player-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const steamid = parseInt(btn.dataset.steamid);
+                        if (scoutingState.selectedOpponents.has(steamid)) {
+                            scoutingState.selectedOpponents.delete(steamid);
+                        } else {
+                            scoutingState.selectedOpponents.add(steamid);
+                        }
+                        updateScoutingUI();
+                    });
+                });
+            }
+        }
+
+        async function addDemoToScouting(file) {
+            if (!scoutingState.sessionId) {
+                await initScoutingSession();
+            }
+
+            loading.classList.add('active');
+            loadingDetails.textContent = `Adding ${file.name} to scouting pool...`;
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(`/api/scouting/session/${scoutingState.sessionId}/add-demo`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to add demo');
+                }
+
+                const data = await response.json();
+                scoutingState.demos.push({
+                    filename: file.name,
+                    map_name: data.map_name,
+                    rounds: data.total_rounds
+                });
+
+                // Merge players
+                for (const p of data.all_players) {
+                    if (!scoutingState.players.find(existing => existing.steamid === p.steamid)) {
+                        scoutingState.players.push(p);
+                    }
+                }
+
+                updateScoutingUI();
+            } catch (error) {
+                console.error('Failed to add demo:', error);
+                showError('Upload Failed', error.message);
+            } finally {
+                loading.classList.remove('active');
+            }
+        }
+
+        async function generateScoutingReport() {
+            if (scoutingState.selectedOpponents.size === 0) {
+                showError('No Players Selected', 'Please select at least one opponent player to scout.');
+                return;
+            }
+
+            loading.classList.add('active');
+            loadingDetails.textContent = 'Generating scouting report...';
+
+            try {
+                const teamName = document.getElementById('scouting-team-name').value || 'Opponent';
+                const response = await fetch(`/api/scouting/session/${scoutingState.sessionId}/report`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        opponent_steamids: Array.from(scoutingState.selectedOpponents),
+                        team_name: teamName
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to generate report');
+                }
+
+                const data = await response.json();
+                displayScoutingReport(data.report);
+            } catch (error) {
+                console.error('Failed to generate report:', error);
+                showError('Report Failed', error.message);
+            } finally {
+                loading.classList.remove('active');
+            }
+        }
+
+        function displayScoutingReport(report) {
+            const reportDiv = document.getElementById('scouting-report');
+            reportDiv.style.display = 'block';
+
+            const playersHtml = report.players.map(p => `
+                <div style="background: var(--bg-tertiary); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--border);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="margin: 0; color: var(--text-primary);">${esc(p.name)}</h4>
+                        <span style="padding: 4px 10px; background: ${p.play_style === 'aggressive' ? 'var(--danger)' : p.play_style === 'passive' ? 'var(--success)' : 'var(--warning)'}; color: white; border-radius: var(--radius-sm); font-size: 0.8rem; text-transform: uppercase;">${esc(p.play_style)}</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-primary);">${p.aggression_score.toFixed(0)}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">Aggression</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">${p.kd_ratio.toFixed(2)}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">K/D</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">${p.avg_adr.toFixed(0)}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">ADR</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">${p.entry_success_rate.toFixed(0)}%</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">Entry Win</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">${p.headshot_rate.toFixed(0)}%</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">HS%</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">${p.awp_usage_rate.toFixed(0)}%</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">AWP Usage</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 12px; font-size: 0.85rem; color: var(--text-muted);">
+                        ${p.demos_analyzed} demos, ${p.rounds_analyzed} rounds analyzed
+                    </div>
+                </div>
+            `).join('');
+
+            const antiStratsHtml = report.anti_strats.length > 0 ? report.anti_strats.map(s => `
+                <div style="padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius-sm); border-left: 3px solid var(--accent-primary);">
+                    ${esc(s)}
+                </div>
+            `).join('') : '<p style="color: var(--text-muted);">Need more demos for reliable anti-strat recommendations.</p>';
+
+            reportDiv.innerHTML = `
+                <div style="background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 24px; border: 1px solid var(--border);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0; color: var(--text-primary);">Scouting Report: ${esc(report.team_name)}</h2>
+                        <span style="padding: 6px 12px; background: ${report.confidence_level === 'high' ? 'var(--success)' : report.confidence_level === 'medium' ? 'var(--warning)' : 'var(--danger)'}; color: white; border-radius: var(--radius-sm); font-size: 0.85rem;">
+                            ${report.confidence_level.toUpperCase()} CONFIDENCE
+                        </span>
+                    </div>
+                    <div style="margin-bottom: 16px; color: var(--text-muted);">
+                        ${report.demos_analyzed} demos analyzed | ${report.total_rounds} total rounds | Maps: ${report.maps_analyzed.join(', ')}
+                    </div>
+
+                    <h3 style="margin: 24px 0 16px 0; color: var(--text-primary);">Player Profiles</h3>
+                    <div style="display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+                        ${playersHtml}
+                    </div>
+
+                    <h3 style="margin: 24px 0 16px 0; color: var(--text-primary);">Anti-Strat Recommendations</h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        ${antiStratsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Scouting upload zone handlers
+        const scoutingUploadZone = document.getElementById('scouting-upload-zone');
+        const scoutingFileInput = document.getElementById('scouting-demo-file');
+
+        scoutingUploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            scoutingUploadZone.style.borderColor = 'var(--accent-primary)';
+        });
+
+        scoutingUploadZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            scoutingUploadZone.style.borderColor = 'var(--border)';
+        });
+
+        scoutingUploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            scoutingUploadZone.style.borderColor = 'var(--border)';
+            const file = e.dataTransfer.files[0];
+            if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
+                addDemoToScouting(file);
+            } else {
+                showError('Invalid File', 'Please upload a .dem or .dem.gz file');
+            }
+        });
+
+        scoutingFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) addDemoToScouting(file);
+            scoutingFileInput.value = '';
+        });
+
+        // Generate report button
+        document.getElementById('generate-scouting-report').addEventListener('click', generateScoutingReport);
 
         // Click handling - label's for attribute handles opening file picker natively
         // We just need to reset value to allow re-selecting the same file

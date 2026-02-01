@@ -146,6 +146,50 @@ class KillEvent:
 
 
 @dataclass
+class ClutchBookmark:
+    """Bookmark for a clutch situation in replay.
+
+    Used to allow users to jump directly to clutch moments
+    in the 2D replay viewer.
+    """
+
+    round_num: int
+    tick_start: int  # Tick when clutch situation began
+    tick_end: int  # Round end tick
+    clutcher_steamid: int
+    clutcher_name: str
+    clutcher_team: str  # "CT" or "T"
+    situation: str  # "1v1", "1v2", "1v3", "1v4", "1v5"
+    enemies_remaining: int
+    outcome: str  # "WON", "LOST", "SAVED"
+    kills_during_clutch: int
+
+    def to_dict(self) -> dict:
+        return {
+            "round": self.round_num,
+            "tick_start": self.tick_start,
+            "tick_end": self.tick_end,
+            "clutcher_sid": self.clutcher_steamid,
+            "clutcher": self.clutcher_name,
+            "team": self.clutcher_team,
+            "situation": self.situation,
+            "enemies": self.enemies_remaining,
+            "outcome": self.outcome,
+            "kills": self.kills_during_clutch,
+        }
+
+    @property
+    def duration_ticks(self) -> int:
+        """Duration of clutch situation in ticks."""
+        return self.tick_end - self.tick_start
+
+    @property
+    def time_start_seconds(self) -> float:
+        """Approximate start time in seconds (assuming 64 tick)."""
+        return self.tick_start / 64
+
+
+@dataclass
 class ReplayFrame:
     """A single frame of replay data."""
 
@@ -227,9 +271,10 @@ class MatchReplay:
     player_names: dict[int, str]
     player_teams: dict[int, str]
     rounds: list[RoundReplay] = field(default_factory=list)
+    clutch_bookmarks: list[ClutchBookmark] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "map_name": self.map_name,
             "tick_rate": self.tick_rate,
             "sample_rate": self.sample_rate,
@@ -240,6 +285,10 @@ class MatchReplay:
             "teams": self.player_teams,
             "rounds": [r.to_dict() for r in self.rounds],
         }
+        # Include clutch bookmarks if any exist
+        if self.clutch_bookmarks:
+            result["clutch_bookmarks"] = [b.to_dict() for b in self.clutch_bookmarks]
+        return result
 
     def get_round(self, round_num: int) -> RoundReplay | None:
         """Get replay data for a specific round."""
@@ -247,6 +296,14 @@ class MatchReplay:
             if r.round_num == round_num:
                 return r
         return None
+
+    def get_clutch_bookmarks_for_round(self, round_num: int) -> list[ClutchBookmark]:
+        """Get all clutch bookmarks for a specific round."""
+        return [b for b in self.clutch_bookmarks if b.round_num == round_num]
+
+    def get_clutch_bookmarks_for_player(self, steam_id: int) -> list[ClutchBookmark]:
+        """Get all clutch bookmarks for a specific player."""
+        return [b for b in self.clutch_bookmarks if b.clutcher_steamid == steam_id]
 
 
 class ReplayGenerator:
@@ -586,6 +643,21 @@ class POVTracker:
                 }
             )
 
+        # Add clutch moments from bookmarks
+        clutch_bookmarks = self.replay.get_clutch_bookmarks_for_round(round_num)
+        for clutch in clutch_bookmarks:
+            moments.append(
+                {
+                    "tick": clutch.tick_start,
+                    "time": (clutch.tick_start - round_data.start_tick) / self.replay.tick_rate,
+                    "type": "clutch",
+                    "description": f"{clutch.clutcher_name} {clutch.situation} clutch ({clutch.outcome})",
+                    "situation": clutch.situation,
+                    "outcome": clutch.outcome,
+                    "clutcher": clutch.clutcher_name,
+                }
+            )
+
         # Sort by tick
         moments.sort(key=lambda m: m["tick"])
         return moments
@@ -613,3 +685,104 @@ def generate_round_replay(demo_data, round_num: int) -> RoundReplay | None:
     """Generate replay for a single round."""
     generator = ReplayGenerator(demo_data)
     return generator.generate_round_replay(round_num)
+
+
+def extract_clutch_bookmarks(
+    analysis_results: dict,
+    player_names: dict[int, str],
+    round_end_ticks: dict[int, int],
+) -> list[ClutchBookmark]:
+    """Extract clutch bookmarks from analysis results.
+
+    Args:
+        analysis_results: Dict containing player analysis with clutch data
+        player_names: Mapping of steam_id to player name
+        round_end_ticks: Mapping of round_num to end tick
+
+    Returns:
+        List of ClutchBookmark objects sorted by round number
+    """
+    bookmarks: list[ClutchBookmark] = []
+
+    players_data = analysis_results.get("players", {})
+
+    for steam_id_str, player_data in players_data.items():
+        steam_id = int(steam_id_str) if isinstance(steam_id_str, str) else steam_id_str
+        player_name = player_names.get(steam_id, f"Player_{steam_id}")
+
+        # Get clutch events from player data
+        clutches = player_data.get("clutches", {})
+        clutch_events = clutches.get("clutches", [])
+
+        for clutch in clutch_events:
+            # Support both dict and ClutchEvent object
+            if hasattr(clutch, "round_number"):
+                # ClutchEvent object
+                round_num = clutch.round_number
+                tick_start = clutch.tick_start
+                situation = clutch.type
+                outcome = clutch.outcome
+                enemies = clutch.enemies_at_start
+                kills = clutch.enemies_killed
+                team = clutch.clutcher_team
+            else:
+                # Dict format
+                round_num = clutch.get("round_number", 0)
+                tick_start = clutch.get("tick_start", 0)
+                situation = clutch.get("type", "1v?")
+                outcome = clutch.get("outcome", "UNKNOWN")
+                enemies = clutch.get("enemies_at_start", 0)
+                kills = clutch.get("enemies_killed", 0)
+                team = clutch.get("clutcher_team", "")
+
+            # Get round end tick
+            tick_end = round_end_ticks.get(round_num, tick_start)
+
+            bookmark = ClutchBookmark(
+                round_num=round_num,
+                tick_start=tick_start,
+                tick_end=tick_end,
+                clutcher_steamid=steam_id,
+                clutcher_name=player_name,
+                clutcher_team=team,
+                situation=situation,
+                enemies_remaining=enemies,
+                outcome=outcome,
+                kills_during_clutch=kills,
+            )
+            bookmarks.append(bookmark)
+
+    # Sort by round number, then tick
+    bookmarks.sort(key=lambda b: (b.round_num, b.tick_start))
+    return bookmarks
+
+
+def add_clutch_bookmarks_to_replay(
+    replay: MatchReplay,
+    analysis_results: dict,
+) -> MatchReplay:
+    """Add clutch bookmarks to an existing replay.
+
+    Args:
+        replay: MatchReplay object to enhance
+        analysis_results: Dict containing player analysis with clutch data
+
+    Returns:
+        The same MatchReplay with clutch_bookmarks populated
+    """
+    # Build round end ticks lookup
+    round_end_ticks: dict[int, int] = {}
+    for round_replay in replay.rounds:
+        round_end_ticks[round_replay.round_num] = round_replay.end_tick
+
+    # Extract bookmarks
+    bookmarks = extract_clutch_bookmarks(
+        analysis_results,
+        replay.player_names,
+        round_end_ticks,
+    )
+
+    replay.clutch_bookmarks = bookmarks
+    logger.info(f"Added {len(bookmarks)} clutch bookmarks to replay")
+
+    return replay

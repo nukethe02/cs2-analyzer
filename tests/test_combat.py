@@ -333,3 +333,268 @@ class TestAnalyzeCombatFunction:
 
         result = analyze_combat(demo)
         assert isinstance(result, CombatAnalysisResult)
+
+
+class TestTradeChainDetection:
+    """Tests for trade chain detection."""
+
+    @pytest.fixture
+    def demo_with_simple_chain(self):
+        """Demo with a simple 2-kill chain (one trade).
+
+        Scenario:
+        - CT (12345) kills T (67890) at tick 1000
+        - T (11111) kills CT (12345) at tick 1200 (trade, 200 ticks = 3.125s)
+        """
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1200],
+                "attacker_steamid": [12345, 11111],
+                "user_steamid": [67890, 12345],
+                "weapon": ["ak47", "awp"],
+                "headshot": [True, False],
+                "total_rounds_played": [1, 1],
+            }
+        )
+
+        return DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=1,
+            player_stats={},
+            player_names={12345: "CT_Player", 67890: "T_Victim", 11111: "T_Trader"},
+            player_teams={12345: 3, 67890: 2, 11111: 2},  # CT=3, T=2
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+    @pytest.fixture
+    def demo_with_extended_chain(self):
+        """Demo with a 4-kill extended chain.
+
+        Scenario (round 1):
+        - A (CT, 1001) kills B (T, 2001) at tick 1000
+        - C (T, 2002) kills A (CT, 1001) at tick 1200 (trade for B)
+        - D (CT, 1002) kills C (T, 2002) at tick 1400 (trade for A)
+        - E (T, 2003) kills D (CT, 1002) at tick 1600 (trade for C)
+        """
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1200, 1400, 1600],
+                "attacker_steamid": [1001, 2002, 1002, 2003],
+                "user_steamid": [2001, 1001, 2002, 1002],
+                "weapon": ["ak47", "m4a1", "awp", "ak47"],
+                "headshot": [False, True, False, False],
+                "total_rounds_played": [1, 1, 1, 1],
+            }
+        )
+
+        return DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=1,
+            player_stats={},
+            player_names={
+                1001: "CT_A",
+                1002: "CT_D",
+                2001: "T_B",
+                2002: "T_C",
+                2003: "T_E",
+            },
+            player_teams={
+                1001: 3,  # CT
+                1002: 3,  # CT
+                2001: 2,  # T
+                2002: 2,  # T
+                2003: 2,  # T
+            },
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+    def test_detects_simple_chain(self, demo_with_simple_chain):
+        """Simple trade is detected as a 2-kill chain."""
+        from opensight.domains.combat import CombatAnalyzer
+
+        analyzer = CombatAnalyzer(demo_with_simple_chain)
+        result = analyzer.analyze()
+
+        assert len(result.trade_chains) == 1
+        chain = result.trade_chains[0]
+        assert chain.chain_length == 2
+        assert not chain.is_extended  # 2 is not extended (need 3+)
+
+    def test_detects_extended_chain(self, demo_with_extended_chain):
+        """Extended trade chain (4 kills) is detected."""
+        from opensight.domains.combat import CombatAnalyzer
+
+        analyzer = CombatAnalyzer(demo_with_extended_chain)
+        result = analyzer.analyze()
+
+        assert len(result.trade_chains) == 1
+        chain = result.trade_chains[0]
+        assert chain.chain_length == 4
+        assert chain.is_extended  # 4 kills is extended
+
+    def test_chain_winning_team(self, demo_with_extended_chain):
+        """Winning team is the team of the final killer."""
+        from opensight.domains.combat import CombatAnalyzer
+
+        analyzer = CombatAnalyzer(demo_with_extended_chain)
+        result = analyzer.analyze()
+
+        chain = result.trade_chains[0]
+        # Last killer is T (2003), so T wins the chain
+        assert chain.winning_team == "T"
+
+    def test_chain_duration_calculated(self, demo_with_extended_chain):
+        """Chain duration is calculated from first to last kill."""
+        from opensight.domains.combat import CombatAnalyzer
+
+        analyzer = CombatAnalyzer(demo_with_extended_chain)
+        result = analyzer.analyze()
+
+        chain = result.trade_chains[0]
+        # 600 ticks at 64 tick rate = 9375ms
+        expected_ms = (600 / 64) * 1000
+        assert abs(chain.duration_ms - expected_ms) < 1.0
+
+    def test_animation_frames_generated(self, demo_with_simple_chain):
+        """Animation frames are generated correctly."""
+        from opensight.domains.combat import CombatAnalyzer
+
+        analyzer = CombatAnalyzer(demo_with_simple_chain)
+        result = analyzer.analyze()
+
+        chain = result.trade_chains[0]
+        frames = chain.to_animation_frames()
+
+        assert len(frames) == 2
+        assert frames[0]["kill_type"] == "trigger"
+        assert frames[0]["sequence"] == 0
+        assert frames[1]["kill_type"] == "trade"
+        assert frames[1]["sequence"] == 1
+        assert "trade_time_ms" in frames[1]
+
+    def test_no_chain_outside_window(self):
+        """Kills outside trade window don't form chains."""
+        # 10 second gap between kills (outside 5s window)
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1000 + (10 * 64)],  # 10 seconds apart
+                "attacker_steamid": [12345, 11111],
+                "user_steamid": [67890, 12345],
+                "weapon": ["ak47", "awp"],
+                "headshot": [False, False],
+                "total_rounds_played": [1, 1],
+            }
+        )
+
+        demo = DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=1,
+            player_stats={},
+            player_names={12345: "CT_Player", 67890: "T_Victim", 11111: "T_Trader"},
+            player_teams={12345: 3, 67890: 2, 11111: 2},
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+        from opensight.domains.combat import CombatAnalyzer
+
+        analyzer = CombatAnalyzer(demo)
+        result = analyzer.analyze()
+
+        # No chains should be detected (too far apart)
+        assert len(result.trade_chains) == 0
+
+    def test_chain_stats_aggregated(self, demo_with_extended_chain):
+        """Chain statistics are correctly aggregated."""
+        from opensight.domains.combat import CombatAnalyzer
+
+        analyzer = CombatAnalyzer(demo_with_extended_chain)
+        result = analyzer.analyze()
+
+        stats = result.trade_chain_stats
+        assert stats is not None
+        assert stats.total_chains == 1
+        assert stats.max_chain_length == 4
+        assert stats.avg_chain_length == 4.0
+        assert stats.extended_chain_count == 1
+        assert stats.longest_chain is not None
+
+    def test_chain_to_dict_serialization(self, demo_with_simple_chain):
+        """Chain can be serialized to dict for JSON."""
+        from opensight.domains.combat import CombatAnalyzer
+
+        analyzer = CombatAnalyzer(demo_with_simple_chain)
+        result = analyzer.analyze()
+
+        chain = result.trade_chains[0]
+        chain_dict = chain.to_dict()
+
+        assert "chain_id" in chain_dict
+        assert "round_num" in chain_dict
+        assert "chain_length" in chain_dict
+        assert "duration_ms" in chain_dict
+        assert "winning_team" in chain_dict
+        assert "frames" in chain_dict
+        assert isinstance(chain_dict["frames"], list)
+
+    def test_multiple_rounds_independent_chains(self):
+        """Chains in different rounds are detected independently."""
+        # Round 1: A kills B, C trades A
+        # Round 2: D kills E, F trades D
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1200, 5000, 5200],
+                "attacker_steamid": [1001, 2001, 1002, 2002],
+                "user_steamid": [2001, 1001, 2002, 1002],
+                "weapon": ["ak47", "m4a1", "awp", "ak47"],
+                "headshot": [False, False, False, False],
+                "total_rounds_played": [1, 1, 2, 2],
+            }
+        )
+
+        demo = DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=2,
+            player_stats={},
+            player_names={
+                1001: "CT_A",
+                1002: "CT_D",
+                2001: "T_B",
+                2002: "T_E",
+            },
+            player_teams={1001: 3, 1002: 3, 2001: 2, 2002: 2},
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+        from opensight.domains.combat import CombatAnalyzer
+
+        analyzer = CombatAnalyzer(demo)
+        result = analyzer.analyze()
+
+        # Should detect 2 separate chains
+        assert len(result.trade_chains) == 2
+        rounds = {c.round_num for c in result.trade_chains}
+        assert rounds == {1, 2}

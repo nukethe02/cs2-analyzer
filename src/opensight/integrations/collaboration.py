@@ -51,9 +51,7 @@ def _hash_password(password: str) -> str:
     else:
         # PBKDF2-SHA256 fallback with 600k iterations (OWASP 2023 recommendation)
         salt = secrets.token_hex(16)
-        dk = hashlib.pbkdf2_hmac(
-            "sha256", password.encode("utf-8"), salt.encode("utf-8"), 600000
-        )
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 600000)
         return f"pbkdf2:{salt}:{dk.hex()}"
 
 
@@ -79,9 +77,7 @@ def _verify_password(password: str, password_hash: str) -> bool:
         if len(parts) != 3:
             return False
         _, salt, stored_dk = parts
-        dk = hashlib.pbkdf2_hmac(
-            "sha256", password.encode("utf-8"), salt.encode("utf-8"), 600000
-        )
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 600000)
         return secrets.compare_digest(dk.hex(), stored_dk)
 
     else:
@@ -89,6 +85,7 @@ def _verify_password(password: str, password_hash: str) -> bool:
         # WARNING: This is insecure - sessions should be re-created
         legacy_hash = hashlib.sha256(password.encode()).hexdigest()
         return secrets.compare_digest(legacy_hash, password_hash)
+
 
 # ============================================================================
 # Collaboration Data Types

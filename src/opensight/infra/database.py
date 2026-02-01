@@ -1216,6 +1216,367 @@ class DatabaseManager:
             session.close()
 
     # =========================================================================
+    # Performance Trend Analysis
+    # =========================================================================
+
+    def get_player_trends(
+        self,
+        steam_id: str,
+        days: int = 30,
+    ) -> dict[str, Any] | None:
+        """
+        Get performance trends for a player over time.
+
+        Calculates rating/ADR/winrate trends, detects slumps, and identifies
+        improvement areas. This feature is 100% FREE - Leetify charges for it.
+
+        Args:
+            steam_id: Player's Steam ID (17 digits)
+            days: Number of days to analyze (default 30)
+
+        Returns:
+            Performance trend data or None if insufficient history
+        """
+        from datetime import timedelta
+
+        session = self.get_session()
+        try:
+            # Get match history within date range
+            cutoff = _utc_now() - timedelta(days=days)
+            history = (
+                session.query(MatchHistory)
+                .filter(
+                    MatchHistory.steam_id == steam_id,
+                    MatchHistory.analyzed_at >= cutoff,
+                )
+                .order_by(MatchHistory.analyzed_at.asc())
+                .all()
+            )
+
+            if not history or len(history) < 2:
+                return None
+
+            # Build trend data
+            rating_history = [
+                {
+                    "date": h.analyzed_at.isoformat() if h.analyzed_at else None,
+                    "value": round(h.hltv_rating, 2) if h.hltv_rating else 1.0,
+                    "map": h.map_name,
+                }
+                for h in history
+            ]
+            adr_history = [
+                {
+                    "date": h.analyzed_at.isoformat() if h.analyzed_at else None,
+                    "value": round(h.adr, 1) if h.adr else 0,
+                }
+                for h in history
+            ]
+
+            # Calculate rolling 5-match winrate
+            winrate_history = self._calculate_rolling_winrate(history, window=5)
+
+            # Extract just values for trend/slump detection
+            rating_values = [h.hltv_rating or 1.0 for h in history]
+            adr_values = [h.adr or 0 for h in history]
+
+            # Detect trends
+            rating_trend = self._detect_trend(rating_values)
+            adr_trend = self._detect_trend(adr_values)
+
+            # Calculate change percentages
+            rating_change = self._calculate_change_pct(rating_values)
+            adr_change = self._calculate_change_pct(adr_values)
+
+            # Detect slump
+            slump_detected, slump_severity = self._detect_slump(rating_values)
+
+            # Identify improvement areas
+            improvement_areas = self._identify_improvement_areas(history)
+
+            # Calculate map performance
+            map_stats = self._calculate_map_performance(history)
+
+            # Get player name from most recent match
+            player_name = history[-1].map_name if history else "Unknown"
+            # Try to get from profile
+            profile = (
+                session.query(PlayerProfile).filter(PlayerProfile.steam_id == steam_id).first()
+            )
+            if profile:
+                player_name = profile.player_name
+
+            return {
+                "steam_id": steam_id,
+                "player_name": player_name,
+                "period_days": days,
+                "matches_analyzed": len(history),
+                "rating": {
+                    "history": rating_history,
+                    "trend": rating_trend,
+                    "change_pct": round(rating_change * 100, 1),
+                    "current_avg": round(sum(rating_values[-5:]) / min(5, len(rating_values)), 2),
+                },
+                "adr": {
+                    "history": adr_history,
+                    "trend": adr_trend,
+                    "change_pct": round(adr_change * 100, 1),
+                    "current_avg": round(sum(adr_values[-5:]) / min(5, len(adr_values)), 1),
+                },
+                "winrate": {
+                    "history": winrate_history,
+                    "current": winrate_history[-1]["value"] if winrate_history else 0,
+                },
+                "slump": {
+                    "detected": slump_detected,
+                    "severity": slump_severity,
+                },
+                "improvement_areas": improvement_areas,
+                "map_performance": map_stats,
+            }
+        finally:
+            session.close()
+
+    def _detect_trend(self, values: list[float]) -> str:
+        """
+        Detect if values are trending up, down, or stable.
+
+        Uses simple linear regression slope to determine trend direction.
+        """
+        if len(values) < 3:
+            return "stable"
+
+        n = len(values)
+        x_mean = (n - 1) / 2
+        y_mean = sum(values) / n
+
+        numerator = sum((i - x_mean) * (values[i] - y_mean) for i in range(n))
+        denominator = sum((i - x_mean) ** 2 for i in range(n))
+
+        if denominator == 0:
+            return "stable"
+
+        slope = numerator / denominator
+
+        # Normalize slope by the mean value to get relative change
+        relative_slope = slope / (y_mean if y_mean != 0 else 1)
+
+        if relative_slope > 0.02:  # More than 2% improvement per match
+            return "improving"
+        elif relative_slope < -0.02:  # More than 2% decline per match
+            return "declining"
+        return "stable"
+
+    def _calculate_change_pct(self, values: list[float]) -> float:
+        """Calculate percentage change between first and last values."""
+        if len(values) < 2:
+            return 0.0
+
+        first_val = values[0] if values[0] != 0 else 0.001
+        last_val = values[-1]
+
+        return (last_val - first_val) / abs(first_val)
+
+    def _detect_slump(self, rating_values: list[float]) -> tuple[bool, str | None]:
+        """
+        Detect if player is in a performance slump.
+
+        Slump is defined as recent 5-match average being significantly
+        below historical average.
+        """
+        if len(rating_values) < 5:
+            return False, None
+
+        recent_5 = rating_values[-5:]
+        avg_recent = sum(recent_5) / 5
+
+        # Compare to their historical average
+        historical_avg = sum(rating_values) / len(rating_values)
+
+        if historical_avg == 0:
+            return False, None
+
+        drop = (historical_avg - avg_recent) / historical_avg
+
+        if drop > 0.20:  # 20%+ drop
+            return True, "major"
+        elif drop > 0.10:  # 10%+ drop
+            return True, "minor"
+
+        return False, None
+
+    def _calculate_rolling_winrate(
+        self, history: list[MatchHistory], window: int = 5
+    ) -> list[dict]:
+        """Calculate rolling winrate over match history."""
+        result = []
+
+        for i in range(len(history)):
+            start_idx = max(0, i - window + 1)
+            window_matches = history[start_idx : i + 1]
+
+            wins = sum(1 for m in window_matches if m.result == "win")
+            total = len(window_matches)
+            winrate = (wins / total * 100) if total > 0 else 0
+
+            result.append(
+                {
+                    "date": (
+                        history[i].analyzed_at.isoformat() if history[i].analyzed_at else None
+                    ),
+                    "value": round(winrate, 1),
+                    "window_size": total,
+                }
+            )
+
+        return result
+
+    def _identify_improvement_areas(self, history: list[MatchHistory]) -> list[dict]:
+        """Identify areas where player could improve based on their stats."""
+        areas = []
+        total = len(history)
+        if total == 0:
+            return areas
+
+        # Calculate averages
+        avg_rating = sum(h.hltv_rating or 0 for h in history) / total
+        avg_adr = sum(h.adr or 0 for h in history) / total
+        avg_kast = sum(h.kast or 0 for h in history) / total
+        avg_hs_pct = sum(h.hs_pct or 0 for h in history) / total
+
+        # Trade stats
+        total_trade_opps = sum(h.trade_kill_opportunities or 0 for h in history)
+        total_trade_success = sum(h.trade_kill_success or 0 for h in history)
+        trade_rate = (total_trade_success / total_trade_opps * 100) if total_trade_opps > 0 else 0
+
+        # Entry stats
+        total_entries = sum(h.entry_attempts or 0 for h in history)
+        total_entry_wins = sum(h.entry_success or 0 for h in history)
+        entry_rate = (total_entry_wins / total_entries * 100) if total_entries > 0 else 0
+
+        # Clutch stats
+        total_clutches = sum(h.clutch_situations or 0 for h in history)
+        total_clutch_wins = sum(h.clutch_wins or 0 for h in history)
+        clutch_rate = (total_clutch_wins / total_clutches * 100) if total_clutches > 0 else 0
+
+        # Check thresholds and add improvement suggestions
+        if avg_rating < 0.9:
+            areas.append(
+                {
+                    "area": "Overall Impact",
+                    "metric": "Rating",
+                    "current": round(avg_rating, 2),
+                    "target": 1.0,
+                    "suggestion": "Focus on staying alive longer and getting more kills per round",
+                }
+            )
+
+        if avg_adr < 70:
+            areas.append(
+                {
+                    "area": "Damage Output",
+                    "metric": "ADR",
+                    "current": round(avg_adr, 1),
+                    "target": 80,
+                    "suggestion": "Be more aggressive in engagements, use utility to deal damage",
+                }
+            )
+
+        if avg_kast < 60:
+            areas.append(
+                {
+                    "area": "Round Involvement",
+                    "metric": "KAST",
+                    "current": round(avg_kast, 1),
+                    "target": 70,
+                    "suggestion": "Participate more in rounds - get kills, assists, or trade deaths",
+                }
+            )
+
+        if avg_hs_pct < 35:
+            areas.append(
+                {
+                    "area": "Headshot Accuracy",
+                    "metric": "HS%",
+                    "current": round(avg_hs_pct, 1),
+                    "target": 45,
+                    "suggestion": "Practice crosshair placement and aim for head level",
+                }
+            )
+
+        if trade_rate < 40 and total_trade_opps >= 10:
+            areas.append(
+                {
+                    "area": "Trading",
+                    "metric": "Trade Rate",
+                    "current": round(trade_rate, 1),
+                    "target": 50,
+                    "suggestion": "Stay closer to teammates to trade their deaths quickly",
+                }
+            )
+
+        if entry_rate < 40 and total_entries >= 10:
+            areas.append(
+                {
+                    "area": "Entry Fragging",
+                    "metric": "Entry Win Rate",
+                    "current": round(entry_rate, 1),
+                    "target": 50,
+                    "suggestion": "Work on pre-aiming common angles and using utility before entries",
+                }
+            )
+
+        if clutch_rate < 20 and total_clutches >= 5:
+            areas.append(
+                {
+                    "area": "Clutch Situations",
+                    "metric": "Clutch Win Rate",
+                    "current": round(clutch_rate, 1),
+                    "target": 30,
+                    "suggestion": "Focus on time management and isolating 1v1 duels in clutches",
+                }
+            )
+
+        return areas
+
+    def _calculate_map_performance(self, history: list[MatchHistory]) -> dict[str, dict]:
+        """Calculate performance statistics per map."""
+        map_data: dict[str, dict] = {}
+
+        for h in history:
+            map_name = h.map_name or "unknown"
+            if map_name not in map_data:
+                map_data[map_name] = {
+                    "matches": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "ratings": [],
+                }
+
+            map_data[map_name]["matches"] += 1
+            if h.result == "win":
+                map_data[map_name]["wins"] += 1
+            elif h.result == "loss":
+                map_data[map_name]["losses"] += 1
+            map_data[map_name]["ratings"].append(h.hltv_rating or 1.0)
+
+        # Calculate averages and win rates
+        result = {}
+        for map_name, data in map_data.items():
+            ratings = data["ratings"]
+            result[map_name] = {
+                "matches": data["matches"],
+                "wins": data["wins"],
+                "losses": data["losses"],
+                "win_rate": round(data["wins"] / data["matches"] * 100, 1)
+                if data["matches"] > 0
+                else 0,
+                "avg_rating": round(sum(ratings) / len(ratings), 2) if ratings else 1.0,
+            }
+
+        return result
+
+    # =========================================================================
     # Statistics Operations
     # =========================================================================
 

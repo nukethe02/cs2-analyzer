@@ -25,6 +25,9 @@ TRADE_WINDOW_MS = 5000
 TRADE_WINDOW_TICKS = 320
 # Clutch scenarios
 CLUTCH_SCENARIOS = ["1v1", "1v2", "1v3", "1v4", "1v5"]
+# Trade chain constants
+TRADE_CHAIN_MIN_LENGTH = 2  # Minimum kills to form a chain
+EXTENDED_CHAIN_LENGTH = 3  # Chains with 3+ kills are "extended"
 
 
 class ClutchResult(Enum):
@@ -119,6 +122,197 @@ class MultiKill:
 
 
 @dataclass
+class SprayTransfer:
+    """A spray transfer event - 2+ kills in a single spray without reload/weapon switch."""
+
+    round_num: int
+    player_steamid: int
+    player_name: str
+    kills_in_spray: int  # 2, 3, 4, or 5
+    victims: list[str]  # Ordered victim names
+    weapon: str  # Rifle/SMG used
+    time_span_ms: float  # Time from first to last kill
+    tick_start: int
+    tick_end: int
+
+    @property
+    def is_triple_spray(self) -> bool:
+        """Triple+ spray (3 or more kills in one spray)."""
+        return self.kills_in_spray >= 3
+
+
+# Spray weapons that can realistically spray transfer (rifles and SMGs)
+SPRAY_WEAPONS = {
+    "ak47",
+    "m4a1",
+    "m4a1_silencer",
+    "galil",
+    "famas",
+    "sg556",
+    "aug",
+    "mac10",
+    "mp9",
+    "mp7",
+    "mp5sd",
+    "ump45",
+    "p90",
+    "bizon",
+}
+# Max time between consecutive kills to count as same spray (3 seconds)
+SPRAY_WINDOW_MS = 3000
+
+
+@dataclass
+class ChainKill:
+    """A kill event within a trade chain with position data."""
+
+    tick: int
+    attacker_steamid: int
+    attacker_name: str
+    attacker_team: str  # "CT" or "T"
+    attacker_x: float | None
+    attacker_y: float | None
+    attacker_z: float | None
+    victim_steamid: int
+    victim_name: str
+    victim_team: str
+    victim_x: float | None
+    victim_y: float | None
+    victim_z: float | None
+    weapon: str
+    headshot: bool
+
+
+@dataclass
+class TradeChain:
+    """A sequence of linked trade kills.
+
+    A trade chain occurs when:
+    - A kills B (trigger kill)
+    - C kills A (trade for B) within 5 seconds
+    - D kills C (trade for A) within 5 seconds
+    - ... continues until no trade occurs
+
+    Example: In a 4-kill chain, there are 3 trade relationships.
+    """
+
+    chain_id: str  # Unique identifier (e.g., "round5_chain1")
+    round_num: int
+    start_tick: int
+    end_tick: int
+    tick_rate: int
+    kills: list[ChainKill]  # Ordered sequence of kills in the chain
+
+    @property
+    def chain_length(self) -> int:
+        """Number of kills in the chain (2 = simple trade, 3+ = extended)."""
+        return len(self.kills)
+
+    @property
+    def duration_ms(self) -> float:
+        """Total duration from first to last kill in milliseconds."""
+        if len(self.kills) < 2:
+            return 0.0
+        return ((self.end_tick - self.start_tick) / self.tick_rate) * 1000
+
+    @property
+    def winning_team(self) -> str:
+        """Team that got the final kill in the chain ('CT', 'T', or 'Unknown')."""
+        if not self.kills:
+            return "Unknown"
+        return self.kills[-1].attacker_team
+
+    @property
+    def is_extended(self) -> bool:
+        """Whether this is an extended chain (3+ kills)."""
+        return self.chain_length >= EXTENDED_CHAIN_LENGTH
+
+    def to_animation_frames(self) -> list[dict[str, object]]:
+        """
+        Convert chain to animation frame data for frontend visualization.
+
+        Returns:
+            List of frame dicts with time_offset_ms, positions, etc.
+        """
+        frames: list[dict[str, object]] = []
+        for i, kill in enumerate(self.kills):
+            time_offset = ((kill.tick - self.start_tick) / self.tick_rate) * 1000
+            frame: dict[str, object] = {
+                "sequence": i,
+                "time_offset_ms": round(time_offset, 1),
+                "kill_type": "trigger" if i == 0 else "trade",
+                "attacker": {
+                    "steam_id": kill.attacker_steamid,
+                    "name": kill.attacker_name,
+                    "team": kill.attacker_team,
+                    "x": kill.attacker_x,
+                    "y": kill.attacker_y,
+                    "z": kill.attacker_z,
+                },
+                "victim": {
+                    "steam_id": kill.victim_steamid,
+                    "name": kill.victim_name,
+                    "team": kill.victim_team,
+                    "x": kill.victim_x,
+                    "y": kill.victim_y,
+                    "z": kill.victim_z,
+                },
+                "weapon": kill.weapon,
+                "headshot": kill.headshot,
+            }
+
+            # Add trade connection info for non-trigger kills
+            if i > 0:
+                prev_kill = self.kills[i - 1]
+                trade_time = ((kill.tick - prev_kill.tick) / self.tick_rate) * 1000
+                frame["traded_victim_name"] = prev_kill.victim_name
+                frame["trade_time_ms"] = round(trade_time, 1)
+
+            frames.append(frame)
+
+        return frames
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to JSON-compatible dict."""
+        return {
+            "chain_id": self.chain_id,
+            "round_num": self.round_num,
+            "start_tick": self.start_tick,
+            "end_tick": self.end_tick,
+            "chain_length": self.chain_length,
+            "duration_ms": round(self.duration_ms, 1),
+            "winning_team": self.winning_team,
+            "is_extended": self.is_extended,
+            "frames": self.to_animation_frames(),
+        }
+
+
+@dataclass
+class TradeChainStats:
+    """Aggregate statistics for trade chains in a match."""
+
+    total_chains: int
+    avg_chain_length: float
+    max_chain_length: int
+    longest_chain: TradeChain | None
+    chains_won_by_ct: int
+    chains_won_by_t: int
+    extended_chain_count: int  # Chains with 3+ kills
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to JSON-compatible dict."""
+        return {
+            "total_chains": self.total_chains,
+            "avg_chain_length": round(self.avg_chain_length, 2),
+            "max_chain_length": self.max_chain_length,
+            "longest_chain": self.longest_chain.to_dict() if self.longest_chain else None,
+            "chains_won_by_ct": self.chains_won_by_ct,
+            "chains_won_by_t": self.chains_won_by_t,
+            "extended_chain_count": self.extended_chain_count,
+        }
+
+
+@dataclass
 class PlayerCombatStats:
     """Combat statistics for a single player."""
 
@@ -160,13 +354,18 @@ class CombatAnalysisResult:
     opening_duels: list[OpeningDuel]
     clutch_situations: list[ClutchSituation]
     multi_kills: list[MultiKill]
+    spray_transfers: list[SprayTransfer] = field(default_factory=list)
+
+    # Trade chains (sequences of linked trades)
+    trade_chains: list[TradeChain] = field(default_factory=list)
+    trade_chain_stats: TradeChainStats | None = None
 
     # Per-player stats
-    player_stats: dict[int, PlayerCombatStats]
+    player_stats: dict[int, PlayerCombatStats] = field(default_factory=dict)
 
     # Team-level stats
-    team_trade_rate: dict[int, float]  # team -> % of deaths traded
-    team_opening_win_rate: dict[int, float]  # team -> opening duel win rate
+    team_trade_rate: dict[int, float] = field(default_factory=dict)
+    team_opening_win_rate: dict[int, float] = field(default_factory=dict)
 
 
 def normalize_team(team_val) -> int:
@@ -205,6 +404,9 @@ class CombatAnalyzer:
         self._opening_duels: list[OpeningDuel] = []
         self._clutch_situations: list[ClutchSituation] = []
         self._multi_kills: list[MultiKill] = []
+        self._spray_transfers: list[SprayTransfer] = []
+        self._trade_chains: list[TradeChain] = []
+        self._trade_chain_stats: TradeChainStats | None = None
 
         # Pre-compute normalized team mapping for performance
         # Handles both string ("T", "CT") and int (2, 3) formats
@@ -246,6 +448,11 @@ class CombatAnalyzer:
         self._analyze_opening_duels(kills_df, att_col, vic_col, tick_col, round_col)
         self._analyze_multi_kills(kills_df, att_col, vic_col, round_col)
         self._analyze_clutches(kills_df, att_col, vic_col, tick_col, round_col)
+        self._analyze_spray_transfers(kills_df, att_col, vic_col, tick_col, round_col)
+
+        # Detect trade chains (requires both tick and round columns)
+        if tick_col and round_col:
+            self._detect_trade_chains(kills_df, att_col, vic_col, tick_col, round_col)
 
         # Build player stats
         player_stats = self._build_player_stats()
@@ -257,7 +464,9 @@ class CombatAnalyzer:
         logger.info(
             f"Combat analysis complete. {len(self._trade_kills)} trades, "
             f"{len(self._opening_duels)} opening duels, "
-            f"{len(self._clutch_situations)} clutches"
+            f"{len(self._clutch_situations)} clutches, "
+            f"{len(self._spray_transfers)} spray transfers, "
+            f"{len(self._trade_chains)} chains"
         )
 
         return CombatAnalysisResult(
@@ -265,6 +474,9 @@ class CombatAnalyzer:
             opening_duels=self._opening_duels,
             clutch_situations=self._clutch_situations,
             multi_kills=self._multi_kills,
+            spray_transfers=self._spray_transfers,
+            trade_chains=self._trade_chains,
+            trade_chain_stats=self._trade_chain_stats,
             player_stats=player_stats,
             team_trade_rate=team_trade_rate,
             team_opening_win_rate=team_opening_rate,
@@ -284,6 +496,9 @@ class CombatAnalyzer:
             opening_duels=[],
             clutch_situations=[],
             multi_kills=[],
+            spray_transfers=[],
+            trade_chains=[],
+            trade_chain_stats=None,
             player_stats={},
             team_trade_rate={2: 0.0, 3: 0.0},
             team_opening_win_rate={2: 0.0, 3: 0.0},
@@ -385,6 +600,218 @@ class CombatAnalyzer:
                     self._trade_kills.append(trade)
                     break  # Only count first trade
 
+    def _detect_trade_chains(
+        self,
+        kills_df: pd.DataFrame,
+        att_col: str,
+        vic_col: str,
+        tick_col: str,
+        round_col: str,
+    ) -> None:
+        """
+        Detect trade chains (sequences of linked trade kills).
+
+        A trade chain occurs when:
+        - A kills B (trigger kill)
+        - C kills A (trade for B) within 5 seconds
+        - D kills C (trade for A) within 5 seconds
+        - ... continues until no trade occurs
+
+        Uses graph-based approach:
+        1. Build adjacency list for trade relationships
+        2. DFS to find longest chain paths
+        3. Avoid double-counting (track visited kills)
+        """
+        chains: list[TradeChain] = []
+        chain_counter = 0
+
+        trade_window_ticks = int((TRADE_WINDOW_MS / 1000) * self.tick_rate)
+
+        # Find position columns for visualization
+        att_x_col = self._find_col(kills_df, ["attacker_x", "attacker_pos_x"])
+        att_y_col = self._find_col(kills_df, ["attacker_y", "attacker_pos_y"])
+        att_z_col = self._find_col(kills_df, ["attacker_z", "attacker_pos_z"])
+        vic_x_col = self._find_col(kills_df, ["victim_x", "user_x"])
+        vic_y_col = self._find_col(kills_df, ["victim_y", "user_y"])
+        vic_z_col = self._find_col(kills_df, ["victim_z", "user_z"])
+        weapon_col = self._find_col(kills_df, ["weapon"])
+        hs_col = self._find_col(kills_df, ["headshot"])
+
+        # Process each round separately
+        for round_num in kills_df[round_col].unique():
+            round_kills_df = kills_df[kills_df[round_col] == round_num].sort_values(tick_col)
+
+            if len(round_kills_df) < TRADE_CHAIN_MIN_LENGTH:
+                continue
+
+            # Convert to list of ChainKill for easier processing
+            kill_list: list[ChainKill] = []
+            for _, row in round_kills_df.iterrows():
+                attacker_id = safe_int(row[att_col])
+                victim_id = safe_int(row[vic_col])
+
+                if attacker_id == 0 or victim_id == 0:
+                    continue
+
+                kill_list.append(
+                    ChainKill(
+                        tick=safe_int(row[tick_col]),
+                        attacker_steamid=attacker_id,
+                        attacker_name=self.data.player_names.get(attacker_id, "Unknown"),
+                        attacker_team=self._get_side(attacker_id),
+                        attacker_x=float(row[att_x_col])
+                        if att_x_col and pd.notna(row.get(att_x_col))
+                        else None,
+                        attacker_y=float(row[att_y_col])
+                        if att_y_col and pd.notna(row.get(att_y_col))
+                        else None,
+                        attacker_z=float(row[att_z_col])
+                        if att_z_col and pd.notna(row.get(att_z_col))
+                        else None,
+                        victim_steamid=victim_id,
+                        victim_name=self.data.player_names.get(victim_id, "Unknown"),
+                        victim_team=self._get_side(victim_id),
+                        victim_x=float(row[vic_x_col])
+                        if vic_x_col and pd.notna(row.get(vic_x_col))
+                        else None,
+                        victim_y=float(row[vic_y_col])
+                        if vic_y_col and pd.notna(row.get(vic_y_col))
+                        else None,
+                        victim_z=float(row[vic_z_col])
+                        if vic_z_col and pd.notna(row.get(vic_z_col))
+                        else None,
+                        weapon=str(row[weapon_col])
+                        if weapon_col and pd.notna(row.get(weapon_col))
+                        else "",
+                        headshot=bool(row[hs_col])
+                        if hs_col and pd.notna(row.get(hs_col))
+                        else False,
+                    )
+                )
+
+            if len(kill_list) < TRADE_CHAIN_MIN_LENGTH:
+                continue
+
+            # Build adjacency list: kill_i -> [valid trade kill indices]
+            adjacency: dict[int, list[int]] = {}
+            for i, kill_i in enumerate(kill_list):
+                adjacency[i] = []
+                for j in range(i + 1, len(kill_list)):
+                    kill_j = kill_list[j]
+
+                    # Time constraint
+                    tick_diff = kill_j.tick - kill_i.tick
+                    if tick_diff > trade_window_ticks:
+                        break  # Kills are sorted, no more valid trades
+
+                    # Trade condition: j's victim is i's attacker (revenge)
+                    if kill_j.victim_steamid != kill_i.attacker_steamid:
+                        continue
+
+                    # j's attacker must be on same team as i's victim (teammate avenging)
+                    if kill_j.attacker_team != kill_i.victim_team:
+                        continue
+
+                    # Valid trade edge
+                    adjacency[i].append(j)
+
+            # Find chains using DFS from potential chain starts
+            visited_in_chain: set[int] = set()
+
+            for start_idx in range(len(kill_list)):
+                if start_idx in visited_in_chain:
+                    continue
+
+                # Only start from kills that have outgoing trade edges
+                if not adjacency.get(start_idx):
+                    continue
+
+                # DFS to find longest chain from this start
+                chain_path = self._find_longest_chain_path(start_idx, adjacency, visited_in_chain)
+
+                if len(chain_path) >= TRADE_CHAIN_MIN_LENGTH:
+                    chain_counter += 1
+                    chain_kills = [kill_list[i] for i in chain_path]
+                    visited_in_chain.update(chain_path)
+
+                    chain = TradeChain(
+                        chain_id=f"round{int(round_num)}_chain{chain_counter}",
+                        round_num=int(round_num),
+                        start_tick=chain_kills[0].tick,
+                        end_tick=chain_kills[-1].tick,
+                        tick_rate=self.tick_rate,
+                        kills=chain_kills,
+                    )
+                    chains.append(chain)
+
+        self._trade_chains = chains
+        self._trade_chain_stats = self._build_chain_stats(chains)
+
+        logger.info(f"Detected {len(chains)} trade chains")
+
+    def _find_longest_chain_path(
+        self,
+        start: int,
+        adjacency: dict[int, list[int]],
+        already_in_chain: set[int],
+    ) -> list[int]:
+        """
+        Find the longest chain path starting from 'start' using DFS.
+
+        Args:
+            start: Index of starting kill
+            adjacency: Kill index -> list of valid trade kill indices
+            already_in_chain: Set of indices already assigned to chains
+
+        Returns:
+            List of kill indices forming the longest chain.
+        """
+        best_path: list[int] = [start]
+
+        def dfs(current: int, path: list[int]) -> None:
+            nonlocal best_path
+            if len(path) > len(best_path):
+                best_path = path.copy()
+
+            for neighbor in adjacency.get(current, []):
+                if neighbor not in already_in_chain and neighbor not in path:
+                    path.append(neighbor)
+                    dfs(neighbor, path)
+                    path.pop()
+
+        dfs(start, [start])
+        return best_path
+
+    def _build_chain_stats(self, chains: list[TradeChain]) -> TradeChainStats:
+        """Build aggregate statistics for trade chains."""
+        if not chains:
+            return TradeChainStats(
+                total_chains=0,
+                avg_chain_length=0.0,
+                max_chain_length=0,
+                longest_chain=None,
+                chains_won_by_ct=0,
+                chains_won_by_t=0,
+                extended_chain_count=0,
+            )
+
+        total_length = sum(c.chain_length for c in chains)
+        max_chain = max(chains, key=lambda c: c.chain_length)
+
+        ct_wins = sum(1 for c in chains if c.winning_team == "CT")
+        t_wins = sum(1 for c in chains if c.winning_team == "T")
+        extended = sum(1 for c in chains if c.is_extended)
+
+        return TradeChainStats(
+            total_chains=len(chains),
+            avg_chain_length=total_length / len(chains),
+            max_chain_length=max_chain.chain_length,
+            longest_chain=max_chain,
+            chains_won_by_ct=ct_wins,
+            chains_won_by_t=t_wins,
+            extended_chain_count=extended,
+        )
+
     def _analyze_opening_duels(
         self,
         kills_df: pd.DataFrame,
@@ -482,6 +909,103 @@ class CombatAnalyzer:
                     all_headshots=all_hs,
                 )
                 self._multi_kills.append(multi)
+
+    def _analyze_spray_transfers(
+        self,
+        kills_df: pd.DataFrame,
+        att_col: str,
+        vic_col: str,
+        tick_col: str | None,
+        round_col: str | None,
+    ) -> None:
+        """Detect spray transfer multi-kills (2+ kills in one spray without reload)."""
+        if round_col is None or tick_col is None:
+            return
+
+        weapon_col = self._find_col(kills_df, ["weapon"])
+        vic_name_col = self._find_col(kills_df, ["user_name", "victim_name"])
+
+        if not weapon_col:
+            return
+
+        spray_window_ticks = int((SPRAY_WINDOW_MS / 1000) * self.tick_rate)
+
+        # Group by player and round
+        for round_num in kills_df[round_col].unique():
+            round_num = safe_int(round_num)
+            if round_num == 0:
+                continue
+
+            round_kills = kills_df[kills_df[round_col] == round_num].sort_values(tick_col)
+
+            # Get unique attackers this round
+            attackers = round_kills[att_col].unique()
+
+            for steamid in attackers:
+                steamid = safe_int(steamid)
+                if steamid == 0:
+                    continue
+
+                # Get kills by this player, sorted by tick
+                player_kills = round_kills[round_kills[att_col] == steamid].sort_values(tick_col)
+
+                # Filter to spray weapons only
+                spray_kills = player_kills[player_kills[weapon_col].str.lower().isin(SPRAY_WEAPONS)]
+
+                if len(spray_kills) < 2:
+                    continue
+
+                # Find consecutive kills within spray window
+                current_spray: list[dict] = []
+
+                for _, kill in spray_kills.iterrows():
+                    tick = safe_int(kill[tick_col])
+                    weapon = str(kill[weapon_col]).lower()
+                    victim_name = (
+                        str(kill[vic_name_col])
+                        if vic_name_col and kill.get(vic_name_col)
+                        else self.data.player_names.get(safe_int(kill[vic_col]), "Unknown")
+                    )
+
+                    if not current_spray:
+                        current_spray = [{"tick": tick, "weapon": weapon, "victim": victim_name}]
+                    elif (
+                        tick - current_spray[-1]["tick"] <= spray_window_ticks
+                        and weapon == current_spray[-1]["weapon"]
+                    ):
+                        # Same weapon, within time window - add to current spray
+                        current_spray.append(
+                            {"tick": tick, "weapon": weapon, "victim": victim_name}
+                        )
+                    else:
+                        # Window exceeded or weapon changed - finalize current spray
+                        self._record_spray(current_spray, steamid, round_num)
+                        current_spray = [{"tick": tick, "weapon": weapon, "victim": victim_name}]
+
+                # Don't forget last spray
+                self._record_spray(current_spray, steamid, round_num)
+
+    def _record_spray(self, spray_kills: list[dict], steamid: int, round_num: int) -> None:
+        """Record a spray transfer if it has 2+ kills."""
+        if len(spray_kills) < 2:
+            return
+
+        tick_start = spray_kills[0]["tick"]
+        tick_end = spray_kills[-1]["tick"]
+        time_span_ms = self._ticks_to_ms(tick_end - tick_start)
+
+        spray = SprayTransfer(
+            round_num=round_num,
+            player_steamid=steamid,
+            player_name=self.data.player_names.get(steamid, "Unknown"),
+            kills_in_spray=len(spray_kills),
+            victims=[k["victim"] for k in spray_kills],
+            weapon=spray_kills[0]["weapon"],
+            time_span_ms=time_span_ms,
+            tick_start=tick_start,
+            tick_end=tick_end,
+        )
+        self._spray_transfers.append(spray)
 
     def _analyze_clutches(
         self,
