@@ -307,3 +307,112 @@ def get_rating_color(rating: float) -> str:
     if rating >= 0.85:
         return "#f59e0b"  # Yellow (warning)
     return "#ef4444"  # Red (danger)
+
+
+def calculate_rating_from_stats(
+    stats: dict[str, Any],
+    rounds: int,
+) -> float:
+    """
+    Calculate HLTV 2.0 Rating from a stats dictionary with safe accessors.
+
+    This is a convenience wrapper around calculate_hltv_rating that handles:
+    - Missing/None values with safe defaults
+    - KAST normalization (auto-detects percentage vs decimal)
+    - Input validation
+    - Output clamping to valid range [0.0, 3.0]
+
+    Formula:
+        Rating = 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + 0.2372*Impact + 0.0032*ADR + 0.1587*RMK
+
+    Args:
+        stats: Player statistics dictionary with keys:
+            - kills (int): Total kills
+            - deaths (int): Total deaths
+            - assists (int): Total assists
+            - kast (float): KAST percentage (0-100) or decimal (0.0-1.0)
+            - adr (float): Average damage per round
+            - 2k, 3k, 4k, 5k (int): Multi-kill round counts (optional)
+            - clutch_wins (int): Clutch rounds won (optional)
+        rounds: Total rounds played
+
+    Returns:
+        HLTV 2.0 rating clamped to [0.0, 3.0]
+
+    Example:
+        >>> stats = {"kills": 25, "deaths": 18, "assists": 5, "kast": 72.0, "adr": 85.5}
+        >>> calculate_rating_from_stats(stats, 24)
+        1.12
+    """
+    # Validate inputs
+    if not stats or not isinstance(stats, dict):
+        return 0.0
+
+    if rounds is None or rounds <= 0:
+        return 0.0
+
+    # Safe extraction helper
+    def safe_int(val: Any, default: int = 0) -> int:
+        if val is None:
+            return default
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return default
+
+    def safe_float(val: Any, default: float = 0.0) -> float:
+        if val is None:
+            return default
+        try:
+            result = float(val)
+            # Handle NaN
+            if result != result:  # NaN check
+                return default
+            return result
+        except (ValueError, TypeError):
+            return default
+
+    # Extract core stats
+    kills = safe_int(stats.get("kills"))
+    deaths = safe_int(stats.get("deaths"))
+    assists = safe_int(stats.get("assists"))
+    adr = safe_float(stats.get("adr"))
+
+    # KAST normalization: auto-detect percentage vs decimal
+    # If value is <= 1.0, assume it's a decimal (0.75 = 75%)
+    # If value is > 1.0, assume it's already a percentage (75.0)
+    kast_raw = safe_float(stats.get("kast"))
+    if 0.0 < kast_raw <= 1.0:
+        kast_pct = kast_raw * 100  # Convert decimal to percentage
+    else:
+        kast_pct = kast_raw  # Already a percentage
+
+    # Clamp KAST to valid range
+    kast_pct = max(0.0, min(100.0, kast_pct))
+
+    # Multi-kill rounds (optional)
+    multi_kill_2k = safe_int(stats.get("2k") or stats.get("multi_kill_2k"))
+    multi_kill_3k = safe_int(stats.get("3k") or stats.get("multi_kill_3k"))
+    multi_kill_4k = safe_int(stats.get("4k") or stats.get("multi_kill_4k"))
+    multi_kill_5k = safe_int(stats.get("5k") or stats.get("multi_kill_5k"))
+
+    # Clutch wins (optional)
+    clutch_wins = safe_int(stats.get("clutch_wins"))
+
+    # Delegate to the full implementation
+    rating = calculate_hltv_rating(
+        kills=kills,
+        deaths=deaths,
+        assists=assists,
+        adr=adr,
+        kast_pct=kast_pct,
+        rounds=rounds,
+        clutch_wins=clutch_wins,
+        multi_kill_2k=multi_kill_2k,
+        multi_kill_3k=multi_kill_3k,
+        multi_kill_4k=multi_kill_4k,
+        multi_kill_5k=multi_kill_5k,
+    )
+
+    # Clamp to valid range (HLTV ratings rarely exceed 2.0, cap at 3.0)
+    return max(0.0, min(3.0, rating))
