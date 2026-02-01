@@ -2404,8 +2404,8 @@
             const displayRounds = score.ct + score.t;
 
             // Extract team names from demo_info (or use defaults)
-            const team1Name = info.team1_name || 'Team 1';
-            const team2Name = info.team2_name || 'Team 2';
+            const team1Name = info.team1_name || 'Counter-Terrorists';
+            const team2Name = info.team2_name || 'Terrorists';
 
             let html = `
                 <div class="match-header">
@@ -2566,8 +2566,8 @@
             if (!players || players.length === 0) return '<p style="color: var(--text-muted); padding: 20px;">No player data available.</p>';
 
             // Use provided team names or fallback to defaults
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
 
             // Separate teams
             const team1 = players.filter(p => p.team === 'CT' || (players.indexOf(p) < 5 && !p.team));
@@ -2751,8 +2751,8 @@
         // Render Overview Tab
         function renderOverview(players, tactical, team1Name, team2Name) {
             // Use provided team names or fallback to defaults
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
 
             // Add podium container at the top
             let html = '<div id="overview-podium"></div>';
@@ -3007,8 +3007,8 @@
             if (!players || players.length === 0) return '';
 
             // Use provided team names or fallback to defaults
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
 
             // Separate teams
             const team1 = players.filter(p => p.team === 'CT' || (players.indexOf(p) < 5 && !p.team));
@@ -3080,8 +3080,8 @@
 
         // Render Aim Stats Table (Leetify style)
         function renderAimStatsTable(team1, team2, team1Name, team2Name) {
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
 
             // Find best values across all players for star indicators
             const allPlayers = [...team1, ...team2];
@@ -3197,8 +3197,8 @@
 
         // Render Trades Table (Leetify style with opportunities and success rates)
         function renderTradesTable(team1, team2, team1Name, team2Name) {
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
 
             const allPlayers = [...team1, ...team2];
             const best = {
@@ -3296,8 +3296,8 @@
 
         // Render Opening Duels Table (Leetify style with Most Killed, Best Weapon, Most Died To)
         function renderOpeningDuelsTable(team1, team2, team1Name, team2Name) {
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
 
             // Get kill_matrix from global match data for Most Killed/Most Died To
             const killMatrix = window.currentMatchData?.data?.kill_matrix || [];
@@ -3453,8 +3453,8 @@
 
         // Render Activity Stats Table (Leetify style with damage breakdown and bars)
         function renderActivityStatsTable(team1, team2, team1Name, team2Name) {
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
 
             const allPlayers = [...team1, ...team2];
             const maxDamage = Math.max(...allPlayers.map(p => p.total_damage || p.stats?.total_damage || 0));
@@ -3561,8 +3561,8 @@
 
         // Render Utility Stats Table (Leetify style comprehensive utility analysis)
         function renderUtilityStatsTable(team1, team2, team1Name, team2Name) {
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
 
             const allPlayers = [...team1, ...team2];
             const best = {
@@ -3680,8 +3680,8 @@
 
         // Render Clutch Stats with Visual Cards (like Leetify)
         function renderClutchStatsTable(team1, team2, team1Name, team2Name) {
-            const ctTeamName = team1Name || 'Team 1';
-            const tTeamName = team2Name || 'Team 2';
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
             const renderPlayerCard = (player) => {
                 const c = player.clutches || {};
                 const wins = c.clutch_wins || 0;
@@ -3765,10 +3765,103 @@
             return renderTeamSection(team1, ctTeamName) + renderTeamSection(team2, tTeamName);
         }
 
-        // Render General Stats Table with HLTV Rating, sortable columns, and star indicators
-        function renderGeneralStatsTable(allPlayers, team1, team2, team1Name, team2Name) {
+        // Render Rating Breakdown Table - HLTV 2.0 formula components
+        function renderRatingBreakdownTable(team1, team2, team1Name, team2Name) {
             const ctTeamName = team1Name || 'Team 1';
             const tTeamName = team2Name || 'Team 2';
+
+            // HLTV 2.0 formula:
+            // Rating = 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + 0.2372*Impact + 0.0032*ADR + 0.1587*RMK
+
+            const renderTeamTable = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+
+                const sorted = [...players].sort((a, b) => (b.hltv_rating || 0) - (a.hltv_rating || 0));
+
+                let html = `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${escapeHtml(teamName)}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Kill/Assist/Survived/Traded %">KAST</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Kills Per Round">KPR</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Deaths Per Round">DPR</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Impact Rating">Impact</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Average Damage Per Round">ADR</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Multi-Kill Rating">RMK</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Final HLTV 2.0 Rating">Rating</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+
+                sorted.forEach(p => {
+                    const kast = p.kast_percentage || 0;
+                    const kpr = p.kpr || (p.kills / (p.rounds_played || 1)) || 0;
+                    const dpr = p.dpr || (p.deaths / (p.rounds_played || 1)) || 0;
+                    const impact = p.impact_rating || 0;
+                    const adr = p.adr || 0;
+
+                    // Calculate RMK from multi-kills
+                    const rounds = p.rounds_played || 1;
+                    const mk2 = p.multi_kills?.['2k'] || 0;
+                    const mk3 = p.multi_kills?.['3k'] || 0;
+                    const mk4 = p.multi_kills?.['4k'] || 0;
+                    const mk5 = p.multi_kills?.['5k'] || 0;
+                    const rmk = ((mk2 + mk3 + mk4 + mk5) / rounds) || 0;
+
+                    const rating = p.hltv_rating || 0;
+
+                    // Color coding
+                    const kastColor = kast >= 75 ? 'var(--success)' : kast >= 65 ? 'var(--warning)' : 'var(--danger)';
+                    const kprColor = kpr >= 0.8 ? 'var(--success)' : kpr >= 0.6 ? 'var(--warning)' : 'var(--text-muted)';
+                    const dprColor = dpr <= 0.6 ? 'var(--success)' : dpr <= 0.75 ? 'var(--warning)' : 'var(--danger)';
+                    const impactColor = impact >= 1.2 ? 'var(--success)' : impact >= 0.9 ? 'var(--warning)' : 'var(--danger)';
+                    const adrColor = adr >= 85 ? 'var(--success)' : adr >= 65 ? 'var(--warning)' : 'var(--danger)';
+                    const ratingColor = rating >= 1.15 ? 'var(--success)' : rating >= 0.95 ? 'var(--warning)' : 'var(--danger)';
+
+                    html += `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600;">${(p.name || 'U')[0].toUpperCase()}</div>
+                                    <span style="color: var(--text-primary);">${escapeHtml(p.name || 'Unknown')}</span>
+                                </div>
+                            </td>
+                            <td style="text-align: center; padding: 12px; color: ${kastColor}; font-weight: 500;">${kast.toFixed(1)}%</td>
+                            <td style="text-align: center; padding: 12px; color: ${kprColor}; font-weight: 500;">${kpr.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 12px; color: ${dprColor}; font-weight: 500;">${dpr.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 12px; color: ${impactColor}; font-weight: 500;">${impact.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 12px; color: ${adrColor}; font-weight: 500;">${adr.toFixed(0)}</td>
+                            <td style="text-align: center; padding: 12px; color: var(--text-muted);">${rmk.toFixed(2)}</td>
+                            <td style="text-align: center; padding: 12px; color: ${ratingColor}; font-weight: 700; font-size: 1.1rem;">${rating.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table></div>';
+                return html;
+            };
+
+            return `
+                <div class="rating-breakdown-content" style="padding: 20px;">
+                    <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); margin-bottom: 20px; border: 1px solid var(--border);">
+                        <h4 style="color: var(--text-primary); margin-bottom: 8px;">HLTV 2.0 Rating Formula</h4>
+                        <code style="color: var(--accent-primary); font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
+                            Rating = 0.0073×KAST + 0.3591×KPR - 0.5329×DPR + 0.2372×Impact + 0.0032×ADR + 0.1587×RMK
+                        </code>
+                    </div>
+                    ${renderTeamTable(team1, ctTeamName)}
+                    ${renderTeamTable(team2, tTeamName)}
+                </div>
+            `;
+        }
+
+        // Render General Stats Table with HLTV Rating, sortable columns, and star indicators
+        function renderGeneralStatsTable(allPlayers, team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
             if (!allPlayers || allPlayers.length === 0) return '<p style="color: var(--text-muted);">No player data available</p>';
 
             // Calculate best values across all players for star indicators
@@ -5067,9 +5160,23 @@
             // Filter positions based on current filters
             function filterPositions(positions) {
                 return positions.filter(p => {
-                    if (filters.side !== 'all' && p.side && !p.side.toUpperCase().includes(filters.side)) return false;
+                    // Side filter: check if side matches (CT or T)
+                    if (filters.side !== 'all') {
+                        const pSide = (p.side || '').toUpperCase();
+                        if (!pSide || !pSide.includes(filters.side)) return false;
+                    }
+                    // Phase filter
                     if (filters.phase !== 'all' && p.phase !== filters.phase) return false;
-                    if (filters.round_type !== 'all' && p.round_type !== filters.round_type) return false;
+                    // Economy filter: handle semi_eco grouping with eco
+                    if (filters.round_type !== 'all') {
+                        const roundType = p.round_type || '';
+                        if (filters.round_type === 'eco') {
+                            if (roundType !== 'eco' && roundType !== 'semi_eco') return false;
+                        } else if (roundType !== filters.round_type) {
+                            return false;
+                        }
+                    }
+                    // Player filter
                     if (filters.player !== 'all' && p.player_name !== filters.player) return false;
                     return true;
                 });

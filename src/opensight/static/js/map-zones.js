@@ -772,10 +772,30 @@ class MapZones {
      */
     _filterPositions(positions) {
         return positions.filter(p => {
-            if (this.filters.side !== 'all' && p.side && !p.side.toUpperCase().includes(this.filters.side)) return false;
+            // Side filter: check if side matches (CT or T)
+            // If filtering for a specific side, exclude events with no side or wrong side
+            if (this.filters.side !== 'all') {
+                const pSide = (p.side || '').toUpperCase();
+                if (!pSide || !pSide.includes(this.filters.side)) return false;
+            }
+
+            // Phase filter: pre_plant or post_plant
             if (this.filters.phase !== 'all' && p.phase !== this.filters.phase) return false;
-            if (this.filters.economy !== 'all' && p.round_type !== this.filters.economy) return false;
+
+            // Economy filter: handle semi_eco grouping with eco
+            if (this.filters.economy !== 'all') {
+                const roundType = p.round_type || '';
+                // Group semi_eco with eco for filtering purposes
+                if (this.filters.economy === 'eco') {
+                    if (roundType !== 'eco' && roundType !== 'semi_eco') return false;
+                } else if (roundType !== this.filters.economy) {
+                    return false;
+                }
+            }
+
+            // Player filter
             if (this.filters.player !== 'all' && p.player_name !== this.filters.player) return false;
+
             return true;
         });
     }
