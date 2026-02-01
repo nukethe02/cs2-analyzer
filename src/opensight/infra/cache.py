@@ -703,6 +703,9 @@ class CachedAnalyzer:
         # Generate coaching insights
         coaching = self._generate_coaching_insights(demo_data, analysis, players)
 
+        # Generate AI-powered match summaries for each player
+        self._generate_ai_summaries(players, analysis)
+
         # Get tactical summary
         tactical = self._get_tactical_summary(demo_data, analysis)
 
@@ -715,6 +718,11 @@ class CachedAnalyzer:
                 "rating": mvp_data["rating"]["hltv_rating"],
             }
 
+        # Sort players by HLTV rating (descending) before returning
+        players_sorted = sorted(
+            players.values(), key=lambda p: p["rating"]["hltv_rating"], reverse=True
+        )
+
         # Convert to dict for caching
         result = {
             "demo_info": {
@@ -726,7 +734,7 @@ class CachedAnalyzer:
                 "team1_name": getattr(analysis, "team1_name", "Team 1"),
                 "team2_name": getattr(analysis, "team2_name", "Team 2"),
             },
-            "players": players,
+            "players": players_sorted,
             "mvp": mvp,
             "round_timeline": round_timeline,
             "kill_matrix": kill_matrix,
@@ -1560,16 +1568,6 @@ class CachedAnalyzer:
                     elif "T" in vic_side:
                         player_starting_teams[vic_id] = "T"
 
-        def get_player_team_for_round(player_id: int, round_num: int) -> str:
-            """Get player's team for a specific round, handling halftime swap."""
-            starting_team = player_starting_teams.get(player_id, "")
-            if starting_team not in ["CT", "T"]:
-                return ""
-            # Standard CS2 MR12: rounds 1-12 = first half, 13+ = second half (teams swap)
-            if round_num > 12:
-                return "T" if starting_team == "CT" else "CT"
-            return starting_team
-
         # Group damage by round with attacker's side for that specific event
         round_damages: dict[int, dict[int, int]] = {}  # round_num -> {steam_id -> damage}
         round_player_sides: dict[int, dict[int, str]] = {}  # round_num -> {steam_id -> side}
@@ -1626,7 +1624,7 @@ class CachedAnalyzer:
                 player_side = round_sides.get(pid, "")
                 # Fall back to calculated side based on starting team + halftime
                 if not player_side:
-                    player_side = get_player_team_for_round(pid, round_num)
+                    player_side = demo_data.get_player_side_for_round(pid, round_num)
 
                 if player_side in ["CT", "T"]:
                     player_stats[pid]["rounds_played"] += 1

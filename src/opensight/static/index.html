@@ -204,7 +204,7 @@
             display: block;
             border: 2px dashed var(--border);
             border-radius: var(--radius-lg);
-            padding: 80px 32px;
+            padding: 40px 32px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -458,7 +458,7 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: var(--radius-xl);
-            padding: 40px;
+            padding: 20px;
             margin-bottom: 24px;
             text-align: center;
             position: relative;
@@ -2004,24 +2004,6 @@
         </div>
     </div>
 
-    <footer>
-        <p>Powered by <a href="https://github.com/nukethe02/cs2-analyzer" target="_blank">OpenSight</a> - Open Source CS2 Analytics</p>
-    </footer>
-
-    <div id="shortcuts-panel" class="shortcuts-panel">
-        <h4>Keyboard Shortcuts</h4>
-        <div class="shortcut-item"><span>Overview</span><span class="shortcut-key">1</span></div>
-        <div class="shortcut-item"><span>Timeline</span><span class="shortcut-key">2</span></div>
-        <div class="shortcut-item"><span>Kill Matrix</span><span class="shortcut-key">3</span></div>
-        <div class="shortcut-item"><span>Heatmap</span><span class="shortcut-key">4</span></div>
-        <div class="shortcut-item"><span>Coaching</span><span class="shortcut-key">5</span></div>
-        <div class="shortcut-item"><span>2D Replay</span><span class="shortcut-key">6</span></div>
-        <div class="shortcut-item"><span>Play/Pause</span><span class="shortcut-key">Space</span></div>
-        <div class="shortcut-item"><span>Prev Frame</span><span class="shortcut-key">&larr;</span></div>
-        <div class="shortcut-item"><span>Next Frame</span><span class="shortcut-key">&rarr;</span></div>
-        <div class="shortcut-item"><span>Toggle Help</span><span class="shortcut-key">?</span></div>
-    </div>
-
     <script>
         const uploadZone = document.getElementById('upload-zone');
         const fileInput = document.getElementById('demo-file');
@@ -2032,10 +2014,6 @@
         let analysisData = null;
         let uploadedDemoFile = null;  // Store the uploaded file for replay generation
         let replayData = null;  // Store fetched replay data
-
-        // Debug: check if elements exist
-        console.log('Upload zone:', uploadZone);
-        console.log('File input:', fileInput);
 
         // Click handling - label's for attribute handles opening file picker natively
         // We just need to reset value to allow re-selecting the same file
@@ -2060,7 +2038,6 @@
             e.stopPropagation();
             uploadZone.classList.remove('dragover');
             const file = e.dataTransfer.files[0];
-            console.log('File dropped:', file?.name);
             if (file && (file.name.endsWith('.dem') || file.name.endsWith('.dem.gz'))) {
                 analyzeFile(file);
             } else {
@@ -2071,7 +2048,6 @@
         // File input change
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
-            console.log('File selected:', file?.name);
             if (file) analyzeFile(file);
         });
 
@@ -2272,7 +2248,8 @@
             }
 
             const info = data.demo_info || {};
-            const players = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+            // Players is now a sorted array from backend (sorted by rating descending)
+            const players = Array.isArray(data.players) ? data.players : Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
 
             // Parse score with knife round detection
             const score = parseScore(info.score, info.rounds);

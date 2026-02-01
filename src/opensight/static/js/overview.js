@@ -84,24 +84,16 @@ class OverviewTab {
     }
 
     /**
-     * Calculate personal performance for a player
+     * Calculate K-D difference for a player
      * @param {Object} p - Player data
-     * @returns {number} Performance value
+     * @returns {number} Kill-Death difference
      */
     calculatePersonalPerformance(p) {
         const kills = p.kills || p.stats?.kills || 0;
         const deaths = p.deaths || p.stats?.deaths || 0;
-        const assists = p.assists || p.stats?.assists || 0;
-        const rounds = p.rounds_played || 1;
 
-        const expectedKills = rounds * 0.7;
-        const expectedDeaths = rounds * 0.7;
-        const assistValue = assists * 0.3;
-
-        const killDiff = kills - expectedKills;
-        const deathDiff = expectedDeaths - deaths;
-
-        return ((killDiff + deathDiff * 0.5 + assistValue) / rounds * 10);
+        // Return simple K-D difference (e.g., +5, -2)
+        return kills - deaths;
     }
 
     /**
