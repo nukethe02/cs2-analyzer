@@ -699,7 +699,7 @@ class StateMachine:
                 )
                 .group_by("attacker_steamid")
                 .agg(
-                    pl.count().alias("effective_count"),
+                    pl.len().alias("effective_count"),
                     pl.sum("blind_duration").alias("total_blind_time"),
                 )
             )
@@ -709,7 +709,7 @@ class StateMachine:
                     (pl.col("blind_duration") < EFFECTIVE_FLASH_DURATION) & ~pl.col("is_teammate")
                 )
                 .group_by("attacker_steamid")
-                .agg(pl.count().alias("ineffective_count"))
+                .agg(pl.len().alias("ineffective_count"))
             )
 
             for row in effective.iter_rows(named=True):

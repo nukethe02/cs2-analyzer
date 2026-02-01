@@ -14,7 +14,7 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +31,13 @@ from sqlalchemy import (
     create_engine,
     func,
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, relationship, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
+
+
+def _utc_now() -> datetime:
+    """Return current UTC time (timezone-aware)."""
+    return datetime.now(UTC)
+
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +60,7 @@ class Match(Base):
     demo_hash = Column(String(64), unique=True, nullable=False, index=True)
     map_name = Column(String(50), nullable=False, index=True)
     date_played = Column(DateTime, index=True)
-    date_analyzed = Column(DateTime, default=datetime.utcnow)
+    date_analyzed = Column(DateTime, default=_utc_now)
 
     # Score
     score_ct = Column(Integer, default=0)
@@ -239,7 +244,7 @@ class MatchHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     steam_id = Column(String(20), nullable=False, index=True)
     demo_hash = Column(String(64), nullable=False, index=True)
-    analyzed_at = Column(DateTime, default=datetime.utcnow)
+    analyzed_at = Column(DateTime, default=_utc_now)
 
     # Match metadata
     map_name = Column(String(50))
@@ -339,7 +344,7 @@ class PlayerBaseline(Base):
     window_size = Column(Integer, default=30)
 
     # Last update timestamp
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
     __table_args__ = (Index("idx_player_baselines_steam_metric", "steam_id", "metric"),)
 
@@ -376,7 +381,7 @@ class PlayerPersona(Base):
     secondary_trait = Column(String(50))
 
     # Calculation timestamp
-    calculated_at = Column(DateTime, default=datetime.utcnow)
+    calculated_at = Column(DateTime, default=_utc_now)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
@@ -398,7 +403,7 @@ class PlayerProfile(Base):
 
     steam_id = Column(String(20), primary_key=True)
     player_name = Column(String(100), nullable=False)
-    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_updated = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
     # Career totals
     total_matches = Column(Integer, default=0)
@@ -1188,7 +1193,7 @@ class DatabaseManager:
                 persona.persona_history_json = json.dumps(old_history)
                 persona.primary_trait = primary_trait
                 persona.secondary_trait = secondary_trait
-                persona.calculated_at = datetime.utcnow()
+                persona.calculated_at = _utc_now()
             else:
                 # Create new
                 persona = PlayerPersona(
