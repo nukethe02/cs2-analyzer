@@ -2280,7 +2280,7 @@
 
         // Poll for async job completion
         async function pollForJobCompletion(jobId, statusUrl, downloadUrl) {
-            const maxAttempts = 120; // 2 minutes max
+            const maxAttempts = 600; // 10 minutes max (HuggingFace free tier is slow)
             const pollInterval = 1000; // 1 second
 
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -2311,7 +2311,7 @@
                 }
             }
 
-            throw new Error('Analysis timed out - demo may be too large');
+            throw new Error('Analysis timed out after 10 minutes - try a smaller demo or check server logs');
         }
 
         // Rating class helper
