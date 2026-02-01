@@ -5406,9 +5406,11 @@
                 // Compute filtered zone stats
                 const filteredStats = computeFilteredZoneStats(kills, deaths);
 
-                // Draw zone overlays if enabled
+                // Draw zone overlays if enabled AND radar image is loaded
+                // Without the radar image, zone polygons look meaningless and can render incorrectly
                 const showZones = document.getElementById('show-zones')?.checked ?? true;
-                if (showZones && Object.keys(zoneDefs).length > 0) {
+                const hasRadarImage = radarImage && radarImage.complete && radarImage.naturalWidth > 0;
+                if (showZones && Object.keys(zoneDefs).length > 0 && hasRadarImage) {
                     drawZones(filteredStats);
                 }
 

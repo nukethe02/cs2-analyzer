@@ -567,9 +567,10 @@ class MapZones {
         const deaths = this._filterPositions(this.data.death_positions || []);
         const zoneStats = this._computeZoneStats(kills, deaths);
 
-        // Draw zone overlays
+        // Draw zone overlays - only when radar image is loaded for proper context
         const showZones = document.getElementById('show-zones')?.checked ?? true;
-        if (showZones && Object.keys(this.zoneDefs).length > 0) {
+        const hasRadarImage = this.radarImage && this.radarImage.complete && this.radarImage.naturalWidth > 0;
+        if (showZones && Object.keys(this.zoneDefs).length > 0 && hasRadarImage) {
             this._drawZones(zoneStats);
         }
 
