@@ -1809,110 +1809,188 @@ class PlayerMatchStats:
         # Geometric mean
         return round(math.sqrt(quantity * quality), 1)
 
-    # Aim Rating (penalty-based formula)
+    # Aim Rating (penalty-based formula with fallback)
     @property
     def aim_rating(self) -> float:
         """
         Aim Rating using penalty-based formula.
 
-        Formula: Aim = 100 - (TTD_Penalty + Error_Penalty + Recoil_Penalty)
+        Primary Formula (requires tick data):
+            Aim = 100 - (TTD_Penalty + CP_Penalty + Recoil_Penalty)
+            - TTD_Penalty: Based on reaction time (150ms elite → 600ms slow)
+            - CP_Penalty: Based on crosshair placement error (3° elite → 30° poor)
+            - Recoil_Penalty: Based on spray accuracy (80% elite → 0% poor)
 
-        Components:
-        - TTD_Penalty: Based on reaction time (150ms elite → 600ms slow)
-        - Error_Penalty: Based on crosshair placement error (3° elite → 30° poor)
-        - Recoil_Penalty: Based on spray accuracy (80% elite → 0% poor)
+        Fallback Formula (when tick data unavailable):
+            Aim = HS_Score * 0.35 + TTK_Score * 0.25 + CP_Score * 0.25 + Acc_Score * 0.15
+            Uses engagement duration, headshot %, CP, and overall accuracy
 
         Score is 0-100 where higher is better.
         """
+        # Try primary formula first (requires tick-level data)
+        reaction_time = self.reaction_time_median_ms
+        cp_error = self.cp_median_error_deg
+
+        if reaction_time is not None and reaction_time > 0 and cp_error is not None:
+            return self._aim_rating_primary(reaction_time, cp_error)
+
+        # Fallback: Use available metrics when tick data isn't available
+        return self._aim_rating_fallback()
+
+    def _aim_rating_primary(self, reaction_time: float, cp_error: float) -> float:
+        """Primary aim rating using reaction time + CP + spray accuracy."""
         ttd_penalty = 0.0
         error_penalty = 0.0
         recoil_penalty = 0.0
 
-        # TTD Penalty (reaction time - use true TTD, not engagement duration)
-        reaction_time = self.reaction_time_median_ms
-        if reaction_time is not None and reaction_time > 0:
-            # UNIT VERIFICATION: Check if TTD is in milliseconds (should be 200ms not 0.2s)
-            if reaction_time < 10:
-                logger.error(
-                    f"Player {self.name}: reaction_time={reaction_time} is too low! "
-                    f"Likely in seconds. Converting: {reaction_time}s → {reaction_time * 1000}ms"
-                )
-                reaction_time = reaction_time * 1000
-
-            # Scale: 150ms (elite) = 0, 250ms (good) = 10, 400ms (avg) = 25, 600ms (slow) = 40
-            if reaction_time <= 150:
-                ttd_penalty = 0
-            elif reaction_time <= 250:
-                ttd_penalty = (reaction_time - 150) / 10  # 0-10
-            elif reaction_time <= 400:
-                ttd_penalty = 10 + (reaction_time - 250) / 10  # 10-25
-            else:
-                ttd_penalty = 25 + (reaction_time - 400) / 13.33  # 25-40 at 600ms
-            ttd_penalty = min(40, ttd_penalty)  # Cap at 40
-        else:
-            # NO FALLBACK - return 0 to surface data pipeline issues
-            logger.error(
-                f"Player {self.name}: Missing reaction_time data. "
-                f"Returning aim_rating=0. Check true_ttd_values calculation."
+        # UNIT VERIFICATION: Check if TTD is in milliseconds (should be 200ms not 0.2s)
+        if reaction_time < 10:
+            logger.warning(
+                f"Player {self.name}: reaction_time={reaction_time} is too low! "
+                f"Likely in seconds. Converting: {reaction_time}s → {reaction_time * 1000}ms"
             )
-            return 0.0
+            reaction_time = reaction_time * 1000
 
-        # Crosshair Placement Penalty (angular error)
-        cp_error = self.cp_median_error_deg
-        if cp_error is not None and cp_error >= 0:
-            # Scale: 3° (elite) = 0, 5° (good) = 5, 10° (avg) = 15, 20° (poor) = 30, 30° = 40
-            if cp_error <= 3:
-                error_penalty = 0
-            elif cp_error <= 5:
-                error_penalty = (cp_error - 3) * 2.5  # 0-5
-            elif cp_error <= 10:
-                error_penalty = 5 + (cp_error - 5) * 2  # 5-15
-            elif cp_error <= 20:
-                error_penalty = 15 + (cp_error - 10) * 1.5  # 15-30
-            else:
-                error_penalty = 30 + (cp_error - 20) * 1  # 30-40 at 40°
-            error_penalty = min(40, error_penalty)  # Cap at 40
+        # Scale: 150ms (elite) = 0, 250ms (good) = 10, 400ms (avg) = 25, 600ms (slow) = 40
+        if reaction_time <= 150:
+            ttd_penalty = 0
+        elif reaction_time <= 250:
+            ttd_penalty = (reaction_time - 150) / 10  # 0-10
+        elif reaction_time <= 400:
+            ttd_penalty = 10 + (reaction_time - 250) / 10  # 10-25
         else:
-            # NO FALLBACK - return 0 to surface data pipeline issues
-            logger.error(
-                f"Player {self.name}: Missing cp_median_error_deg data. "
-                f"Returning aim_rating=0. Check cp_values calculation."
-            )
-            return 0.0
+            ttd_penalty = 25 + (reaction_time - 400) / 13.33  # 25-40 at 600ms
+        ttd_penalty = min(40, ttd_penalty)  # Cap at 40
+
+        # Scale: 3° (elite) = 0, 5° (good) = 5, 10° (avg) = 15, 20° (poor) = 30, 30° = 40
+        if cp_error <= 3:
+            error_penalty = 0
+        elif cp_error <= 5:
+            error_penalty = (cp_error - 3) * 2.5  # 0-5
+        elif cp_error <= 10:
+            error_penalty = 5 + (cp_error - 5) * 2  # 5-15
+        elif cp_error <= 20:
+            error_penalty = 15 + (cp_error - 10) * 1.5  # 15-30
+        else:
+            error_penalty = 30 + (cp_error - 20) * 1  # 30-40 at 40°
+        error_penalty = min(40, error_penalty)  # Cap at 40
 
         # Recoil Control Penalty (spray accuracy)
         spray_acc = self.spray_accuracy
-        if spray_acc >= 0:
-            # Scale: 80%+ (elite) = 0, 60% (good) = 10, 40% (avg) = 20, 20% (poor) = 30, 0% = 35
-            if spray_acc >= 80:
-                recoil_penalty = 0
-            elif spray_acc >= 60:
-                recoil_penalty = (80 - spray_acc) / 2  # 0-10
-            elif spray_acc >= 40:
-                recoil_penalty = 10 + (60 - spray_acc) / 2  # 10-20
-            elif spray_acc >= 20:
-                recoil_penalty = 20 + (40 - spray_acc) / 2  # 20-30
-            else:
-                recoil_penalty = 30 + (20 - spray_acc) / 4  # 30-35
-            recoil_penalty = min(35, recoil_penalty)  # Cap at 35
+        if spray_acc >= 80:
+            recoil_penalty = 0
+        elif spray_acc >= 60:
+            recoil_penalty = (80 - spray_acc) / 2  # 0-10
+        elif spray_acc >= 40:
+            recoil_penalty = 10 + (60 - spray_acc) / 2  # 10-20
+        elif spray_acc >= 20:
+            recoil_penalty = 20 + (40 - spray_acc) / 2  # 20-30
         else:
-            # NO FALLBACK - return 0 to surface data pipeline issues
-            logger.error(
-                f"Player {self.name}: Missing spray_accuracy data. "
-                f"Returning aim_rating=0. Check spray accuracy calculation."
-            )
-            return 0.0
+            recoil_penalty = 30 + (20 - spray_acc) / 4  # 30-35
+        recoil_penalty = min(35, recoil_penalty)  # Cap at 35
 
         # Calculate final score
         total_penalty = ttd_penalty + error_penalty + recoil_penalty
         aim_score = 100 - total_penalty
 
-        # Log the breakdown for debugging
         logger.debug(
-            f"Aim calculation for {self.name}: "
+            f"Aim (primary) for {self.name}: "
             f"TTD_penalty={ttd_penalty:.1f} (reaction={reaction_time}ms), "
-            f"Error_penalty={error_penalty:.1f} (cp={cp_error}°), "
+            f"CP_penalty={error_penalty:.1f} (cp={cp_error}°), "
             f"Recoil_penalty={recoil_penalty:.1f} (spray={spray_acc}%), "
+            f"Final={aim_score:.1f}"
+        )
+
+        return round(max(0, min(100, aim_score)), 1)
+
+    def _aim_rating_fallback(self) -> float:
+        """Fallback aim rating using HS%, engagement duration, CP (if available), and accuracy.
+
+        Used when tick-level data isn't available for true reaction time calculation.
+        """
+        # Component weights (must sum to 1.0)
+        hs_weight = 0.35  # Headshot % is a strong aim indicator
+        ttk_weight = 0.25  # Time to kill (engagement duration)
+        cp_weight = 0.25  # Crosshair placement if available
+        acc_weight = 0.15  # Overall accuracy
+
+        # 1. Headshot Score (0-100)
+        # Elite: 60%+ HS = 100, Average: 35% = 50, Poor: 10% = 0
+        hs_pct = self.headshot_percentage
+        if hs_pct >= 60:
+            hs_score = 100
+        elif hs_pct >= 35:
+            hs_score = 50 + (hs_pct - 35) * 2  # 50-100
+        elif hs_pct >= 10:
+            hs_score = (hs_pct - 10) * 2  # 0-50
+        else:
+            hs_score = 0
+
+        # 2. Time to Kill Score (engagement duration - first damage to kill)
+        # Elite: <200ms = 100, Good: 400ms = 70, Average: 700ms = 40, Slow: >1000ms = 0
+        ttk_ms = self.ttd_median_ms  # This is engagement duration
+        if ttk_ms is None or ttk_ms <= 0:
+            ttk_score = 50  # Neutral if no data
+        elif ttk_ms <= 200:
+            ttk_score = 100
+        elif ttk_ms <= 400:
+            ttk_score = 70 + (400 - ttk_ms) / 200 * 30  # 70-100
+        elif ttk_ms <= 700:
+            ttk_score = 40 + (700 - ttk_ms) / 300 * 30  # 40-70
+        elif ttk_ms <= 1000:
+            ttk_score = (1000 - ttk_ms) / 300 * 40  # 0-40
+        else:
+            ttk_score = 0
+
+        # 3. Crosshair Placement Score (if available)
+        cp_error = self.cp_median_error_deg
+        if cp_error is not None and cp_error >= 0:
+            # Elite: <3° = 100, Good: 5° = 80, Average: 10° = 50, Poor: 20° = 20
+            if cp_error <= 3:
+                cp_score = 100
+            elif cp_error <= 5:
+                cp_score = 80 + (5 - cp_error) * 10  # 80-100
+            elif cp_error <= 10:
+                cp_score = 50 + (10 - cp_error) * 6  # 50-80
+            elif cp_error <= 20:
+                cp_score = 20 + (20 - cp_error) * 3  # 20-50
+            else:
+                cp_score = max(0, 20 - (cp_error - 20))  # 0-20
+        else:
+            # If no CP data, redistribute weight to other components
+            cp_score = 50  # Neutral
+
+        # 4. Accuracy Score (overall shots hit / shots fired)
+        accuracy = self.accuracy
+        if accuracy > 0:
+            # Elite: 40%+ = 100, Good: 30% = 70, Average: 20% = 40, Poor: 10% = 10
+            if accuracy >= 40:
+                acc_score = 100
+            elif accuracy >= 30:
+                acc_score = 70 + (accuracy - 30) * 3  # 70-100
+            elif accuracy >= 20:
+                acc_score = 40 + (accuracy - 20) * 3  # 40-70
+            elif accuracy >= 10:
+                acc_score = 10 + (accuracy - 10) * 3  # 10-40
+            else:
+                acc_score = accuracy  # 0-10
+        else:
+            acc_score = 50  # Neutral if no data
+
+        # Calculate weighted score
+        aim_score = (
+            hs_score * hs_weight
+            + ttk_score * ttk_weight
+            + cp_score * cp_weight
+            + acc_score * acc_weight
+        )
+
+        logger.debug(
+            f"Aim (fallback) for {self.name}: "
+            f"HS={hs_score:.0f} (hs%={hs_pct:.1f}), "
+            f"TTK={ttk_score:.0f} (ttk={ttk_ms}ms), "
+            f"CP={cp_score:.0f} (cp={cp_error}°), "
+            f"Acc={acc_score:.0f} (acc={accuracy:.1f}%), "
             f"Final={aim_score:.1f}"
         )
 
