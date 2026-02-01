@@ -3828,7 +3828,7 @@
 
                 let html = `
                     <div style="margin-bottom: 24px;">
-                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${escapeHtml(teamName)}</h4>
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${esc(teamName)}</h4>
                         <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
                             <thead>
                                 <tr style="background: var(--bg-secondary);">
@@ -3860,7 +3860,7 @@
                             <td style="padding: 12px;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
                                     <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600;">${(p.name || 'U')[0].toUpperCase()}</div>
-                                    <span style="color: var(--text-primary);">${escapeHtml(p.name || 'Unknown')}</span>
+                                    <span style="color: var(--text-primary);">${esc(p.name || 'Unknown')}</span>
                                 </div>
                             </td>
                             <td style="text-align: center; padding: 12px; color: ${kastColor}; font-weight: 500;">${renderStar(stats.kast, best.kast)}${stats.kast.toFixed(1)}%</td>

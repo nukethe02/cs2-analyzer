@@ -87,21 +87,40 @@ app = FastAPI(
     version=__version__,
 )
 
-# Add CORS middleware for Hugging Face Spaces compatibility
-# Allows requests from any origin (needed for HF Spaces iframe embedding)
+# =============================================================================
+# CORS Configuration - Security hardened
+# =============================================================================
+# Allowed origins for CORS - restrict to known trusted domains
+ALLOWED_ORIGINS = [
+    "https://huggingface.co",
+    "https://*.huggingface.co",
+    "https://*.hf.space",
+    "http://localhost:7860",  # Local development
+    "http://localhost:3000",  # Local frontend dev
+    "http://127.0.0.1:7860",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.(huggingface\.co|hf\.space)",
+    allow_credentials=False,  # Disable credentials for cross-origin (more secure)
+    allow_methods=["GET", "POST"],  # Only methods we actually use
+    allow_headers=["Content-Type", "Accept"],  # Only headers we need
 )
 
 
 # Simple in-memory job store and sharecode cache for tests and lightweight usage
 import uuid
-from dataclasses import dataclass
+import time
+import threading
+from dataclasses import dataclass, field
 from enum import Enum
+
+# Job TTL configuration (seconds)
+JOB_TTL_SECONDS = 3600  # Jobs expire after 1 hour
+JOB_CLEANUP_INTERVAL = 300  # Run cleanup every 5 minutes
+MAX_JOBS = 100  # Maximum jobs to keep in memory
 
 
 class JobStatus(Enum):
@@ -120,24 +139,73 @@ class Job:
     progress: int = 0
     result: dict | None = None
     error: str | None = None
+    created_at: float = field(default_factory=time.time)
+
+    def is_expired(self, ttl_seconds: int = JOB_TTL_SECONDS) -> bool:
+        """Check if job has expired based on TTL."""
+        return time.time() - self.created_at > ttl_seconds
 
 
 class JobStore:
-    """In-memory job store for tracking analysis jobs."""
+    """In-memory job store for tracking analysis jobs with TTL cleanup."""
 
-    def __init__(self) -> None:
+    def __init__(self, ttl_seconds: int = JOB_TTL_SECONDS, max_jobs: int = MAX_JOBS) -> None:
         self._jobs: dict[str, Job] = {}
+        self._lock = threading.Lock()
+        self._ttl_seconds = ttl_seconds
+        self._max_jobs = max_jobs
+        self._start_cleanup_thread()
+
+    def _start_cleanup_thread(self) -> None:
+        """Start background thread for periodic job cleanup."""
+        def cleanup_loop():
+            while True:
+                time.sleep(JOB_CLEANUP_INTERVAL)
+                self._cleanup_expired_jobs()
+
+        thread = threading.Thread(target=cleanup_loop, daemon=True)
+        thread.start()
+
+    def _cleanup_expired_jobs(self) -> None:
+        """Remove expired jobs to prevent memory exhaustion."""
+        with self._lock:
+            expired_ids = [
+                jid for jid, job in self._jobs.items()
+                if job.is_expired(self._ttl_seconds)
+            ]
+            for jid in expired_ids:
+                del self._jobs[jid]
+            if expired_ids:
+                logger.info(f"Cleaned up {len(expired_ids)} expired jobs")
+
+    def _enforce_max_jobs(self) -> None:
+        """Remove oldest jobs if max limit exceeded."""
+        if len(self._jobs) >= self._max_jobs:
+            # Sort by created_at and remove oldest
+            sorted_jobs = sorted(self._jobs.items(), key=lambda x: x[1].created_at)
+            jobs_to_remove = len(self._jobs) - self._max_jobs + 1
+            for jid, _ in sorted_jobs[:jobs_to_remove]:
+                del self._jobs[jid]
+            logger.info(f"Removed {jobs_to_remove} oldest jobs (max limit reached)")
 
     def create_job(self, filename: str, size: int) -> Job:
         """Create a new job and return it."""
-        job_id = str(uuid.uuid4())
-        job = Job(job_id=job_id, filename=filename, size=size)
-        self._jobs[job_id] = job
-        return job
+        with self._lock:
+            self._enforce_max_jobs()
+            job_id = str(uuid.uuid4())
+            job = Job(job_id=job_id, filename=filename, size=size)
+            self._jobs[job_id] = job
+            return job
 
     def get_job(self, job_id: str) -> Job | None:
         """Get a job by ID."""
-        return self._jobs.get(job_id)
+        with self._lock:
+            job = self._jobs.get(job_id)
+            # Don't return expired jobs
+            if job and job.is_expired(self._ttl_seconds):
+                del self._jobs[job_id]
+                return None
+            return job
 
     def update_job(
         self,
@@ -148,26 +216,34 @@ class JobStore:
         error: str | None = None,
     ) -> None:
         """Update job fields."""
-        job = self._jobs.get(job_id)
-        if job:
-            if status is not None:
-                job.status = status.value
-            if progress is not None:
-                job.progress = progress
-            if result is not None:
-                job.result = result
-            if error is not None:
-                job.error = error
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job:
+                if status is not None:
+                    job.status = status.value
+                if progress is not None:
+                    job.progress = progress
+                if result is not None:
+                    job.result = result
+                if error is not None:
+                    job.error = error
 
     def set_status(self, job_id: str, status: JobStatus) -> None:
         """Set job status."""
-        job = self._jobs.get(job_id)
-        if job:
-            job.status = status.value
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job:
+                job.status = status.value
 
     def list_jobs(self) -> list[Job]:
-        """List all jobs."""
-        return list(self._jobs.values())
+        """List all non-expired jobs."""
+        with self._lock:
+            # Filter out expired jobs
+            valid_jobs = [
+                job for job in self._jobs.values()
+                if not job.is_expired(self._ttl_seconds)
+            ]
+            return valid_jobs
 
 
 # Global job store
@@ -581,32 +657,69 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next) -> Response:
-    """Add security headers to all responses."""
+    """Add comprehensive security headers to all responses."""
     response = await call_next(request)
+
+    # =============================================================================
+    # HSTS - Enforce HTTPS (1 year, include subdomains)
+    # =============================================================================
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    # =============================================================================
+    # Content Security Policy - Comprehensive protection
+    # =============================================================================
+    csp_directives = [
+        "default-src 'self'",
+        # Scripts: self + inline (needed for embedded JS) + HF CDN
+        "script-src 'self' 'unsafe-inline' https://*.huggingface.co",
+        # Styles: self + inline (needed for dynamic styles)
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        # Fonts
+        "font-src 'self' https://fonts.gstatic.com data:",
+        # Images: self + data URIs (for canvas) + blob (for generated content)
+        "img-src 'self' data: blob: https:",
+        # Connect: API endpoints
+        "connect-src 'self' https://*.huggingface.co https://*.hf.space",
+        # Frame ancestors: HF Spaces embedding
+        "frame-ancestors 'self' https://*.huggingface.co https://huggingface.co https://*.hf.space",
+        # Object/embed: none (security)
+        "object-src 'none'",
+        # Base URI: self only
+        "base-uri 'self'",
+        # Form action: self only
+        "form-action 'self'",
+    ]
+    response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+
+    # =============================================================================
+    # Other Security Headers
+    # =============================================================================
     # Prevent MIME type sniffing
     response.headers["X-Content-Type-Options"] = "nosniff"
-    # Allow framing by Hugging Face Spaces (required for HF embedding)
-    # Using Content-Security-Policy frame-ancestors instead of X-Frame-Options
-    # as it's more flexible and the modern standard
-    response.headers["Content-Security-Policy"] = (
-        "frame-ancestors 'self' https://*.huggingface.co https://huggingface.co https://*.hf.space"
-    )
     # XSS protection for older browsers
     response.headers["X-XSS-Protection"] = "1; mode=block"
     # Referrer policy - send origin only for cross-origin requests
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     # Permissions policy - disable unnecessary features
     response.headers["Permissions-Policy"] = (
-        "accelerometer=(), camera=(), geolocation=(), microphone=()"
+        "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=()"
     )
+    # Prevent caching of sensitive responses
+    if "/api/" in request.url.path:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+
     return response
 
 
 # =============================================================================
-# Rate Limiting
+# Rate Limiting (REQUIRED for security)
 # =============================================================================
+import os
 
-# Try to import slowapi; if unavailable, create a no-op limiter
+# Check if we're in production (HF Spaces sets SPACE_ID env var)
+IS_PRODUCTION = os.getenv("SPACE_ID") is not None or os.getenv("PRODUCTION") == "true"
+
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
@@ -616,19 +729,30 @@ try:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     RATE_LIMITING_ENABLED = True
-except ImportError:
-    # slowapi not installed - rate limiting disabled
-    RATE_LIMITING_ENABLED = False
-    limiter = None
-    logger.warning("slowapi not installed - rate limiting disabled")
+    logger.info("Rate limiting enabled")
+except ImportError as e:
+    if IS_PRODUCTION:
+        # CRITICAL: Rate limiting is required in production
+        raise RuntimeError(
+            "SECURITY ERROR: slowapi is required for rate limiting in production. "
+            "Install with: pip install slowapi"
+        ) from e
+    else:
+        # Development mode - warn but continue
+        RATE_LIMITING_ENABLED = False
+        limiter = None
+        logger.warning(
+            "⚠️  SECURITY WARNING: slowapi not installed - rate limiting DISABLED. "
+            "This is acceptable for development but MUST be enabled in production."
+        )
 
 
 def rate_limit(limit_string: str):
-    """Decorator for rate limiting. No-op if slowapi not available."""
+    """Decorator for rate limiting. No-op if slowapi not available (dev only)."""
     if RATE_LIMITING_ENABLED and limiter:
         return limiter.limit(limit_string)
 
-    # Return identity decorator if rate limiting disabled
+    # Return identity decorator if rate limiting disabled (dev mode only)
     def identity(func):
         return func
 
