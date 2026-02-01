@@ -40,6 +40,9 @@ sqlalchemy>=2.0.0
 # Note: These use only Python standard library for core functionality
 # but optional integrations may require additional packages
 
+# AI Coaching - Anthropic Claude for LLM-powered match insights
+anthropic>=0.77.0
+
 # Optional: Speech-to-text for sentiment analysis (install separately if needed)
 # openai-whisper>=20231117
 # azure-cognitiveservices-speech>=1.35.0

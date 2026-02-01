@@ -19,6 +19,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -682,17 +683,7 @@ class CachedAnalyzer:
 
         # Build round timeline
         round_timeline = self._build_round_timeline(demo_data, analysis)
-
-        # DEBUG: Log timeline details
-        logger.info(f"[DEBUG] round_timeline length: {len(round_timeline)}")
-        if round_timeline:
-            sample_round = round_timeline[0]
-            logger.info(f"[DEBUG] Sample round keys: {list(sample_round.keys())}")
-            logger.info(f"[DEBUG] Sample round events count: {len(sample_round.get('events', []))}")
-            # Log first 3 rounds' event counts
-            for _i, r in enumerate(round_timeline[:3]):
-                events = r.get("events", [])
-                logger.info(f"[DEBUG] Round {r.get('round_num')}: {len(events)} events")
+        logger.debug(f"Built round timeline with {len(round_timeline)} rounds")
 
         # Build kill matrix
         kill_matrix = self._build_kill_matrix(demo_data)
@@ -847,6 +838,24 @@ class CachedAnalyzer:
             from opensight.analysis.analytics import calculate_win_probability
         except ImportError:
             calculate_win_probability = None
+
+        # Import Economy IQ analysis
+        try:
+            from opensight.domains.economy import EconomyAnalyzer
+
+            economy_analyzer = EconomyAnalyzer(demo_data)
+            economy_stats = economy_analyzer.analyze()
+            # Build lookup: round_num -> {team: TeamRoundEconomy}
+            economy_by_round: dict[int, dict[int, Any]] = {}
+            for team, team_rounds in economy_stats.team_economies.items():
+                for tr in team_rounds:
+                    if tr.round_num not in economy_by_round:
+                        economy_by_round[tr.round_num] = {}
+                    economy_by_round[tr.round_num][team] = tr
+            logger.debug(f"Economy IQ loaded for {len(economy_by_round)} rounds")
+        except Exception as e:
+            logger.debug(f"Economy analysis not available: {e}")
+            economy_by_round = {}
 
         timeline = []
         kills = getattr(demo_data, "kills", [])
@@ -1064,6 +1073,26 @@ class CachedAnalyzer:
                             event["ct_prob"] = prob_by_tick[tick]["ct_prob"]
                             event["t_prob"] = prob_by_tick[tick]["t_prob"]
 
+            # Build Economy IQ data for this round
+            economy_iq = None
+            if round_num in economy_by_round:
+                round_econ = economy_by_round[round_num]
+                economy_iq = {}
+                for team_id, team_name in [(2, "t"), (3, "ct")]:
+                    if team_id in round_econ:
+                        tr = round_econ[team_id]
+                        economy_iq[team_name] = {
+                            "loss_bonus": tr.loss_bonus,
+                            "consecutive_losses": tr.consecutive_losses,
+                            "equipment": tr.total_equipment,
+                            "buy_type": tr.buy_type.value,
+                            "decision_flag": tr.decision_flag,
+                            "decision_grade": tr.decision_grade,
+                            "loss_bonus_next": tr.loss_bonus_next,
+                            "is_bad_force": tr.is_bad_force,
+                            "is_good_force": tr.is_good_force,
+                        }
+
             timeline.append(
                 {
                     "round_num": round_num,
@@ -1076,6 +1105,7 @@ class CachedAnalyzer:
                     "t_kills": stats["t_kills"],
                     "events": events,
                     "momentum": momentum,
+                    "economy": economy_iq,
                 }
             )
 
@@ -1685,6 +1715,260 @@ class CachedAnalyzer:
 
         return [{"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()]
 
+    def _collect_dry_peek_events(self, demo_data, player_names: dict) -> dict:
+        """Collect dry peek events with utility support data for visualization.
+
+        Identifies opening duels (first kills of each round) and checks if they
+        were supported by teammate utility (flash/smoke within 3s and 2000 units).
+
+        Returns dict with:
+        - events: List of entry events with positions and support info
+        - summary: Aggregate statistics
+        - constants: Support detection parameters
+        """
+        import math
+
+        kills = getattr(demo_data, "kills", [])
+        grenades = getattr(demo_data, "grenades", [])
+
+        # Constants matching analytics.py _is_utility_supported()
+        TICK_RATE = 64
+        SUPPORT_WINDOW_TICKS = int(3.0 * TICK_RATE)  # 192 ticks = 3 seconds
+        SUPPORT_DISTANCE = 2000.0  # Game units
+
+        # Group kills by round to find first kills
+        round_kills: dict[int, list] = {}
+        for kill in kills:
+            round_num = getattr(kill, "round_num", 0)
+            if round_num not in round_kills:
+                round_kills[round_num] = []
+            round_kills[round_num].append(kill)
+
+        # Sort each round's kills by tick to find first kill
+        for round_num in round_kills:
+            round_kills[round_num].sort(key=lambda k: getattr(k, "tick", 0))
+
+        # Build grenade lookup for faster access
+        grenade_by_round: dict[int, list] = {}
+        for grenade in grenades:
+            g_round = getattr(grenade, "round_num", 0)
+            if g_round not in grenade_by_round:
+                grenade_by_round[g_round] = []
+            grenade_by_round[g_round].append(grenade)
+
+        events = []
+        summary_by_player: dict[int, dict] = {}
+
+        for round_num, kills_list in round_kills.items():
+            if not kills_list:
+                continue
+
+            # First kill is the opening duel
+            first_kill = kills_list[0]
+            kill_tick = getattr(first_kill, "tick", 0)
+
+            # Get attacker (entry fragger) info
+            attacker_id = getattr(first_kill, "attacker_steamid", 0)
+            attacker_name = player_names.get(
+                attacker_id, getattr(first_kill, "attacker_name", "Unknown")
+            )
+            attacker_side = getattr(first_kill, "attacker_side", "") or ""
+            attacker_team = "CT" if "CT" in attacker_side.upper() else "T"
+
+            # Get victim (entry death) info
+            victim_id = getattr(first_kill, "victim_steamid", 0)
+            victim_name = player_names.get(victim_id, getattr(first_kill, "victim_name", "Unknown"))
+            victim_side = getattr(first_kill, "victim_side", "") or ""
+            victim_team = "CT" if "CT" in victim_side.upper() else "T"
+
+            # Get positions
+            attacker_x = getattr(first_kill, "attacker_x", None)
+            attacker_y = getattr(first_kill, "attacker_y", None)
+            attacker_z = getattr(first_kill, "attacker_z", None) or 0
+            victim_x = getattr(first_kill, "victim_x", None)
+            victim_y = getattr(first_kill, "victim_y", None)
+            victim_z = getattr(first_kill, "victim_z", None) or 0
+
+            weapon = getattr(first_kill, "weapon", "unknown")
+
+            # Find supporting utilities for the attacker
+            def find_support_utilities(
+                pos_x: float | None,
+                pos_y: float | None,
+                pos_z: float,
+                team: str,
+            ) -> list[dict]:
+                """Find flashes/smokes that supported this engagement."""
+                if pos_x is None or pos_y is None:
+                    return []
+
+                support = []
+                round_grenades = grenade_by_round.get(round_num, [])
+
+                for grenade in round_grenades:
+                    # Only count flashes and smokes as support
+                    g_type = getattr(grenade, "grenade_type", "").lower()
+                    if "flash" not in g_type and "smoke" not in g_type:
+                        continue
+
+                    # Only detonations
+                    if getattr(grenade, "event_type", "") != "detonate":
+                        continue
+
+                    # Same team (teammate utility)
+                    g_side = getattr(grenade, "player_side", "") or ""
+                    g_team = "CT" if "CT" in g_side.upper() else "T"
+                    if g_team != team:
+                        continue
+
+                    # Need position
+                    g_x = getattr(grenade, "x", None)
+                    g_y = getattr(grenade, "y", None)
+                    if g_x is None or g_y is None:
+                        continue
+
+                    # Temporal: detonated within 3s BEFORE the kill
+                    g_tick = getattr(grenade, "tick", 0)
+                    tick_diff = kill_tick - g_tick
+                    if tick_diff < 0 or tick_diff > SUPPORT_WINDOW_TICKS:
+                        continue
+
+                    # Spatial: within 2000 units
+                    g_z = getattr(grenade, "z", 0) or 0
+                    dx = pos_x - g_x
+                    dy = pos_y - g_y
+                    dz = pos_z - g_z
+                    distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+
+                    if distance <= SUPPORT_DISTANCE:
+                        thrower_id = getattr(grenade, "player_steamid", 0)
+                        support.append(
+                            {
+                                "type": "flashbang" if "flash" in g_type else "smoke",
+                                "x": g_x,
+                                "y": g_y,
+                                "z": g_z,
+                                "tick": g_tick,
+                                "thrower_steamid": thrower_id,
+                                "thrower_name": player_names.get(
+                                    thrower_id,
+                                    getattr(grenade, "player_name", "Unknown"),
+                                ),
+                                "time_before_ms": int(tick_diff * 1000 / TICK_RATE),
+                                "distance": round(distance, 1),
+                            }
+                        )
+
+                return support
+
+            # Check support for attacker (entry fragger)
+            attacker_support = find_support_utilities(
+                attacker_x, attacker_y, attacker_z, attacker_team
+            )
+            attacker_is_supported = len(attacker_support) > 0
+
+            # Record entry kill event (attacker perspective)
+            if attacker_x is not None and attacker_y is not None:
+                events.append(
+                    {
+                        "id": f"r{round_num}_entry_kill",
+                        "event_type": "entry_kill",
+                        "x": attacker_x,
+                        "y": attacker_y,
+                        "z": attacker_z,
+                        "is_supported": attacker_is_supported,
+                        "player_steamid": attacker_id,
+                        "player_name": attacker_name,
+                        "side": attacker_team,
+                        "round_num": round_num,
+                        "tick": kill_tick,
+                        "weapon": weapon,
+                        "support_utilities": attacker_support,
+                    }
+                )
+
+                # Update summary for attacker
+                if attacker_id not in summary_by_player:
+                    summary_by_player[attacker_id] = {
+                        "name": attacker_name,
+                        "supported": 0,
+                        "unsupported": 0,
+                    }
+                if attacker_is_supported:
+                    summary_by_player[attacker_id]["supported"] += 1
+                else:
+                    summary_by_player[attacker_id]["unsupported"] += 1
+
+            # Check support for victim (entry death)
+            victim_support = find_support_utilities(victim_x, victim_y, victim_z, victim_team)
+            victim_is_supported = len(victim_support) > 0
+
+            # Record entry death event (victim perspective)
+            if victim_x is not None and victim_y is not None:
+                events.append(
+                    {
+                        "id": f"r{round_num}_entry_death",
+                        "event_type": "entry_death",
+                        "x": victim_x,
+                        "y": victim_y,
+                        "z": victim_z,
+                        "is_supported": victim_is_supported,
+                        "player_steamid": victim_id,
+                        "player_name": victim_name,
+                        "side": victim_team,
+                        "round_num": round_num,
+                        "tick": kill_tick,
+                        "weapon": weapon,
+                        "support_utilities": victim_support,
+                    }
+                )
+
+                # Update summary for victim
+                if victim_id not in summary_by_player:
+                    summary_by_player[victim_id] = {
+                        "name": victim_name,
+                        "supported": 0,
+                        "unsupported": 0,
+                    }
+                # Victim deaths count towards their dry peek stats
+                if victim_is_supported:
+                    summary_by_player[victim_id]["supported"] += 1
+                else:
+                    summary_by_player[victim_id]["unsupported"] += 1
+
+        # Calculate summary statistics
+        total_entries = len([e for e in events if e["event_type"] == "entry_kill"])
+        supported_entries = len(
+            [e for e in events if e["event_type"] == "entry_kill" and e["is_supported"]]
+        )
+        dry_peek_entries = total_entries - supported_entries
+
+        # Calculate per-player dry peek rates
+        by_player = {}
+        for steam_id, data in summary_by_player.items():
+            total = data["supported"] + data["unsupported"]
+            by_player[str(steam_id)] = {
+                "name": data["name"],
+                "supported": data["supported"],
+                "unsupported": data["unsupported"],
+                "dry_peek_rate": round(data["unsupported"] / max(total, 1) * 100, 1),
+            }
+
+        return {
+            "events": events,
+            "summary": {
+                "total_entries": total_entries,
+                "supported_entries": supported_entries,
+                "dry_peek_entries": dry_peek_entries,
+                "dry_peek_rate": round(dry_peek_entries / max(total_entries, 1) * 100, 1),
+                "by_player": by_player,
+            },
+            "constants": {
+                "support_radius_units": int(SUPPORT_DISTANCE),
+                "support_window_seconds": 3.0,
+            },
+        }
+
     def _build_heatmap_data(self, demo_data) -> dict:
         """Build comprehensive position data for heatmap visualization.
 
@@ -1724,7 +2008,7 @@ class CachedAnalyzer:
                 map_name: str, x: float, y: float, z: float | None = None
             ) -> str:
                 _ = map_name, x, y, z  # Unused in fallback
-                return "Unknown"
+                return "World"  # Consistent fallback instead of "Unknown"
 
             def classify_round_economy(equipment_value: int, is_pistol_round: bool) -> str:
                 _ = equipment_value, is_pistol_round  # Unused in fallback
@@ -1777,7 +2061,8 @@ class CachedAnalyzer:
             ay = getattr(kill, "attacker_y", None)
             if ax is not None and ay is not None:
                 az = getattr(kill, "attacker_z", 0) or 0
-                zone = get_zone_for_position(map_name, ax, ay, az) if has_zones else "Unknown"
+                # Always call zone detection - it handles unsupported maps with "World" fallback
+                zone = get_zone_for_position(map_name, ax, ay, az)
                 kill_positions.append(
                     {
                         "x": ax,
@@ -1817,7 +2102,8 @@ class CachedAnalyzer:
             if vx is not None and vy is not None:
                 vz = getattr(kill, "victim_z", 0) or 0
                 victim_side = getattr(kill, "victim_side", "") or ""
-                zone = get_zone_for_position(map_name, vx, vy, vz) if has_zones else "Unknown"
+                # Always call zone detection - it handles unsupported maps with "World" fallback
+                zone = get_zone_for_position(map_name, vx, vy, vz)
                 death_positions.append(
                     {
                         "x": vx,
@@ -1861,12 +2147,16 @@ class CachedAnalyzer:
             except Exception:
                 pass
 
+        # Collect dry peek visualization data
+        dry_peek_data = self._collect_dry_peek_events(demo_data, player_names)
+
         return {
             "map_name": map_name,
             "kill_positions": kill_positions,
             "death_positions": death_positions,
             "zone_stats": zone_stats,
             "zone_definitions": zone_definitions,
+            "dry_peek_data": dry_peek_data,
         }
 
     def _generate_coaching_insights(self, demo_data, analysis, players: dict) -> list[dict]:
@@ -2384,6 +2674,7 @@ class CachedAnalyzer:
                         "clutch_pct": round(clutches.get("clutch_success_pct", 0), 0),
                     },
                     "insights": insights[:8],  # Top 8 insights per player
+                    "ai_summary": player.get("ai_summary", ""),  # LLM-generated summary
                 }
             )
 

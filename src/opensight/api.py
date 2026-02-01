@@ -27,6 +27,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
+from opensight.ai.llm_client import generate_match_summary
+
 __version__ = "0.3.0"
 
 # Security constants
@@ -858,17 +860,9 @@ async def analyze_demo(request: Request, file: UploadFile = File(...)):
 
                     result = analyze_with_cache(demo_path)
 
-                    # DEBUG: Log timeline data before storing result
+                    # Log timeline summary at debug level
                     timeline = result.get("round_timeline", [])
-                    logger.info(f"[DEBUG] API: round_timeline has {len(timeline)} rounds")
-                    if timeline:
-                        total_events = sum(len(r.get("events", [])) for r in timeline)
-                        logger.info(f"[DEBUG] API: Total events across all rounds: {total_events}")
-                        for _i, r in enumerate(timeline[:3]):
-                            events = r.get("events", [])
-                            logger.info(
-                                f"[DEBUG] API: Round {r.get('round_num')}: {len(events)} events"
-                            )
+                    logger.debug(f"Analysis complete: {len(timeline)} rounds in timeline")
 
                     j = job_store.get_job(jid)
                     if j:
@@ -939,13 +933,48 @@ async def download_job_result(job_id: str):
     if job.status != JobStatus.COMPLETED.value:
         raise HTTPException(status_code=400, detail="Job not completed")
 
-    # DEBUG: Log what we're sending to frontend
     result = job.result or {}
-    timeline = result.get("round_timeline", [])
-    logger.info(f"[DEBUG] Download endpoint: Sending {len(timeline)} rounds in timeline")
-    if timeline:
-        total_events = sum(len(r.get("events", [])) for r in timeline)
-        logger.info(f"[DEBUG] Download endpoint: Total events: {total_events}")
+    logger.debug(f"Returning analysis result for job {job_id}")
+
+    # --- AI COACHING INTEGRATION ---
+    # Generate AI-powered match summary for the top player
+    players = result.get("players", [])
+    if players and len(players) > 0:
+        try:
+            # Pick the MVP (first player in sorted list = highest rating)
+            hero_player = players[0] if isinstance(players, list) else list(players.values())[0]
+
+            # Extract stats for the AI summary
+            player_stats = {
+                "kills": hero_player.get("kills", 0),
+                "deaths": hero_player.get("deaths", 0),
+                "assists": hero_player.get("assists", 0),
+                "hltv_rating": hero_player.get("rating", {}).get("hltv_rating", 0.0),
+                "adr": hero_player.get("adr", 0.0),
+                "headshot_pct": hero_player.get("headshot_pct", 0.0),
+                "kast_percentage": hero_player.get("kast_percentage", 0.0),
+                "ttd_median_ms": hero_player.get("aim_stats", {}).get("time_to_damage_ms", 0),
+                "cp_median_error_deg": hero_player.get("aim_stats", {}).get(
+                    "crosshair_placement_deg", 0.0
+                ),
+                "entry_kills": hero_player.get("opening_duels", {}).get("wins", 0),
+                "entry_deaths": hero_player.get("opening_duels", {}).get("losses", 0),
+                "trade_kill_success": hero_player.get("trades", {}).get("trade_kill_success", 0),
+                "trade_kill_opportunities": hero_player.get("trades", {}).get(
+                    "trade_kill_opportunities", 0
+                ),
+                "clutch_wins": hero_player.get("clutches", {}).get("wins", 0),
+                "clutch_attempts": hero_player.get("clutches", {}).get("attempts", 0),
+            }
+
+            # Call Anthropic Claude for AI coaching insights
+            ai_insight_text = generate_match_summary(player_stats)
+            result["ai_summary"] = ai_insight_text
+            logger.info(f"AI summary generated for job {job_id}")
+
+        except Exception as e:
+            logger.warning(f"AI coaching unavailable: {e}")
+            result["ai_summary"] = "Tactical Analysis unavailable (Check ANTHROPIC_API_KEY)."
 
     return JSONResponse(content=result)
 

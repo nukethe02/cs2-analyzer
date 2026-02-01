@@ -313,3 +313,133 @@ uvicorn opensight.api:app --port 8000
 | `Dockerfile` | Multi-stage build for HF Spaces |
 | `README.md` | HF Spaces frontmatter + public docs |
 | `CLAUDE.md` | This file - AI assistant instructions |
+
+---
+
+## Workflow Best Practices (Boris Cherny Method)
+
+### Custom Skills Available
+
+Use these slash commands for common tasks:
+
+| Command | Description |
+|---------|-------------|
+| `/run-tests` | Run test suite with proper PYTHONPATH |
+| `/format` | Format + lint with ruff |
+| `/commit` | Create conventional commit |
+| `/pr` | Create pull request |
+| `/grill-me` | Ruthless self-review before PR |
+| `/prove-it-works` | Verify changes with evidence |
+| `/techdebt` | Scan for technical debt |
+| `/plan-architect` | Staff engineer planning mode |
+| `/plan-review` | Second opinion on plans |
+| `/plan-reset` | Scrap and implement elegant solution |
+| `/add-metric` | Guide for adding new metrics |
+| `/add-endpoint` | Guide for adding API endpoints |
+| `/fix-ci` | Diagnose and fix CI failures |
+| `/security-audit` | OWASP Top 10 security review |
+| `/deploy-hf` | Deploy to HuggingFace Spaces |
+| `/check-logs` | Debug deployment issues |
+| `/learn-mistake` | Capture lessons in CLAUDE.md |
+
+### For Complex Tasks
+
+1. Start with `/plan-architect` - pour energy into the plan
+2. Run `/plan-review` to get second opinion
+3. Only then implement - should be a 1-shot
+
+### Before Every PR
+
+1. `/grill-me` - critical self-review
+2. `/prove-it-works` - verify behavior with evidence
+3. Only create PR when both pass
+
+### After Every Mistake
+
+End corrections with: "Update CLAUDE.md so you don't make that mistake again"
+Use `/learn-mistake` skill to capture the lesson.
+
+### Daily Routine
+
+- **Start**: Check worktrees, pick focus area
+- **During**: Use skills, not raw commands
+- **End**: `/techdebt` to find accumulated debt
+
+### Parallel Development
+
+Use 3-5 git worktrees for independent tracks:
+```powershell
+.\scripts\worktree-setup.ps1
+```
+
+Creates:
+- `ai-coaching` - LLM features
+- `api-endpoints` - Backend work
+- `ui-frontend` - Visualization
+- `bugfix-hotfix` - Quick fixes
+- `performance` - Optimization
+
+Each worktree = separate Claude session. Never block feature work with bugfixes.
+
+---
+
+## Lessons Learned (Auto-Updated)
+
+### Demo Parsing Pitfalls
+- [ ] ALWAYS use `safe_int()`, `safe_float()`, `safe_str()` from `core/utils.py`
+- [ ] Demo files can have NaN positions - check before calculations
+- [ ] Tick rates vary: 64 (MM), 128 (FACEIT) - use TICK_RATE constant
+
+### API Development
+- [ ] Rate limit decorator MUST come BEFORE @app.route
+- [ ] Security headers in `security_headers_middleware()` - test with `test_api.py::TestSecurityHeaders`
+- [ ] Every endpoint change needs `test_api.py` update
+
+### Testing on Windows
+- [ ] Use `set PYTHONPATH=src` not `export PYTHONPATH=src`
+- [ ] Pytest needs `-v --tb=short` for readable output
+
+### Common Mistakes
+<!-- Claude: Add new lessons here when you make mistakes via /learn-mistake -->
+
+---
+
+## Module-Specific Gotchas
+
+### api.py (80KB - handle with care)
+- Changes often need test_api.py updates
+- Rate limiting decorator order matters
+- Security headers tested in TestSecurityHeaders
+- Known debug artifacts at lines 861-870, 942-948
+
+### analytics.py (7,882 lines)
+- Uses safe_* accessors throughout
+- Metric changes cascade to PlayerMatchStats
+- Multiple import guards for optional modules
+
+### ai/coaching.py
+- Requires OPENAI_API_KEY environment variable
+- `_recalculate_stats_from_kill_matrix()` now implemented for stale data recovery
+
+### cli.py
+- All metrics display functions now implemented (utility, trade, opening duels)
+- Uses Rich library for formatted output
+
+---
+
+## Known Technical Debt
+
+### TODOs
+All major TODOs resolved as of 2026-02-01:
+- ~~`cli.py:425` - Implement utility metrics display~~ DONE
+- ~~`cli.py:432` - Implement trade metrics display~~ DONE
+- ~~`cli.py:439` - Implement opening duel metrics display~~ DONE
+- ~~`ai/coaching.py:886` - Implement recalculate_stats()~~ DONE
+
+### Debug Artifacts
+Cleaned up as of 2026-02-01:
+- ~~`api.py:861-870` - Timeline debug logging~~ Converted to logger.debug()
+- ~~`api.py:942-948` - Download endpoint debug logging~~ Converted to logger.debug()
+- ~~`cache.py:686-695` - Round timeline debug logging~~ Converted to logger.debug()
+
+Use `/techdebt` to scan for new technical debt.

@@ -7,11 +7,14 @@ Uses reinforcement learning to prioritize the most impactful mistakes for each u
 
 import hashlib
 import json
+import logging
 import math
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Player Profile Enums and Types
@@ -850,8 +853,51 @@ class AdaptiveCoach:
         }
         return templates
 
+    def _recalculate_stats_from_kill_matrix(
+        self, kill_matrix: list[Any], player_name: str
+    ) -> dict[str, Any]:
+        """
+        Recalculate basic player stats from kill matrix when primary stats are stale.
+
+        Args:
+            kill_matrix: List of KillMatrixEntry objects (attacker_name, victim_name, count)
+            player_name: The player's name to extract stats for
+
+        Returns:
+            Dictionary with recalculated kills and deaths
+        """
+        kills = 0
+        deaths = 0
+
+        for entry in kill_matrix:
+            # Handle both dataclass objects and dicts
+            if hasattr(entry, "attacker_name"):
+                attacker = entry.attacker_name
+                victim = entry.victim_name
+                count = entry.count
+            else:
+                attacker = entry.get("attacker_name", "")
+                victim = entry.get("victim_name", "")
+                count = entry.get("count", 0)
+
+            if attacker == player_name:
+                kills += count
+            if victim == player_name:
+                deaths += count
+
+        logger.info(
+            f"[AI COACH] Recalculated stats from kill_matrix for {player_name}: {kills}K/{deaths}D"
+        )
+
+        return {"kills": kills, "deaths": deaths}
+
     def generate_insights(
-        self, player_stats: dict[str, Any], steamid: str, map_name: str = ""
+        self,
+        player_stats: dict[str, Any],
+        steamid: str,
+        map_name: str = "",
+        kill_matrix: list[Any] | None = None,
+        player_name: str | None = None,
     ) -> list[CoachingInsight]:
         """
         Generate personalized coaching insights for a player.
@@ -860,10 +906,42 @@ class AdaptiveCoach:
             player_stats: Statistics from demo analysis
             steamid: Player's Steam ID
             map_name: Optional map name for map-specific tips
+            kill_matrix: Optional kill matrix for recalculating stats if stale
+            player_name: Player name (required if kill_matrix provided)
 
         Returns:
             List of prioritized coaching insights
         """
+        # Log player_stats immediately upon entry for debugging
+        logger.info(
+            f"[AI COACH] Generating insights for {steamid} - "
+            f"kills={player_stats.get('kills', 'MISSING')}, "
+            f"deaths={player_stats.get('deaths', 'MISSING')}, "
+            f"rounds={player_stats.get('rounds_played', 'MISSING')}, "
+            f"adr={player_stats.get('adr', 'MISSING')}"
+        )
+
+        # Guard against zero-kill hallucination - if kills is 0 or missing, try recalculation
+        kills = player_stats.get("kills", 0)
+        if kills == 0:
+            # Try to recalculate from kill_matrix if available
+            if kill_matrix and player_name:
+                recalc = self._recalculate_stats_from_kill_matrix(kill_matrix, player_name)
+                if recalc["kills"] > 0:
+                    logger.info(
+                        f"[AI COACH] Using recalculated stats: {recalc['kills']}K/{recalc['deaths']}D"
+                    )
+                    player_stats = {**player_stats, **recalc}
+                    kills = recalc["kills"]
+
+            # If still no kills after recalculation attempt, bail
+            if kills == 0:
+                logger.warning(
+                    f"[AI COACH] Player {steamid} has 0 kills - cannot generate insights. "
+                    f"This indicates stale/incomplete data. Returning empty insights."
+                )
+                return []
+
         profile = self.get_profile(steamid)
         rank_tier = get_rank_tier(profile.rank)
 
@@ -1371,6 +1449,8 @@ def generate_coaching_insights(
     map_name: str = "",
     rank: PlayerRank | None = None,
     role: PlayerRole | None = None,
+    kill_matrix: list[Any] | None = None,
+    player_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Convenience function to generate coaching insights.
@@ -1381,6 +1461,8 @@ def generate_coaching_insights(
         map_name: Optional map name
         rank: Optional rank (will be fetched from profile if not provided)
         role: Optional role (will be fetched from profile if not provided)
+        kill_matrix: Optional kill matrix for recalculating stats if stale
+        player_name: Player name (required if kill_matrix provided)
 
     Returns:
         List of insight dictionaries
@@ -1391,7 +1473,9 @@ def generate_coaching_insights(
     if rank or role:
         coach.update_profile(steamid, rank=rank, role=role)
 
-    insights = coach.generate_insights(player_stats, steamid, map_name)
+    insights = coach.generate_insights(
+        player_stats, steamid, map_name, kill_matrix=kill_matrix, player_name=player_name
+    )
     return [i.to_dict() for i in insights]
 
 

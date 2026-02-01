@@ -89,7 +89,7 @@ except ImportError:
 # Note: safe_int, safe_str, safe_float are imported from opensight.core.parser
 
 
-def compute_kill_positions(match_data) -> list[dict]:
+def compute_kill_positions(match_data: DemoData) -> list[dict]:
     """
     Compute kill positions for Kill Map visualization.
 
@@ -2648,7 +2648,7 @@ class DemoAnalyzer:
             # Fallback to direct comparison
             return df[df[col] == steam_id]
 
-    def _normalize_team(self, value: Any) -> str:
+    def _normalize_team(self, value: str | int | float | None) -> str:
         """Normalize team/side values to 'CT' or 'T' for consistent comparison.
 
         Handles various formats from demo data:
@@ -4258,7 +4258,7 @@ class DemoAnalyzer:
         logger.debug(f"Damage columns available: {list(damages_df.columns)}")
 
         # Find the right column names
-        def find_col(df, options):
+        def find_col(df: pd.DataFrame, options: list[str]) -> str | None:
             for col in options:
                 if col in df.columns:
                     return col

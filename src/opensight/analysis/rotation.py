@@ -650,7 +650,7 @@ class CTRotationAnalyzer:
 
             ct_row = ct_data.iloc[0]
             x, y, z = ct_row.get("X", 0), ct_row.get("Y", 0), ct_row.get("Z", 0)
-            starting_zone = self._get_zone(self.map_name, x, y, z) or "Unknown"
+            starting_zone = self._get_zone(self.map_name, x, y, z) or "World"
 
             # Skip if already at contact site (they're the anchor)
             if self._is_zone_at_site(starting_zone, contact.site):
@@ -731,12 +731,12 @@ class CTRotationAnalyzer:
                     row.get("Y", 0),
                     row.get("Z", 0),
                 )
-                rotation.death_zone = death_zone or "Unknown"
+                rotation.death_zone = death_zone or "World"
                 break
 
             # Get current position and zone
             x, y, z = row.get("X", 0), row.get("Y", 0), row.get("Z", 0)
-            zone = self._get_zone(self.map_name, x, y, z) or "Unknown"
+            zone = self._get_zone(self.map_name, x, y, z) or "World"
 
             # Calculate velocity
             vx = row.get("velocity_X", row.get("velocity_x", 0)) or 0

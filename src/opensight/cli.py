@@ -422,22 +422,102 @@ def _display_economy_metrics(data, steam_id: int | None, metrics_funcs: dict) ->
 
 def _display_utility_metrics(data, steam_id: int | None, metrics_funcs: dict) -> None:
     """Display utility usage metrics table."""
-    # TODO: Implement utility metrics display
-    console.print("[yellow]Utility metrics not yet implemented[/yellow]")
+    calculate_utility_metrics = metrics_funcs["calculate_utility_metrics"]
+    util_results = calculate_utility_metrics(data, steam_id)
+
+    if not util_results:
+        console.print("[yellow]No utility metrics available[/yellow]")
+        return
+
+    table = Table(title="Utility Usage")
+    table.add_column("Player", style="cyan")
+    table.add_column("Total", justify="right")
+    table.add_column("Smokes", justify="right")
+    table.add_column("Flashes", justify="right")
+    table.add_column("HE", justify="right")
+    table.add_column("Molotov", justify="right")
+    table.add_column("Damage", justify="right")
+    table.add_column("Efficiency", justify="right")
+
+    for _sid, util in sorted(util_results.items(), key=lambda x: x[1].utility_damage, reverse=True):
+        table.add_row(
+            util.player_name,
+            str(util.total_grenades_used),
+            str(util.smokes_thrown),
+            str(util.flashes_thrown),
+            str(util.he_grenades_thrown),
+            str(util.molotovs_thrown),
+            f"{util.utility_damage:.0f}",
+            f"{util.utility_efficiency:.1f}",
+        )
+
+    console.print(table)
     console.print()
 
 
 def _display_trade_metrics(data, steam_id: int | None, metrics_funcs: dict) -> None:
     """Display trade kill metrics table."""
-    # TODO: Implement trade metrics display
-    console.print("[yellow]Trade metrics not yet implemented[/yellow]")
+    calculate_trade_metrics = metrics_funcs["calculate_trade_metrics"]
+    trade_results = calculate_trade_metrics(data, steam_id)
+
+    if not trade_results:
+        console.print("[yellow]No trade metrics available[/yellow]")
+        return
+
+    table = Table(title="Trade Kill Analysis")
+    table.add_column("Player", style="cyan")
+    table.add_column("Trades", justify="right")
+    table.add_column("Deaths Traded", justify="right")
+    table.add_column("Success Rate", justify="right")
+    table.add_column("Avg Time", justify="right")
+
+    for _sid, trade in sorted(
+        trade_results.items(), key=lambda x: x[1].trades_completed, reverse=True
+    ):
+        table.add_row(
+            trade.player_name,
+            str(trade.trades_completed),
+            str(trade.deaths_traded),
+            f"{trade.trade_success_rate:.1f}%",
+            f"{trade.avg_trade_time_ms:.0f}ms",
+        )
+
+    console.print(table)
     console.print()
 
 
 def _display_opening_metrics(data, steam_id: int | None, metrics_funcs: dict) -> None:
     """Display opening duel metrics table."""
-    # TODO: Implement opening duel metrics display
-    console.print("[yellow]Opening duel metrics not yet implemented[/yellow]")
+    calculate_opening_metrics = metrics_funcs["calculate_opening_metrics"]
+    opening_results = calculate_opening_metrics(data, steam_id)
+
+    if not opening_results:
+        console.print("[yellow]No opening duel metrics available[/yellow]")
+        return
+
+    table = Table(title="Opening Duels (First Engagement)")
+    table.add_column("Player", style="cyan")
+    table.add_column("Kills", justify="right")
+    table.add_column("Deaths", justify="right")
+    table.add_column("Attempts", justify="right")
+    table.add_column("Success", justify="right")
+    table.add_column("Avg Time", justify="right")
+    table.add_column("Weapon", justify="right")
+
+    for _sid, opening in sorted(
+        opening_results.items(), key=lambda x: x[1].opening_success_rate, reverse=True
+    ):
+        table.add_row(
+            opening.player_name,
+            str(opening.opening_kills),
+            str(opening.opening_deaths),
+            str(opening.opening_attempts),
+            f"{opening.opening_success_rate:.1f}%",
+            f"{opening.avg_opening_time_ms:.0f}ms",
+            opening.opening_weapon,
+        )
+
+    console.print(table)
     console.print()
 
 

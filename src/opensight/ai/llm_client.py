@@ -1,7 +1,7 @@
 """
 LLM Client for AI Coaching Summaries
 
-Integrates OpenAI API (or compatible endpoints) to generate
+Integrates Anthropic API (Claude 3.5 Sonnet) to generate
 personalized match analysis and coaching insights.
 """
 
@@ -14,52 +14,47 @@ logger = logging.getLogger(__name__)
 
 class LLMClient:
     """
-    Client for interacting with LLM APIs (OpenAI-compatible).
+    Client for interacting with Anthropic Claude API.
 
     Supports:
-    - OpenAI API
-    - Azure OpenAI
-    - Local OpenAI-compatible endpoints (LM Studio, Ollama, etc.)
+    - Anthropic Claude 3.5 Sonnet (default)
+    - Other Claude models via model parameter
     """
 
     def __init__(
         self,
         api_key: str | None = None,
-        base_url: str | None = None,
-        model: str = "gpt-4o-mini",
+        model: str = "claude-sonnet-4-20250514",
         timeout: int = 30,
     ):
         """
         Initialize LLM client.
 
         Args:
-            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
-            base_url: Custom API base URL (for Azure, local LLMs, etc.)
-            model: Model to use (default: gpt-4o-mini for cost efficiency)
+            api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+            model: Model to use (default: claude-sonnet-4-20250514)
             timeout: Request timeout in seconds
         """
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
-        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        self.model = model or os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
         self.timeout = timeout
 
-        # Lazy import to avoid requiring openai if not used
+        # Lazy import to avoid requiring anthropic if not used
         self._client = None
 
     def _get_client(self):
-        """Lazy initialization of OpenAI client."""
+        """Lazy initialization of Anthropic client."""
         if self._client is None:
             try:
-                from openai import OpenAI
+                import anthropic
 
-                self._client = OpenAI(
+                self._client = anthropic.Anthropic(
                     api_key=self.api_key,
-                    base_url=self.base_url,
                     timeout=self.timeout,
                 )
             except ImportError as e:
                 raise ImportError(
-                    "OpenAI library not installed. Install with: pip install openai"
+                    "Anthropic library not installed. Install with: pip install anthropic"
                 ) from e
 
         return self._client
@@ -93,7 +88,7 @@ class LLMClient:
         """
         if not self.api_key:
             raise ValueError(
-                "OPENAI_API_KEY not configured. Set environment variable or pass api_key to constructor."
+                "ANTHROPIC_API_KEY not configured. Set environment variable or pass api_key to constructor."
             )
 
         # Extract key stats with safe fallbacks
@@ -157,7 +152,7 @@ Never hallucinate stats - only reference the exact numbers provided."""
 
 **Advanced Metrics:**
 - Time to Damage (TTD): {ttd:.0f}ms
-- Crosshair Placement: {cp:.1f}° error
+- Crosshair Placement: {cp:.1f} error
 - Entry Kills: {entry_kills} | Entry Deaths: {entry_deaths}
 - Trade Kill Success: {trade_success} / {trade_opps} opportunities
 - Clutches Won: {clutch_wins} / {clutch_attempts} attempts
@@ -178,17 +173,16 @@ Format in markdown. Be harsh but fair. Keep it under 200 words."""
                 f"Generating LLM summary for player with {kills}K/{deaths}D, Rating={rating:.2f}"
             )
 
-            response = client.chat.completions.create(
+            message = client.messages.create(
                 model=self.model,
+                max_tokens=400,
+                system=system_prompt,
                 messages=[
-                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_tokens=400,
-                temperature=0.7,
             )
 
-            summary = response.choices[0].message.content
+            summary = message.content[0].text
             logger.info(f"LLM summary generated successfully ({len(summary)} chars)")
             return summary
 
@@ -204,7 +198,7 @@ Unable to generate personalized insights (Error: {type(e).__name__}).
 - HLTV Rating: {rating:.2f}
 - ADR: {adr:.1f}
 
-Please check your OPENAI_API_KEY configuration or try again later."""
+Please check your ANTHROPIC_API_KEY configuration or try again later."""
 
 
 # Singleton instance for reuse

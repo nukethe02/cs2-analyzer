@@ -652,8 +652,7 @@ def _expand_mid_and_outside_zones() -> None:
                     )
 
 
-# Apply zone expansion at module load time
-_expand_mid_and_outside_zones()
+# Zone expansion is applied after all helper functions are defined (see below)
 
 
 def _point_in_polygon(x: float, y: float, polygon: list[list[float]]) -> bool:
@@ -742,6 +741,10 @@ def _expand_polygon(polygon: list[list[float]], scale_factor: float = 1.2) -> li
         expanded.append([new_x, new_y])
 
     return expanded
+
+
+# Apply zone expansion at module load time (after all helper functions are defined)
+_expand_mid_and_outside_zones()
 
 
 # Maximum distance (in game units) to assign a point to the nearest zone

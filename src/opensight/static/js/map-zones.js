@@ -173,9 +173,25 @@ class MapZones {
         this.mapName = '';
         this.zoneDefs = {};
 
+        // Dry Peek Mode state
+        this.dryPeekMode = false;
+        this.dryPeekData = null;
+        this.selectedEntry = null;
+        this.hoveredEntry = null;
+        this.showSupportRadius = true;
+        this.dryPeekFilter = 'all'; // 'all', 'dry', 'supported'
+
         // Canvas refs
         this.canvas = null;
         this.ctx = null;
+    }
+
+    /**
+     * Set dry peek visualization data
+     * @param {Object} dryPeekData - Data from backend with events, summary, constants
+     */
+    setDryPeekData(dryPeekData) {
+        this.dryPeekData = dryPeekData;
     }
 
     /**
@@ -223,6 +239,9 @@ class MapZones {
 
                     <!-- Filter Controls -->
                     ${this._renderFilters(players)}
+
+                    <!-- Dry Peek Mode Controls -->
+                    ${this.dryPeekData ? this._renderDryPeekControls() : ''}
 
                     <!-- Canvas Container -->
                     <div class="map-zones-canvas-container">
@@ -446,6 +465,9 @@ class MapZones {
             this.canvas.addEventListener('click', (e) => this._handleCanvasClick(e));
             this.canvas.addEventListener('mousemove', (e) => this._handleCanvasHover(e));
         }
+
+        // Dry peek mode listeners
+        this._setupDryPeekListeners();
     }
 
     /**
@@ -551,9 +573,9 @@ class MapZones {
             this._drawZones(zoneStats);
         }
 
-        // Draw deaths first (below kills)
+        // Draw deaths first (below kills) - only when not in dry peek mode
         const showDeaths = document.getElementById('show-deaths')?.checked ?? true;
-        if (showDeaths) {
+        if (showDeaths && !this.dryPeekMode) {
             for (const pos of deaths) {
                 if (pos.x == null || pos.y == null) continue;
                 const canvasPos = this._gameToCanvas(pos.x, pos.y);
@@ -561,14 +583,19 @@ class MapZones {
             }
         }
 
-        // Draw kills on top
+        // Draw kills on top (only when not in dry peek mode)
         const showKills = document.getElementById('show-kills')?.checked ?? true;
-        if (showKills) {
+        if (showKills && !this.dryPeekMode) {
             for (const pos of kills) {
                 if (pos.x == null || pos.y == null) continue;
                 const canvasPos = this._gameToCanvas(pos.x, pos.y);
                 this._drawMarker(canvasPos.x, canvasPos.y, 'kill', pos);
             }
+        }
+
+        // Draw dry peek overlay (when in dry peek mode)
+        if (this.dryPeekMode) {
+            this._drawDryPeekOverlay();
         }
 
         // Update sidebar
@@ -691,13 +718,19 @@ class MapZones {
     }
 
     /**
-     * Update sidebar with zone statistics
+     * Update sidebar with zone statistics (or dry peek stats in dry peek mode)
      */
     _updateSidebar(stats) {
         const panel = document.getElementById('zone-stats-list');
         if (!panel) return;
 
-        const sortedZones = Object.entries(stats)
+        // In dry peek mode, show dry peek sidebar instead
+        if (this.dryPeekMode && this.dryPeekData) {
+            panel.innerHTML = this._renderDryPeekSidebar();
+            return;
+        }
+
+        const sortedZones = Object.entries(stats || {})
             .filter(([z, s]) => s.kills > 0 || s.deaths > 0)
             .sort((a, b) => b[1].kill_pct - a[1].kill_pct);
 
@@ -880,6 +913,464 @@ class MapZones {
     clearSelection() {
         this.selectedZone = null;
         this._draw();
+    }
+
+    // ============================================================================
+    // DRY PEEK VISUALIZATION METHODS
+    // ============================================================================
+
+    /**
+     * Convert game units to canvas pixels (for radius drawing)
+     */
+    _gameUnitsToPixels(units) {
+        const params = MAP_PARAMS[this.mapName] || { pos_x: -3000, pos_y: 3000, scale: 5.0 };
+        // units / scale gives radar pixels (1024x1024), then scale to canvas
+        return (units / params.scale) * (this.canvas.width / 1024);
+    }
+
+    /**
+     * Filter dry peek events based on current filter setting
+     */
+    _filterDryPeekEvents(events) {
+        if (!events) return [];
+
+        let filtered = events;
+
+        // Apply player filter if set
+        if (this.filters.player !== 'all') {
+            const steamId = this.filters.player;
+            filtered = filtered.filter(e => String(e.player_steamid) === String(steamId));
+        }
+
+        // Apply side filter
+        if (this.filters.side !== 'all') {
+            const side = this.filters.side.toUpperCase();
+            filtered = filtered.filter(e => e.side === side);
+        }
+
+        // Apply dry peek type filter
+        if (this.dryPeekFilter === 'dry') {
+            filtered = filtered.filter(e => !e.is_supported);
+        } else if (this.dryPeekFilter === 'supported') {
+            filtered = filtered.filter(e => e.is_supported);
+        }
+
+        return filtered;
+    }
+
+    /**
+     * Draw dry peek overlay (main entry point)
+     */
+    _drawDryPeekOverlay() {
+        if (!this.dryPeekMode || !this.dryPeekData?.events) return;
+
+        const events = this._filterDryPeekEvents(this.dryPeekData.events);
+
+        // Draw support radius for selected/hovered entry first (below markers)
+        for (const event of events) {
+            if (this.showSupportRadius && (this.selectedEntry === event.id || this.hoveredEntry === event.id)) {
+                this._drawSupportRadius(event);
+            }
+        }
+
+        // Draw all entry markers
+        for (const event of events) {
+            if (event.x == null || event.y == null) continue;
+            this._drawDryPeekMarker(event);
+        }
+    }
+
+    /**
+     * Draw support radius circle around an engagement
+     */
+    _drawSupportRadius(event) {
+        const ctx = this.ctx;
+        const pos = this._gameToCanvas(event.x, event.y);
+        const radiusPixels = this._gameUnitsToPixels(this.dryPeekData?.constants?.support_radius_units || 2000);
+
+        // Semi-transparent fill
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, radiusPixels, 0, Math.PI * 2);
+        ctx.fillStyle = event.is_supported
+            ? 'rgba(16, 185, 129, 0.12)'  // Green for supported
+            : 'rgba(239, 68, 68, 0.12)';   // Red for dry peek
+        ctx.fill();
+
+        // Dashed border
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = event.is_supported ? '#10b981' : '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw supporting utilities (flashes/smokes)
+        if (event.support_utilities?.length > 0) {
+            this._drawSupportUtilities(event.support_utilities, pos);
+        }
+    }
+
+    /**
+     * Draw flash/smoke positions that supported an engagement
+     */
+    _drawSupportUtilities(utilities, engagementPos) {
+        const ctx = this.ctx;
+
+        for (const util of utilities) {
+            if (util.x == null || util.y == null) continue;
+            const pos = this._gameToCanvas(util.x, util.y);
+
+            // Line connecting utility to engagement
+            ctx.beginPath();
+            ctx.strokeStyle = util.type === 'flashbang' ? 'rgba(254, 240, 138, 0.5)' : 'rgba(148, 163, 184, 0.5)';
+            ctx.setLineDash([3, 3]);
+            ctx.lineWidth = 1.5;
+            ctx.moveTo(pos.x, pos.y);
+            ctx.lineTo(engagementPos.x, engagementPos.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Utility marker
+            const color = util.type === 'flashbang' ? '#fef08a' : '#94a3b8';
+            const size = 7;
+
+            // Glow
+            const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, size * 2);
+            gradient.addColorStop(0, color);
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, size * 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Core
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Icon text
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 8px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(util.type === 'flashbang' ? 'F' : 'S', pos.x, pos.y);
+        }
+    }
+
+    /**
+     * Draw a dry peek entry marker
+     */
+    _drawDryPeekMarker(event) {
+        const ctx = this.ctx;
+        const pos = this._gameToCanvas(event.x, event.y);
+
+        const isKill = event.event_type === 'entry_kill';
+        const isDryPeek = !event.is_supported;
+        const isSelected = this.selectedEntry === event.id;
+        const isHovered = this.hoveredEntry === event.id;
+
+        // Color coding:
+        // - Green (#10b981): Supported entry kill (good play)
+        // - Orange (#f59e0b): Dry peek kill (risky but worked)
+        // - Red (#ef4444): Dry peek death (punished)
+        // - Blue (#3b82f6): Supported entry death (unlucky)
+        let color;
+        if (isKill && event.is_supported) color = '#10b981';      // Green
+        else if (isKill && isDryPeek) color = '#f59e0b';           // Orange
+        else if (!isKill && isDryPeek) color = '#ef4444';          // Red
+        else color = '#3b82f6';                                     // Blue
+
+        const radius = (isSelected || isHovered) ? 12 : 8;
+
+        // Glow effect
+        const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius * 2);
+        gradient.addColorStop(0, color);
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, radius * 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Core marker
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // White border for kills
+        if (isKill) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // Selection ring
+        if (isSelected || isHovered) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, radius + 4, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Store position for hit testing
+        event._canvasX = pos.x;
+        event._canvasY = pos.y;
+        event._radius = radius;
+    }
+
+    /**
+     * Render dry peek mode controls
+     */
+    _renderDryPeekControls() {
+        const summary = this.dryPeekData?.summary || {};
+        const dryPeekRate = summary.dry_peek_rate || 0;
+        const rateClass = dryPeekRate > 50 ? 'danger' : dryPeekRate > 30 ? 'warning' : 'success';
+
+        return `
+            <div class="dry-peek-controls">
+                <label class="toggle-label">
+                    <input type="checkbox" id="dry-peek-mode" ${this.dryPeekMode ? 'checked' : ''}>
+                    <span>Dry Peek Mode</span>
+                    ${this.dryPeekData ? `<span class="dry-peek-rate ${rateClass}">${dryPeekRate.toFixed(1)}%</span>` : ''}
+                </label>
+
+                <div class="dry-peek-filters" style="display: ${this.dryPeekMode ? 'block' : 'none'};">
+                    <div class="filter-group">
+                        <label>Show</label>
+                        <div class="btn-group" id="dry-peek-type-filter">
+                            <button class="filter-btn ${this.dryPeekFilter === 'all' ? 'active' : ''}" data-value="all">All Entries</button>
+                            <button class="filter-btn ${this.dryPeekFilter === 'dry' ? 'active' : ''}" data-value="dry">Dry Peeks</button>
+                            <button class="filter-btn ${this.dryPeekFilter === 'supported' ? 'active' : ''}" data-value="supported">Supported</button>
+                        </div>
+                    </div>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="show-support-radius" ${this.showSupportRadius ? 'checked' : ''}>
+                        <span>Show Support Radius on Hover</span>
+                    </label>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Render dry peek statistics sidebar section
+     */
+    _renderDryPeekSidebar() {
+        if (!this.dryPeekData?.summary || !this.dryPeekMode) return '';
+
+        const summary = this.dryPeekData.summary;
+        const byPlayer = Object.entries(summary.by_player || {})
+            .sort((a, b) => b[1].dry_peek_rate - a[1].dry_peek_rate);
+
+        const rateClass = summary.dry_peek_rate > 50 ? 'danger' : summary.dry_peek_rate > 30 ? 'warning' : 'success';
+
+        return `
+            <div class="dry-peek-sidebar">
+                <h4>Dry Peek Analysis</h4>
+                <div class="dry-peek-summary">
+                    <div class="stat-row">
+                        <span>Total Entries</span>
+                        <span>${summary.total_entries}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Supported</span>
+                        <span class="success">${summary.supported_entries}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Dry Peeks</span>
+                        <span class="danger">${summary.dry_peek_entries}</span>
+                    </div>
+                    <div class="stat-row highlight">
+                        <span>Dry Peek Rate</span>
+                        <span class="${rateClass}">${summary.dry_peek_rate.toFixed(1)}%</span>
+                    </div>
+                </div>
+
+                <h5>By Player</h5>
+                <div class="player-dry-peek-list">
+                    ${byPlayer.map(([steamId, data]) => `
+                        <div class="player-dry-peek" data-steamid="${steamId}">
+                            <span class="player-name">${this._escapeHtml(data.name)}</span>
+                            <span class="dry-peek-rate ${data.dry_peek_rate > 50 ? 'danger' : ''}">
+                                ${data.dry_peek_rate.toFixed(1)}%
+                            </span>
+                            <span class="entry-counts">
+                                ${data.supported}/${data.supported + data.unsupported}
+                            </span>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="dry-peek-legend">
+                    <div class="legend-item">
+                        <span class="legend-marker supported-kill"></span>
+                        <span>Supported Kill</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-marker dry-peek-kill"></span>
+                        <span>Dry Peek Kill</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-marker dry-peek-death"></span>
+                        <span>Dry Peek Death</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-marker supported-death"></span>
+                        <span>Supported Death</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Setup dry peek event listeners
+     */
+    _setupDryPeekListeners() {
+        // Dry peek mode toggle
+        const dryPeekToggle = document.getElementById('dry-peek-mode');
+        if (dryPeekToggle) {
+            dryPeekToggle.addEventListener('change', (e) => {
+                this.dryPeekMode = e.target.checked;
+                const filters = document.querySelector('.dry-peek-filters');
+                if (filters) filters.style.display = this.dryPeekMode ? 'block' : 'none';
+                this._draw();
+                this._updateSidebar();
+            });
+        }
+
+        // Support radius toggle
+        const radiusToggle = document.getElementById('show-support-radius');
+        if (radiusToggle) {
+            radiusToggle.addEventListener('change', (e) => {
+                this.showSupportRadius = e.target.checked;
+                this._draw();
+            });
+        }
+
+        // Dry peek type filter buttons
+        const typeFilter = document.getElementById('dry-peek-type-filter');
+        if (typeFilter) {
+            typeFilter.addEventListener('click', (e) => {
+                const btn = e.target.closest('.filter-btn');
+                if (!btn) return;
+                typeFilter.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.dryPeekFilter = btn.dataset.value;
+                this._draw();
+            });
+        }
+
+        // Canvas hover for dry peek markers
+        if (this.canvas) {
+            this.canvas.addEventListener('mousemove', (e) => {
+                if (!this.dryPeekMode || !this.dryPeekData?.events) return;
+
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                // Find hovered entry
+                let foundEntry = null;
+                for (const event of this.dryPeekData.events) {
+                    if (event._canvasX == null) continue;
+                    const dx = x - event._canvasX;
+                    const dy = y - event._canvasY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist <= (event._radius || 8) + 5) {
+                        foundEntry = event.id;
+                        break;
+                    }
+                }
+
+                if (this.hoveredEntry !== foundEntry) {
+                    this.hoveredEntry = foundEntry;
+                    this._draw();
+
+                    // Show tooltip
+                    if (foundEntry) {
+                        const event = this.dryPeekData.events.find(e => e.id === foundEntry);
+                        if (event) {
+                            this._showDryPeekTooltip(e, event);
+                        }
+                    } else {
+                        this._hideTooltip();
+                    }
+                }
+            });
+
+            // Canvas click to select entry
+            this.canvas.addEventListener('click', (e) => {
+                if (!this.dryPeekMode || !this.dryPeekData?.events) return;
+
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                // Find clicked entry
+                for (const event of this.dryPeekData.events) {
+                    if (event._canvasX == null) continue;
+                    const dx = x - event._canvasX;
+                    const dy = y - event._canvasY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist <= (event._radius || 8) + 5) {
+                        this.selectedEntry = this.selectedEntry === event.id ? null : event.id;
+                        this._draw();
+                        return;
+                    }
+                }
+
+                // Click on empty space clears selection
+                this.selectedEntry = null;
+                this._draw();
+            });
+        }
+    }
+
+    /**
+     * Show tooltip for a dry peek event
+     */
+    _showDryPeekTooltip(mouseEvent, event) {
+        const tooltip = document.getElementById('map-zones-tooltip');
+        if (!tooltip) return;
+
+        const statusIcon = event.is_supported ? '✓' : '✗';
+        const statusText = event.is_supported ? 'Supported' : 'Dry Peek';
+        const statusClass = event.is_supported ? 'success' : 'danger';
+        const eventType = event.event_type === 'entry_kill' ? 'Entry Kill' : 'Entry Death';
+
+        let supportInfo = '';
+        if (event.is_supported && event.support_utilities?.length > 0) {
+            const utils = event.support_utilities.map(u =>
+                `${u.type === 'flashbang' ? 'Flash' : 'Smoke'} by ${u.thrower_name} (${u.time_before_ms}ms before)`
+            ).join('<br>');
+            supportInfo = `<div class="tooltip-support"><strong>Support:</strong><br>${utils}</div>`;
+        }
+
+        tooltip.innerHTML = `
+            <div class="dry-peek-tooltip">
+                <div class="tooltip-header">
+                    <span class="tooltip-player">${this._escapeHtml(event.player_name)}</span>
+                    <span class="tooltip-round">Round ${event.round_num}</span>
+                </div>
+                <div class="tooltip-type">${eventType} (${event.weapon})</div>
+                <div class="tooltip-status ${statusClass}">${statusIcon} ${statusText}</div>
+                ${supportInfo}
+            </div>
+        `;
+
+        tooltip.style.display = 'block';
+        tooltip.style.left = `${mouseEvent.clientX - this.canvas.getBoundingClientRect().left + 15}px`;
+        tooltip.style.top = `${mouseEvent.clientY - this.canvas.getBoundingClientRect().top + 15}px`;
+    }
+
+    /**
+     * Hide tooltip
+     */
+    _hideTooltip() {
+        const tooltip = document.getElementById('map-zones-tooltip');
+        if (tooltip) tooltip.style.display = 'none';
     }
 }
 
