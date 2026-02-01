@@ -428,7 +428,9 @@ class SynergyAnalyzer:
                         round_winners[rnum] = winner
 
         # Group kills by round
-        kills_by_round: dict[int, pd.DataFrame] = dict(tuple(kills_df.groupby(round_col)))
+        kills_by_round: dict[int, pd.DataFrame] = {
+            int(k): v for k, v in kills_df.groupby(round_col)
+        }
 
         # Get all rounds
         all_rounds = sorted(kills_by_round.keys())

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Secure Password Hashing (bcrypt with fallback)
 # =============================================================================
 try:
-    import bcrypt
+    import bcrypt  # type: ignore[import-not-found]
 
     BCRYPT_AVAILABLE = True
 except ImportError:

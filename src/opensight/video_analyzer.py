@@ -49,7 +49,7 @@ def _check_cv2_available() -> bool:
     global _CV2_AVAILABLE
     if _CV2_AVAILABLE is None:
         try:
-            import cv2 as _  # noqa: F401
+            import cv2  # type: ignore[import-not-found] as _  # noqa: F401  # type: ignore[import-not-found]
 
             _CV2_AVAILABLE = True
         except ImportError:
@@ -62,7 +62,7 @@ def _check_sklearn_available() -> bool:
     global _SKLEARN_AVAILABLE
     if _SKLEARN_AVAILABLE is None:
         try:
-            import sklearn as _  # noqa: F401
+            import sklearn as _  # noqa: F401  # type: ignore[import-not-found]
 
             _SKLEARN_AVAILABLE = True
         except ImportError:
@@ -333,7 +333,7 @@ class CrosshairTracker:
         self, roi: np.ndarray, target_color: tuple[int, int, int]
     ) -> tuple[tuple[int, int] | None, float]:
         """Detect crosshair by color matching."""
-        import cv2
+        import cv2  # type: ignore[import-not-found]
 
         # Create color mask with tolerance
         tolerance = 40
@@ -374,7 +374,7 @@ class CrosshairTracker:
 
     def _detect_by_edges(self, roi: np.ndarray) -> tuple[tuple[int, int] | None, float]:
         """Detect crosshair using edge detection (for outline crosshairs)."""
-        import cv2
+        import cv2  # type: ignore[import-not-found]
 
         # Convert to grayscale
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
@@ -492,7 +492,7 @@ class ActionDetector:
         if not _check_cv2_available():
             return None
 
-        import cv2
+        import cv2  # type: ignore[import-not-found]
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -966,7 +966,7 @@ class VideoAnalyzer:
                 "Install with: pip install opencv-python-headless"
             )
 
-        import cv2
+        import cv2  # type: ignore[import-not-found]
 
         cap = cv2.VideoCapture(str(self.video_path))
         if not cap.isOpened():
@@ -1009,7 +1009,7 @@ class VideoAnalyzer:
         """
         self._initialize()
 
-        import cv2
+        import cv2  # type: ignore[import-not-found]
 
         logger.info(f"Starting video analysis: {self.video_path}")
         start_time = time.time()
@@ -1250,7 +1250,7 @@ def get_video_info(video_path: str | Path) -> dict[str, Any]:
     if not _check_cv2_available():
         raise ImportError("OpenCV required. Install with: pip install opencv-python-headless")
 
-    import cv2
+    import cv2  # type: ignore[import-not-found]
 
     path = Path(video_path)
     if not path.exists():

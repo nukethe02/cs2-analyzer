@@ -733,21 +733,20 @@ import os
 # Check if we're in production (HF Spaces sets SPACE_ID env var)
 IS_PRODUCTION = os.getenv("SPACE_ID") is not None or os.getenv("PRODUCTION") == "true"
 
-# Allow disabling rate limiting via environment variable (for development/testing)
-# Set DISABLE_RATE_LIMITING=true to disable
-RATE_LIMITING_DISABLED = os.getenv("DISABLE_RATE_LIMITING", "").lower() == "true"
+# Rate limiting is DISABLED by default for development
+# Set ENABLE_RATE_LIMITING=true to enable (automatically enabled in production)
+RATE_LIMITING_DISABLED = os.getenv("ENABLE_RATE_LIMITING", "").lower() != "true"
 
 # Configurable rate limits via environment variables
 RATE_LIMIT_UPLOAD = os.getenv("RATE_LIMIT_UPLOAD", "30/minute")  # Default: 30 uploads/min
 RATE_LIMIT_REPLAY = os.getenv("RATE_LIMIT_REPLAY", "60/minute")  # Default: 60 replays/min
 RATE_LIMIT_API = os.getenv("RATE_LIMIT_API", "120/minute")  # Default: 120 API calls/min
 
-if RATE_LIMITING_DISABLED:
+if RATE_LIMITING_DISABLED and not IS_PRODUCTION:
     RATE_LIMITING_ENABLED = False
     limiter = None
-    logger.warning(
-        "⚠️  Rate limiting DISABLED via DISABLE_RATE_LIMITING env var. "
-        "This should only be used for development/testing."
+    logger.info(
+        "Rate limiting disabled (development mode). Set ENABLE_RATE_LIMITING=true to enable."
     )
 else:
     try:

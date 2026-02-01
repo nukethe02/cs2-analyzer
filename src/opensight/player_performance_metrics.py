@@ -15,7 +15,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from opensight.parser import MatchData
+from opensight.core.parser import MatchData
 
 # =============================================================================
 # Distance Classifications (CS2 units, approximately)

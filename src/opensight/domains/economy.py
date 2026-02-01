@@ -797,8 +797,8 @@ class EconomyAnalyzer:
             from opensight.core.parser import is_pistol_round
         except ImportError:
             # Fallback if import fails
-            def is_pistol_round(rn: int, rph: int = 12) -> bool:
-                return rn == 1 or rn == rph + 1
+            def is_pistol_round(round_num: int, rounds_per_half: int = 12) -> bool:
+                return round_num == 1 or round_num == rounds_per_half + 1
 
         # Detect MR format: MR12 has max 24 regulation rounds, MR15 has max 30
         num_rounds = self.data.num_rounds
@@ -939,8 +939,8 @@ class EconomyAnalyzer:
             from opensight.core.parser import is_pistol_round
         except ImportError:
 
-            def is_pistol_round(rn: int, rph: int = 12) -> bool:
-                return rn == 1 or rn == rph + 1
+            def is_pistol_round(round_num: int, rounds_per_half: int = 12) -> bool:
+                return round_num == 1 or round_num == rounds_per_half + 1
 
         # Detect MR format
         num_rounds = self.data.num_rounds

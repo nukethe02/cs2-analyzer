@@ -503,3 +503,7 @@ def analyze_directory_parallel(
     """
     analyzer = ParallelDemoAnalyzer(workers=workers)
     return analyzer.analyze_directory(directory, recursive=recursive)
+
+
+# Alias for backward compatibility
+analyze_batch = analyze_demos_parallel

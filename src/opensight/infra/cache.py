@@ -2214,8 +2214,8 @@ class CachedAnalyzer:
             from opensight.core.parser import is_pistol_round as check_pistol
         except ImportError:
             # Simple fallback if import fails
-            def check_pistol(rn: int, rph: int = 12) -> bool:
-                return rn == 1 or rn == rph + 1
+            def check_pistol(round_num: int, rounds_per_half: int = 12) -> bool:
+                return round_num == 1 or round_num == rounds_per_half + 1
 
         # Detect MR format from total rounds
         total_rounds = len(rounds)

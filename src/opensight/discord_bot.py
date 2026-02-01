@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 # Check for discord.py availability
 try:
-    import discord
-    from discord.ext import commands
+    import discord  # type: ignore[import-not-found]
+    from discord.ext import commands  # type: ignore[import-not-found]
 
     DISCORD_AVAILABLE = True
 except ImportError:
@@ -39,7 +39,7 @@ except ImportError:
     logger.warning("discord.py not installed. Install with: pip install discord.py")
 
 try:
-    import aiohttp
+    import aiohttp  # type: ignore[import-not-found]
 
     AIOHTTP_AVAILABLE = True
 except ImportError:

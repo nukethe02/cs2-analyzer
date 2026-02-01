@@ -11,11 +11,92 @@ Features:
 - Export to multiple formats (JSON, CSV, Excel, HTML)
 """
 
+from typing import TYPE_CHECKING
+
 __version__ = "0.3.0"
 __author__ = "OpenSight Contributors"
 
+# Type stubs for pyright - actual imports are lazy via __getattr__
+if TYPE_CHECKING:
+    from opensight.ai.coaching import AdaptiveCoach, generate_coaching_insights  # noqa: F401
+    from opensight.ai.custom_metrics import CustomMetricBuilder, create_custom_metric  # noqa: F401
+    from opensight.ai.opponent import OpponentModeler, get_scouting_report  # noqa: F401
+    from opensight.ai.patterns import PatternAggregator, analyze_demo_patterns  # noqa: F401
+    from opensight.ai.playbook import PlaybookGenerator, analyze_team_demo  # noqa: F401
+    from opensight.ai.realtime import RealtimeCoachingSession, create_coaching_session  # noqa: F401
+    from opensight.ai.sentiment import CommunicationAnalyzer, analyze_team_morale  # noqa: F401
+    from opensight.analysis.analytics import (  # noqa: F401
+        DemoAnalyzer,
+        UtilityMetrics,
+        compute_utility_metrics,
+    )
+    from opensight.analysis.game_state import (  # noqa: F401
+        GameState,
+        GameStateTracker,
+        track_game_state,
+    )
+    from opensight.analysis.metrics import (  # noqa: F401
+        calculate_crosshair_placement,
+        calculate_ttd,
+    )
+    from opensight.analysis.player_behavior import (  # noqa: F401
+        PlayerBehaviorAnalyzer,
+        PlayerBehaviorProfile,
+        analyze_player_behavior,
+    )
+    from opensight.core.parser import DemoData, DemoParser  # noqa: F401
+    from opensight.domains.combat import CombatAnalyzer, analyze_combat  # noqa: F401
+    from opensight.domains.economy import BuyType, EconomyAnalyzer, analyze_economy  # noqa: F401
+    from opensight.domains.utility import UtilityAnalyzer, analyze_utility  # noqa: F401
+    from opensight.infra.backend import (  # noqa: F401
+        BackendConfig,
+        DataFrameBackend,
+        PandasBackend,
+        PolarsBackend,
+        PolarsLazyBackend,
+        benchmark_backends,
+        convert_dataframe,
+        get_backend,
+        get_backend_config,
+        is_polars_available,
+        load_dataframe,
+        save_dataframe,
+        set_backend_config,
+    )
+    from opensight.infra.cache import CachedAnalyzer, DemoCache  # noqa: F401
+    from opensight.infra.parallel import ParallelDemoAnalyzer, analyze_batch  # noqa: F401
+    from opensight.infra.profiling import (  # noqa: F401
+        Profiler,
+        SlowJobLogger,
+        TimingCollector,
+        create_timing_context,
+        stage_timer,
+    )
+    from opensight.infra.watcher import ReplayWatcher  # noqa: F401
+    from opensight.integrations.collaboration import (  # noqa: F401
+        CollaborationManager,
+        create_collaboration_session,
+    )
+    from opensight.integrations.faceit import (  # noqa: F401
+        FACEITClient,
+        get_faceit_match_history,
+        get_faceit_player,
+    )
+    from opensight.integrations.feedback import FeedbackDatabase  # noqa: F401
+    from opensight.integrations.hltv import HLTVClient, MatchEnricher  # noqa: F401
+    from opensight.integrations.sharecode import (  # noqa: F401
+        ShareCodeInfo,
+        decode_sharecode,
+        encode_sharecode,
+    )
+    from opensight.visualization.radar import (  # noqa: F401
+        CoordinateTransformer,
+        RadarDataGenerator,
+    )
+    from opensight.visualization.replay import ReplayGenerator  # noqa: F401
 
-def __getattr__(name):
+
+def __getattr__(name: str):
     """Lazy import for heavy dependencies."""
     # Share code
     if name == "decode_sharecode":
