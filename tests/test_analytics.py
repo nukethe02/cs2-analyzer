@@ -8,10 +8,13 @@ import pandas as pd
 import pytest
 
 from opensight.analysis.analytics import (
+    AnalysisValidator,
     CrosshairPlacementResult,
     DemoAnalyzer,
     EngagementResult,
     PlayerAnalytics,
+    PlayerMatchStats,
+    ValidationResult,
     analyze_demo,
     safe_float,
 )
@@ -1132,3 +1135,174 @@ class TestPlayerMatchStatsAimProperties:
         assert aim_stats.total_kills_for_cs == 10
         assert aim_stats.total_kills == 10
         assert aim_stats.headshot_kills == 4
+
+
+class TestValidationResult:
+    """Tests for ValidationResult dataclass."""
+
+    def test_valid_result_is_truthy(self):
+        """Valid result should evaluate to True."""
+        result = ValidationResult(is_valid=True)
+        assert result
+        assert bool(result) is True
+
+    def test_invalid_result_is_falsy(self):
+        """Invalid result should evaluate to False."""
+        result = ValidationResult(is_valid=False, errors=["Some error"])
+        assert not result
+        assert bool(result) is False
+
+
+class TestAnalysisValidator:
+    """Tests for the AnalysisValidator class."""
+
+    def test_empty_players_is_invalid(self):
+        """Empty players dict should return invalid result."""
+        validator = AnalysisValidator()
+        result = validator.validate({}, 30)
+        assert not result.is_valid
+        assert "No players" in result.errors[0]
+
+    def test_valid_players_is_valid(self):
+        """Normal players should pass validation."""
+        validator = AnalysisValidator()
+        players = {
+            1: PlayerMatchStats(
+                steam_id=1,
+                name="Player1",
+                team="CT",
+                kills=10,
+                deaths=8,
+                assists=5,
+                headshots=4,
+                total_damage=2000,
+                rounds_played=30,
+            ),
+            2: PlayerMatchStats(
+                steam_id=2,
+                name="Player2",
+                team="T",
+                kills=8,
+                deaths=10,
+                assists=3,
+                headshots=3,
+                total_damage=1800,
+                rounds_played=30,
+            ),
+        }
+        result = validator.validate(players, 30)
+        assert result.is_valid
+        assert len(result.errors) == 0
+
+    def test_negative_kills_is_error(self):
+        """Negative kills should be flagged as error."""
+        validator = AnalysisValidator()
+        players = {
+            1: PlayerMatchStats(
+                steam_id=1,
+                name="BadPlayer",
+                team="CT",
+                kills=-5,
+                deaths=10,
+                assists=0,
+                headshots=0,
+                total_damage=0,
+                rounds_played=30,
+            ),
+        }
+        result = validator.validate(players, 30)
+        assert not result.is_valid
+        assert any("Negative kills" in e for e in result.errors)
+
+    def test_negative_deaths_is_error(self):
+        """Negative deaths should be flagged as error."""
+        validator = AnalysisValidator()
+        players = {
+            1: PlayerMatchStats(
+                steam_id=1,
+                name="BadPlayer",
+                team="CT",
+                kills=10,
+                deaths=-5,
+                assists=0,
+                headshots=0,
+                total_damage=0,
+                rounds_played=30,
+            ),
+        }
+        result = validator.validate(players, 30)
+        assert not result.is_valid
+        assert any("Negative deaths" in e for e in result.errors)
+
+    def test_negative_rounds_survived_is_error(self):
+        """More deaths than rounds played should be flagged."""
+        validator = AnalysisValidator()
+        players = {
+            1: PlayerMatchStats(
+                steam_id=1,
+                name="BadPlayer",
+                team="CT",
+                kills=5,
+                deaths=35,
+                assists=0,
+                headshots=0,
+                total_damage=0,
+                rounds_played=30,  # 30 - 35 = -5 survived
+            ),
+        }
+        result = validator.validate(players, 30)
+        assert not result.is_valid
+        assert any("Negative rounds survived" in e for e in result.errors)
+
+    def test_kill_death_imbalance_is_warning(self):
+        """Significant kill/death imbalance should be a warning."""
+        validator = AnalysisValidator()
+        # 20 kills but only 10 deaths - big imbalance
+        players = {
+            1: PlayerMatchStats(
+                steam_id=1,
+                name="Player1",
+                team="CT",
+                kills=20,
+                deaths=5,
+                assists=0,
+                headshots=0,
+                total_damage=0,
+                rounds_played=30,
+            ),
+            2: PlayerMatchStats(
+                steam_id=2,
+                name="Player2",
+                team="T",
+                kills=0,
+                deaths=5,
+                assists=0,
+                headshots=0,
+                total_damage=0,
+                rounds_played=30,
+            ),
+        }
+        result = validator.validate(players, 30)
+        # Should be valid (imbalance is a warning, not error)
+        assert result.is_valid
+        assert any("imbalance" in w.lower() for w in result.warnings)
+
+    def test_few_players_is_warning(self):
+        """Less than 10 players should be a warning."""
+        validator = AnalysisValidator()
+        players = {
+            1: PlayerMatchStats(
+                steam_id=1,
+                name="Player1",
+                team="CT",
+                kills=10,
+                deaths=10,
+                assists=0,
+                headshots=0,
+                total_damage=0,
+                rounds_played=30,
+            ),
+        }
+        result = validator.validate(players, 30)
+        assert result.is_valid  # Valid but with warning
+        assert any("Less than 10 players" in w for w in result.warnings)
