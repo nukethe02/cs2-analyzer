@@ -2233,19 +2233,7 @@
             renderedSubTabs.clear();
             renderedSubTabs.add('general'); // General is rendered by default
 
-            // DEBUG: Log timeline data received from API
-            console.log('[DEBUG] renderResults called with data:', data);
             const timeline = data.round_timeline || [];
-            console.log('[DEBUG] round_timeline length:', timeline.length);
-            if (timeline.length > 0) {
-                console.log('[DEBUG] First round:', timeline[0]);
-                const totalEvents = timeline.reduce((sum, r) => sum + (r.events?.length || 0), 0);
-                console.log('[DEBUG] Total events across all rounds:', totalEvents);
-                // Log first 3 rounds in detail
-                timeline.slice(0, 3).forEach(r => {
-                    console.log(`[DEBUG] Round ${r.round_num}: ${r.events?.length || 0} events`, r.events);
-                });
-            }
 
             const info = data.demo_info || {};
             // Players is now a sorted array from backend (sorted by rating descending)
@@ -3722,7 +3710,6 @@
             const hasGraphData = timelineGraph && timelineGraph.players && timelineGraph.players.length > 0;
 
             if (!hasGraphData) {
-                console.log('[DEBUG] renderTimeline: No timeline graph data');
                 return `
                     <div class="timeline-container">
                         <div class="empty-state">
@@ -3929,13 +3916,11 @@
 
         function initTimelineChart(timelineData) {
             if (!timelineData || !timelineData.players || timelineData.players.length === 0) {
-                console.log('[DEBUG] initTimelineChart: No data');
                 return;
             }
 
             const ctx = document.getElementById('timeline-chart');
             if (!ctx) {
-                console.log('[DEBUG] initTimelineChart: No canvas element');
                 return;
             }
 
@@ -6172,7 +6157,6 @@
         }
 
         // Keyboard shortcuts
-        const shortcutsPanel = document.getElementById('shortcuts-panel');
         const tabMapping = {
             '1': 'overview',
             '2': 'match-details',
@@ -6192,12 +6176,6 @@
             if (tabMapping[e.key]) {
                 e.preventDefault();
                 switchTab(tabMapping[e.key]);
-            }
-
-            // Toggle shortcuts panel with ?
-            if (e.key === '?') {
-                e.preventDefault();
-                shortcutsPanel.classList.toggle('show');
             }
 
             // Replay controls
