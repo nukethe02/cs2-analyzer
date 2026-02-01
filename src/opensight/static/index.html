@@ -3294,12 +3294,15 @@
             return html + renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
         }
 
-        // Render Opening Duels Table (Leetify style)
+        // Render Opening Duels Table (Leetify style with Most Killed, Best Weapon, Most Died To)
         function renderOpeningDuelsTable(team1, team2, team1Name, team2Name) {
             const ctTeamName = team1Name || 'Team 1';
             const tTeamName = team2Name || 'Team 2';
 
+            // Get kill_matrix from global match data for Most Killed/Most Died To
+            const killMatrix = window.currentMatchData?.data?.kill_matrix || [];
             const allPlayers = [...team1, ...team2];
+
             const best = {
                 success_rate: Math.max(...allPlayers.map(p => {
                     const od = p.opening_duels || p.entry || {};
@@ -3309,6 +3312,58 @@
 
             const renderStar = (val, bestVal) => {
                 return val === bestVal && val > 0 ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+            };
+
+            // Helper: Get most killed player from kill matrix
+            const getMostKilledPlayer = (playerSteamId) => {
+                const kills = {};
+                killMatrix.forEach(k => {
+                    if (String(k.attacker_steamid || k.attacker) === String(playerSteamId)) {
+                        const victim = k.victim_name || k.victim || 'Unknown';
+                        kills[victim] = (kills[victim] || 0) + (k.count || 1);
+                    }
+                });
+                const sorted = Object.entries(kills).sort((a, b) => b[1] - a[1]);
+                return sorted.length > 0 ? sorted[0][0] : 'N/A';
+            };
+
+            // Helper: Get player who killed this player most
+            const getMostDiedTo = (playerSteamId) => {
+                const deaths = {};
+                killMatrix.forEach(k => {
+                    if (String(k.victim_steamid || k.victim) === String(playerSteamId)) {
+                        const killer = k.attacker_name || k.attacker || 'Unknown';
+                        deaths[killer] = (deaths[killer] || 0) + (k.count || 1);
+                    }
+                });
+                const sorted = Object.entries(deaths).sort((a, b) => b[1] - a[1]);
+                return sorted.length > 0 ? sorted[0][0] : 'N/A';
+            };
+
+            // Helper: Format weapon name nicely
+            const formatWeaponName = (weapon) => {
+                const names = {
+                    'weapon_ak47': 'AK-47', 'ak47': 'AK-47',
+                    'weapon_m4a1': 'M4A1', 'm4a1': 'M4A1',
+                    'weapon_m4a1_silencer': 'M4A1-S', 'm4a1_silencer': 'M4A1-S',
+                    'weapon_awp': 'AWP', 'awp': 'AWP',
+                    'weapon_deagle': 'Deagle', 'deagle': 'Deagle',
+                    'weapon_usp_silencer': 'USP-S', 'usp_silencer': 'USP-S',
+                    'weapon_glock': 'Glock', 'glock': 'Glock',
+                    'weapon_ssg08': 'Scout', 'ssg08': 'Scout',
+                    'weapon_famas': 'FAMAS', 'famas': 'FAMAS',
+                    'weapon_galil': 'Galil', 'galil': 'Galil'
+                };
+                if (!weapon) return 'N/A';
+                return names[weapon] || names[weapon.toLowerCase()] || weapon.replace('weapon_', '').toUpperCase();
+            };
+
+            // Helper: Get best weapon from player's weapon_kills
+            const getBestWeapon = (player) => {
+                const weaponKills = player.weapon_kills || player.weapons || {};
+                if (Object.keys(weaponKills).length === 0) return 'N/A';
+                const sorted = Object.entries(weaponKills).sort((a, b) => b[1] - a[1]);
+                return sorted.length > 0 ? formatWeaponName(sorted[0][0]) : 'N/A';
             };
 
             const renderTeamTable = (players, teamName) => {
@@ -3334,6 +3389,9 @@
                                     <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Win/Loss difference">Diff</th>
                                     <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Success rate">Success %</th>
                                     <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Attempts as % of rounds played">Attempt %</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Player you kill most on opening duels">Most Killed</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Weapon with most opening kills">Best Weapon</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Player who kills you most on opening duels">Most Died To</th>
                                 </tr>
                             </thead>
                             <tbody>`;
@@ -3349,6 +3407,11 @@
 
                     const diffColor = diff > 0 ? 'var(--success)' : diff < 0 ? 'var(--danger)' : 'var(--text-muted)';
                     const successColor = successRate >= 50 ? 'var(--success)' : successRate >= 40 ? 'var(--warning)' : 'var(--danger)';
+
+                    const steamId = p.steam_id || p.steamid;
+                    const mostKilled = getMostKilledPlayer(steamId);
+                    const bestWeapon = getBestWeapon(p);
+                    const mostDiedTo = getMostDiedTo(steamId);
 
                     html += `
                         <tr style="border-bottom: 1px solid var(--border);">
@@ -3368,6 +3431,9 @@
                                 ${renderStar(successRate, best.success_rate)}${successRate.toFixed(1)}%
                             </td>
                             <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: var(--text-muted);">${attemptPct.toFixed(1)}%</td>
+                            <td style="text-align: center; padding: 12px; color: var(--text-primary);">${esc(mostKilled)}</td>
+                            <td style="text-align: center; padding: 12px; color: var(--accent-primary);">${esc(bestWeapon)}</td>
+                            <td style="text-align: center; padding: 12px; color: var(--text-primary);">${esc(mostDiedTo)}</td>
                         </tr>`;
                 });
 
