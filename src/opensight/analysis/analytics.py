@@ -21,9 +21,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from opensight.analysis.hltv_rating import calculate_rating_from_stats
 from opensight.core.constants import (
     CS2_TICK_RATE,
-    HLTV_RATING_COEFFICIENTS,
     IMPACT_COEFFICIENTS,
     TRADE_WINDOW_SECONDS,
 )
@@ -1520,28 +1520,32 @@ class PlayerMatchStats:
     @property
     def hltv_rating(self) -> float:
         """
-        HLTV 2.0 Rating (approximated).
+        HLTV 2.0 Rating using the verified engine from hltv_rating.py.
 
-        Rating = 0.0073*KAST + 0.3591*KPR + (-0.5329)*DPR +
+        Formula: 0.0073*KAST + 0.3591*KPR - 0.5329*DPR +
                  0.2372*Impact + 0.0032*ADR + 0.1587*RMK
+
+        Uses calculate_rating_from_stats for proper handling of:
+        - KAST normalization (percentage vs decimal)
+        - RMK as decimal (not percentage)
+        - Safe accessors with defaults
+        - Output clamping to [0.0, 3.0]
         """
-        kast = self.kast_percentage
-        kpr = self.kills_per_round
-        dpr = self.deaths_per_round
-        impact = self.impact_rating
-        adr = self.adr
-        rmk = self.multi_kill_round_rate
+        # Build stats dict for the rating engine
+        stats = {
+            "kills": self.kills,
+            "deaths": self.deaths,
+            "assists": self.assists,
+            "adr": self.adr,
+            "kast": self.kast_percentage,  # Already percentage (0-100)
+            "2k": self.multi_kills.rounds_with_2k if self.multi_kills else 0,
+            "3k": self.multi_kills.rounds_with_3k if self.multi_kills else 0,
+            "4k": self.multi_kills.rounds_with_4k if self.multi_kills else 0,
+            "5k": self.multi_kills.rounds_with_5k if self.multi_kills else 0,
+            "clutch_wins": self.clutches.total_wins if self.clutches else 0,
+        }
 
-        rating = (
-            HLTV_RATING_COEFFICIENTS["kast"] * kast
-            + HLTV_RATING_COEFFICIENTS["kpr"] * kpr
-            + HLTV_RATING_COEFFICIENTS["dpr"] * dpr
-            + HLTV_RATING_COEFFICIENTS["impact"] * impact
-            + HLTV_RATING_COEFFICIENTS["adr"] * adr
-            + HLTV_RATING_COEFFICIENTS["rmk"] * rmk
-        )
-
-        return round(max(0.0, rating), 2)
+        return calculate_rating_from_stats(stats, self.rounds_played)
 
     @property
     def impact_plus_minus(self) -> float:
@@ -1827,6 +1831,14 @@ class PlayerMatchStats:
         # TTD Penalty (reaction time - use true TTD, not engagement duration)
         reaction_time = self.reaction_time_median_ms
         if reaction_time is not None and reaction_time > 0:
+            # UNIT VERIFICATION: Check if TTD is in milliseconds (should be 200ms not 0.2s)
+            if reaction_time < 10:
+                logger.error(
+                    f"Player {self.name}: reaction_time={reaction_time} is too low! "
+                    f"Likely in seconds. Converting: {reaction_time}s → {reaction_time * 1000}ms"
+                )
+                reaction_time = reaction_time * 1000
+
             # Scale: 150ms (elite) = 0, 250ms (good) = 10, 400ms (avg) = 25, 600ms (slow) = 40
             if reaction_time <= 150:
                 ttd_penalty = 0
@@ -1838,22 +1850,12 @@ class PlayerMatchStats:
                 ttd_penalty = 25 + (reaction_time - 400) / 13.33  # 25-40 at 600ms
             ttd_penalty = min(40, ttd_penalty)  # Cap at 40
         else:
-            # Missing reaction time data - use engagement duration as fallback
-            if self.engagement_duration_median_ms:
-                logger.debug(
-                    f"Player {self.name}: No reaction time data, using engagement duration for aim calc"
-                )
-                # Engagement duration is typically higher, adjust scale
-                fallback_ttd = self.engagement_duration_median_ms
-                if fallback_ttd <= 300:
-                    ttd_penalty = 5
-                elif fallback_ttd <= 500:
-                    ttd_penalty = 15
-                else:
-                    ttd_penalty = 30
-            else:
-                logger.debug(f"Player {self.name}: No TTD data for aim calculation")
-                ttd_penalty = 25  # Average penalty if no data
+            # NO FALLBACK - return 0 to surface data pipeline issues
+            logger.error(
+                f"Player {self.name}: Missing reaction_time data. "
+                f"Returning aim_rating=0. Check true_ttd_values calculation."
+            )
+            return 0.0
 
         # Crosshair Placement Penalty (angular error)
         cp_error = self.cp_median_error_deg
@@ -1871,8 +1873,12 @@ class PlayerMatchStats:
                 error_penalty = 30 + (cp_error - 20) * 1  # 30-40 at 40°
             error_penalty = min(40, error_penalty)  # Cap at 40
         else:
-            logger.debug(f"Player {self.name}: No crosshair placement data for aim calculation")
-            error_penalty = 20  # Average penalty if no data
+            # NO FALLBACK - return 0 to surface data pipeline issues
+            logger.error(
+                f"Player {self.name}: Missing cp_median_error_deg data. "
+                f"Returning aim_rating=0. Check cp_values calculation."
+            )
+            return 0.0
 
         # Recoil Control Penalty (spray accuracy)
         spray_acc = self.spray_accuracy
@@ -1890,8 +1896,12 @@ class PlayerMatchStats:
                 recoil_penalty = 30 + (20 - spray_acc) / 4  # 30-35
             recoil_penalty = min(35, recoil_penalty)  # Cap at 35
         else:
-            logger.debug(f"Player {self.name}: No spray accuracy data for aim calculation")
-            recoil_penalty = 15  # Modest penalty if no data
+            # NO FALLBACK - return 0 to surface data pipeline issues
+            logger.error(
+                f"Player {self.name}: Missing spray_accuracy data. "
+                f"Returning aim_rating=0. Check spray accuracy calculation."
+            )
+            return 0.0
 
         # Calculate final score
         total_penalty = ttd_penalty + error_penalty + recoil_penalty
@@ -2662,6 +2672,21 @@ class DemoAnalyzer:
                 return "T"
         return "Unknown"
 
+    def _get_player_side(self, steam_id: int, round_num: int) -> str:
+        """Get the ACTUAL side (CT/T) of a player for a specific round.
+
+        Handles halftime swaps automatically using the persistent team system.
+        Crucial for clutch/trade/utility logic where side matters per-round.
+
+        Args:
+            steam_id: Player's Steam ID
+            round_num: Round number (1-indexed)
+
+        Returns:
+            "CT", "T", or "Unknown"
+        """
+        return self.data.get_player_side_for_round(steam_id, round_num)
+
     def _init_column_cache(self) -> None:
         """Initialize column name cache for kills DataFrame."""
         kills_df = self.data.kills_df
@@ -2845,7 +2870,14 @@ class DemoAnalyzer:
         """Initialize PlayerMatchStats for each player."""
         logger.info(f"Initializing stats for {len(self.data.player_names)} players")
         for steam_id, name in self.data.player_names.items():
-            team = self.data.player_teams.get(steam_id, "Unknown")
+            # Use persistent team identity to keep teammates grouped correctly
+            # even after halftime side swaps
+            persistent_team = self.data.get_player_persistent_team(steam_id)
+            # Map to display name (CT/T based on starting side) for frontend colors
+            team = self.data.get_team_display_name(persistent_team)
+            if team == "Unknown":
+                # Fallback for backward compatibility with old data
+                team = self.data.player_teams.get(steam_id, "Unknown")
             self._players[steam_id] = PlayerMatchStats(
                 steam_id=steam_id,
                 name=name,
@@ -2857,7 +2889,7 @@ class DemoAnalyzer:
                 total_damage=0,
                 rounds_played=self.data.num_rounds,
             )
-            logger.debug(f"Initialized player: {name} (steamid={steam_id}, team={team})")
+            logger.debug(f"Initialized player: {name} (steamid={steam_id}, team={team}, persistent={persistent_team})")
 
     def _calculate_basic_stats(self) -> None:
         """Calculate basic K/D/A and damage stats."""
@@ -2989,18 +3021,6 @@ class DemoAnalyzer:
                         "CT" if team_num == 3 else "T" if team_num == 2 else "Unknown"
                     )
 
-        def get_player_team_for_round(player_id: int, round_num: int) -> str:
-            """Get player's team for a specific round, handling halftime swap."""
-            starting_team = player_starting_team.get(player_id, "Unknown")
-            if starting_team not in ["CT", "T"]:
-                return "Unknown"
-
-            # Standard CS2 MR15: rounds 1-15 = first half, 16-30 = second half (teams swap)
-            # Overtime rounds (31+) swap every 3 rounds but we simplify to first half logic
-            if 16 <= round_num <= 30:
-                return "T" if starting_team == "CT" else "CT"
-            return starting_team
-
         # Track RWS contributions per player
         from collections import defaultdict
 
@@ -3081,7 +3101,7 @@ class DemoAnalyzer:
 
                 # Priority 2: Look up from player data with halftime handling
                 if attacker_team not in ["CT", "T"]:
-                    attacker_team = get_player_team_for_round(attacker_id, round_num)
+                    attacker_team = self.data.get_player_side_for_round(attacker_id, round_num)
 
                 if attacker_team in ["CT", "T"]:
                     team_damage[attacker_team] += damage
@@ -3097,9 +3117,13 @@ class DemoAnalyzer:
                     player_team_this_round = "Unknown"
                     if has_team_col:
                         # Already tracked damage only for attacker's team
-                        player_team_this_round = get_player_team_for_round(player_id, round_num)
+                        player_team_this_round = self.data.get_player_side_for_round(
+                            player_id, round_num
+                        )
                     else:
-                        player_team_this_round = get_player_team_for_round(player_id, round_num)
+                        player_team_this_round = self.data.get_player_side_for_round(
+                            player_id, round_num
+                        )
 
                     if player_team_this_round == winning_side and player_id in self._players:
                         rws_contribution = (player_dmg / winning_team_total) * 100
@@ -3905,28 +3929,16 @@ class DemoAnalyzer:
             # Detect match format: MR12 (CS2 standard) vs MR15 (legacy CS:GO)
             # MR12: halftime after round 12, max 24 rounds (or 25+ with OT)
             # MR15: halftime after round 15, max 30 rounds (or 31+ with OT)
-            max_round = int(kills_df[self._round_col].max())
-            if max_round > 24:
-                # Overtime or MR15 format
-                halftime_round = 15
-            else:
-                halftime_round = 12  # CS2 standard MR12
+            # MR12: halftime after round 12 (CS2 standard)
+            # Note: halftime detection is handled by get_player_side_for_round()
 
-            # Determine if we're in second half (teams have swapped sides)
-            is_second_half = round_num_int > halftime_round
-
-            # Build full roster from player_teams with side swap logic
-            for steam_id, team in self.data.player_teams.items():
-                normalized = self._normalize_team(team)
-                # Swap teams if in second half
-                if is_second_half:
-                    if normalized == "CT":
-                        normalized = "T"
-                    elif normalized == "T":
-                        normalized = "CT"
-                if normalized == "CT":
+            # Build full roster using round-aware side detection
+            for steam_id in self.data.player_persistent_teams.keys():
+                # Use new helper that handles halftime swaps automatically
+                side = self.data.get_player_side_for_round(steam_id, round_num_int)
+                if side == "CT":
                     ct_alive.add(steam_id)
-                elif normalized == "T":
+                elif side == "T":
                     t_alive.add(steam_id)
 
             # Fallback: if player_teams is empty, extract from kill events
