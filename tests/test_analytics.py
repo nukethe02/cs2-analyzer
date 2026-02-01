@@ -234,6 +234,81 @@ class TestDemoAnalyzer:
         # Results is now MatchAnalysis with empty players dict
         assert results.players == {}
 
+    def test_death_counting_with_user_steamid_column(self):
+        """Verify deaths are counted correctly with demoparser2's user_steamid column."""
+        # demoparser2 uses 'user_steamid' for victim, NOT 'victim_steamid'
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 2000, 3000, 4000],
+                "attacker_steamid": [111, 222, 111, 222],
+                "user_steamid": [222, 111, 222, 111],  # demoparser2 convention
+                "weapon": ["ak47", "awp", "m4a1", "deagle"],
+                "headshot": [True, False, True, False],
+            }
+        )
+
+        demo_data = DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_mirage",
+            duration_seconds=900.0,
+            tick_rate=64,
+            num_rounds=8,
+            player_stats={},
+            player_names={111: "PlayerA", 222: "PlayerB"},
+            player_teams={111: "CT", 222: "T"},
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+        analyzer = DemoAnalyzer(demo_data)
+        results = analyzer.analyze()
+
+        # PlayerA: 2 kills (tick 1000, 3000), 2 deaths (tick 2000, 4000)
+        # PlayerB: 2 kills (tick 2000, 4000), 2 deaths (tick 1000, 3000)
+        assert results.players[111].kills == 2
+        assert results.players[111].deaths == 2, "Deaths must be counted from user_steamid column"
+        assert results.players[222].kills == 2
+        assert results.players[222].deaths == 2, "Deaths must be counted from user_steamid column"
+
+    def test_death_counting_with_victim_steamid_column(self):
+        """Verify deaths are counted correctly with awpy's victim_steamid column."""
+        # awpy uses 'victim_steamid' for victim
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 2000, 3000],
+                "attacker_steamid": [111, 222, 111],
+                "victim_steamid": [222, 111, 222],  # awpy convention
+                "weapon": ["ak47", "awp", "m4a1"],
+                "headshot": [True, False, True],
+            }
+        )
+
+        demo_data = DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_mirage",
+            duration_seconds=900.0,
+            tick_rate=64,
+            num_rounds=8,
+            player_stats={},
+            player_names={111: "PlayerA", 222: "PlayerB"},
+            player_teams={111: "CT", 222: "T"},
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+        analyzer = DemoAnalyzer(demo_data)
+        results = analyzer.analyze()
+
+        # PlayerA: 2 kills, 1 death | PlayerB: 1 kill, 2 deaths
+        assert results.players[111].kills == 2
+        assert results.players[111].deaths == 1, "Deaths must be counted from victim_steamid column"
+        assert results.players[222].kills == 1
+        assert results.players[222].deaths == 2, "Deaths must be counted from victim_steamid column"
+
 
 class TestAngularErrorCalculation:
     """Tests for angular error calculation in DemoAnalyzer."""

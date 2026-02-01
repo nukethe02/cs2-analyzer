@@ -2535,10 +2535,10 @@ class DemoAnalyzer:
     TTD_MIN_MS = REACTION_TIME_MIN_MS
     TTD_MAX_MS = REACTION_TIME_MAX_MS
 
-    # Column name variations
+    # Column name variations (includes both demoparser2 enriched names and raw event names)
     ROUND_COLS = ["round_num", "total_rounds_played", "round"]
-    ATT_ID_COLS = ["attacker_steamid", "attacker_steam_id"]
-    VIC_ID_COLS = ["victim_steamid", "user_steamid", "victim_steam_id"]
+    ATT_ID_COLS = ["attacker_steamid", "attacker_steam_id", "attacker"]
+    VIC_ID_COLS = ["victim_steamid", "user_steamid", "victim_steam_id", "userid"]
     ATT_SIDE_COLS = [
         "attacker_side",
         "attacker_team_name",
@@ -2898,9 +2898,25 @@ class DemoAnalyzer:
         kills_df = self.data.kills_df
         damages_df = self.data.damages_df
 
-        # Use cached column names for kills
-        att_id_col = self._att_id_col or "attacker_steamid"
-        vic_id_col = self._vic_id_col or "victim_steamid"
+        # Use cached column names for kills, with robust fallback
+        att_id_col = self._att_id_col
+        if not att_id_col:
+            att_id_col = self._find_col(kills_df, self.ATT_ID_COLS) or "attacker_steamid"
+            logger.warning(f"Attacker column not cached, using fallback: {att_id_col}")
+
+        vic_id_col = self._vic_id_col
+        if not vic_id_col:
+            # IMPORTANT: Try to find the column dynamically instead of hardcoding
+            # demoparser2 uses 'user_steamid', awpy uses 'victim_steamid'
+            vic_id_col = self._find_col(kills_df, self.VIC_ID_COLS)
+            if vic_id_col:
+                logger.warning(f"Victim column not cached, found dynamically: {vic_id_col}")
+            else:
+                logger.error(
+                    f"Could not find victim column! Tried: {self.VIC_ID_COLS}. "
+                    f"Available columns: {list(kills_df.columns)[:10]}..."
+                )
+                vic_id_col = "user_steamid"  # Default to demoparser2 convention
 
         # Find damage columns
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
@@ -2966,6 +2982,13 @@ class DemoAnalyzer:
         logger.info(
             f"Basic stats calculated: {total_kills} total kills, {total_deaths} total deaths across {len(self._players)} players"
         )
+
+        # Sanity check: deaths should approximately equal kills (barring suicides/teamkills)
+        if total_kills > 0 and total_deaths == 0:
+            logger.error(
+                f"BUG DETECTED: {total_kills} kills but 0 deaths! "
+                f"vic_id_col='{vic_id_col}', in_columns={vic_id_col in kills_df.columns if not kills_df.empty else 'N/A'}"
+            )
 
     def _calculate_rws(self) -> None:
         """
@@ -4264,8 +4287,10 @@ class DemoAnalyzer:
                     return col
             return None
 
-        dmg_att_col = find_col(damages_df, ["attacker_steamid", "attacker_steam_id"])
-        dmg_vic_col = find_col(damages_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
+        dmg_att_col = find_col(damages_df, ["attacker_steamid", "attacker_steam_id", "attacker"])
+        dmg_vic_col = find_col(
+            damages_df, ["user_steamid", "victim_steamid", "victim_steam_id", "userid"]
+        )
         logger.info(f"TTD columns: attacker={dmg_att_col}, victim={dmg_vic_col}")
 
         if not dmg_att_col or not dmg_vic_col:
@@ -5451,11 +5476,20 @@ class DemoAnalyzer:
         # ===========================================
         damages_df = self.data.damages_df
         if not damages_df.empty:
+            logger.debug(f"Damage DF columns: {list(damages_df.columns)}")
             att_col = self._find_col(damages_df, self.ATT_ID_COLS)
             att_side = self._find_col(damages_df, self.ATT_SIDE_COLS)
             vic_side = self._find_col(damages_df, self.VIC_SIDE_COLS)
-            weapon_col = self._find_col(damages_df, ["weapon"])
-            dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+            weapon_col = self._find_col(damages_df, ["weapon", "weapon_name", "attacker_weapon"])
+            dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg", "health_damage"])
+            logger.debug(f"Utility damage cols: att={att_col}, weapon={weapon_col}, dmg={dmg_col}")
+
+            if not att_col or not weapon_col or not dmg_col:
+                logger.warning(
+                    f"Missing columns for utility damage calculation: "
+                    f"att_col={att_col}, weapon_col={weapon_col}, dmg_col={dmg_col}. "
+                    f"Available columns: {list(damages_df.columns)}"
+                )
 
             if att_col and weapon_col and dmg_col:
                 he_weapons = [
@@ -5472,8 +5506,17 @@ class DemoAnalyzer:
                     "incendiary",
                 ]
 
+                # Log weapon distribution in damage events
+                if not damages_df.empty:
+                    weapon_counts = damages_df[weapon_col].value_counts().head(10)
+                    logger.debug(f"Top weapons in damages: {weapon_counts.to_dict()}")
+
                 for steam_id, player in self._players.items():
-                    player_dmg = damages_df[damages_df[att_col] == steam_id]
+                    # Match steamid handling type differences
+                    steam_id_float = float(steam_id)
+                    player_dmg = damages_df[
+                        pd.to_numeric(damages_df[att_col], errors="coerce") == steam_id_float
+                    ]
 
                     # HE damage
                     he_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(he_weapons)]
@@ -5528,8 +5571,9 @@ class DemoAnalyzer:
         elif has_blinds and not kills_df.empty and "tick" in kills_df.columns:
             logger.info("Calculating flash assists from blind/kill correlation")
             att_col = self._find_col(kills_df, self.ATT_ID_COLS)
+            vic_col = self._vic_id_col or self._find_col(kills_df, self.VIC_ID_COLS)
 
-            if att_col:
+            if att_col and vic_col:
                 for steam_id, player in self._players.items():
                     player_blinds = blinds_by_attacker.get(steam_id, [])
                     if not player_blinds:
@@ -5547,8 +5591,9 @@ class DemoAnalyzer:
                         blind_end_tick = blind_tick + int(blind.blind_duration * 64)
 
                         # Check if any teammate killed this blinded enemy within window
+                        # Use dynamic column name (user_steamid for demoparser2, victim_steamid for awpy)
                         victim_kills = kills_df[
-                            (kills_df["victim_steamid"] == victim_id)
+                            (kills_df[vic_col] == victim_id)
                             & (kills_df["tick"] >= blind_tick)
                             & (kills_df["tick"] <= blind_end_tick + FLASH_ASSIST_WINDOW_TICKS)
                         ]
@@ -7536,12 +7581,16 @@ def calculate_player_metrics(match_data: DemoData) -> dict[str, PlayerMetrics]:
                 return col
         return None
 
-    att_steamid_col = find_column(kills_df, ["attacker_steamid", "attacker_steam_id"])
-    vic_steamid_col = find_column(kills_df, ["victim_steamid", "user_steamid", "victim_steam_id"])
+    att_steamid_col = find_column(kills_df, ["attacker_steamid", "attacker_steam_id", "attacker"])
+    vic_steamid_col = find_column(
+        kills_df, ["victim_steamid", "user_steamid", "victim_steam_id", "userid"]
+    )
     round_col = find_column(kills_df, ["round_num", "round", "total_rounds_played"])
 
-    dmg_att_col = find_column(damages_df, ["attacker_steamid", "attacker_steam_id"])
-    dmg_vic_col = find_column(damages_df, ["victim_steamid", "user_steamid", "victim_steam_id"])
+    dmg_att_col = find_column(damages_df, ["attacker_steamid", "attacker_steam_id", "attacker"])
+    dmg_vic_col = find_column(
+        damages_df, ["victim_steamid", "user_steamid", "victim_steam_id", "userid"]
+    )
     dmg_round_col = find_column(damages_df, ["round_num", "round", "total_rounds_played"])
     dmg_amount_col = find_column(damages_df, ["damage", "dmg_health", "health_damage", "dmg"])
 

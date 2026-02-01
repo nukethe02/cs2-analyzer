@@ -1099,11 +1099,11 @@ class DemoParser:
         names: dict[int, str] = {}
         teams: dict[int, str] = {}
 
-        # Column name variations
-        att_id_cols = ["attacker_steamid", "attacker_steam_id"]
+        # Column name variations (includes both demoparser2 enriched names and raw event names)
+        att_id_cols = ["attacker_steamid", "attacker_steam_id", "attacker"]
         att_name_cols = ["attacker_name"]
         att_team_cols = ["attacker_team_name", "attacker_side", "attacker_team"]
-        vic_id_cols = ["user_steamid", "victim_steamid", "victim_steam_id"]
+        vic_id_cols = ["user_steamid", "victim_steamid", "victim_steam_id", "userid"]
         vic_name_cols = ["user_name", "victim_name"]
         vic_team_cols = ["user_team_name", "victim_side", "victim_team"]
 
@@ -1178,6 +1178,28 @@ class DemoParser:
             - team_starting_sides: {"Team A": "CT" or "T", "Team B": "CT" or "T"}
             - halftime_round: 13 (MR12) or 16 (MR15)
         """
+
+        def convert_team_to_numeric(series: pd.Series) -> pd.Series:
+            """Convert team values to numeric (2=T, 3=CT).
+
+            Handles both numeric columns (team_num) and string columns (side/team_name).
+            """
+            result = pd.to_numeric(series, errors="coerce")
+
+            # Handle string values like "CT", "T", "TERRORIST", etc.
+            str_mask = result.isna() & series.notna()
+            if str_mask.any():
+                str_vals = series[str_mask].astype(str).str.upper()
+                # CT = 3, T = 2
+                result.loc[str_mask & str_vals.str.contains("CT", na=False)] = 3
+                result.loc[
+                    str_mask
+                    & ~str_vals.str.contains("CT", na=False)
+                    & str_vals.str.contains("T", na=False)
+                ] = 2
+
+            return result
+
         # Step 1: VECTORIZED - Collect all player-team appearances into a single DataFrame
         appearances = []
 
@@ -1185,30 +1207,40 @@ class DemoParser:
             if df is None or df.empty:
                 continue
 
-            # Find column names
-            att_id_col = self._find_column(df, ["attacker_steamid", "attacker_id"])
-            vic_id_col = self._find_column(df, ["victim_steamid", "victim_id"])
-            att_team_col = self._find_column(df, ["attacker_team_num", "attacker_side"])
-            vic_team_col = self._find_column(df, ["victim_team_num", "victim_side"])
+            # Find column names - include all variations
+            att_id_col = self._find_column(
+                df, ["attacker_steamid", "attacker_steam_id", "attacker_id"]
+            )
+            vic_id_col = self._find_column(df, ["user_steamid", "victim_steamid", "victim_id"])
+            att_team_col = self._find_column(
+                df, ["attacker_team_num", "attacker_team_name", "attacker_side", "attacker_team"]
+            )
+            vic_team_col = self._find_column(
+                df,
+                ["user_team_num", "user_team_name", "victim_team_num", "victim_side", "user_side"],
+            )
 
             # Extract attacker appearances (vectorized)
             if att_id_col and att_team_col:
                 att_df = df[[att_id_col, att_team_col]].dropna()
-                att_df = att_df.rename(columns={att_id_col: "steamid", att_team_col: "team_num"})
+                att_df = att_df.rename(columns={att_id_col: "steamid", att_team_col: "team_val"})
                 att_df["steamid"] = pd.to_numeric(att_df["steamid"], errors="coerce")
-                att_df["team_num"] = pd.to_numeric(att_df["team_num"], errors="coerce")
+                att_df["team_num"] = convert_team_to_numeric(att_df["team_val"])
+                att_df = att_df[["steamid", "team_num"]]
                 appearances.append(att_df)
 
             # Extract victim appearances (vectorized)
             if vic_id_col and vic_team_col:
                 vic_df = df[[vic_id_col, vic_team_col]].dropna()
-                vic_df = vic_df.rename(columns={vic_id_col: "steamid", vic_team_col: "team_num"})
+                vic_df = vic_df.rename(columns={vic_id_col: "steamid", vic_team_col: "team_val"})
                 vic_df["steamid"] = pd.to_numeric(vic_df["steamid"], errors="coerce")
-                vic_df["team_num"] = pd.to_numeric(vic_df["team_num"], errors="coerce")
+                vic_df["team_num"] = convert_team_to_numeric(vic_df["team_val"])
+                vic_df = vic_df[["steamid", "team_num"]]
                 appearances.append(vic_df)
 
         # Handle empty case
         if not appearances:
+            logger.warning("No team appearances found for persistent team resolution")
             return {}, {"Team A": set(), "Team B": set()}, {"Team A": "CT", "Team B": "T"}, 13
 
         # Step 2: VECTORIZED - Combine and count using GroupBy (the "Pandas Magic")
@@ -1260,7 +1292,8 @@ class DemoParser:
                 # VECTORIZED: Filter to CT appearances in round 1
                 r1_df = round_1_kills[[att_id_col, att_team_col]].dropna()
                 r1_df["steamid"] = pd.to_numeric(r1_df[att_id_col], errors="coerce")
-                r1_df["team_num"] = pd.to_numeric(r1_df[att_team_col], errors="coerce")
+                # Use same conversion helper for team values
+                r1_df["team_num"] = convert_team_to_numeric(r1_df[att_team_col])
                 ct_in_r1 = r1_df[r1_df["team_num"] == 3]["steamid"].dropna().astype(int)
 
                 # Count roster appearances on CT side
@@ -1328,20 +1361,24 @@ class DemoParser:
                 }
             return stats
 
-        # Find columns with caching
+        # Find columns with caching - includes raw event names for compatibility
         att_col = self._find_column(
-            kills_df, ["attacker_steamid", "attacker_steam_id"], "kills_att_id"
+            kills_df, ["attacker_steamid", "attacker_steam_id", "attacker"], "kills_att_id"
         )
         vic_col = self._find_column(
-            kills_df, ["user_steamid", "victim_steamid", "victim_steam_id"], "kills_vic_id"
+            kills_df,
+            ["user_steamid", "victim_steamid", "victim_steam_id", "userid"],
+            "kills_vic_id",
         )
         hs_col = self._find_column(kills_df, ["headshot"], "kills_hs")
         weapon_col = self._find_column(kills_df, ["weapon"], "kills_weapon")
         assist_col = self._find_column(
-            kills_df, ["assister_steamid", "assister_steam_id"], "kills_assist"
+            kills_df, ["assister_steamid", "assister_steam_id", "assister"], "kills_assist"
         )
         dmg_att_col = (
-            self._find_column(damages_df, ["attacker_steamid", "attacker_steam_id"], "dmg_att_id")
+            self._find_column(
+                damages_df, ["attacker_steamid", "attacker_steam_id", "attacker"], "dmg_att_id"
+            )
             if not damages_df.empty
             else None
         )
@@ -1468,13 +1505,15 @@ class DemoParser:
         if kills_df.empty:
             return []
 
-        # Find columns once (cached)
-        att_id = self._find_column(kills_df, ["attacker_steamid", "attacker_steam_id"])
+        # Find columns once (cached) - includes raw event names for compatibility
+        att_id = self._find_column(kills_df, ["attacker_steamid", "attacker_steam_id", "attacker"])
         att_name = self._find_column(kills_df, ["attacker_name"])
         att_team = self._find_column(
             kills_df, ["attacker_team_name", "attacker_side", "attacker_team"]
         )
-        vic_id = self._find_column(kills_df, ["user_steamid", "victim_steamid", "victim_steam_id"])
+        vic_id = self._find_column(
+            kills_df, ["user_steamid", "victim_steamid", "victim_steam_id", "userid"]
+        )
         vic_name = self._find_column(kills_df, ["user_name", "victim_name"])
         vic_team = self._find_column(kills_df, ["user_team_name", "victim_side", "victim_team"])
         round_col = self._find_column(
@@ -1617,11 +1656,13 @@ class DemoParser:
         if damages_df.empty:
             return []
 
-        # Find columns once (cached)
-        att_id = self._find_column(damages_df, ["attacker_steamid", "attacker_steam_id"])
+        # Find columns once (cached) - includes raw event names for compatibility
+        att_id = self._find_column(
+            damages_df, ["attacker_steamid", "attacker_steam_id", "attacker"]
+        )
         att_name = self._find_column(damages_df, ["attacker_name"])
         att_team = self._find_column(damages_df, ["attacker_team_name", "attacker_side"])
-        vic_id = self._find_column(damages_df, ["user_steamid", "victim_steamid"])
+        vic_id = self._find_column(damages_df, ["user_steamid", "victim_steamid", "userid"])
         vic_name = self._find_column(damages_df, ["user_name", "victim_name"])
         vic_team = self._find_column(damages_df, ["user_team_name", "victim_side"])
         dmg_col = self._find_column(damages_df, ["dmg_health", "damage", "dmg"])
@@ -2051,8 +2092,8 @@ class DemoParser:
         if blinds_df.empty:
             return blinds
 
-        # Find columns
-        att_id = self._find_column(blinds_df, ["attacker_steamid", "attacker_steam_id"])
+        # Find columns - includes raw event names for compatibility
+        att_id = self._find_column(blinds_df, ["attacker_steamid", "attacker_steam_id", "attacker"])
         att_name = self._find_column(blinds_df, ["attacker_name"])
         vic_id = self._find_column(blinds_df, ["user_steamid", "userid", "victim_steamid"])
         vic_name = self._find_column(blinds_df, ["user_name", "victim_name"])

@@ -541,6 +541,7 @@ class CachedAnalyzer:
                     "kills": p.kills,
                     "deaths": p.deaths,
                     "assists": p.assists,
+                    "rounds_played": p.rounds_played,
                     "adr": round(p.adr, 1) if p.adr else 0,
                     "headshot_pct": (
                         round(p.headshot_percentage, 1) if p.headshot_percentage else 0
@@ -572,6 +573,7 @@ class CachedAnalyzer:
                     "opening_deaths": getattr(p, "opening_deaths", None) or 0,
                 },
                 "utility": {
+                    # Raw counts
                     "flashbangs_thrown": (p.utility.flashbangs_thrown if p.utility else 0),
                     "smokes_thrown": p.utility.smokes_thrown if p.utility else 0,
                     "he_thrown": p.utility.he_thrown if p.utility else 0,
@@ -581,6 +583,23 @@ class CachedAnalyzer:
                     "teammates_flashed": (p.utility.teammates_flashed if p.utility else 0),
                     "he_damage": p.utility.he_damage if p.utility else 0,
                     "molotov_damage": p.utility.molotov_damage if p.utility else 0,
+                    # Computed per-round and average metrics (needed by frontend)
+                    "enemies_flashed_per_round": (
+                        p.utility.enemies_flashed_per_round if p.utility else 0
+                    ),
+                    "friends_flashed_per_round": (
+                        p.utility.friends_flashed_per_round if p.utility else 0
+                    ),
+                    "avg_blind_time": p.utility.avg_blind_time if p.utility else 0,
+                    "avg_he_damage": p.utility.avg_he_damage if p.utility else 0,
+                    "flash_effectiveness_pct": (
+                        p.utility.flash_effectiveness_pct if p.utility else 0
+                    ),
+                    "effective_flashes": p.utility.effective_flashes if p.utility else 0,
+                    "total_blind_time": p.utility.total_blind_time if p.utility else 0,
+                    "times_blinded": p.utility.times_blinded if p.utility else 0,
+                    "total_time_blinded": p.utility.total_time_blinded if p.utility else 0,
+                    "avg_time_blinded": p.utility.avg_time_blinded if p.utility else 0,
                 },
                 "duels": {
                     "trade_kills": getattr(p, "trade_kills", None) or 0,

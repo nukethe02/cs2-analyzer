@@ -3438,8 +3438,8 @@
                     const dmgPerShot = shotsFired > 0 ? (totalDamage / shotsFired) : 0;
                     const roundsPlayed = p.rounds_played || p.stats?.rounds_played || 1;
                     const deaths = p.deaths || p.stats?.deaths || 0;
-                    const roundsSurvived = roundsPlayed - deaths;
-                    const survivalPct = (roundsSurvived / roundsPlayed * 100);
+                    const roundsSurvived = Math.max(0, roundsPlayed - deaths);
+                    const survivalPct = roundsPlayed > 0 ? Math.max(0, (roundsSurvived / roundsPlayed * 100)) : 0;
                     const damageBarWidth = maxDamage > 0 ? (totalDamage / maxDamage * 100) : 0;
 
                     html += `
