@@ -656,8 +656,9 @@ async def security_headers_middleware(request: Request, call_next) -> Response:
     # =============================================================================
     csp_directives = [
         "default-src 'self'",
-        # Scripts: self + inline (needed for embedded JS) + HF CDN
-        "script-src 'self' 'unsafe-inline' https://*.huggingface.co",
+        # Scripts: self + inline + CDNs (Chart.js, HF) - both src and src-elem for compatibility
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://*.huggingface.co",
+        "script-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://*.huggingface.co",
         # Styles: self + inline (needed for dynamic styles)
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         # Fonts
