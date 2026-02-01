@@ -253,9 +253,9 @@ class MatchHistory(Base):
     kast = Column(Float, default=0.0)
     hs_pct = Column(Float, default=0.0)
 
-    # Ratings
-    aim_rating = Column(Float, default=50.0)
-    utility_rating = Column(Float, default=50.0)
+    # Ratings (0.0 = missing data, actual values 1-100)
+    aim_rating = Column(Float, default=0.0)
+    utility_rating = Column(Float, default=0.0)
     hltv_rating = Column(Float, default=1.0)
     opensight_rating = Column(Float, default=50.0)
 
@@ -305,8 +305,11 @@ class MatchHistory(Base):
             "adr": round(self.adr, 1) if self.adr else 0,
             "kast": round(self.kast, 1) if self.kast else 0,
             "hs_pct": round(self.hs_pct, 1) if self.hs_pct else 0,
-            "aim_rating": round(self.aim_rating, 1) if self.aim_rating else 50,
-            "utility_rating": round(self.utility_rating, 1) if self.utility_rating else 50,
+            # aim_rating: 0 = missing data, actual values 1-100
+            "aim_rating": round(self.aim_rating, 1) if self.aim_rating is not None else 0,
+            "utility_rating": round(self.utility_rating, 1)
+            if self.utility_rating is not None
+            else 0,
             "hltv_rating": round(self.hltv_rating, 2) if self.hltv_rating else 1.0,
             "opensight_rating": round(self.opensight_rating, 1) if self.opensight_rating else 50,
             "trade_kill_opportunities": self.trade_kill_opportunities,
@@ -967,8 +970,9 @@ class DatabaseManager:
                 adr=player_stats.get("adr", 0.0),
                 kast=player_stats.get("kast_percentage", player_stats.get("kast", 0.0)),
                 hs_pct=player_stats.get("headshot_percentage", player_stats.get("hs_pct", 0.0)),
-                aim_rating=player_stats.get("aim_rating", 50.0),
-                utility_rating=player_stats.get("utility_rating", 50.0),
+                # 0.0 = missing data, actual values 1-100
+                aim_rating=player_stats.get("aim_rating", 0.0),
+                utility_rating=player_stats.get("utility_rating", 0.0),
                 hltv_rating=player_stats.get("hltv_rating", 1.0),
                 opensight_rating=player_stats.get("opensight_rating", 50.0),
                 trade_kill_opportunities=player_stats.get("trade_kill_opportunities", 0),

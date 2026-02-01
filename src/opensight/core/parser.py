@@ -93,6 +93,53 @@ def safe_str(value: Any, default: str = "") -> str:
     return str(value)
 
 
+def is_valid_player_name(name: str) -> bool:
+    """
+    Check if a string is a valid player name (not a Steam ID or garbage).
+
+    A valid player name is NOT:
+    - Empty or whitespace only
+    - All digits (Steam ID)
+    - Very long numbers (Steam ID 64-bit format)
+
+    Args:
+        name: The name string to validate
+
+    Returns:
+        True if this looks like a real player name
+    """
+    if not name or not name.strip():
+        return False
+
+    # Steam IDs are typically 17+ digit numbers (SteamID64)
+    # or shorter numbers. If it's all digits, it's probably an ID.
+    stripped = name.strip()
+    if stripped.isdigit():
+        return False
+
+    # Also catch cases like "76561198..." (SteamID64 prefix)
+    if stripped.startswith("7656119") and len(stripped) >= 15:
+        return False
+
+    return True
+
+
+def make_fallback_player_name(steam_id: int) -> str:
+    """
+    Create a friendly fallback player name from a Steam ID.
+
+    Uses last 4 digits for readability.
+
+    Args:
+        steam_id: The player's Steam ID
+
+    Returns:
+        A name like "Player_1234"
+    """
+    suffix = str(steam_id)[-4:] if steam_id else "0000"
+    return f"Player_{suffix}"
+
+
 def safe_bool(value: Any, default: bool = False) -> bool:
     """Safely convert a value to bool."""
     if value is None:
@@ -1136,19 +1183,33 @@ class DemoParser:
             if not id_col or not name_col:
                 return
 
-            # Get unique player records efficiently
-            unique_df = df[[id_col, name_col] + ([team_col] if team_col else [])].drop_duplicates(
-                subset=[id_col]
-            )
+            # Get relevant columns
+            cols = [id_col, name_col] + ([team_col] if team_col else [])
+            work_df = df[cols].copy()
 
-            # Filter out invalid steamids
-            unique_df = unique_df[unique_df[id_col].notna() & (unique_df[id_col] != 0)]
+            # Filter out invalid steamids first
+            work_df = work_df[work_df[id_col].notna() & (work_df[id_col] != 0)]
+
+            # Sort by name validity: rows with non-empty names come first
+            # This ensures drop_duplicates keeps the row with a valid name
+            work_df["_has_name"] = work_df[name_col].notna() & (work_df[name_col] != "")
+            work_df = work_df.sort_values("_has_name", ascending=False)
+
+            # Now deduplicate - keeps first occurrence (which has valid name if any exists)
+            unique_df = work_df.drop_duplicates(subset=[id_col])
 
             # Vectorized extraction
             for _, row in unique_df.iterrows():
                 sid = safe_int(row[id_col])
                 if sid and sid not in names:
-                    names[sid] = safe_str(row[name_col])
+                    raw_name = safe_str(row[name_col])
+                    # Validate the name isn't a Steam ID or garbage
+                    if is_valid_player_name(raw_name):
+                        names[sid] = raw_name
+                    else:
+                        # Use a friendly fallback instead of raw Steam ID
+                        names[sid] = make_fallback_player_name(sid)
+                        logger.debug(f"Player {sid} has invalid name '{raw_name}', using fallback")
                     if team_col:
                         teams[sid] = parse_team(row[team_col])
 
@@ -1158,6 +1219,12 @@ class DemoParser:
         # Extract from damages
         extract_from_df_vectorized(damages_df, att_id_cols, att_name_cols, att_team_cols)
         extract_from_df_vectorized(damages_df, vic_id_cols, vic_name_cols, vic_team_cols)
+
+        # Final validation pass: ensure no names are raw Steam IDs
+        for sid, name in list(names.items()):
+            if not is_valid_player_name(name):
+                names[sid] = make_fallback_player_name(sid)
+                logger.debug(f"Post-validation: Player {sid} name '{name}' replaced with fallback")
 
         return names, teams
 
@@ -1775,14 +1842,29 @@ class DemoParser:
                             else "Unknown"
                         )
             elif reason:
-                # Infer from reason
-                ct_reasons = ["bomb_defused", "ct_win", "target_saved"]
-                t_reasons = ["target_bombed", "terrorist_win", "t_win"]
-                reason_lower = reason.lower()
-                if any(r in reason_lower for r in ct_reasons):
-                    winner = "CT"
-                elif any(r in reason_lower for r in t_reasons):
-                    winner = "T"
+                # Infer from reason - handle both string and numeric values
+                # CS2 RoundEndReason enum values (from constants.py):
+                # CT wins: 7=BOMB_DEFUSED, 8=CT_WIN, 11=ALL_HOSTAGES_RESCUED, 12=TARGET_SAVED
+                # T wins: 1=TARGET_BOMBED, 9=TERRORIST_WIN, 13=HOSTAGES_NOT_RESCUED
+                ct_reasons_str = ["bomb_defused", "ct_win", "target_saved", "hostages_rescued"]
+                t_reasons_str = ["target_bombed", "terrorist_win", "t_win", "hostages_not_rescued"]
+                ct_reasons_num = {7, 8, 11, 12}  # Numeric reason codes for CT win
+                t_reasons_num = {1, 9, 13}  # Numeric reason codes for T win
+
+                # First try to parse as numeric
+                try:
+                    reason_num = int(float(reason))  # Handle "7" or "7.0"
+                    if reason_num in ct_reasons_num:
+                        winner = "CT"
+                    elif reason_num in t_reasons_num:
+                        winner = "T"
+                except (ValueError, TypeError):
+                    # Not numeric, check as string
+                    reason_lower = reason.lower()
+                    if any(r in reason_lower for r in ct_reasons_str):
+                        winner = "CT"
+                    elif any(r in reason_lower for r in t_reasons_str):
+                        winner = "T"
 
             # Get start tick from round_start_df if available
             start_tick = safe_int(row.get("start_tick", 0))
@@ -2090,7 +2172,12 @@ class DemoParser:
         """Build BlindEvent list for flash effectiveness tracking."""
         blinds = []
         if blinds_df.empty:
+            logger.warning("blinds_df is empty, no blind events to build")
             return blinds
+
+        # Debug: Log available columns
+        logger.info(f"blinds_df columns: {list(blinds_df.columns)}")
+        logger.info(f"blinds_df shape: {blinds_df.shape}, player_teams count: {len(player_teams)}")
 
         # Find columns - includes raw event names for compatibility
         att_id = self._find_column(blinds_df, ["attacker_steamid", "attacker_steam_id", "attacker"])
@@ -2099,6 +2186,12 @@ class DemoParser:
         vic_name = self._find_column(blinds_df, ["user_name", "victim_name"])
         duration_col = self._find_column(blinds_df, ["blind_duration", "duration"])
         round_col = self._find_column(blinds_df, ["total_rounds_played", "round", "round_num"])
+
+        # Debug: Log found columns
+        logger.info(
+            f"Blind column mapping: att_id={att_id}, vic_id={vic_id}, "
+            f"duration={duration_col}, round={round_col}"
+        )
 
         for _, row in blinds_df.iterrows():
             attacker_sid = safe_int(row.get(att_id)) if att_id else 0

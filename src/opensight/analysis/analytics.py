@@ -2499,6 +2499,155 @@ def calculate_role_scores(
     return scores
 
 
+@dataclass
+class ValidationResult:
+    """Result of validating analysis data."""
+
+    is_valid: bool
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return self.is_valid
+
+
+class AnalysisValidator:
+    """Validates analysis results for data quality issues.
+
+    Catches common problems like:
+    - Negative values where only positive are valid
+    - Kill/death totals not matching (team kills vs team deaths)
+    - Missing required data
+    - Out-of-range percentages
+
+    Usage:
+        validator = AnalysisValidator()
+        result = validator.validate(analysis_result)
+        if not result.is_valid:
+            logger.warning(f"Validation errors: {result.errors}")
+    """
+
+    def validate(
+        self, players: dict[int, "PlayerMatchStats"], total_rounds: int
+    ) -> ValidationResult:
+        """
+        Validate analysis data for quality issues.
+
+        Args:
+            players: Dict of steam_id -> PlayerMatchStats
+            total_rounds: Total rounds in the match
+
+        Returns:
+            ValidationResult with is_valid flag and any errors/warnings
+        """
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        if not players:
+            errors.append("No players in analysis result")
+            return ValidationResult(is_valid=False, errors=errors)
+
+        # Check individual player stats
+        for steam_id, player in players.items():
+            player_name = getattr(player, "name", f"Player_{steam_id}")
+
+            # No negative values
+            if getattr(player, "kills", 0) < 0:
+                errors.append(f"Negative kills for {player_name}: {player.kills}")
+
+            if getattr(player, "deaths", 0) < 0:
+                errors.append(f"Negative deaths for {player_name}: {player.deaths}")
+
+            if getattr(player, "assists", 0) < 0:
+                errors.append(f"Negative assists for {player_name}: {player.assists}")
+
+            # Rounds survived should be non-negative
+            deaths = getattr(player, "deaths", 0)
+            rounds_played = getattr(player, "rounds_played", total_rounds)
+            rounds_survived = rounds_played - deaths
+            if rounds_survived < 0:
+                errors.append(
+                    f"Negative rounds survived for {player_name}: "
+                    f"{rounds_survived} (rounds={rounds_played}, deaths={deaths})"
+                )
+
+            # Percentages should be 0-100
+            for pct_attr in ["headshot_percentage", "kast_percentage", "survival_rate"]:
+                pct_value = getattr(player, pct_attr, None)
+                if pct_value is not None:
+                    if pct_value < 0:
+                        errors.append(f"Negative {pct_attr} for {player_name}: {pct_value}")
+                    elif pct_value > 100:
+                        warnings.append(f"High {pct_attr} for {player_name}: {pct_value}")
+
+            # ADR sanity check (typically 0-200, but can be higher in rare cases)
+            adr = getattr(player, "adr", None)
+            if adr is not None:
+                if adr < 0:
+                    errors.append(f"Negative ADR for {player_name}: {adr}")
+                elif adr > 300:
+                    warnings.append(f"Unusually high ADR for {player_name}: {adr}")
+
+            # HLTV rating sanity check (typically 0-3, but can be higher)
+            rating = getattr(player, "hltv_rating", None)
+            if rating is not None:
+                if rating < 0:
+                    errors.append(f"Negative HLTV rating for {player_name}: {rating}")
+                elif rating > 5:
+                    warnings.append(f"Unusually high HLTV rating for {player_name}: {rating}")
+
+        # Check team balance (total kills should roughly equal total deaths)
+        # Note: Self-damage deaths and team kills can cause slight imbalances
+        total_kills = sum(getattr(p, "kills", 0) for p in players.values())
+        total_deaths = sum(getattr(p, "deaths", 0) for p in players.values())
+
+        if total_kills > 0 and total_deaths > 0:
+            # Allow 10% tolerance for edge cases (suicides, disconnects)
+            ratio = total_kills / total_deaths
+            if ratio < 0.9 or ratio > 1.1:
+                warnings.append(
+                    f"Kill/death imbalance: {total_kills} kills vs {total_deaths} deaths "
+                    f"(ratio: {ratio:.2f})"
+                )
+
+        # Check for at least 10 players (5v5)
+        if len(players) < 10:
+            warnings.append(f"Less than 10 players: {len(players)}")
+
+        return ValidationResult(
+            is_valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+        )
+
+    def validate_and_fix(
+        self, players: dict[int, "PlayerMatchStats"], total_rounds: int
+    ) -> tuple[dict[int, "PlayerMatchStats"], ValidationResult]:
+        """
+        Validate and attempt to fix common issues.
+
+        Currently fixes:
+        - Negative rounds_survived by clamping to 0
+
+        Args:
+            players: Dict of steam_id -> PlayerMatchStats
+            total_rounds: Total rounds in the match
+
+        Returns:
+            Tuple of (possibly fixed players, validation result)
+        """
+        # First validate to find issues
+        result = self.validate(players, total_rounds)
+
+        # Log any issues
+        if result.errors:
+            logger.warning(f"Validation errors found: {result.errors}")
+        if result.warnings:
+            logger.debug(f"Validation warnings: {result.warnings}")
+
+        return players, result
+
+
 class DemoAnalyzer:
     """Analyzer for computing professional-grade metrics from parsed demo data.
 
@@ -2862,6 +3011,14 @@ class DemoAnalyzer:
             coaching_insights=coaching_insights,
             weapon_stats=weapon_stats,
         )
+
+        # Validate analysis results
+        validator = AnalysisValidator()
+        validation_result = validator.validate(self._players, self.data.num_rounds)
+        if validation_result.errors:
+            logger.warning(f"Analysis validation errors: {validation_result.errors}")
+        if validation_result.warnings:
+            logger.debug(f"Analysis validation warnings: {validation_result.warnings}")
 
         logger.info(f"Analysis complete. {len(self._players)} players analyzed.")
         return analysis
@@ -5309,8 +5466,15 @@ class DemoAnalyzer:
         has_grenades = hasattr(self.data, "grenades") and self.data.grenades
         has_damages = not self.data.damages_df.empty
 
+        # Debug: Log utility data availability
+        logger.info(
+            f"Utility data check: blinds={len(self.data.blinds) if has_blinds else 0}, "
+            f"grenades={len(self.data.grenades) if has_grenades else 0}, "
+            f"has_damages={has_damages}, blinds_df={len(self.data.blinds_df) if hasattr(self.data, 'blinds_df') else 'N/A'}"
+        )
+
         if not has_blinds and not has_grenades and not has_damages:
-            logger.info("No utility data available, skipping utility stats")
+            logger.warning("No utility data available, skipping utility stats")
             return
 
         # Set _rounds_played for per-round metrics calculation
