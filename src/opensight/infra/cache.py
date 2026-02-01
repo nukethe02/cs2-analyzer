@@ -2389,6 +2389,102 @@ class CachedAnalyzer:
 
         return coaching
 
+    def _generate_ai_summaries(self, players: dict, analysis) -> None:
+        """
+        Generate AI-powered match summaries for each player using LLM.
+
+        Modifies players dict in-place, adding "ai_summary" field to each player.
+
+        Args:
+            players: Dict of player data (steam_id -> player_dict)
+            analysis: MatchAnalysis object with match metadata
+        """
+        try:
+            from opensight.ai.llm_client import generate_match_summary
+
+            logger.info("Generating AI-powered coaching summaries with LLM")
+
+            # Build match context
+            match_context = {
+                "map_name": getattr(analysis, "map_name", ""),
+                "total_rounds": getattr(analysis, "total_rounds", 0),
+                "team1_score": getattr(analysis, "team1_score", 0),
+                "team2_score": getattr(analysis, "team2_score", 0),
+            }
+
+            # Generate summary for each player
+            for steam_id, player_data in players.items():
+                try:
+                    # Flatten player stats for LLM
+                    player_stats = {
+                        # Core stats
+                        "name": player_data.get("name", "Unknown"),
+                        "kills": player_data["stats"]["kills"],
+                        "deaths": player_data["stats"]["deaths"],
+                        "assists": player_data["stats"]["assists"],
+                        "adr": player_data["stats"]["adr"],
+                        "headshot_pct": player_data["stats"]["headshot_pct"],
+                        # Ratings
+                        "hltv_rating": player_data["rating"]["hltv_rating"],
+                        "kast_percentage": player_data["rating"]["kast_percentage"],
+                        "aim_rating": player_data["rating"]["aim_rating"],
+                        "utility_rating": player_data["rating"]["utility_rating"],
+                        # Advanced metrics
+                        "ttd_median_ms": player_data["advanced"]["ttd_median_ms"],
+                        "cp_median_error_deg": player_data["advanced"]["cp_median_error_deg"],
+                        # Entry/Trade/Clutch
+                        "entry_kills": player_data["entry"].get("entry_kills", 0),
+                        "entry_deaths": player_data["entry"].get("entry_deaths", 0),
+                        "trade_kill_success": player_data["trades"].get("trade_kill_success", 0),
+                        "trade_kill_opportunities": player_data["trades"].get(
+                            "trade_kill_opportunities", 0
+                        ),
+                        "clutch_wins": player_data["clutches"].get("v1_wins", 0)
+                        + player_data["clutches"].get("v2_wins", 0)
+                        + player_data["clutches"].get("v3_wins", 0),
+                        "clutch_attempts": player_data["duels"].get("clutch_attempts", 0),
+                    }
+
+                    # Generate AI summary
+                    ai_summary = generate_match_summary(player_stats, match_context)
+
+                    # Add to player data
+                    player_data["ai_summary"] = ai_summary
+
+                    logger.debug(
+                        f"Generated AI summary for {player_stats['name']} ({len(ai_summary)} chars)"
+                    )
+
+                except Exception as e:
+                    logger.warning(f"AI summary generation failed for player {steam_id}: {e}")
+                    player_data["ai_summary"] = (
+                        "**AI Summary Unavailable**\n\n"
+                        "Unable to generate personalized insights at this time. "
+                        "Check your OPENAI_API_KEY configuration."
+                    )
+
+            logger.info(f"Generated AI summaries for {len(players)} players")
+
+        except ImportError as e:
+            logger.warning(f"LLM client not available, skipping AI summaries: {e}")
+            # Add placeholder summaries
+            for player_data in players.values():
+                player_data["ai_summary"] = (
+                    "**AI Coaching Not Configured**\n\n"
+                    "To enable AI-powered coaching insights, install the OpenAI library:\n"
+                    "```\npip install openai\n```\n"
+                    "Then set your `OPENAI_API_KEY` environment variable."
+                )
+        except Exception as e:
+            logger.error(f"Unexpected error in AI summary generation: {e}")
+            # Add error message to all players
+            for player_data in players.values():
+                player_data["ai_summary"] = (
+                    f"**AI Coaching Error**\n\n"
+                    f"An error occurred: {type(e).__name__}\n\n"
+                    "Please check logs for details."
+                )
+
     def _calculate_match_averages(self, players: dict) -> dict:
         """Calculate match-wide statistics for comparison benchmarks."""
         if not players:
