@@ -12,7 +12,7 @@ All features are 100% FREE - no paid services required.
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from opensight.infra.database import DatabaseManager, get_db
@@ -496,7 +496,7 @@ class ProfileAnalyzer:
         matches = self.db.get_player_match_history(steam_id, limit=100)
 
         # Filter by date
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
         data_points = []
 
         for match in matches:
