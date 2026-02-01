@@ -555,8 +555,9 @@ class CachedAnalyzer:
                 "rating": {
                     "hltv_rating": round(p.hltv_rating, 2) if p.hltv_rating else 0,
                     "kast_percentage": (round(p.kast_percentage, 1) if p.kast_percentage else 0),
-                    "aim_rating": round(p.aim_rating, 1) if p.aim_rating else 50,
-                    "utility_rating": (round(p.utility_rating, 1) if p.utility_rating else 50),
+                    # aim_rating: 0 = missing data, actual values 1-100
+                    "aim_rating": round(p.aim_rating, 1),
+                    "utility_rating": (round(p.utility_rating, 1) if p.utility_rating else 0),
                     "impact_rating": round(getattr(p, "impact_rating", None) or 0, 2),
                 },
                 "advanced": {
@@ -600,6 +601,27 @@ class CachedAnalyzer:
                     "times_blinded": p.utility.times_blinded if p.utility else 0,
                     "total_time_blinded": p.utility.total_time_blinded if p.utility else 0,
                     "avg_time_blinded": p.utility.avg_time_blinded if p.utility else 0,
+                },
+                "aim_stats": {
+                    # Accuracy metrics (from weapon_fire events)
+                    "shots_fired": getattr(p, "shots_fired", 0) or 0,
+                    "shots_hit": getattr(p, "shots_hit", 0) or 0,
+                    "accuracy_all": round(getattr(p, "accuracy", 0) or 0, 1),
+                    "headshot_hits": getattr(p, "headshot_hits", 0) or 0,
+                    "head_accuracy": round(getattr(p, "head_hit_rate", 0) or 0, 1),
+                    # Spray accuracy (hits after 4th bullet in burst)
+                    "spray_shots_fired": getattr(p, "spray_shots_fired", 0) or 0,
+                    "spray_shots_hit": getattr(p, "spray_shots_hit", 0) or 0,
+                    "spray_accuracy": round(getattr(p, "spray_accuracy", 0) or 0, 1),
+                    # Counter-strafing (shots while near-stationary)
+                    "shots_stationary": getattr(p, "shots_stationary", 0) or 0,
+                    "shots_with_velocity": getattr(p, "shots_with_velocity", 0) or 0,
+                    "counter_strafe_pct": round(getattr(p, "counter_strafe_pct", 0) or 0, 1),
+                    # TTD and CP (duplicated here for frontend convenience)
+                    "time_to_damage_ms": round(getattr(p, "ttd_median_ms", None) or 0, 1),
+                    "crosshair_placement_deg": round(
+                        getattr(p, "cp_median_error_deg", None) or 0, 1
+                    ),
                 },
                 "duels": {
                     "trade_kills": getattr(p, "trade_kills", None) or 0,
@@ -741,8 +763,8 @@ class CachedAnalyzer:
                 "duration_minutes": getattr(analysis, "duration_minutes", 30),
                 "score": f"{analysis.team1_score} - {analysis.team2_score}",
                 "total_kills": sum(p["stats"]["kills"] for p in players.values()),
-                "team1_name": getattr(analysis, "team1_name", "Team 1"),
-                "team2_name": getattr(analysis, "team2_name", "Team 2"),
+                "team1_name": getattr(analysis, "team1_name", "Counter-Terrorists"),
+                "team2_name": getattr(analysis, "team2_name", "Terrorists"),
             },
             "players": players_sorted,
             "mvp": mvp,
@@ -942,12 +964,21 @@ class CachedAnalyzer:
             round_start = round_boundaries.get(round_num, (0, 0))[0]
             time_seconds = tick_to_round_time(tick, round_start)
 
-            attacker_name = getattr(kill, "attacker_name", "") or player_names.get(
-                getattr(kill, "attacker_steamid", 0), "Unknown"
-            )
-            victim_name = getattr(kill, "victim_name", "") or player_names.get(
-                getattr(kill, "victim_steamid", 0), "Unknown"
-            )
+            # Resolve attacker name with proper fallback
+            attacker_id = getattr(kill, "attacker_steamid", 0)
+            attacker_name = getattr(kill, "attacker_name", "") or player_names.get(attacker_id)
+            if not attacker_name and attacker_id:
+                attacker_name = f"Player_{str(attacker_id)[-4:]}"
+            elif not attacker_name:
+                attacker_name = "Unknown"
+
+            # Resolve victim name with proper fallback
+            victim_id = getattr(kill, "victim_steamid", 0)
+            victim_name = getattr(kill, "victim_name", "") or player_names.get(victim_id)
+            if not victim_name and victim_id:
+                victim_name = f"Player_{str(victim_id)[-4:]}"
+            elif not victim_name:
+                victim_name = "Unknown"
             attacker_side = str(getattr(kill, "attacker_side", "")).upper()
             victim_side = str(getattr(kill, "victim_side", "")).upper()
 
@@ -1271,6 +1302,33 @@ class CachedAnalyzer:
     def _calculate_multikills(self, demo_data) -> dict[int, dict]:
         """Calculate multi-kill counts (2K, 3K, 4K, 5K) per player per round."""
         kills = getattr(demo_data, "kills", [])
+        rounds = getattr(demo_data, "rounds", [])
+
+        # Build round boundaries for inferring round_num from tick
+        round_boundaries: list[tuple[int, int, int]] = []  # (round_num, start_tick, end_tick)
+        for r in rounds:
+            round_num = getattr(r, "round_num", 0)
+            start_tick = getattr(r, "start_tick", 0)
+            end_tick = getattr(r, "end_tick", 0)
+            if round_num and end_tick > 0:
+                round_boundaries.append((round_num, start_tick, end_tick))
+        round_boundaries.sort(key=lambda x: x[1])
+
+        def infer_round_from_tick(tick: int) -> int:
+            """Infer round number from tick using round boundaries."""
+            for rnd_num, start_tick, end_tick in round_boundaries:
+                if start_tick <= tick <= end_tick:
+                    return rnd_num
+            # Fallback: find closest round after tick
+            if round_boundaries:
+                for rnd_num, _start_tick, end_tick in reversed(round_boundaries):
+                    if tick > end_tick:
+                        return rnd_num
+                return 1
+            return 1
+
+        # Check if kills have valid round data
+        has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
 
         # Count kills per player per round
         player_round_kills: dict[int, dict[int, int]] = {}  # steam_id -> {round_num -> kill_count}
@@ -1279,12 +1337,22 @@ class CachedAnalyzer:
             attacker_id = getattr(kill, "attacker_steamid", 0)
             round_num = getattr(kill, "round_num", 0)
 
-            if attacker_id and round_num:
-                if attacker_id not in player_round_kills:
-                    player_round_kills[attacker_id] = {}
-                if round_num not in player_round_kills[attacker_id]:
-                    player_round_kills[attacker_id][round_num] = 0
-                player_round_kills[attacker_id][round_num] += 1
+            if not attacker_id:
+                continue
+
+            # Infer round if missing (CRITICAL FIX for multikill detection)
+            if round_num == 0:
+                if round_boundaries and not has_round_data:
+                    tick = getattr(kill, "tick", 0)
+                    round_num = infer_round_from_tick(tick)
+                else:
+                    round_num = 1  # Fallback to round 1 if no boundary data
+
+            if attacker_id not in player_round_kills:
+                player_round_kills[attacker_id] = {}
+            if round_num not in player_round_kills[attacker_id]:
+                player_round_kills[attacker_id][round_num] = 0
+            player_round_kills[attacker_id][round_num] += 1
 
         # Count 2K, 3K, 4K, 5K for each player
         result: dict[int, dict] = {}
@@ -1437,7 +1505,9 @@ class CachedAnalyzer:
         # Build cumulative data for graphs
         players_timeline = []
         for steam_id, round_data in player_round_data.items():
-            player_name = player_names.get(steam_id, f"Player {steam_id}")
+            # Use last 4 digits for readability instead of raw Steam ID
+            suffix = str(steam_id)[-4:] if steam_id else "0000"
+            player_name = player_names.get(steam_id, f"Player_{suffix}")
             # Get team - prefer from player_teams dict, fallback to inferring from kills
             team = player_teams.get(steam_id, "Unknown")
             if team == "Unknown":
@@ -1788,15 +1858,29 @@ class CachedAnalyzer:
 
             # Get attacker (entry fragger) info
             attacker_id = getattr(first_kill, "attacker_steamid", 0)
-            attacker_name = player_names.get(
-                attacker_id, getattr(first_kill, "attacker_name", "Unknown")
-            )
+            attacker_name = player_names.get(attacker_id)
+            if not attacker_name:
+                # Try fallback to kill event's attacker_name attribute
+                attacker_name = getattr(first_kill, "attacker_name", None)
+            if not attacker_name and attacker_id:
+                # Use friendly format instead of "Unknown"
+                attacker_name = f"Player_{str(attacker_id)[-4:]}"
+            elif not attacker_name:
+                attacker_name = "Unknown"
             attacker_side = getattr(first_kill, "attacker_side", "") or ""
             attacker_team = "CT" if "CT" in attacker_side.upper() else "T"
 
             # Get victim (entry death) info
             victim_id = getattr(first_kill, "victim_steamid", 0)
-            victim_name = player_names.get(victim_id, getattr(first_kill, "victim_name", "Unknown"))
+            victim_name = player_names.get(victim_id)
+            if not victim_name:
+                # Try fallback to kill event's victim_name attribute
+                victim_name = getattr(first_kill, "victim_name", None)
+            if not victim_name and victim_id:
+                # Use friendly format instead of "Unknown"
+                victim_name = f"Player_{str(victim_id)[-4:]}"
+            elif not victim_name:
+                victim_name = "Unknown"
             victim_side = getattr(first_kill, "victim_side", "") or ""
             victim_team = "CT" if "CT" in victim_side.upper() else "T"
 

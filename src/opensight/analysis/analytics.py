@@ -6790,19 +6790,30 @@ class DemoAnalyzer:
         return (ct_wins, t_wins)
 
     def _extract_team_names(self) -> tuple[str, str]:
-        """Extract team names from demo data or use defaults."""
-        team1_name = "Team 1"
-        team2_name = "Team 2"
+        """Extract team names from demo data or use defaults.
+
+        Returns:
+            Tuple of (CT team name, T team name).
+            - If clan tags exist, use those
+            - Otherwise use "Counter-Terrorists" / "Terrorists"
+        """
+        # Default to full team names (cleaner than "Team 1/2")
+        team1_name = "Counter-Terrorists"
+        team2_name = "Terrorists"
 
         # Try to get team names from players' clan tags or team assignments
         ct_players = [p for p in self._players.values() if p.team == "CT"]
         t_players = [p for p in self._players.values() if p.team == "T"]
 
-        # Use first player's clan tag if available, otherwise use CT/T
+        # Use first player's clan tag if available
         if ct_players:
-            team1_name = getattr(ct_players[0], "clan_tag", None) or "CT"
+            clan_tag = getattr(ct_players[0], "clan_tag", None)
+            if clan_tag:
+                team1_name = clan_tag
         if t_players:
-            team2_name = getattr(t_players[0], "clan_tag", None) or "T"
+            clan_tag = getattr(t_players[0], "clan_tag", None)
+            if clan_tag:
+                team2_name = clan_tag
 
         return (team1_name, team2_name)
 
