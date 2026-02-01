@@ -996,7 +996,16 @@ async def analyze_demo(request: Request, file: UploadFile = File(...)):
                     logger.exception("Job processing failed")
                     j = job_store.get_job(jid)
                     if j:
-                        j.result = {"error": str(ex)}
+                        # Sanitize error message - don't expose internal details
+                        # Log full error server-side, return generic message to client
+                        error_type = type(ex).__name__
+                        if "parse" in str(ex).lower() or "demo" in str(ex).lower():
+                            safe_error = "Demo file could not be parsed. The file may be corrupted or in an unsupported format."
+                        elif "memory" in str(ex).lower():
+                            safe_error = "Analysis failed due to resource constraints. Try a smaller demo file."
+                        else:
+                            safe_error = f"Analysis failed ({error_type}). Please try again or contact support."
+                        j.result = {"error": safe_error}
                         job_store.set_status(jid, JobStatus.FAILED)
                 finally:
                     try:

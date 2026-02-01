@@ -7,8 +7,10 @@ annotate demos collaboratively with real-time synchronization.
 
 import hashlib
 import json
+import logging
 import queue
 import re
+import secrets
 import threading
 import time
 from collections import defaultdict
@@ -17,6 +19,76 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Secure Password Hashing (bcrypt with fallback)
+# =============================================================================
+try:
+    import bcrypt
+
+    BCRYPT_AVAILABLE = True
+except ImportError:
+    BCRYPT_AVAILABLE = False
+    logger.warning(
+        "bcrypt not installed - using PBKDF2 fallback for password hashing. "
+        "Install bcrypt for better security: pip install bcrypt"
+    )
+
+
+def _hash_password(password: str) -> str:
+    """
+    Securely hash a password using bcrypt (preferred) or PBKDF2 (fallback).
+
+    Returns a string that includes the algorithm identifier for future-proofing.
+    """
+    if BCRYPT_AVAILABLE:
+        # bcrypt with work factor 12 (recommended minimum)
+        salt = bcrypt.gensalt(rounds=12)
+        hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+        return f"bcrypt:{hashed.decode('utf-8')}"
+    else:
+        # PBKDF2-SHA256 fallback with 600k iterations (OWASP 2023 recommendation)
+        salt = secrets.token_hex(16)
+        dk = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt.encode("utf-8"), 600000
+        )
+        return f"pbkdf2:{salt}:{dk.hex()}"
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    """
+    Verify a password against its hash.
+
+    Handles both bcrypt and PBKDF2 hashes, plus legacy SHA-256 hashes.
+    """
+    if not password_hash:
+        return False
+
+    # Handle new format with algorithm prefix
+    if password_hash.startswith("bcrypt:"):
+        if not BCRYPT_AVAILABLE:
+            logger.error("bcrypt hash found but bcrypt not installed")
+            return False
+        stored_hash = password_hash[7:].encode("utf-8")
+        return bcrypt.checkpw(password.encode("utf-8"), stored_hash)
+
+    elif password_hash.startswith("pbkdf2:"):
+        parts = password_hash.split(":")
+        if len(parts) != 3:
+            return False
+        _, salt, stored_dk = parts
+        dk = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt.encode("utf-8"), 600000
+        )
+        return secrets.compare_digest(dk.hex(), stored_dk)
+
+    else:
+        # Legacy SHA-256 hash (for backwards compatibility)
+        # WARNING: This is insecure - sessions should be re-created
+        legacy_hash = hashlib.sha256(password.encode()).hexdigest()
+        return secrets.compare_digest(legacy_hash, password_hash)
 
 # ============================================================================
 # Collaboration Data Types
@@ -530,7 +602,7 @@ class CollaborationManager:
 
         password_hash = None
         if password:
-            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            password_hash = _hash_password(password)
 
         session = CollaborationSession(
             session_id=session_id,
@@ -594,7 +666,7 @@ class CollaborationManager:
         if session.password_hash:
             if not password:
                 return None, "Password required"
-            if hashlib.sha256(password.encode()).hexdigest() != session.password_hash:
+            if not _verify_password(password, session.password_hash):
                 return None, "Invalid password"
 
         # Check user limit
