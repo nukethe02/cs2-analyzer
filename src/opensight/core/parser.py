@@ -476,7 +476,9 @@ class DemoData:
     player_teams: dict[int, str] = field(default_factory=dict)  # DEPRECATED for roster ID
 
     # NEW: Persistent team identity (handles halftime swaps)
-    player_persistent_teams: dict[int, str] = field(default_factory=dict)  # steamid -> "Team A"/"Team B"
+    player_persistent_teams: dict[int, str] = field(
+        default_factory=dict
+    )  # steamid -> "Team A"/"Team B"
     team_rosters: dict[str, set[int]] = field(default_factory=dict)  # "Team A" -> {steamids}
     team_starting_sides: dict[str, str] = field(default_factory=dict)  # "Team A" -> "CT"/"T"
     halftime_round: int = 13  # Round when halftime occurs (13 for MR12, 16 for MR15)
@@ -543,6 +545,22 @@ class DemoData:
             "Team A", "Team B", or "Unknown"
         """
         return self.player_persistent_teams.get(steamid, "Unknown")
+
+    def get_team_display_name(self, persistent_team: str) -> str:
+        """Map persistent team to display name based on starting side.
+
+        This preserves frontend CSS color associations:
+        - Team that started CT → "CT" (Blue)
+        - Team that started T → "T" (Red)
+
+        Args:
+            persistent_team: "Team A" or "Team B"
+
+        Returns:
+            "CT", "T", or "Unknown"
+        """
+        starting_side = self.team_starting_sides.get(persistent_team, "Unknown")
+        return starting_side if starting_side in ("CT", "T") else "Unknown"
 
 
 class DemoParser:
@@ -1200,19 +1218,13 @@ class DemoParser:
             consistency = max(counts[2], counts[3]) / total
 
             if consistency < 0.90:
-                logger.warning(
-                    f"Player {sid} has low team consistency ({consistency:.1%})"
-                )
+                logger.warning(f"Player {sid} has low team consistency ({consistency:.1%})")
 
             player_primary_team_num[sid] = primary_team_num
 
         # Step 3: Group into two rosters
-        roster_2 = {
-            sid for sid, team_num in player_primary_team_num.items() if team_num == 2
-        }
-        roster_3 = {
-            sid for sid, team_num in player_primary_team_num.items() if team_num == 3
-        }
+        roster_2 = {sid for sid, team_num in player_primary_team_num.items() if team_num == 2}
+        roster_3 = {sid for sid, team_num in player_primary_team_num.items() if team_num == 3}
 
         # Step 4: Determine which roster started CT vs T in round 1
         round_col = self._find_column(kills_df, ["round", "round_num"])
@@ -1223,12 +1235,8 @@ class DemoParser:
 
         if round_col and not kills_df.empty:
             round_1_kills = kills_df[kills_df[round_col] == 1]
-            att_id_col = self._find_column(
-                round_1_kills, ["attacker_steamid", "attacker_id"]
-            )
-            att_team_col = self._find_column(
-                round_1_kills, ["attacker_team_num", "attacker_side"]
-            )
+            att_id_col = self._find_column(round_1_kills, ["attacker_steamid", "attacker_id"])
+            att_team_col = self._find_column(round_1_kills, ["attacker_team_num", "attacker_side"])
 
             # Count how many roster_2 players appeared as team_num=3 (CT) in round 1
             roster_2_as_ct = 0
@@ -1258,11 +1266,7 @@ class DemoParser:
                 team_b_starting_side = "T"
 
         # Step 5: Detect match format (MR12 vs MR15)
-        max_round = (
-            int(kills_df[round_col].max())
-            if round_col and not kills_df.empty
-            else 24
-        )
+        max_round = int(kills_df[round_col].max()) if round_col and not kills_df.empty else 24
         halftime_round = 16 if max_round > 24 else 13
 
         # Step 6: Build return structures

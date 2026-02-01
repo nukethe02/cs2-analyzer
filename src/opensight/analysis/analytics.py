@@ -2889,7 +2889,9 @@ class DemoAnalyzer:
                 total_damage=0,
                 rounds_played=self.data.num_rounds,
             )
-            logger.debug(f"Initialized player: {name} (steamid={steam_id}, team={team}, persistent={persistent_team})")
+            logger.debug(
+                f"Initialized player: {name} (steamid={steam_id}, team={team}, persistent={persistent_team})"
+            )
 
     def _calculate_basic_stats(self) -> None:
         """Calculate basic K/D/A and damage stats."""
@@ -3693,27 +3695,23 @@ class DemoAnalyzer:
         )
 
         # Build player team lookup for consistent team matching
+        # Uses persistent team display name to correctly group teammates across halftime
         player_teams_lookup: dict[int, str] = {}
         for steam_id, player in self._players.items():
             if player.team in ("CT", "T"):
                 player_teams_lookup[steam_id] = player.team
 
-        # Also extract from kills DataFrame if not in players
-        if self._att_id_col and self._att_side_col:
+        # Also extract from persistent team data if not in players
+        # This handles edge cases where a player appears in kills but not in player list
+        if self._att_id_col:
             for _, row in kills_df.drop_duplicates(subset=[self._att_id_col]).iterrows():
                 att_id = safe_int(row.get(self._att_id_col))
                 if att_id and att_id not in player_teams_lookup:
-                    team_val = row.get(self._att_side_col)
-                    if isinstance(team_val, str):
-                        team_upper = team_val.upper()
-                        if "CT" in team_upper:
-                            player_teams_lookup[att_id] = "CT"
-                        elif "T" in team_upper:
-                            player_teams_lookup[att_id] = "T"
-                    elif isinstance(team_val, (int, float)) and pd.notna(team_val):
-                        player_teams_lookup[att_id] = (
-                            "CT" if int(team_val) == 3 else "T" if int(team_val) == 2 else "Unknown"
-                        )
+                    # Use persistent team display name to match teammates correctly
+                    persistent_team = self.data.get_player_persistent_team(att_id)
+                    display_team = self.data.get_team_display_name(persistent_team)
+                    if display_team in ("CT", "T"):
+                        player_teams_lookup[att_id] = display_team
 
         # Counters for logging
         total_trade_opportunities = 0
@@ -4058,9 +4056,8 @@ class DemoAnalyzer:
                     if use_team_column:
                         vic_side = self._normalize_team(kill.get(self._vic_side_col))
                     else:
-                        # Fallback: look up from player_teams
-                        vic_team = self.data.player_teams.get(victim_id, "Unknown")
-                        vic_side = self._normalize_team(vic_team)
+                        # Fallback: use round-aware side lookup to handle halftime swaps
+                        vic_side = self._get_player_side(victim_id, round_num_int)
                     if vic_side == enemy_side:
                         enemies_killed += 1
 
@@ -6476,7 +6473,8 @@ class DemoAnalyzer:
                 # Only include grenades with valid positions
                 if grenade.x is not None and grenade.y is not None:
                     grenade_type = grenade.grenade_type.lower()
-                    thrower_team = self.data.player_teams.get(grenade.player_steamid, "Unknown")
+                    # Use round-aware side lookup to handle halftime swaps
+                    thrower_team = self._get_player_side(grenade.player_steamid, grenade.round_num)
 
                     position = {
                         "x": grenade.x,
@@ -6496,7 +6494,8 @@ class DemoAnalyzer:
                     grenade_positions.append(position)
 
                 # Count grenades for team stats (count each grenade once)
-                thrower_team = self.data.player_teams.get(grenade.player_steamid, "Unknown")
+                # Use round-aware side lookup to handle halftime swaps
+                thrower_team = self._get_player_side(grenade.player_steamid, grenade.round_num)
                 if thrower_team in team_stats:
                     grenade_type = grenade.grenade_type.lower()
                     team_stats[thrower_team]["total_utility"] += 1
@@ -6514,7 +6513,8 @@ class DemoAnalyzer:
         if hasattr(self.data, "blinds") and self.data.blinds:
             for blind in self.data.blinds:
                 if not blind.is_teammate and blind.blind_duration >= 1.5:
-                    attacker_team = self.data.player_teams.get(blind.attacker_steamid, "Unknown")
+                    # Use round-aware side lookup to handle halftime swaps
+                    attacker_team = self._get_player_side(blind.attacker_steamid, blind.round_num)
                     if attacker_team in team_stats:
                         team_stats[attacker_team]["enemies_flashed"] += 1
 
@@ -6788,7 +6788,12 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
 
     # Initialize metrics for all known players
     for steam_id, name in match_data.player_names.items():
-        team = match_data.player_teams.get(steam_id, "Unknown")
+        # Use persistent team display name to correctly group teammates across halftime
+        persistent_team = match_data.get_player_persistent_team(steam_id)
+        team = match_data.get_team_display_name(persistent_team)
+        if team == "Unknown":
+            # Fallback for backward compatibility with old data
+            team = match_data.player_teams.get(steam_id, "Unknown")
         result[str(steam_id)] = UtilityMetrics(
             player_name=name,
             player_steamid=steam_id,
