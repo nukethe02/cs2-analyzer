@@ -530,6 +530,20 @@ def build_player_response(player: Any) -> dict:
             "4k": player.multi_kills.rounds_with_4k,
             "5k": player.multi_kills.rounds_with_5k,
         },
+        # Spray transfers (unique OpenSight metric)
+        "spray_transfers": (
+            player.spray_transfers.to_dict()
+            if hasattr(player, "spray_transfers")
+            else {
+                "double_sprays": 0,
+                "triple_sprays": 0,
+                "quad_sprays": 0,
+                "ace_sprays": 0,
+                "total_sprays": 0,
+                "total_spray_kills": 0,
+                "avg_spray_time_ms": 0,
+            }
+        ),
         # Comprehensive aim stats (Leetify style)
         "aim_stats": {
             # Raw counts

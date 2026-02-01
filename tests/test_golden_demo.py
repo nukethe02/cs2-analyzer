@@ -46,14 +46,12 @@ GOLDEN_DEMO_PATH = os.environ.get(
 # Expected values for the golden demo - UPDATE THESE WHEN LEGITIMATELY CHANGED
 # Format: {"player_name": {"team": "...", "rating": X.XX, "kast": XX.X, ...}}
 #
-# KNOWN ISSUES (locked in for regression detection):
-# - team="Unknown" for all players - team detection bug needs fixing
-# - kast_percentage > 100% - KAST calculation bug needs fixing
-# When these bugs are fixed, this test will fail - update expectations with correct values.
+# NOTE: Team detection is now working (as of 2026-02-01).
+# kast_percentage > 100% is a known issue - KAST calculation bug needs fixing.
 #
 GOLDEN_EXPECTATIONS = {
     "4SkinsLittleBuddy": {
-        "team": "Unknown",
+        "team": "CT",
         "hltv_rating": 0.74,
         "kast_percentage": 68.8,
         "impact_rating": 0.86,
@@ -62,52 +60,52 @@ GOLDEN_EXPECTATIONS = {
         "adr": 85.6,
     },
     "mdma": {
-        "team": "Unknown",
-        "hltv_rating": 2.29,
+        "team": "T",
+        "hltv_rating": 2.32,
         "kast_percentage": 106.2,
-        "impact_rating": 2.96,
+        "impact_rating": 3.06,
         "kills": 22,
         "deaths": 9,
         "adr": 184.4,
     },
     "Emyvj08": {
-        "team": "Unknown",
-        "hltv_rating": 1.2,
+        "team": "CT",
+        "hltv_rating": 1.25,
         "kast_percentage": 106.2,
-        "impact_rating": 1.24,
+        "impact_rating": 1.44,
         "kills": 11,
         "deaths": 13,
         "adr": 105.7,
     },
     "Chance The Fragger": {
-        "team": "Unknown",
-        "hltv_rating": 1.57,
+        "team": "T",
+        "hltv_rating": 1.62,
         "kast_percentage": 106.2,
-        "impact_rating": 2.07,
+        "impact_rating": 2.27,
         "kills": 16,
         "deaths": 12,
         "adr": 107.2,
     },
     "booterfly": {
-        "team": "Unknown",
-        "hltv_rating": 0.69,
+        "team": "T",
+        "hltv_rating": 0.72,
         "kast_percentage": 106.2,
-        "impact_rating": 0.35,
+        "impact_rating": 0.46,
         "kills": 5,
         "deaths": 14,
         "adr": 69.4,
     },
     "Dan Gleesack": {
-        "team": "Unknown",
+        "team": "CT",
         "hltv_rating": 0.68,
         "kast_percentage": 106.2,
-        "impact_rating": 0.5,
+        "impact_rating": 0.50,
         "kills": 6,
         "deaths": 15,
         "adr": 54.7,
     },
     "No Life King": {
-        "team": "Unknown",
+        "team": "CT",
         "hltv_rating": 0.93,
         "kast_percentage": 106.2,
         "impact_rating": 0.83,
@@ -231,7 +229,6 @@ class TestTeamIdentity:
                 "TEAM IDENTITY REGRESSION DETECTED:\n" + "\n".join(f"  - {e}" for e in errors)
             )
 
-    @pytest.mark.xfail(reason="Known bug: team detection returns 'Unknown' - fix pending")
     def test_all_players_have_team_assigned(self, player_stats_by_name):
         """Every player must have a team assignment."""
         for name, stats in player_stats_by_name.items():
@@ -244,7 +241,6 @@ class TestTeamIdentity:
                 "T",
             ), f"Player '{name}' has invalid team: '{team}'"
 
-    @pytest.mark.xfail(reason="Known bug: team detection returns 'Unknown' - fix pending")
     def test_teams_are_balanced(self, player_stats_by_name):
         """Each team should have roughly equal players (5v5)."""
         teams = {}

@@ -629,6 +629,29 @@ class CachedAnalyzer:
                     "clutch_wins": getattr(p, "clutch_wins", None) or 0,
                     "clutch_attempts": getattr(p, "clutch_attempts", None) or 0,
                 },
+                "spray_transfers": {
+                    "double_sprays": (
+                        p.spray_transfers.double_sprays if hasattr(p, "spray_transfers") else 0
+                    ),
+                    "triple_sprays": (
+                        p.spray_transfers.triple_sprays if hasattr(p, "spray_transfers") else 0
+                    ),
+                    "quad_sprays": (
+                        p.spray_transfers.quad_sprays if hasattr(p, "spray_transfers") else 0
+                    ),
+                    "ace_sprays": (
+                        p.spray_transfers.ace_sprays if hasattr(p, "spray_transfers") else 0
+                    ),
+                    "total_sprays": (
+                        p.spray_transfers.total_sprays if hasattr(p, "spray_transfers") else 0
+                    ),
+                    "total_spray_kills": (
+                        p.spray_transfers.total_spray_kills if hasattr(p, "spray_transfers") else 0
+                    ),
+                    "avg_spray_time_ms": (
+                        p.spray_transfers.avg_spray_time_ms if hasattr(p, "spray_transfers") else 0
+                    ),
+                },
                 "entry": self._get_entry_stats(p),
                 "trades": self._get_trade_stats(p),
                 "clutches": self._get_clutch_stats(p),

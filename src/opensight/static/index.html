@@ -3291,6 +3291,7 @@
                         <button class="sub-tab" data-subtab="utility">Utility</button>
                         <button class="sub-tab" data-subtab="activity">Activity</button>
                         <button class="sub-tab" data-subtab="trades">Trades</button>
+                        <button class="sub-tab" data-subtab="spray-transfers">Spray Transfers <span class="badge-new">NEW</span></button>
                         <button class="sub-tab" data-subtab="opening-duels">Opening Duels</button>
                         <button class="sub-tab" data-subtab="clutches">Clutches</button>
                         <button class="sub-tab" data-subtab="synergy">Synergy <span class="badge-new">NEW</span></button>
@@ -3314,6 +3315,9 @@
                     </div>
                     <div class="sub-tab-content" id="subtab-trades">
                         <div class="sub-tab-loading">Loading trade statistics</div>
+                    </div>
+                    <div class="sub-tab-content" id="subtab-spray-transfers">
+                        <div class="sub-tab-loading">Loading spray transfer data</div>
                     </div>
                     <div class="sub-tab-content" id="subtab-opening-duels">
                         <div class="sub-tab-loading">Loading opening duel statistics</div>
@@ -3393,6 +3397,9 @@
                     break;
                 case 'trades':
                     container.innerHTML = renderTradesTable(myTeam, enemyTeam, team1Name, team2Name);
+                    break;
+                case 'spray-transfers':
+                    container.innerHTML = renderSprayTransfersTable(myTeam, enemyTeam, team1Name, team2Name);
                     break;
                 case 'opening-duels':
                     container.innerHTML = renderOpeningDuelsTable(myTeam, enemyTeam, team1Name, team2Name);
@@ -3993,6 +4000,95 @@
                 <div style="display: flex; gap: 16px; padding: 12px 16px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted);">
                     <div><span style="color: var(--warning);">★</span> Best in match (>60% trade kill or >50% traded death)</div>
                     <div style="margin-left: auto;"><span style="color: var(--success);">Green</span> = Excellent | <span style="color: var(--warning);">Yellow</span> = Good</div>
+                </div>
+            `;
+
+            return html + renderTeamTable(team1, ctTeamName) + renderTeamTable(team2, tTeamName);
+        }
+
+        // Render Spray Transfers Table (OpenSight exclusive - mechanical skill metric)
+        function renderSprayTransfersTable(team1, team2, team1Name, team2Name) {
+            const ctTeamName = team1Name || 'Counter-Terrorists';
+            const tTeamName = team2Name || 'Terrorists';
+
+            const allPlayers = [...team1, ...team2];
+            const best = {
+                total_sprays: Math.max(...allPlayers.map(p => p.spray_transfers?.total_sprays || 0)),
+                triple_sprays: Math.max(...allPlayers.map(p => (p.spray_transfers?.triple_sprays || 0) + (p.spray_transfers?.quad_sprays || 0) + (p.spray_transfers?.ace_sprays || 0)))
+            };
+
+            const renderStar = (val, bestVal) => {
+                return val === bestVal && val > 0 ? '<span style="color: var(--warning); margin-right: 2px;">★</span>' : '';
+            };
+
+            const renderTeamTable = (players, teamName) => {
+                if (!players || players.length === 0) return '';
+
+                // Sort by total sprays
+                const sorted = [...players].sort((a, b) => {
+                    const aVal = a.spray_transfers?.total_sprays || 0;
+                    const bVal = b.spray_transfers?.total_sprays || 0;
+                    return bVal - aVal;
+                });
+
+                let html = `
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; text-transform: uppercase;">${teamName}</h4>
+                        <table class="stats-table" style="width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: var(--radius-md); overflow: hidden;">
+                            <thead>
+                                <tr style="background: var(--bg-secondary);">
+                                    <th style="text-align: left; padding: 12px; color: var(--text-muted); font-weight: 500;">Player</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Total spray transfer events">Total</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="2-kill sprays">2-Kill</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="3+ kill sprays (triple, quad, ace)">3-Kill+</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Total kills from spray transfers">Spray Kills</th>
+                                    <th style="padding: 12px; color: var(--text-muted); font-weight: 500;" title="Average time span of sprays">Avg Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+
+                sorted.forEach(p => {
+                    const st = p.spray_transfers || {};
+                    const totalSprays = st.total_sprays || 0;
+                    const doubleSprays = st.double_sprays || 0;
+                    const triplePlus = (st.triple_sprays || 0) + (st.quad_sprays || 0) + (st.ace_sprays || 0);
+                    const sprayKills = st.total_spray_kills || 0;
+                    const avgTime = st.avg_spray_time_ms || 0;
+
+                    const tripleColor = triplePlus >= 2 ? 'var(--success)' : triplePlus >= 1 ? 'var(--warning)' : 'var(--text-secondary)';
+
+                    html += `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.75rem;">
+                                        ${esc((p.name || 'U')[0])}
+                                    </div>
+                                    ${esc(p.name)}
+                                </div>
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">
+                                ${renderStar(totalSprays, best.total_sprays)}${totalSprays}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">${doubleSprays}</td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace; color: ${tripleColor};">
+                                ${renderStar(triplePlus, best.triple_sprays)}${triplePlus}
+                            </td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">${sprayKills}</td>
+                            <td style="text-align: center; padding: 12px; font-family: 'JetBrains Mono', monospace;">
+                                ${avgTime > 0 ? Math.round(avgTime) + 'ms' : '-'}
+                            </td>
+                        </tr>`;
+                });
+
+                html += '</tbody></table></div>';
+                return html;
+            };
+
+            let html = `
+                <div style="display: flex; gap: 16px; padding: 12px 16px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted);">
+                    <div><span style="color: var(--success);">Spray Transfer</span> = 2+ kills in one spray without reload (rifles/SMGs only)</div>
+                    <div style="margin-left: auto;"><span style="color: var(--warning);">★</span> Best in match</div>
                 </div>
             `;
 

@@ -206,6 +206,161 @@ class TestMultiKillDetection:
         assert mk.all_headshots is True
 
 
+class TestSprayTransferDetection:
+    """Tests for spray transfer detection (2+ kills in one spray)."""
+
+    @pytest.fixture
+    def demo_with_double_spray(self):
+        """Create demo data with a 2-kill spray transfer."""
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1100],  # ~156ms apart at 64 tick
+                "attacker_steamid": [12345, 12345],
+                "user_steamid": [1, 2],
+                "user_name": ["Victim1", "Victim2"],
+                "weapon": ["ak47", "ak47"],
+                "headshot": [False, True],
+                "total_rounds_played": [1, 1],
+            }
+        )
+
+        return DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=1,
+            player_stats={},
+            player_names={12345: "Spray Master", 1: "Victim1", 2: "Victim2"},
+            player_teams={12345: 3, 1: 2, 2: 2},
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+    @pytest.fixture
+    def demo_with_triple_spray(self):
+        """Create demo data with a 3-kill spray transfer."""
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1080, 1160],  # All within 3 seconds
+                "attacker_steamid": [12345, 12345, 12345],
+                "user_steamid": [1, 2, 3],
+                "user_name": ["V1", "V2", "V3"],
+                "weapon": ["m4a1", "m4a1", "m4a1"],
+                "headshot": [True, False, False],
+                "total_rounds_played": [2, 2, 2],
+            }
+        )
+
+        return DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=2,
+            player_stats={},
+            player_names={12345: "Triple Spray", 1: "V1", 2: "V2", 3: "V3"},
+            player_teams={12345: 3, 1: 2, 2: 2, 3: 2},
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+    def test_double_spray_detected(self, demo_with_double_spray):
+        """Two kills within 3 seconds with same weapon = spray transfer."""
+        analyzer = CombatAnalyzer(demo_with_double_spray)
+        result = analyzer.analyze()
+
+        assert len(result.spray_transfers) == 1
+        st = result.spray_transfers[0]
+        assert st.kills_in_spray == 2
+        assert st.player_steamid == 12345
+        assert st.weapon == "ak47"
+        assert len(st.victims) == 2
+
+    def test_triple_spray_detected(self, demo_with_triple_spray):
+        """Three kills in one spray is detected."""
+        analyzer = CombatAnalyzer(demo_with_triple_spray)
+        result = analyzer.analyze()
+
+        assert len(result.spray_transfers) == 1
+        st = result.spray_transfers[0]
+        assert st.kills_in_spray == 3
+        assert st.is_triple_spray is True
+
+    def test_no_spray_with_pistol(self):
+        """Pistol kills don't count as spray transfers."""
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1100],
+                "attacker_steamid": [12345, 12345],
+                "user_steamid": [1, 2],
+                "weapon": ["glock", "glock"],
+                "total_rounds_played": [1, 1],
+            }
+        )
+
+        demo = DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=1,
+            player_names={12345: "Pistol Player"},
+            player_teams={12345: 3, 1: 2, 2: 2},
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+        analyzer = CombatAnalyzer(demo)
+        result = analyzer.analyze()
+
+        assert len(result.spray_transfers) == 0
+
+    def test_no_spray_timeout(self):
+        """Kills more than 3 seconds apart don't count."""
+        # 3 seconds = 192 ticks at 64 tick rate
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1300],  # 300 ticks = ~4.7 seconds
+                "attacker_steamid": [12345, 12345],
+                "user_steamid": [1, 2],
+                "weapon": ["ak47", "ak47"],
+                "total_rounds_played": [1, 1],
+            }
+        )
+
+        demo = DemoData(
+            file_path=Path("/tmp/test.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=1,
+            player_names={12345: "Slow Sprayer"},
+            player_teams={12345: 3, 1: 2, 2: 2},
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+        analyzer = CombatAnalyzer(demo)
+        result = analyzer.analyze()
+
+        assert len(result.spray_transfers) == 0
+
+    def test_spray_time_calculated(self, demo_with_double_spray):
+        """Spray time span is calculated correctly."""
+        analyzer = CombatAnalyzer(demo_with_double_spray)
+        result = analyzer.analyze()
+
+        st = result.spray_transfers[0]
+        # 100 ticks at 64 tick rate = 1562.5ms
+        expected_ms = (100 / 64) * 1000
+        assert abs(st.time_span_ms - expected_ms) < 1.0
+
+
 class TestClutchDetection:
     """Tests for clutch detection."""
 

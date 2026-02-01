@@ -649,6 +649,7 @@ class DemoParser:
         "last_place_name",  # Location name
         "in_crouch",
         "is_walking",  # Movement state
+        "team_num",  # Team (2=T, 3=CT) - needed for team resolution
     ]
 
     # Events to parse
@@ -900,13 +901,25 @@ class DemoParser:
             )
 
         # ===========================================
-        # TICK DATA - Optional detailed tracking
+        # TICK DATA - Parse minimal for team resolution, full if include_ticks=True
         # ===========================================
         ticks_df = None
         if include_ticks:
+            # Full tick data with all player props
             ticks_df = self._process_tick_data_chunked(parser, self.PLAYER_PROPS)
             if ticks_df is not None:
                 logger.info(f"Parsed {len(ticks_df)} tick entries (memory optimized)")
+        else:
+            # Minimal tick data just for team resolution (much faster)
+            try:
+                minimal_props = ["team_num"]  # Only what we need for team mapping
+                ticks_df = parser.parse_ticks(minimal_props)
+                if ticks_df is not None and not ticks_df.empty:
+                    logger.info(
+                        f"Parsed minimal tick data for team resolution ({len(ticks_df)} entries)"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to parse minimal ticks for team resolution: {e}")
 
         # Optimize dtypes for memory efficiency
         kills_df = self._optimize_dtypes(kills_df)
@@ -935,6 +948,9 @@ class DemoParser:
                 round_max = kills_df[round_col].max()
                 if pd.notna(round_max):
                     num_rounds = int(round_max)
+
+        # Enrich kills and damages with team info from ticks (demoparser2 doesn't include it)
+        kills_df, damages_df = self._enrich_with_team_info(kills_df, damages_df, ticks_df)
 
         # Extract player info and calculate stats
         player_names, player_teams = self._extract_players(kills_df, damages_df)
@@ -1139,6 +1155,88 @@ class DemoParser:
             logger.warning(f"Failed to parse ticks: {e}")
             return None
 
+    def _enrich_with_team_info(
+        self,
+        kills_df: pd.DataFrame,
+        damages_df: pd.DataFrame,
+        ticks_df: pd.DataFrame | None,
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Enrich kills_df and damages_df with team information from ticks_df.
+
+        demoparser2's player_death and player_hurt events don't include team info,
+        so we need to look it up from the ticks data where team_num is available.
+
+        Returns:
+            Tuple of (enriched_kills_df, enriched_damages_df) with team columns added.
+        """
+        if ticks_df is None or ticks_df.empty:
+            logger.warning("No ticks data available for team enrichment")
+            return kills_df, damages_df
+
+        # Find team_num column in ticks
+        team_col = self._find_column(ticks_df, ["team_num", "team", "side"])
+        steamid_col = self._find_column(ticks_df, ["steamid", "steam_id", "user_steamid"])
+
+        if not team_col or not steamid_col:
+            logger.warning("Missing team_num or steamid column in ticks_df for team enrichment")
+            return kills_df, damages_df
+
+        # Build steamid -> majority team mapping (most common team across all ticks)
+        # This handles halftime swaps by using the most frequent team assignment
+        team_mapping: dict[int, int] = {}
+        try:
+            # Group by steamid and team, count occurrences
+            team_counts = ticks_df.groupby([steamid_col, team_col]).size().reset_index(name="count")
+            # For each steamid, find the team with the most appearances
+            for steamid in team_counts[steamid_col].unique():
+                player_teams = team_counts[team_counts[steamid_col] == steamid]
+                # Filter to valid teams (2=T, 3=CT)
+                valid_teams = player_teams[player_teams[team_col].isin([2, 3])]
+                if not valid_teams.empty:
+                    # Get team with most appearances
+                    best_row = valid_teams.loc[valid_teams["count"].idxmax()]
+                    team_mapping[int(steamid)] = int(best_row[team_col])
+        except Exception as e:
+            logger.warning(f"Failed to build team mapping from ticks: {e}")
+            return kills_df, damages_df
+
+        if not team_mapping:
+            logger.warning("No team mappings found in ticks data")
+            return kills_df, damages_df
+
+        logger.info(f"Built team mapping for {len(team_mapping)} players from ticks data")
+
+        # Helper to add team columns to a dataframe
+        def add_team_columns(df: pd.DataFrame, id_col: str, team_col_name: str) -> pd.DataFrame:
+            if df.empty or id_col not in df.columns:
+                return df
+            df = df.copy()
+            df[team_col_name] = df[id_col].apply(
+                lambda x: team_mapping.get(int(x), 0) if pd.notna(x) else 0
+            )
+            return df
+
+        # Enrich kills_df
+        if not kills_df.empty:
+            att_id = self._find_column(kills_df, ["attacker_steamid", "attacker_steam_id"])
+            vic_id = self._find_column(kills_df, ["user_steamid", "victim_steamid"])
+            if att_id:
+                kills_df = add_team_columns(kills_df, att_id, "attacker_team")
+            if vic_id:
+                kills_df = add_team_columns(kills_df, vic_id, "user_team")
+
+        # Enrich damages_df
+        if not damages_df.empty:
+            att_id = self._find_column(damages_df, ["attacker_steamid", "attacker_steam_id"])
+            vic_id = self._find_column(damages_df, ["user_steamid", "victim_steamid"])
+            if att_id:
+                damages_df = add_team_columns(damages_df, att_id, "attacker_team")
+            if vic_id:
+                damages_df = add_team_columns(damages_df, vic_id, "user_team")
+
+        return kills_df, damages_df
+
     def _extract_players(
         self, kills_df: pd.DataFrame, damages_df: pd.DataFrame
     ) -> tuple[dict[int, str], dict[int, str]]:
@@ -1278,13 +1376,23 @@ class DemoParser:
             att_id_col = self._find_column(
                 df, ["attacker_steamid", "attacker_steam_id", "attacker_id"]
             )
-            vic_id_col = self._find_column(df, ["user_steamid", "victim_steamid", "victim_id"])
+            vic_id_col = self._find_column(
+                df, ["user_steamid", "victim_steamid", "victim_steam_id", "victim_id"]
+            )
             att_team_col = self._find_column(
                 df, ["attacker_team_num", "attacker_team_name", "attacker_side", "attacker_team"]
             )
             vic_team_col = self._find_column(
                 df,
-                ["user_team_num", "user_team_name", "victim_team_num", "victim_side", "user_side"],
+                [
+                    "user_team_num",
+                    "user_team_name",
+                    "user_team",
+                    "victim_team_num",
+                    "victim_team",
+                    "victim_side",
+                    "user_side",
+                ],
             )
 
             # Extract attacker appearances (vectorized)
