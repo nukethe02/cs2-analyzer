@@ -4271,6 +4271,11 @@
             return html;
         }
 
+        function renderHeadToHeadTab(players, matrix) {
+            // Head-to-head uses the same kill matrix visualization
+            return renderKillMatrix(matrix, players);
+        }
+
         function renderHeatmap(heatmapData, mapName) {
             if (!heatmapData || Object.keys(heatmapData).length === 0) {
                 return `
