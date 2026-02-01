@@ -14,7 +14,13 @@ Provides:
 """
 
 import logging
+import os
 import re
+import threading
+import time
+import uuid
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Any
@@ -88,35 +94,20 @@ app = FastAPI(
 )
 
 # =============================================================================
-# CORS Configuration - Security hardened
+# CORS Configuration
 # =============================================================================
-# Allowed origins for CORS - restrict to known trusted domains
-ALLOWED_ORIGINS = [
-    "https://huggingface.co",
-    "https://*.huggingface.co",
-    "https://*.hf.space",
-    "http://localhost:7860",  # Local development
-    "http://localhost:3000",  # Local frontend dev
-    "http://127.0.0.1:7860",
-]
-
+# Allow all origins for flexibility (static files served from same origin anyway)
+# The main security is in rate limiting and input validation, not CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"https://.*\.(huggingface\.co|hf\.space)",
-    allow_credentials=False,  # Disable credentials for cross-origin (more secure)
-    allow_methods=["GET", "POST"],  # Only methods we actually use
-    allow_headers=["Content-Type", "Accept"],  # Only headers we need
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 # Simple in-memory job store and sharecode cache for tests and lightweight usage
-import threading
-import time
-import uuid
-from dataclasses import dataclass, field
-from enum import Enum
-
 # Job TTL configuration (seconds)
 JOB_TTL_SECONDS = 3600  # Jobs expire after 1 hour
 JOB_CLEANUP_INTERVAL = 300  # Run cleanup every 5 minutes
@@ -637,26 +628,8 @@ sharecode_cache = SharecodeCache(maxsize=1000)
 
 
 # =============================================================================
-# FastAPI Application Setup
+# Additional Middleware Configuration
 # =============================================================================
-
-app = FastAPI(
-    title="OpenSight API",
-    description=(
-        "CS2 demo analyzer - professional-grade metrics including "
-        "HLTV 2.0 Rating, KAST%, TTD, and Crosshair Placement"
-    ),
-    version=__version__,
-)
-
-# Enable CORS for frontend JavaScript communication
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for HF Spaces
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Enable GZip compression for responses > 1KB
 # This significantly reduces bandwidth for large JSON responses
@@ -728,7 +701,6 @@ async def security_headers_middleware(request: Request, call_next) -> Response:
 # =============================================================================
 # Rate Limiting Configuration
 # =============================================================================
-import os
 
 # Check if we're in production (HF Spaces sets SPACE_ID env var)
 IS_PRODUCTION = os.getenv("SPACE_ID") is not None or os.getenv("PRODUCTION") == "true"
