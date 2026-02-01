@@ -733,21 +733,26 @@ import os
 # Check if we're in production (HF Spaces sets SPACE_ID env var)
 IS_PRODUCTION = os.getenv("SPACE_ID") is not None or os.getenv("PRODUCTION") == "true"
 
-# Rate limiting is DISABLED by default for development
-# Set ENABLE_RATE_LIMITING=true to enable (automatically enabled in production)
-RATE_LIMITING_DISABLED = os.getenv("ENABLE_RATE_LIMITING", "").lower() != "true"
+# Rate limiting configuration:
+# - DISABLED by default for local development
+# - ENABLED automatically in production (SPACE_ID or PRODUCTION=true)
+# - Can force enable with ENABLE_RATE_LIMITING=true
+# - Can force disable with DISABLE_RATE_LIMITING=true (not recommended in production)
+FORCE_ENABLE = os.getenv("ENABLE_RATE_LIMITING", "").lower() == "true"
+FORCE_DISABLE = os.getenv("DISABLE_RATE_LIMITING", "").lower() == "true"
 
 # Configurable rate limits via environment variables
 RATE_LIMIT_UPLOAD = os.getenv("RATE_LIMIT_UPLOAD", "30/minute")  # Default: 30 uploads/min
 RATE_LIMIT_REPLAY = os.getenv("RATE_LIMIT_REPLAY", "60/minute")  # Default: 60 replays/min
 RATE_LIMIT_API = os.getenv("RATE_LIMIT_API", "120/minute")  # Default: 120 API calls/min
 
-if RATE_LIMITING_DISABLED and not IS_PRODUCTION:
+# Determine if rate limiting should be enabled
+SHOULD_ENABLE_RATE_LIMITING = (IS_PRODUCTION or FORCE_ENABLE) and not FORCE_DISABLE
+
+if not SHOULD_ENABLE_RATE_LIMITING:
     RATE_LIMITING_ENABLED = False
     limiter = None
-    logger.info(
-        "Rate limiting disabled (development mode). Set ENABLE_RATE_LIMITING=true to enable."
-    )
+    logger.info("Rate limiting disabled (development mode)")
 else:
     try:
         from slowapi import Limiter, _rate_limit_exceeded_handler
