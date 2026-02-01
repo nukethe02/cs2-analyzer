@@ -15,7 +15,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from opensight.core.parser import MatchData
+from opensight.core.parser import DemoData
 
 # =============================================================================
 # Distance Classifications (CS2 units, approximately)
@@ -363,7 +363,7 @@ def calculate_kill_distance(
 
 
 def compute_player_performance_metrics(
-    match_data: MatchData,
+    match_data: DemoData,
 ) -> dict[int, PlayerPerformanceMetrics]:
     """
     Compute detailed performance metrics for all players in a match.
