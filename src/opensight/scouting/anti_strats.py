@@ -203,7 +203,7 @@ def _awp_anti_strats(players: list[PlayerScoutProfile]) -> list[str]:
 
 def _entry_anti_strats(players: list[PlayerScoutProfile]) -> list[str]:
     """Generate anti-strats for entry fraggers."""
-    strats = []
+    strats: list[str] = []
 
     # Find entry players
     entry_players = [p for p in players if p.entry_attempt_rate > 0.15]
@@ -248,7 +248,7 @@ def format_anti_strats_markdown(anti_strats: list[str]) -> str:
             "No specific anti-strats generated. Need more demo data for reliable recommendations."
         )
 
-    sections = {
+    sections: dict[str, list[str]] = {
         "Player Targeting": [],
         "Map Tendencies": [],
         "Economy": [],

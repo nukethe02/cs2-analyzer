@@ -208,8 +208,11 @@ class ScoutingEngine:
         hs_rate = total_headshots / total_kills if total_kills > 0 else 0
 
         # Entry/opening statistics
-        total_entry_attempts = sum(s.entry_frags.attempts for s in player_stats_list)
-        total_entry_wins = sum(s.entry_frags.wins for s in player_stats_list)
+        total_entry_attempts = sum(
+            s.entry_frags.total_entry_frags + s.entry_frags.total_entry_deaths
+            for s in player_stats_list
+        )
+        total_entry_wins = sum(s.entry_frags.total_entry_frags for s in player_stats_list)
         entry_attempt_rate = total_entry_attempts / total_rounds if total_rounds > 0 else 0
         entry_success_rate = (
             total_entry_wins / total_entry_attempts if total_entry_attempts > 0 else 0
@@ -284,8 +287,8 @@ class ScoutingEngine:
         favorite_positions = self._analyze_positions(steamid)
 
         # Clutch stats
-        total_clutch_attempts = sum(s.clutches.total for s in player_stats_list)
-        total_clutch_wins = sum(s.clutches.won for s in player_stats_list)
+        total_clutch_attempts = sum(s.clutches.total_situations for s in player_stats_list)
+        total_clutch_wins = sum(s.clutches.total_wins for s in player_stats_list)
 
         return PlayerScoutProfile(
             steamid=str(steamid),
@@ -382,8 +385,8 @@ class ScoutingEngine:
         total_rounds = sum(a.total_rounds for _, a in demo_pairs)
 
         # Analyze timing patterns from kills
-        t_first_contact_times = []
-        t_execute_times = []
+        t_first_contact_times: list[float] = []
+        t_execute_times: list[float] = []
 
         for demo, _analysis in demo_pairs:
             if not hasattr(demo, "kills_df") or demo.kills_df.empty:
@@ -439,11 +442,15 @@ class ScoutingEngine:
                     stats = analysis.players[steamid]
                     # This is approximate - would need per-side entry stats
                     if side == "T":
-                        entry_attempts += stats.entry_frags.attempts
-                        total_rounds += stats.t_stats.rounds if hasattr(stats, "t_stats") else 0
+                        entry_attempts += stats.entry_frags.total_entry_frags
+                        total_rounds += (
+                            stats.t_stats.rounds_played if hasattr(stats, "t_stats") else 0
+                        )
                     else:
                         # CT aggression from pushes
-                        total_rounds += stats.ct_stats.rounds if hasattr(stats, "ct_stats") else 0
+                        total_rounds += (
+                            stats.ct_stats.rounds_played if hasattr(stats, "ct_stats") else 0
+                        )
 
         if total_rounds == 0:
             return 50.0
