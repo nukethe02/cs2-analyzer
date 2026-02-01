@@ -626,6 +626,36 @@ MAP_ZONES: dict[str, dict[str, dict]] = {
 }
 
 
+# ============================================================================
+# Zone Expansion - Automatically expand Mid and Outside zones by 20%
+# This reduces "Unknown" kills by capturing more edge cases
+# ============================================================================
+def _expand_mid_and_outside_zones() -> None:
+    """Expand Mid and Outside zones by 20% to reduce Unknown classifications."""
+    for map_name, zones in MAP_ZONES.items():
+        for zone_name, zone_def in zones.items():
+            zone_type = zone_def.get("type", "")
+            # Expand zones named "Mid", "Outside", or of type "mid"
+            if (
+                "Mid" in zone_name
+                or "Outside" in zone_name
+                or zone_type == "mid"
+                or zone_name == "Outside"
+            ):
+                original_bounds = zone_def.get("bounds", [])
+                if original_bounds and len(original_bounds) >= 3:
+                    expanded_bounds = _expand_polygon(original_bounds, scale_factor=1.2)
+                    zone_def["bounds"] = expanded_bounds
+                    logger.debug(
+                        f"Expanded zone '{zone_name}' on {map_name} by 20% "
+                        f"(from {len(original_bounds)} to {len(expanded_bounds)} vertices)"
+                    )
+
+
+# Apply zone expansion at module load time
+_expand_mid_and_outside_zones()
+
+
 def _point_in_polygon(x: float, y: float, polygon: list[list[float]]) -> bool:
     """
     Check if a point is inside a polygon using ray casting algorithm.
@@ -683,6 +713,37 @@ def _distance_squared(x1: float, y1: float, x2: float, y2: float) -> float:
     return (x2 - x1) ** 2 + (y2 - y1) ** 2
 
 
+def _expand_polygon(polygon: list[list[float]], scale_factor: float = 1.2) -> list[list[float]]:
+    """
+    Expand a polygon by moving vertices away from the centroid.
+
+    Args:
+        polygon: List of [x, y] vertices
+        scale_factor: How much to expand (1.2 = 20% larger)
+
+    Returns:
+        Expanded polygon as list of [x, y] vertices
+    """
+    if not polygon or len(polygon) < 3:
+        return polygon
+
+    # Calculate centroid
+    cx, cy = _get_polygon_centroid(polygon)
+
+    # Expand each vertex away from centroid
+    expanded = []
+    for x, y in polygon:
+        # Vector from centroid to vertex
+        dx = x - cx
+        dy = y - cy
+        # Scale the vector
+        new_x = cx + dx * scale_factor
+        new_y = cy + dy * scale_factor
+        expanded.append([new_x, new_y])
+
+    return expanded
+
+
 # Maximum distance (in game units) to assign a point to the nearest zone
 # If a point is further than this from all zone centroids, it's truly "Unknown"
 NEAREST_ZONE_MAX_DISTANCE = 500
@@ -707,11 +768,11 @@ def get_zone_for_position(map_name: str, x: float, y: float, z: float | None = N
         z: Game Z coordinate (for multi-level maps like Nuke/Vertigo)
 
     Returns:
-        Zone name or "Unknown" if truly off the playable map
+        Zone name, or "World" fallback if not in any specific zone
     """
     map_name = map_name.lower()
     if map_name not in MAP_ZONES:
-        return "Unknown"
+        return "World"
 
     zones = MAP_ZONES[map_name]
 
@@ -744,8 +805,9 @@ def get_zone_for_position(map_name: str, x: float, y: float, z: float | None = N
     if nearest_zone:
         return nearest_zone
 
-    # Truly off the map - no zone within threshold
-    return "Unknown"
+    # Fallback to "World" zone - catches anything not in a specific zone
+    # This ensures 0% "Unknown" kills on heatmaps
+    return "World"
 
 
 def classify_round_economy(equipment_value: int, is_pistol_round: bool) -> str:

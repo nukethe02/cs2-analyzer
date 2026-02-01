@@ -1805,38 +1805,108 @@ class PlayerMatchStats:
         # Geometric mean
         return round(math.sqrt(quantity * quality), 1)
 
-    # Aim Rating (Leetify style composite)
+    # Aim Rating (penalty-based formula)
     @property
     def aim_rating(self) -> float:
         """
-        Leetify-style Aim Rating composite.
-        Based on: TTD, Crosshair Placement, HS%, accuracy.
-        Score is 0-100 where 50 is average.
+        Aim Rating using penalty-based formula.
+
+        Formula: Aim = 100 - (TTD_Penalty + Error_Penalty + Recoil_Penalty)
+
+        Components:
+        - TTD_Penalty: Based on reaction time (150ms elite → 600ms slow)
+        - Error_Penalty: Based on crosshair placement error (3° elite → 30° poor)
+        - Recoil_Penalty: Based on spray accuracy (80% elite → 0% poor)
+
+        Score is 0-100 where higher is better.
         """
-        score = 50.0  # Start at average
+        ttd_penalty = 0.0
+        error_penalty = 0.0
+        recoil_penalty = 0.0
 
-        # TTD component (faster = better, 400ms is average)
-        if self.ttd_median_ms:
-            # Lower is better: 200ms = +20, 400ms = 0, 600ms = -20
-            ttd_delta = (400 - self.ttd_median_ms) / 10
-            score += max(-20, min(20, ttd_delta))
+        # TTD Penalty (reaction time - use true TTD, not engagement duration)
+        reaction_time = self.reaction_time_median_ms
+        if reaction_time is not None and reaction_time > 0:
+            # Scale: 150ms (elite) = 0, 250ms (good) = 10, 400ms (avg) = 25, 600ms (slow) = 40
+            if reaction_time <= 150:
+                ttd_penalty = 0
+            elif reaction_time <= 250:
+                ttd_penalty = (reaction_time - 150) / 10  # 0-10
+            elif reaction_time <= 400:
+                ttd_penalty = 10 + (reaction_time - 250) / 10  # 10-25
+            else:
+                ttd_penalty = 25 + (reaction_time - 400) / 13.33  # 25-40 at 600ms
+            ttd_penalty = min(40, ttd_penalty)  # Cap at 40
+        else:
+            # Missing reaction time data - use engagement duration as fallback
+            if self.engagement_duration_median_ms:
+                logger.debug(
+                    f"Player {self.name}: No reaction time data, using engagement duration for aim calc"
+                )
+                # Engagement duration is typically higher, adjust scale
+                fallback_ttd = self.engagement_duration_median_ms
+                if fallback_ttd <= 300:
+                    ttd_penalty = 5
+                elif fallback_ttd <= 500:
+                    ttd_penalty = 15
+                else:
+                    ttd_penalty = 30
+            else:
+                logger.debug(f"Player {self.name}: No TTD data for aim calculation")
+                ttd_penalty = 25  # Average penalty if no data
 
-        # Crosshair Placement component (lower error = better, 10 deg is average)
-        if self.cp_median_error_deg:
-            # Lower is better: 5 deg = +15, 10 deg = 0, 15 deg = -15
-            cp_delta = (10 - self.cp_median_error_deg) * 3
-            score += max(-15, min(15, cp_delta))
+        # Crosshair Placement Penalty (angular error)
+        cp_error = self.cp_median_error_deg
+        if cp_error is not None and cp_error >= 0:
+            # Scale: 3° (elite) = 0, 5° (good) = 5, 10° (avg) = 15, 20° (poor) = 30, 30° = 40
+            if cp_error <= 3:
+                error_penalty = 0
+            elif cp_error <= 5:
+                error_penalty = (cp_error - 3) * 2.5  # 0-5
+            elif cp_error <= 10:
+                error_penalty = 5 + (cp_error - 5) * 2  # 5-15
+            elif cp_error <= 20:
+                error_penalty = 15 + (cp_error - 10) * 1.5  # 15-30
+            else:
+                error_penalty = 30 + (cp_error - 20) * 1  # 30-40 at 40°
+            error_penalty = min(40, error_penalty)  # Cap at 40
+        else:
+            logger.debug(f"Player {self.name}: No crosshair placement data for aim calculation")
+            error_penalty = 20  # Average penalty if no data
 
-        # Headshot % component (25% is average)
-        hs_delta = (self.headshot_percentage - 25) / 2
-        score += max(-10, min(10, hs_delta))
+        # Recoil Control Penalty (spray accuracy)
+        spray_acc = self.spray_accuracy
+        if spray_acc >= 0:
+            # Scale: 80%+ (elite) = 0, 60% (good) = 10, 40% (avg) = 20, 20% (poor) = 30, 0% = 35
+            if spray_acc >= 80:
+                recoil_penalty = 0
+            elif spray_acc >= 60:
+                recoil_penalty = (80 - spray_acc) / 2  # 0-10
+            elif spray_acc >= 40:
+                recoil_penalty = 10 + (60 - spray_acc) / 2  # 10-20
+            elif spray_acc >= 20:
+                recoil_penalty = 20 + (40 - spray_acc) / 2  # 20-30
+            else:
+                recoil_penalty = 30 + (20 - spray_acc) / 4  # 30-35
+            recoil_penalty = min(35, recoil_penalty)  # Cap at 35
+        else:
+            logger.debug(f"Player {self.name}: No spray accuracy data for aim calculation")
+            recoil_penalty = 15  # Modest penalty if no data
 
-        # Prefire bonus (shows game sense)
-        if self.kills > 0:
-            prefire_rate = self.prefire_count / self.kills * 100
-            score += min(prefire_rate * 2, 5)  # Up to +5 for prefires
+        # Calculate final score
+        total_penalty = ttd_penalty + error_penalty + recoil_penalty
+        aim_score = 100 - total_penalty
 
-        return round(max(0, min(100, score)), 1)
+        # Log the breakdown for debugging
+        logger.debug(
+            f"Aim calculation for {self.name}: "
+            f"TTD_penalty={ttd_penalty:.1f} (reaction={reaction_time}ms), "
+            f"Error_penalty={error_penalty:.1f} (cp={cp_error}°), "
+            f"Recoil_penalty={recoil_penalty:.1f} (spray={spray_acc}%), "
+            f"Final={aim_score:.1f}"
+        )
+
+        return round(max(0, min(100, aim_score)), 1)
 
     @property
     def entry_success_rate(self) -> float:

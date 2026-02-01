@@ -473,7 +473,13 @@ class DemoData:
     # Player info
     player_stats: dict[int, dict] = field(default_factory=dict)
     player_names: dict[int, str] = field(default_factory=dict)
-    player_teams: dict[int, str] = field(default_factory=dict)
+    player_teams: dict[int, str] = field(default_factory=dict)  # DEPRECATED for roster ID
+
+    # NEW: Persistent team identity (handles halftime swaps)
+    player_persistent_teams: dict[int, str] = field(default_factory=dict)  # steamid -> "Team A"/"Team B"
+    team_rosters: dict[str, set[int]] = field(default_factory=dict)  # "Team A" -> {steamids}
+    team_starting_sides: dict[str, str] = field(default_factory=dict)  # "Team A" -> "CT"/"T"
+    halftime_round: int = 13  # Round when halftime occurs (13 for MR12, 16 for MR15)
 
     # Core Events
     kills: list[KillEvent] = field(default_factory=list)
@@ -499,6 +505,44 @@ class DemoData:
     # Match summary
     final_score_ct: int = 0
     final_score_t: int = 0
+
+    def get_player_side_for_round(self, steamid: int, round_num: int) -> str:
+        """Get the side (CT/T) a player was on for a specific round.
+
+        Handles halftime swaps automatically.
+
+        Args:
+            steamid: Player's Steam ID
+            round_num: Round number (1-indexed)
+
+        Returns:
+            "CT", "T", or "Unknown"
+        """
+        persistent_team = self.player_persistent_teams.get(steamid)
+        if not persistent_team:
+            # Fallback to old behavior for backward compatibility
+            return self.player_teams.get(steamid, "Unknown")
+
+        starting_side = self.team_starting_sides.get(persistent_team, "Unknown")
+        if starting_side not in ["CT", "T"]:
+            return "Unknown"
+
+        # Swap sides after halftime
+        if round_num >= self.halftime_round:
+            return "T" if starting_side == "CT" else "CT"
+        else:
+            return starting_side
+
+    def get_player_persistent_team(self, steamid: int) -> str:
+        """Get the persistent team label ("Team A" or "Team B").
+
+        Args:
+            steamid: Player's Steam ID
+
+        Returns:
+            "Team A", "Team B", or "Unknown"
+        """
+        return self.player_persistent_teams.get(steamid, "Unknown")
 
 
 class DemoParser:
@@ -824,6 +868,15 @@ class DemoParser:
 
         # Extract player info and calculate stats
         player_names, player_teams = self._extract_players(kills_df, damages_df)
+
+        # NEW: Resolve persistent team identities (handles halftime swaps)
+        (
+            player_persistent_teams,
+            team_rosters,
+            team_starting_sides,
+            halftime_round,
+        ) = self._resolve_persistent_teams(kills_df, damages_df)
+
         player_stats = self._calculate_stats(
             kills_df, damages_df, player_names, player_teams, num_rounds
         )
@@ -918,6 +971,11 @@ class DemoParser:
             player_stats=player_stats,
             player_names=player_names,
             player_teams=player_teams,
+            # NEW: Persistent team identity
+            player_persistent_teams=player_persistent_teams,
+            team_rosters=team_rosters,
+            team_starting_sides=team_starting_sides,
+            halftime_round=halftime_round,
             # Core events
             kills=kills,
             damages=damages,
@@ -1079,6 +1137,155 @@ class DemoParser:
         extract_from_df_vectorized(damages_df, vic_id_cols, vic_name_cols, vic_team_cols)
 
         return names, teams
+
+    def _resolve_persistent_teams(
+        self,
+        kills_df: pd.DataFrame,
+        damages_df: pd.DataFrame,
+    ) -> tuple[dict[int, str], dict[str, set[int]], dict[str, str], int]:
+        """
+        Resolve persistent team identities using tick share analysis.
+
+        Counts how many times each player appears on team_num=2 vs team_num=3
+        across all events, then groups players who were together >90% of the time.
+
+        Returns:
+            - player_persistent_teams: {steamid -> "Team A" or "Team B"}
+            - team_rosters: {"Team A": {steamids}, "Team B": {steamids}}
+            - team_starting_sides: {"Team A": "CT" or "T", "Team B": "CT" or "T"}
+            - halftime_round: 13 (MR12) or 16 (MR15)
+        """
+        from collections import defaultdict
+
+        # Step 1: Count occurrences of each player on each team_num
+        player_team_counts = defaultdict(lambda: {2: 0, 3: 0})
+
+        for df in [kills_df, damages_df]:
+            if df is None or df.empty:
+                continue
+
+            # Find team and ID columns
+            att_id_col = self._find_column(df, ["attacker_steamid", "attacker_id"])
+            vic_id_col = self._find_column(df, ["victim_steamid", "victim_id"])
+            att_team_col = self._find_column(df, ["attacker_team_num", "attacker_side"])
+            vic_team_col = self._find_column(df, ["victim_team_num", "victim_side"])
+
+            if not all([att_id_col, vic_id_col]):
+                continue
+
+            # Count attacker appearances
+            if att_team_col:
+                for _, row in df[[att_id_col, att_team_col]].dropna().iterrows():
+                    sid = safe_int(row[att_id_col])
+                    team_num = safe_int(row[att_team_col])
+                    if sid and team_num in [2, 3]:
+                        player_team_counts[sid][team_num] += 1
+
+            # Count victim appearances
+            if vic_team_col:
+                for _, row in df[[vic_id_col, vic_team_col]].dropna().iterrows():
+                    sid = safe_int(row[vic_id_col])
+                    team_num = safe_int(row[vic_team_col])
+                    if sid and team_num in [2, 3]:
+                        player_team_counts[sid][team_num] += 1
+
+        # Step 2: Assign each player to their primary team_num (>50% of appearances)
+        player_primary_team_num = {}
+        for sid, counts in player_team_counts.items():
+            total = counts[2] + counts[3]
+            if total == 0:
+                continue
+
+            primary_team_num = 2 if counts[2] > counts[3] else 3
+            consistency = max(counts[2], counts[3]) / total
+
+            if consistency < 0.90:
+                logger.warning(
+                    f"Player {sid} has low team consistency ({consistency:.1%})"
+                )
+
+            player_primary_team_num[sid] = primary_team_num
+
+        # Step 3: Group into two rosters
+        roster_2 = {
+            sid for sid, team_num in player_primary_team_num.items() if team_num == 2
+        }
+        roster_3 = {
+            sid for sid, team_num in player_primary_team_num.items() if team_num == 3
+        }
+
+        # Step 4: Determine which roster started CT vs T in round 1
+        round_col = self._find_column(kills_df, ["round", "round_num"])
+        team_a_roster = roster_2
+        team_a_starting_side = "T"
+        team_b_roster = roster_3
+        team_b_starting_side = "CT"
+
+        if round_col and not kills_df.empty:
+            round_1_kills = kills_df[kills_df[round_col] == 1]
+            att_id_col = self._find_column(
+                round_1_kills, ["attacker_steamid", "attacker_id"]
+            )
+            att_team_col = self._find_column(
+                round_1_kills, ["attacker_team_num", "attacker_side"]
+            )
+
+            # Count how many roster_2 players appeared as team_num=3 (CT) in round 1
+            roster_2_as_ct = 0
+            roster_3_as_ct = 0
+
+            if att_id_col and att_team_col:
+                for _, row in round_1_kills[[att_id_col, att_team_col]].dropna().iterrows():
+                    sid = safe_int(row[att_id_col])
+                    team_num = safe_int(row[att_team_col])
+
+                    if team_num == 3:  # CT side
+                        if sid in roster_2:
+                            roster_2_as_ct += 1
+                        elif sid in roster_3:
+                            roster_3_as_ct += 1
+
+            # Assign Team A to the roster that started CT
+            if roster_3_as_ct > roster_2_as_ct:
+                team_a_roster = roster_3
+                team_a_starting_side = "CT"
+                team_b_roster = roster_2
+                team_b_starting_side = "T"
+            else:
+                team_a_roster = roster_2
+                team_a_starting_side = "CT"
+                team_b_roster = roster_3
+                team_b_starting_side = "T"
+
+        # Step 5: Detect match format (MR12 vs MR15)
+        max_round = (
+            int(kills_df[round_col].max())
+            if round_col and not kills_df.empty
+            else 24
+        )
+        halftime_round = 16 if max_round > 24 else 13
+
+        # Step 6: Build return structures
+        player_persistent_teams = {}
+        for sid in team_a_roster:
+            player_persistent_teams[sid] = "Team A"
+        for sid in team_b_roster:
+            player_persistent_teams[sid] = "Team B"
+
+        team_rosters = {"Team A": team_a_roster, "Team B": team_b_roster}
+
+        team_starting_sides = {
+            "Team A": team_a_starting_side,
+            "Team B": team_b_starting_side,
+        }
+
+        logger.info(
+            f"Resolved persistent teams: Team A ({len(team_a_roster)} players, "
+            f"started {team_a_starting_side}), Team B ({len(team_b_roster)} players, "
+            f"started {team_b_starting_side}), halftime round {halftime_round}"
+        )
+
+        return player_persistent_teams, team_rosters, team_starting_sides, halftime_round
 
     def _calculate_stats(
         self,
@@ -1997,6 +2204,15 @@ class DemoParser:
         num_rounds = len(rounds_df) if not rounds_df.empty else 1
 
         player_names, player_teams = self._extract_players(kills_df, damages_df)
+
+        # NEW: Resolve persistent team identities (handles halftime swaps)
+        (
+            player_persistent_teams,
+            team_rosters,
+            team_starting_sides,
+            halftime_round,
+        ) = self._resolve_persistent_teams(kills_df, damages_df)
+
         player_stats = self._calculate_stats(
             kills_df, damages_df, player_names, player_teams, num_rounds
         )
@@ -2017,6 +2233,11 @@ class DemoParser:
             player_stats=player_stats,
             player_names=player_names,
             player_teams=player_teams,
+            # NEW: Persistent team identity
+            player_persistent_teams=player_persistent_teams,
+            team_rosters=team_rosters,
+            team_starting_sides=team_starting_sides,
+            halftime_round=halftime_round,
             kills=kills,
             damages=damages,
             rounds=rounds,
