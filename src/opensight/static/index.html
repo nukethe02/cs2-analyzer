@@ -7208,7 +7208,7 @@
             loadingDiv.style.display = 'block';
 
             try {
-                const response = await fetch(`/api/your-match/trends/\${steamId}?days=\${days}`);
+                const response = await fetch(`/api/your-match/trends/${steamId}?days=${days}`);
                 const data = await response.json();
 
                 loadingDiv.style.display = 'none';
@@ -7218,8 +7218,8 @@
                     contentDiv.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: var(--text-muted);">
                             <div style="font-size: 2rem; margin-bottom: 8px;">Not Enough Data</div>
-                            <p>\${data.message || 'This player needs at least 2 analyzed matches to show trends.'}</p>
-                            <p style="margin-top: 8px;">Matches found: \${data.matches_analyzed || 0}</p>
+                            <p>${data.message || 'This player needs at least 2 analyzed matches to show trends.'}</p>
+                            <p style="margin-top: 8px;">Matches found: ${data.matches_analyzed || 0}</p>
                         </div>
                     `;
                     return;
@@ -7237,7 +7237,7 @@
                 contentDiv.innerHTML = `
                     <div style="text-align: center; padding: 40px; color: var(--danger);">
                         <div style="font-size: 2rem; margin-bottom: 8px;">Error</div>
-                        <p>Failed to load trends: \${error.message}</p>
+                        <p>Failed to load trends: ${error.message}</p>
                     </div>
                 `;
             }
@@ -7265,13 +7265,13 @@
                 <div style="margin-top: 24px;">
                     <h4 style="color: var(--text-primary); margin-bottom: 12px;">Areas to Improve</h4>
                     <div style="display: grid; gap: 12px;">
-                        \${data.improvement_areas.map(area => `
+                        ${data.improvement_areas.map(area => `
                             <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                    <span style="font-weight: 600; color: var(--text-primary);">\${escapeHtml(area.area)}</span>
-                                    <span style="color: var(--warning);">\${area.current} &rarr; \${area.target}</span>
+                                    <span style="font-weight: 600; color: var(--text-primary);">${escapeHtml(area.area)}</span>
+                                    <span style="color: var(--warning);">${area.current} &rarr; ${area.target}</span>
                                 </div>
-                                <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">\${escapeHtml(area.suggestion)}</p>
+                                <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">${escapeHtml(area.suggestion)}</p>
                             </div>
                         `).join('')}
                     </div>
@@ -7284,12 +7284,12 @@
                 <div style="margin-top: 24px;">
                     <h4 style="color: var(--text-primary); margin-bottom: 12px;">Map Performance</h4>
                     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;">
-                        \${Object.entries(mapPerf).map(([map, stats]) => `
+                        ${Object.entries(mapPerf).map(([map, stats]) => `
                             <div style="background: var(--bg-card); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); text-align: center;">
-                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">\${escapeHtml(map)}</div>
-                                <div style="color: \${stats.win_rate >= 50 ? 'var(--success)' : 'var(--danger)'}; font-size: 1.2rem;">\${stats.win_rate}%</div>
-                                <div style="color: var(--text-muted); font-size: 0.75rem;">\${stats.wins}W - \${stats.losses}L (\${stats.matches} games)</div>
-                                <div style="color: var(--accent-primary); font-size: 0.85rem; margin-top: 4px;">\${stats.avg_rating} rating</div>
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${escapeHtml(map)}</div>
+                                <div style="color: ${stats.win_rate >= 50 ? 'var(--success)' : 'var(--danger)'}; font-size: 1.2rem;">${stats.win_rate}%</div>
+                                <div style="color: var(--text-muted); font-size: 0.75rem;">${stats.wins}W - ${stats.losses}L (${stats.matches} games)</div>
+                                <div style="color: var(--accent-primary); font-size: 0.85rem; margin-top: 4px;">${stats.avg_rating} rating</div>
                             </div>
                         `).join('')}
                     </div>
@@ -7301,37 +7301,37 @@
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;">
                     <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border); text-align: center;">
                         <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Rating Trend</div>
-                        <div style="font-size: 1.5rem; font-weight: 700;">\${getTrendArrow(data.rating?.trend)}</div>
-                        <div>\${getTrendIcon(data.rating?.trend)}</div>
-                        <div style="color: \${data.rating?.change_pct >= 0 ? 'var(--success)' : 'var(--danger)'}; font-size: 0.9rem; margin-top: 4px;">
-                            \${data.rating?.change_pct >= 0 ? '+' : ''}\${data.rating?.change_pct || 0}%
+                        <div style="font-size: 1.5rem; font-weight: 700;">${getTrendArrow(data.rating?.trend)}</div>
+                        <div>${getTrendIcon(data.rating?.trend)}</div>
+                        <div style="color: ${data.rating?.change_pct >= 0 ? 'var(--success)' : 'var(--danger)'}; font-size: 0.9rem; margin-top: 4px;">
+                            ${data.rating?.change_pct >= 0 ? '+' : ''}${data.rating?.change_pct || 0}%
                         </div>
-                        <div style="color: var(--text-muted); font-size: 0.75rem;">Avg: \${data.rating?.current_avg || '1.00'}</div>
+                        <div style="color: var(--text-muted); font-size: 0.75rem;">Avg: ${data.rating?.current_avg || '1.00'}</div>
                     </div>
 
                     <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border); text-align: center;">
                         <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">ADR Trend</div>
-                        <div style="font-size: 1.5rem; font-weight: 700;">\${getTrendArrow(data.adr?.trend)}</div>
-                        <div>\${getTrendIcon(data.adr?.trend)}</div>
-                        <div style="color: \${data.adr?.change_pct >= 0 ? 'var(--success)' : 'var(--danger)'}; font-size: 0.9rem; margin-top: 4px;">
-                            \${data.adr?.change_pct >= 0 ? '+' : ''}\${data.adr?.change_pct || 0}%
+                        <div style="font-size: 1.5rem; font-weight: 700;">${getTrendArrow(data.adr?.trend)}</div>
+                        <div>${getTrendIcon(data.adr?.trend)}</div>
+                        <div style="color: ${data.adr?.change_pct >= 0 ? 'var(--success)' : 'var(--danger)'}; font-size: 0.9rem; margin-top: 4px;">
+                            ${data.adr?.change_pct >= 0 ? '+' : ''}${data.adr?.change_pct || 0}%
                         </div>
-                        <div style="color: var(--text-muted); font-size: 0.75rem;">Avg: \${data.adr?.current_avg || '0'}</div>
+                        <div style="color: var(--text-muted); font-size: 0.75rem;">Avg: ${data.adr?.current_avg || '0'}</div>
                     </div>
 
                     <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border); text-align: center;">
                         <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Win Rate</div>
-                        <div style="font-size: 1.8rem; font-weight: 700; color: \${(data.winrate?.current || 0) >= 50 ? 'var(--success)' : 'var(--danger)'};">
-                            \${data.winrate?.current || 0}%
+                        <div style="font-size: 1.8rem; font-weight: 700; color: ${(data.winrate?.current || 0) >= 50 ? 'var(--success)' : 'var(--danger)'};">
+                            ${data.winrate?.current || 0}%
                         </div>
-                        <div style="color: var(--text-muted); font-size: 0.75rem;">\${data.matches_analyzed || 0} matches</div>
+                        <div style="color: var(--text-muted); font-size: 0.75rem;">${data.matches_analyzed || 0} matches</div>
                     </div>
 
-                    \${data.slump?.detected ? `
+                    ${data.slump?.detected ? `
                     <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--warning); text-align: center;">
                         <div style="font-size: 0.8rem; color: var(--warning); margin-bottom: 8px;">Slump Detected</div>
                         <div style="font-size: 1.8rem; font-weight: 700; color: var(--warning);">&#9888;</div>
-                        <div style="color: var(--warning); font-size: 0.9rem; text-transform: uppercase;">\${data.slump.severity}</div>
+                        <div style="color: var(--warning); font-size: 0.9rem; text-transform: uppercase;">${data.slump.severity}</div>
                         <div style="color: var(--text-muted); font-size: 0.75rem;">Performance below average</div>
                     </div>
                     ` : ''}
@@ -7345,8 +7345,8 @@
                     </div>
                 </div>
 
-                \${improvementHtml}
-                \${mapHtml}
+                ${improvementHtml}
+                ${mapHtml}
             `;
         }
 
