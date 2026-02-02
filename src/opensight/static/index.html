@@ -7,7 +7,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" onerror="console.warn('Chart.js failed to load - charts will be disabled')"></script>
+    <script>window.Chart = window.Chart || null;</script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -5408,6 +5409,12 @@
         let timelineChartInstance = null;
 
         function initTimelineChart(timelineData) {
+            // Skip if Chart.js failed to load
+            if (!window.Chart) {
+                console.warn('Chart.js not available - timeline chart disabled');
+                return;
+            }
+
             if (!timelineData || !timelineData.players || timelineData.players.length === 0) {
                 return;
             }
