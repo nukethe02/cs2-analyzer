@@ -2728,7 +2728,7 @@
 
             let output = `**Match Report: ${map}**\n`;
             output += `Score: **${score}**\n\n`;
-            output += `**Player Stats:**\n```\n`;
+            output += `**Player Stats:**\n\`\`\`\n`;
             output += `${'Player'.padEnd(15)} | Rating | K/D   | ADR  | KAST\n`;
             output += `${'-'.repeat(52)}\n`;
 
@@ -2742,7 +2742,7 @@
                 output += `${name} | ${rating} | ${kd} | ${adr} | ${kast}\n`;
             }
 
-            output += ````\n`;
+            output += `\`\`\`\n`;
 
             // Add MVP
             if (players[0]) {
@@ -2765,7 +2765,7 @@
 
             let output = `:bar_chart: *Match Report: ${map}*\n`;
             output += `Score: *${score}*\n\n`;
-            output += `*Player Stats:*\n```\n`;
+            output += `*Player Stats:*\n\`\`\`\n`;
             output += `${'Player'.padEnd(15)} | Rating | K/D   | ADR  | KAST\n`;
             output += `${'-'.repeat(52)}\n`;
 
@@ -2779,7 +2779,7 @@
                 output += `${name} | ${rating} | ${kd} | ${adr} | ${kast}\n`;
             }
 
-            output += ````\n`;
+            output += `\`\`\`\n`;
 
             if (players[0]) {
                 output += `:trophy: *MVP:* ${players[0].name} (${players[0].rating?.hltv_rating?.toFixed(2)} rating)\n`;
