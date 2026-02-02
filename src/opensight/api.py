@@ -665,8 +665,8 @@ async def security_headers_middleware(request: Request, call_next) -> Response:
         "font-src 'self' https://fonts.gstatic.com data:",
         # Images: self + data URIs (for canvas) + blob (for generated content)
         "img-src 'self' data: blob: https:",
-        # Connect: API endpoints
-        "connect-src 'self' https://*.huggingface.co https://*.hf.space",
+        # Connect: API endpoints + CDN for source maps
+        "connect-src 'self' https://cdn.jsdelivr.net https://*.huggingface.co https://*.hf.space",
         # Frame ancestors: HF Spaces embedding
         "frame-ancestors 'self' https://*.huggingface.co https://huggingface.co https://*.hf.space",
         # Object/embed: none (security)
