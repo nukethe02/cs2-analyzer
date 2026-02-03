@@ -6,6 +6,7 @@ This module contains the fundamental components:
 - config: Application configuration management
 - utils: General utility functions
 - parser: Demo file parsing using demoparser2
+- schemas: Data contracts for module boundaries
 """
 
 from opensight.core.constants import (
@@ -27,6 +28,21 @@ from opensight.core.constants import (
     GameMode,
     RoundEndReason,
     Team,
+)
+from opensight.core.schemas import (
+    AnalysisWarning,
+    ClutchInfo,
+    EconomyIQData,
+    HeatmapData,
+    HeatmapPosition,
+    MatchInfo,
+    MatchResult,
+    PlayerPositionSnapshot,
+    RoundEconomy,
+    RoundTimelineEntry,
+    TimelineBombEvent,
+    TimelineKillEvent,
+    TimelineUtilityEvent,
 )
 
 __all__ = [
@@ -50,4 +66,18 @@ __all__ = [
     "TICK_RATES",
     "TRADE_WINDOW_SECONDS",
     "WINGMAN_MAPS",
+    # Schemas (data contracts)
+    "AnalysisWarning",
+    "ClutchInfo",
+    "EconomyIQData",
+    "HeatmapData",
+    "HeatmapPosition",
+    "MatchInfo",
+    "MatchResult",
+    "PlayerPositionSnapshot",
+    "RoundEconomy",
+    "RoundTimelineEntry",
+    "TimelineBombEvent",
+    "TimelineKillEvent",
+    "TimelineUtilityEvent",
 ]
