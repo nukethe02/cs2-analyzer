@@ -3865,12 +3865,24 @@ class DemoAnalyzer:
             logger.info("Skipping entry frag detection - missing columns")
             return
 
-        # Check if we have position data
-        has_positions = all(
-            col in kills_df.columns for col in ["attacker_x", "attacker_y", "victim_x", "victim_y"]
-        )
+        # Check if we have position data (handle both uppercase and lowercase column names)
+        pos_col_variants = {
+            "attacker_x": ["attacker_x", "attacker_X"],
+            "attacker_y": ["attacker_y", "attacker_Y"],
+            "victim_x": ["victim_x", "victim_X", "user_x", "user_X"],
+            "victim_y": ["victim_y", "victim_Y", "user_y", "user_Y"],
+        }
+        pos_cols = {}
+        for key, variants in pos_col_variants.items():
+            for v in variants:
+                if v in kills_df.columns:
+                    pos_cols[key] = v
+                    break
+        has_positions = len(pos_cols) == 4
         if not has_positions:
-            logger.info("Skipping entry frag detection - no position data")
+            logger.info(
+                f"Skipping entry frag detection - no position data (found: {list(pos_cols.keys())})"
+            )
             return
 
         map_name = self.data.map_name.lower() if self.data.map_name else ""
@@ -3894,9 +3906,16 @@ class DemoAnalyzer:
             is_first_kill_of_round = True
 
             for _, kill in round_kills.iterrows():
-                victim_x = safe_float(kill.get("victim_x"))
-                victim_y = safe_float(kill.get("victim_y"))
-                victim_z = safe_float(kill.get("victim_z"), default=0.0)
+                victim_x = safe_float(kill.get(pos_cols.get("victim_x", "victim_x")))
+                victim_y = safe_float(kill.get(pos_cols.get("victim_y", "victim_y")))
+                # victim_z may not be in pos_cols - try variants
+                victim_z = safe_float(
+                    kill.get("victim_z")
+                    or kill.get("victim_Z")
+                    or kill.get("user_z")
+                    or kill.get("user_Z"),
+                    default=0.0,
+                )
 
                 if victim_x == 0.0 and victim_y == 0.0:
                     is_first_kill_of_round = False
@@ -5761,15 +5780,22 @@ class DemoAnalyzer:
 
                 for g in player_grenades:
                     grenade_type = g.grenade_type.lower()
-                    event_type = g.event_type
 
-                    if "smoke" in grenade_type and event_type == "thrown":
+                    # Count smokes (both thrown and detonate events)
+                    # Parser creates "smokegrenade" type from smokegrenade_detonate
+                    if "smoke" in grenade_type:
                         smokes += 1
                     elif "hegrenade" in grenade_type or "he_grenade" in grenade_type:
                         he_count += 1
-                    elif "molotov" in grenade_type or "incendiary" in grenade_type:
+                    elif (
+                        "molotov" in grenade_type
+                        or "incendiary" in grenade_type
+                        or "inferno" in grenade_type
+                    ):
                         molly_count += 1
-                    elif "flash" in grenade_type and event_type == "thrown":
+                    # Count flashes (both thrown and detonate events)
+                    # Parser creates "flashbang" type from flashbang_detonate
+                    elif "flash" in grenade_type:
                         flash_count += 1
 
                 player.utility.smokes_thrown = smokes
