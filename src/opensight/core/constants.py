@@ -5,10 +5,10 @@ Defines demo sources, game modes, and other constants for universal demo analysi
 Based on industry standards from CS Demo Manager and professional parsing tools.
 """
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class DemoSource(str, Enum):
+class DemoSource(StrEnum):
     """
     Demo source/platform detection.
 
@@ -34,7 +34,7 @@ class DemoSource(str, Enum):
     POV = "pov"  # POV recording (not GOTV)
 
 
-class GameMode(str, Enum):
+class GameMode(StrEnum):
     """
     CS2 game modes.
 
@@ -54,7 +54,7 @@ class GameMode(str, Enum):
     CUSTOM = "custom"  # Custom server modes
 
 
-class DemoType(str, Enum):
+class DemoType(StrEnum):
     """
     Demo recording type.
 

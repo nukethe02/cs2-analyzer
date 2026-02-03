@@ -8,7 +8,7 @@ and mechanical skill indicators from CS2 demo data.
 import logging
 import math
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ COUNTER_STRAFE_WINDOW_TICKS = 8  # ~125ms window
 VELOCITY_STOP_THRESHOLD = 34.0  # Considered "stopped" for accurate shooting
 
 
-class MovementType(str, Enum):
+class MovementType(StrEnum):
     """Type of movement detected."""
 
     STATIONARY = "stationary"
@@ -39,7 +39,7 @@ class MovementType(str, Enum):
     FALLING = "falling"
 
 
-class StrafeDirection(str, Enum):
+class StrafeDirection(StrEnum):
     """Direction of strafe movement."""
 
     LEFT = "left"

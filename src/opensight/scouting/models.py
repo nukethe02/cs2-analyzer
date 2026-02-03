@@ -5,11 +5,11 @@ Defines dataclasses for player profiles, team reports, and aggregated statistics
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class PlayStyle(str, Enum):
+class PlayStyle(StrEnum):
     """Player playstyle classification based on aggression metrics."""
 
     AGGRESSIVE = "aggressive"
@@ -17,7 +17,7 @@ class PlayStyle(str, Enum):
     MIXED = "mixed"
 
 
-class EconomyTendency(str, Enum):
+class EconomyTendency(StrEnum):
     """Team economy management tendency."""
 
     AGGRESSIVE = "aggressive"  # Force buys often, eco rarely

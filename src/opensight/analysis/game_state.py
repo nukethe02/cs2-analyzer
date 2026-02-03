@@ -7,7 +7,7 @@ Consolidates game mode, map, round state, and match context information.
 
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from opensight.core.constants import DemoSource, GameMode, Team
@@ -16,7 +16,7 @@ from opensight.core.parser import DemoData
 logger = logging.getLogger(__name__)
 
 
-class RoundPhase(str, Enum):
+class RoundPhase(StrEnum):
     """Current phase within a round."""
 
     WARMUP = "warmup"
@@ -28,7 +28,7 @@ class RoundPhase(str, Enum):
     OVERTIME = "overtime"
 
 
-class MatchPhase(str, Enum):
+class MatchPhase(StrEnum):
     """Overall match phase."""
 
     WARMUP = "warmup"
