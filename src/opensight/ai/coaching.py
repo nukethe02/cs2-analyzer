@@ -624,8 +624,9 @@ class AdaptiveCoach:
             SkillArea.AIM_MECHANICS: [
                 {
                     "title": "Slow Time to Damage",
-                    "condition": lambda stats, bench: stats.get("ttd_median_ms", 999)
-                    > bench["ttd_ms"],
+                    "condition": lambda stats, bench: (
+                        stats.get("ttd_median_ms", 999) > bench["ttd_ms"]
+                    ),
                     "severity": "high",
                     "description": (
                         "Your reaction time from first damage to kill is slower "
@@ -644,8 +645,9 @@ class AdaptiveCoach:
                 },
                 {
                     "title": "Low Headshot Percentage",
-                    "condition": lambda stats, bench: stats.get("hs_percent", 0)
-                    < bench["hs_percent"],
+                    "condition": lambda stats, bench: (
+                        stats.get("hs_percent", 0) < bench["hs_percent"]
+                    ),
                     "severity": "medium",
                     "description": (
                         "Your headshot percentage is below average. Focus on head-level aim."
@@ -665,8 +667,9 @@ class AdaptiveCoach:
             SkillArea.CROSSHAIR_PLACEMENT: [
                 {
                     "title": "High Crosshair Angle Error",
-                    "condition": lambda stats, bench: stats.get("cp_median_error", 999)
-                    > bench["cp_error_deg"],
+                    "condition": lambda stats, bench: (
+                        stats.get("cp_median_error", 999) > bench["cp_error_deg"]
+                    ),
                     "severity": "high",
                     "description": (
                         "Your crosshair is often far from where enemies appear. "
@@ -687,8 +690,9 @@ class AdaptiveCoach:
             SkillArea.UTILITY_USAGE: [
                 {
                     "title": "Low Utility Usage",
-                    "condition": lambda stats, bench: stats.get("utility_per_round", 0)
-                    < bench["utility_per_round"],
+                    "condition": lambda stats, bench: (
+                        stats.get("utility_per_round", 0) < bench["utility_per_round"]
+                    ),
                     "severity": "medium",
                     "description": (
                         "You're not using enough utility each round. Grenades can win rounds."
@@ -724,8 +728,9 @@ class AdaptiveCoach:
             SkillArea.TRADING: [
                 {
                     "title": "Low Trade Rate",
-                    "condition": lambda stats, bench: stats.get("trade_rate", 0)
-                    < bench["trade_rate"],
+                    "condition": lambda stats, bench: (
+                        stats.get("trade_rate", 0) < bench["trade_rate"]
+                    ),
                     "severity": "high",
                     "description": "You're not trading teammates quickly enough when they die.",
                     "tips": [
@@ -743,8 +748,9 @@ class AdaptiveCoach:
             SkillArea.ENTRY_FRAGGING: [
                 {
                     "title": "Low Opening Duel Win Rate",
-                    "condition": lambda stats, bench: stats.get("opening_duel_wr", 0)
-                    < bench["opening_duel_wr"],
+                    "condition": lambda stats, bench: (
+                        stats.get("opening_duel_wr", 0) < bench["opening_duel_wr"]
+                    ),
                     "severity": "medium",
                     "description": "You're losing too many opening duels as an entry fragger.",
                     "tips": [
@@ -762,8 +768,9 @@ class AdaptiveCoach:
             SkillArea.POSITIONING: [
                 {
                     "title": "Overaggressive Positioning",
-                    "condition": lambda stats, bench: stats.get("deaths_per_round", 1) > 0.8
-                    and stats.get("kast", 0) < 60,
+                    "condition": lambda stats, bench: (
+                        stats.get("deaths_per_round", 1) > 0.8 and stats.get("kast", 0) < 60
+                    ),
                     "severity": "medium",
                     "description": (
                         "You're dying too often without impact. Consider safer positions."
@@ -801,8 +808,9 @@ class AdaptiveCoach:
             SkillArea.CLUTCHING: [
                 {
                     "title": "Low Clutch Win Rate",
-                    "condition": lambda stats, bench: stats.get("clutch_win_rate", 0) < 30
-                    and stats.get("clutch_attempts", 0) > 5,
+                    "condition": lambda stats, bench: (
+                        stats.get("clutch_win_rate", 0) < 30 and stats.get("clutch_attempts", 0) > 5
+                    ),
                     "severity": "low",
                     "description": "Your clutch conversion rate is low. Work on 1vX situations.",
                     "tips": [
@@ -838,8 +846,9 @@ class AdaptiveCoach:
             SkillArea.AWP_USAGE: [
                 {
                     "title": "Aggressive AWP Dies Often",
-                    "condition": lambda stats, bench: stats.get("awp_deaths", 0)
-                    > stats.get("awp_kills", 0) * 0.7,
+                    "condition": lambda stats, bench: (
+                        stats.get("awp_deaths", 0) > stats.get("awp_kills", 0) * 0.7
+                    ),
                     "severity": "high",
                     "description": "You're dying too much with the AWP. It's a $4750 investment.",
                     "tips": [
