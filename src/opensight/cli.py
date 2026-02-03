@@ -42,42 +42,37 @@ def _import_parser():
 
 
 def _import_metrics():
-    """Lazy import for metrics functions (loads analytics)."""
-    from opensight.analysis.metrics import (
-        calculate_comprehensive_metrics,
-        calculate_crosshair_placement,
-        calculate_economy_metrics,
-        calculate_engagement_metrics,
-        calculate_opening_metrics,
-        calculate_trade_metrics,
-        calculate_ttd,
-        calculate_utility_metrics,
-    )
+    """Lazy import for metrics functions.
 
-    return {
-        "calculate_ttd": calculate_ttd,
-        "calculate_crosshair_placement": calculate_crosshair_placement,
-        "calculate_engagement_metrics": calculate_engagement_metrics,
-        "calculate_economy_metrics": calculate_economy_metrics,
-        "calculate_utility_metrics": calculate_utility_metrics,
-        "calculate_trade_metrics": calculate_trade_metrics,
-        "calculate_opening_metrics": calculate_opening_metrics,
-        "calculate_comprehensive_metrics": calculate_comprehensive_metrics,
-    }
+    NOTE: The standalone metrics module was removed in the rebuild.
+    Use DemoAnalyzer from opensight.analysis.analytics instead.
+    """
+    raise NotImplementedError(
+        "The standalone metrics module was removed. "
+        "Use DemoAnalyzer from opensight.analysis.analytics instead."
+    )
 
 
 def _import_watcher():
-    """Lazy import for watcher (loads watchdog)."""
-    from opensight.infra.watcher import DemoFileEvent, ReplayWatcher, get_default_replays_folder
+    """Lazy import for watcher.
 
-    return ReplayWatcher, DemoFileEvent, get_default_replays_folder
+    NOTE: The watcher module was removed in the rebuild.
+    Use the web API at /analyze instead.
+    """
+    raise NotImplementedError(
+        "The watcher module was removed. Use the web API at /analyze instead."
+    )
 
 
 def _import_export():
-    """Lazy import for export functions."""
-    from opensight.visualization.export import export_analysis
+    """Lazy import for export functions.
 
-    return export_analysis
+    NOTE: The export module was removed in the rebuild.
+    Use the web API at /analyze/{job_id}/download instead.
+    """
+    raise NotImplementedError(
+        "The export module was removed. Use the web API at /analyze/{job_id}/download instead."
+    )
 
 
 app = typer.Typer(

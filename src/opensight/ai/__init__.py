@@ -1,14 +1,18 @@
 """
-OpenSight AI - Advanced AI coaching and pattern analysis.
+OpenSight AI - LLM-powered tactical analysis and coaching.
 
-This module contains:
-- coaching: Adaptive AI coaching with rank/role-aware insights
-- realtime: Real-time coaching during practice via WebSocket
-- sentiment: Team morale analysis from communications
-- custom_metrics: Custom metric builder for user-defined metrics
-- patterns: Temporal pattern analysis across demos
-- opponent: Opponent modeling and strategy prediction
-- playbook: Team playbook generation
+Live modules:
+- llm_client: API client for Claude/OpenAI
+- tactical: Tactical pattern detection
+- strat_engine: Strategy analysis engine
+- scouting: Opponent scouting reports
+- self_review: Self-review and improvement insights
 """
 
-__all__: list[str] = []
+__all__: list[str] = [
+    "llm_client",
+    "tactical",
+    "strat_engine",
+    "scouting",
+    "self_review",
+]

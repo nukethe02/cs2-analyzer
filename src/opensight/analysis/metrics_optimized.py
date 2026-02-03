@@ -32,9 +32,63 @@ import pandas as pd
 if TYPE_CHECKING:
     pass
 
-# Import weapon filtering from metrics module
-from opensight.analysis.metrics import _is_valid_cp_weapon
 from opensight.core.constants import CS2_TICK_RATE
+
+# Weapons that are NOT valid for crosshair placement measurement
+# (knives, grenades, taser, c4)
+_INVALID_CP_WEAPONS = frozenset(
+    {
+        "knife",
+        "knife_t",
+        "knifegg",
+        "bayonet",
+        "knife_m9_bayonet",
+        "knife_karambit",
+        "knife_butterfly",
+        "knife_flip",
+        "knife_gut",
+        "knife_tactical",
+        "knife_falchion",
+        "knife_push",
+        "knife_survival_bowie",
+        "knife_ursus",
+        "knife_gypsy_jackknife",
+        "knife_stiletto",
+        "knife_widowmaker",
+        "knife_css",
+        "knife_cord",
+        "knife_canis",
+        "knife_outdoor",
+        "knife_skeleton",
+        "hegrenade",
+        "flashbang",
+        "smokegrenade",
+        "molotov",
+        "incgrenade",
+        "decoy",
+        "taser",
+        "c4",
+    }
+)
+
+
+def _is_valid_cp_weapon(weapon: str | None) -> bool:
+    """Check if weapon is valid for crosshair placement calculation.
+
+    Args:
+        weapon: Weapon name (e.g., "ak47", "knife", "hegrenade")
+
+    Returns:
+        True if weapon is valid for CP (hitscan weapons), False otherwise
+    """
+    if not weapon:
+        return False
+    weapon_lower = weapon.lower()
+    # Check for knife prefix (catches all knife variants)
+    if weapon_lower.startswith("knife"):
+        return False
+    return weapon_lower not in _INVALID_CP_WEAPONS
+
 
 logger = logging.getLogger(__name__)
 

@@ -6814,10 +6814,23 @@ class DemoAnalyzer:
             - grenade_positions: List of dicts with position and metadata
             - team_stats: Dict with team-level utility statistics
         """
-        from opensight.visualization.trajectory import (
-            GRENADE_COLORS,
-            GRENADE_CSS_CLASSES,
-        )
+        # Grenade visualization constants (moved from trajectory.py)
+        GRENADE_COLORS = {
+            "flashbang": "#ffff00",
+            "smokegrenade": "#808080",
+            "hegrenade": "#ff4500",
+            "molotov": "#ff6600",
+            "incgrenade": "#ff6600",
+            "decoy": "#00ff00",
+        }
+        GRENADE_CSS_CLASSES = {
+            "flashbang": "grenade-flash",
+            "smokegrenade": "grenade-smoke",
+            "hegrenade": "grenade-he",
+            "molotov": "grenade-molotov",
+            "incgrenade": "grenade-molotov",
+            "decoy": "grenade-decoy",
+        }
 
         grenade_positions = []
         team_stats = {
