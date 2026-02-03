@@ -885,11 +885,15 @@ class DemoParser:
             flash_det_df = self._parse_event_safe(parser, "flashbang_detonate")
             he_det_df = self._parse_event_safe(parser, "hegrenade_detonate")
             smoke_det_df = self._parse_event_safe(parser, "smokegrenade_detonate")
+            # FIX: molotov_detonate doesn't exist in CS2 - use inferno_startburn
             molly_det_df = self._parse_event_safe(parser, "molotov_detonate")
-            self._parse_event_safe(parser, "inferno_startburn")
+            inferno_df = self._parse_event_safe(parser, "inferno_startburn")
             self._parse_event_safe(parser, "inferno_expire")
+            # Combine molotov_detonate and inferno_startburn (CS2 uses inferno_startburn)
+            if not inferno_df.empty:
+                molly_det_df = pd.concat([molly_det_df, inferno_df], ignore_index=True)
             logger.info(
-                f"Parsed grenades: {len(grenades_thrown_df)} thrown, {len(flash_det_df)} flash, {len(he_det_df)} HE, {len(smoke_det_df)} smoke, {len(molly_det_df)} molly"
+                f"Parsed grenades: {len(grenades_thrown_df)} thrown, {len(flash_det_df)} flash, {len(he_det_df)} HE, {len(smoke_det_df)} smoke, {len(molly_det_df)} molly (includes inferno_startburn)"
             )
 
             # Bomb events
@@ -999,6 +1003,17 @@ class DemoParser:
             else []
         )
 
+        # FIX: Apply tick-to-round mapping to fix events with round_num=0
+        # This is critical because demoparser2's total_rounds_played is often NaN
+        self._fix_event_round_numbers(
+            kills=kills,
+            damages=damages,
+            blinds=blinds,
+            grenades=grenades,
+            bomb_events=bomb_events,
+            rounds=rounds,
+        )
+
         # Merge grenade DataFrames efficiently (only include non-empty ones)
         grenades_df = pd.DataFrame()
         if comprehensive:
@@ -1092,6 +1107,31 @@ class DemoParser:
             logger.info(
                 f"Extended data: {len(weapon_fires)} shots, {len(blinds)} blinds, {len(grenades)} grenades, {len(bomb_events)} bomb events"
             )
+
+        # VALIDATION: Log warnings for critical data issues
+        warnings = []
+        if not kills:
+            warnings.append("No kills parsed - check demo file integrity")
+        if not rounds:
+            warnings.append("No rounds parsed - timeline will be empty")
+        if kills:
+            kills_with_zero_round = sum(1 for k in kills if k.round_num == 0)
+            if kills_with_zero_round > len(kills) * 0.1:  # More than 10%
+                warnings.append(
+                    f"{kills_with_zero_round}/{len(kills)} kills have round_num=0 - "
+                    "RWS, TTD, CP will be degraded"
+                )
+        if grenades:
+            # Count grenade types for debugging
+            grenade_counts = {}
+            for g in grenades:
+                gt = g.grenade_type.lower() if g.grenade_type else "unknown"
+                grenade_counts[gt] = grenade_counts.get(gt, 0) + 1
+            logger.debug(f"Grenade counts by type: {grenade_counts}")
+
+        for w in warnings:
+            logger.warning(f"PARSER WARNING: {w}")
+
         return self._data
 
     def _find_column(
@@ -2033,6 +2073,143 @@ class DemoParser:
                     rounds[i].round_num = i + 1
 
         return rounds
+
+    def _build_round_lookup(self, rounds: list[RoundInfo]) -> dict[int, tuple[int, int]]:
+        """Build a lookup: round_num -> (start_tick, end_tick).
+
+        Args:
+            rounds: List of RoundInfo objects with start_tick and end_tick
+
+        Returns:
+            Dict mapping round_num to (start_tick, end_tick) tuple
+        """
+        return {r.round_num: (r.start_tick, r.end_tick) for r in rounds if r.start_tick > 0}
+
+    def _tick_to_round(self, tick: int, round_lookup: dict[int, tuple[int, int]]) -> int:
+        """Map a tick to its round number using round boundaries.
+
+        Args:
+            tick: The tick to map
+            round_lookup: Dict from _build_round_lookup
+
+        Returns:
+            Round number (1-indexed), or 0 if no round found
+        """
+        if not round_lookup or tick <= 0:
+            return 0
+
+        # Check if tick falls within any round
+        for round_num, (start, end) in round_lookup.items():
+            if start <= tick <= end:
+                return round_num
+
+        # Fallback: find closest round (tick might be slightly before/after boundaries)
+        # First, check if it's after the last round ended
+        max_round = max(round_lookup.keys())
+        if tick > round_lookup[max_round][1]:
+            return max_round
+
+        # Check if it's before the first round started
+        min_round = min(round_lookup.keys())
+        if tick < round_lookup[min_round][0]:
+            return min_round
+
+        # Find the round whose end tick is closest (tick is in between rounds)
+        for rn in sorted(round_lookup.keys(), reverse=True):
+            if tick > round_lookup[rn][1]:
+                return rn
+
+        return min_round
+
+    def _fix_event_round_numbers(
+        self,
+        kills: list[KillEvent],
+        damages: list[DamageEvent],
+        blinds: list[BlindEvent],
+        grenades: list[GrenadeEvent],
+        bomb_events: list[BombEvent],
+        rounds: list[RoundInfo],
+    ) -> tuple[int, int, int, int, int]:
+        """Fix round_num=0 events using tick-to-round mapping.
+
+        Args:
+            kills: List of KillEvent objects
+            damages: List of DamageEvent objects
+            blinds: List of BlindEvent objects
+            grenades: List of GrenadeEvent objects
+            bomb_events: List of BombEvent objects
+            rounds: List of RoundInfo objects with boundaries
+
+        Returns:
+            Tuple of (kills_fixed, damages_fixed, blinds_fixed, grenades_fixed, bombs_fixed)
+        """
+        if not rounds:
+            logger.warning("PARSER WARNING: No rounds parsed - cannot fix event round numbers")
+            return (0, 0, 0, 0, 0)
+
+        round_lookup = self._build_round_lookup(rounds)
+        if not round_lookup:
+            logger.warning("PARSER WARNING: Round lookup is empty - start_tick values may be 0")
+            return (0, 0, 0, 0, 0)
+
+        kills_fixed = 0
+        damages_fixed = 0
+        blinds_fixed = 0
+        grenades_fixed = 0
+        bombs_fixed = 0
+
+        # Fix kills
+        for kill in kills:
+            if kill.round_num == 0 and kill.tick > 0:
+                kill.round_num = self._tick_to_round(kill.tick, round_lookup)
+                if kill.round_num > 0:
+                    kills_fixed += 1
+
+        # Fix damages
+        for damage in damages:
+            if damage.round_num == 0 and damage.tick > 0:
+                damage.round_num = self._tick_to_round(damage.tick, round_lookup)
+                if damage.round_num > 0:
+                    damages_fixed += 1
+
+        # Fix blinds
+        for blind in blinds:
+            if blind.round_num == 0 and blind.tick > 0:
+                blind.round_num = self._tick_to_round(blind.tick, round_lookup)
+                if blind.round_num > 0:
+                    blinds_fixed += 1
+
+        # Fix grenades
+        for grenade in grenades:
+            if grenade.round_num == 0 and grenade.tick > 0:
+                grenade.round_num = self._tick_to_round(grenade.tick, round_lookup)
+                if grenade.round_num > 0:
+                    grenades_fixed += 1
+
+        # Fix bomb events
+        for bomb in bomb_events:
+            if bomb.round_num == 0 and bomb.tick > 0:
+                bomb.round_num = self._tick_to_round(bomb.tick, round_lookup)
+                if bomb.round_num > 0:
+                    bombs_fixed += 1
+
+        # Log summary
+        total_fixed = kills_fixed + damages_fixed + blinds_fixed + grenades_fixed + bombs_fixed
+        if total_fixed > 0:
+            logger.info(
+                f"Fixed round numbers via tick mapping: {kills_fixed} kills, "
+                f"{damages_fixed} damages, {blinds_fixed} blinds, {grenades_fixed} grenades, "
+                f"{bombs_fixed} bomb events"
+            )
+
+        # Validate: check if any events still have round_num=0
+        kills_still_zero = sum(1 for k in kills if k.round_num == 0)
+        if kills_still_zero > 0:
+            logger.warning(
+                f"PARSER WARNING: {kills_still_zero}/{len(kills)} kills still have round_num=0"
+            )
+
+        return (kills_fixed, damages_fixed, blinds_fixed, grenades_fixed, bombs_fixed)
 
     def _populate_round_economy(
         self,
