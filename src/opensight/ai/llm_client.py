@@ -228,3 +228,317 @@ def generate_match_summary(
     """
     client = get_llm_client()
     return client.generate_match_summary(player_stats, match_context)
+
+
+# =============================================================================
+# TacticalAIClient - Claude-powered tactical analysis with tool-use
+# =============================================================================
+
+
+class TacticalAIClient:
+    """
+    Claude-powered tactical analysis for CS2 demos.
+
+    Uses Claude's tool-use (function calling) to query match data
+    and generate comprehensive tactical reports.
+    """
+
+    # Tools Claude can call to query match data
+    ANALYSIS_TOOLS = [
+        {
+            "name": "get_round_data",
+            "description": "Get detailed data for a specific round including kills, economy, utility usage",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "round_number": {
+                        "type": "integer",
+                        "description": "Round number (1-30+)",
+                    },
+                },
+                "required": ["round_number"],
+            },
+        },
+        {
+            "name": "get_player_stats",
+            "description": "Get a player's full statistics for the match",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "player_name": {"type": "string", "description": "Player name"},
+                },
+                "required": ["player_name"],
+            },
+        },
+        {
+            "name": "get_economy_timeline",
+            "description": "Get team economy state across all rounds",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "team": {
+                        "type": "string",
+                        "enum": ["CT", "T"],
+                        "description": "Team to get economy for",
+                    },
+                },
+                "required": ["team"],
+            },
+        },
+        {
+            "name": "get_kills_by_round",
+            "description": "Get all kills in a specific round with positions and weapons",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "round_number": {
+                        "type": "integer",
+                        "description": "Round number",
+                    },
+                },
+                "required": ["round_number"],
+            },
+        },
+        {
+            "name": "get_utility_usage",
+            "description": "Get all utility (grenade) usage for a round or entire match",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "round_number": {
+                        "type": "integer",
+                        "description": "Round number (omit for all rounds)",
+                    },
+                },
+            },
+        },
+    ]
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "claude-sonnet-4-5-20250929",
+    ):
+        """
+        Initialize TacticalAIClient.
+
+        Args:
+            api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+            model: Model to use (default: claude-sonnet-4-5-20250929)
+        """
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        self.model = model
+        self._client = None
+
+    def _get_client(self):
+        """Lazy initialization of Anthropic client."""
+        if self._client is None:
+            try:
+                import anthropic
+
+                self._client = anthropic.Anthropic(
+                    api_key=self.api_key,
+                    timeout=60,  # Longer timeout for complex analysis
+                )
+            except ImportError as e:
+                raise ImportError(
+                    "Anthropic library not installed. Install with: pip install anthropic"
+                ) from e
+        return self._client
+
+    def _execute_tool(self, tool_name: str, tool_input: dict, match_data: dict) -> str:
+        """Execute a tool call with real match data."""
+        import json
+
+        if tool_name == "get_round_data":
+            round_num = tool_input.get("round_number", 1)
+            timeline = match_data.get("round_timeline", [])
+            for r in timeline:
+                if r.get("round_number") == round_num:
+                    return json.dumps(r, indent=2, default=str)
+            return json.dumps({"error": f"Round {round_num} not found"})
+
+        elif tool_name == "get_player_stats":
+            name = tool_input.get("player_name", "").lower()
+            players = match_data.get("players", {})
+            for _sid, player in players.items():
+                if player.get("name", "").lower() == name:
+                    return json.dumps(player, indent=2, default=str)
+            return json.dumps({"error": f"Player '{name}' not found"})
+
+        elif tool_name == "get_economy_timeline":
+            team = tool_input.get("team", "CT")
+            timeline = match_data.get("round_timeline", [])
+            economy = []
+            for r in timeline:
+                round_num = r.get("round_number", 0)
+                if team == "CT":
+                    economy.append(
+                        {
+                            "round": round_num,
+                            "team_money": r.get("ct_team_money", 0),
+                            "equipment_value": r.get("ct_equipment_value", 0),
+                            "round_type": r.get("ct_buy_type", "unknown"),
+                        }
+                    )
+                else:
+                    economy.append(
+                        {
+                            "round": round_num,
+                            "team_money": r.get("t_team_money", 0),
+                            "equipment_value": r.get("t_equipment_value", 0),
+                            "round_type": r.get("t_buy_type", "unknown"),
+                        }
+                    )
+            return json.dumps(economy, indent=2, default=str)
+
+        elif tool_name == "get_kills_by_round":
+            round_num = tool_input.get("round_number", 1)
+            timeline = match_data.get("round_timeline", [])
+            for r in timeline:
+                if r.get("round_number") == round_num:
+                    kills = r.get("kills", [])
+                    return json.dumps(kills, indent=2, default=str)
+            return json.dumps({"error": f"Round {round_num} not found"})
+
+        elif tool_name == "get_utility_usage":
+            # Extract utility from match data if available
+            round_num = tool_input.get("round_number")
+            utility_data = match_data.get("utility_stats", {})
+            if round_num:
+                round_utility = utility_data.get(f"round_{round_num}", [])
+                return json.dumps(round_utility, indent=2, default=str)
+            return json.dumps(utility_data, indent=2, default=str)
+
+        return json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+    def analyze(
+        self,
+        match_data: dict,
+        analysis_type: str = "overview",
+        focus: str | None = None,
+        system_prompt: str | None = None,
+    ) -> str:
+        """
+        Generate tactical analysis using Claude with tool-use.
+
+        Args:
+            match_data: Parsed match data from CachedAnalyzer
+            analysis_type: Type of analysis (overview, strat-steal, self-review, scout)
+            focus: Optional focus (specific round, player, or side)
+            system_prompt: Optional custom system prompt
+
+        Returns:
+            Markdown-formatted tactical report
+        """
+
+        if not self.api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY not configured. "
+                "Set environment variable or pass api_key to constructor."
+            )
+
+        # Import system prompts
+        from opensight.ai.tactical import get_system_prompt
+
+        # Get appropriate system prompt
+        if system_prompt is None:
+            system_prompt = get_system_prompt(analysis_type)
+
+        # Build initial context
+        match_info = match_data.get("match_info", {})
+        map_name = match_info.get("map", "unknown")
+        total_rounds = match_info.get("total_rounds", 0)
+        players = match_data.get("players", {})
+        player_names = [p.get("name", "Unknown") for p in players.values()]
+
+        # Build user prompt
+        focus_str = f" Focus on: {focus}." if focus else ""
+        user_prompt = f"""Analyze this CS2 match:
+
+**Match Info:**
+- Map: {map_name}
+- Total Rounds: {total_rounds}
+- Players: {", ".join(player_names[:10])}
+
+**Analysis Type:** {analysis_type}
+{focus_str}
+
+Use the tools available to query specific round data, player stats, and economy timeline.
+Then generate a comprehensive tactical report in markdown format."""
+
+        try:
+            client = self._get_client()
+
+            # Initial message
+            messages = [{"role": "user", "content": user_prompt}]
+
+            logger.info(
+                f"Starting tactical analysis: type={analysis_type}, map={map_name}, rounds={total_rounds}"
+            )
+
+            # Tool-use loop (max 10 iterations to prevent infinite loops)
+            iterations_count = 0
+            for _ in range(10):
+                iterations_count += 1
+                response = client.messages.create(
+                    model=self.model,
+                    max_tokens=4096,
+                    system=system_prompt,
+                    tools=self.ANALYSIS_TOOLS,
+                    messages=messages,
+                )
+
+                # Check if we got tool calls
+                if response.stop_reason == "tool_use":
+                    # Collect all tool calls from the response
+                    tool_results = []
+                    for block in response.content:
+                        if block.type == "tool_use":
+                            logger.debug(f"Tool call: {block.name}({block.input})")
+                            result = self._execute_tool(block.name, block.input, match_data)
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": result,
+                                }
+                            )
+
+                    # Add assistant's response and tool results to messages
+                    messages.append({"role": "assistant", "content": response.content})
+                    messages.append({"role": "user", "content": tool_results})
+                else:
+                    # No more tool calls, extract final text
+                    break
+
+            # Extract final text response
+            final_text = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    final_text += block.text
+
+            logger.info(
+                f"Tactical analysis complete ({len(final_text)} chars, {iterations_count} iterations)"
+            )
+            return final_text
+
+        except Exception as e:
+            logger.error(f"Tactical analysis failed: {e}")
+            return f"""**Tactical Analysis Error**
+
+Unable to generate analysis: {type(e).__name__}
+
+Please check your ANTHROPIC_API_KEY configuration or try again later."""
+
+
+# Singleton instance for TacticalAIClient
+_tactical_ai_instance: TacticalAIClient | None = None
+
+
+def get_tactical_ai_client() -> TacticalAIClient:
+    """Get or create singleton TacticalAIClient instance."""
+    global _tactical_ai_instance
+    if _tactical_ai_instance is None:
+        _tactical_ai_instance = TacticalAIClient()
+    return _tactical_ai_instance

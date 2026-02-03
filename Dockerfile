@@ -74,10 +74,11 @@ COPY src/ ./src/
 # Create temp directory with proper permissions
 RUN mkdir -p /tmp/opensight && chmod 777 /tmp/opensight
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash appuser
+# Create non-root user with UID 1000 for HF Spaces compatibility
+# HF Spaces runs containers as user 1000:1000
+RUN useradd --create-home --shell /bin/bash --uid 1000 appuser
 RUN chown -R appuser:appuser /app /tmp/opensight
-USER appuser
+USER 1000
 
 # Expose port 7860 for Hugging Face Spaces
 EXPOSE 7860

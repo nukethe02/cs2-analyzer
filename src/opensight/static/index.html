@@ -417,6 +417,174 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
 
+        /* AI Tab Styles */
+        .tab-btn.ai-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, rgba(124, 77, 255, 0.15), rgba(0, 229, 255, 0.15));
+            border: 1px solid rgba(124, 77, 255, 0.3);
+        }
+
+        .tab-btn.ai-tab:hover {
+            background: linear-gradient(135deg, rgba(124, 77, 255, 0.25), rgba(0, 229, 255, 0.25));
+            border-color: rgba(124, 77, 255, 0.5);
+        }
+
+        .tab-btn.ai-tab.active {
+            background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
+            border-color: transparent;
+        }
+
+        .ai-icon {
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 2px 5px;
+            background: rgba(124, 77, 255, 0.3);
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+        }
+
+        .tab-btn.ai-tab.active .ai-icon {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        /* AI Panel Styles */
+        .ai-panel-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .ai-loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent-secondary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .ai-panel-loading.loading .ai-loading-spinner {
+            display: block;
+        }
+
+        .ai-panel-loading.loading .ai-load-btn {
+            display: none;
+        }
+
+        .ai-panel-loading.loading p {
+            color: var(--accent-primary);
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .ai-load-btn {
+            margin-top: 16px;
+            padding: 12px 28px;
+            background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+
+        .ai-load-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px var(--accent-glow);
+        }
+
+        .ai-panel-content {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            border: 1px solid var(--border);
+        }
+
+        .ai-report {
+            line-height: 1.8;
+            color: var(--text-primary);
+        }
+
+        .ai-report h1, .ai-report h2, .ai-report h3 {
+            color: var(--accent-primary);
+            margin-top: 24px;
+            margin-bottom: 12px;
+        }
+
+        .ai-report h1 { font-size: 1.5rem; }
+        .ai-report h2 { font-size: 1.25rem; }
+        .ai-report h3 { font-size: 1.1rem; }
+
+        .ai-report p {
+            margin-bottom: 12px;
+        }
+
+        .ai-report ul, .ai-report ol {
+            margin-left: 24px;
+            margin-bottom: 12px;
+        }
+
+        .ai-report li {
+            margin-bottom: 6px;
+        }
+
+        .ai-report code {
+            background: var(--bg-elevated);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9em;
+        }
+
+        .ai-report blockquote {
+            border-left: 3px solid var(--accent-secondary);
+            padding-left: 16px;
+            margin: 16px 0;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .ai-report strong {
+            color: var(--accent-primary);
+        }
+
+        .ai-report table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+
+        .ai-report th, .ai-report td {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        .ai-report th {
+            background: var(--bg-elevated);
+            font-weight: 600;
+        }
+
+        .ai-error {
+            background: var(--danger-bg);
+            border: 1px solid var(--danger);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            color: var(--danger);
+        }
+
         /* Heatmap Filter Styles */
         .filter-group {
             display: flex;
@@ -2361,6 +2529,14 @@
         let analysisData = null;
         let uploadedDemoFile = null;  // Store the uploaded file for replay generation
         let replayData = null;  // Store fetched replay data
+        let currentJobId = null;  // Store current job ID for AI analysis endpoints
+
+        // AI Analysis state
+        const aiAnalysisState = {
+            tactical: { loaded: false, data: null },
+            stratsteal: { loaded: false, data: null },
+            selfreview: { loaded: false, data: null }
+        };
 
         // =====================================================
         // Mode Switching (Analysis vs Scouting)
@@ -2632,6 +2808,182 @@
                     </div>
                 </div>
             `;
+        }
+
+        // =====================================================
+        // AI Analysis Loading Functions
+        // =====================================================
+
+        // Convert markdown to HTML (simple parser)
+        function markdownToHtml(markdown) {
+            if (!markdown) return '';
+            return markdown
+                // Headers
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                // Bold
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                // Italic
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                // Code blocks
+                .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                // Inline code
+                .replace(/`(.*?)`/g, '<code>$1</code>')
+                // Unordered lists
+                .replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>')
+                // Ordered lists
+                .replace(/^\s*\d+\.\s+(.*$)/gim, '<li>$1</li>')
+                // Blockquotes
+                .replace(/^>\s*(.*$)/gim, '<blockquote>$1</blockquote>')
+                // Line breaks
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>');
+        }
+
+        async function loadTacticalAnalysis() {
+            if (!currentJobId) {
+                showError('No Analysis', 'Please analyze a demo first before loading tactical analysis.');
+                return;
+            }
+
+            if (aiAnalysisState.tactical.loaded && aiAnalysisState.tactical.data) {
+                // Already loaded, just display
+                displayAIReport('tactical', aiAnalysisState.tactical.data);
+                return;
+            }
+
+            const loadingDiv = document.getElementById('tactical-loading');
+            const contentDiv = document.getElementById('tactical-content');
+
+            loadingDiv.classList.add('loading');
+            loadingDiv.querySelector('p').textContent = 'Claude is analyzing tactical patterns...';
+
+            try {
+                const response = await fetch('/api/tactical-analysis/' + currentJobId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ analysis_type: 'tactical' })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to load tactical analysis');
+                }
+
+                const data = await response.json();
+                aiAnalysisState.tactical.loaded = true;
+                aiAnalysisState.tactical.data = data.report || data.analysis;
+
+                displayAIReport('tactical', aiAnalysisState.tactical.data);
+            } catch (err) {
+                loadingDiv.classList.remove('loading');
+                contentDiv.innerHTML = '<div class="ai-error">Failed to load tactical analysis: ' + esc(err.message) + '</div>';
+                contentDiv.style.display = 'block';
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        async function loadStratSteal() {
+            if (!currentJobId) {
+                showError('No Analysis', 'Please analyze a demo first before loading strat-steal analysis.');
+                return;
+            }
+
+            if (aiAnalysisState.stratsteal.loaded && aiAnalysisState.stratsteal.data) {
+                displayAIReport('stratsteal', aiAnalysisState.stratsteal.data);
+                return;
+            }
+
+            const loadingDiv = document.getElementById('stratsteal-loading');
+            const contentDiv = document.getElementById('stratsteal-content');
+
+            loadingDiv.classList.add('loading');
+            loadingDiv.querySelector('p').textContent = 'Detecting patterns and analyzing strategies...';
+
+            try {
+                const response = await fetch('/api/strat-steal/' + currentJobId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to load strat-steal analysis');
+                }
+
+                const data = await response.json();
+                aiAnalysisState.stratsteal.loaded = true;
+                aiAnalysisState.stratsteal.data = data.report;
+
+                displayAIReport('stratsteal', aiAnalysisState.stratsteal.data);
+            } catch (err) {
+                loadingDiv.classList.remove('loading');
+                contentDiv.innerHTML = '<div class="ai-error">Failed to load strat-steal analysis: ' + esc(err.message) + '</div>';
+                contentDiv.style.display = 'block';
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        async function loadSelfReview() {
+            if (!currentJobId) {
+                showError('No Analysis', 'Please analyze a demo first before loading self-review.');
+                return;
+            }
+
+            if (aiAnalysisState.selfreview.loaded && aiAnalysisState.selfreview.data) {
+                displayAIReport('selfreview', aiAnalysisState.selfreview.data);
+                return;
+            }
+
+            const loadingDiv = document.getElementById('selfreview-loading');
+            const contentDiv = document.getElementById('selfreview-content');
+
+            loadingDiv.classList.add('loading');
+            loadingDiv.querySelector('p').textContent = 'Analyzing team mistakes and generating report cards...';
+
+            try {
+                const response = await fetch('/api/self-review/' + currentJobId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to load self-review');
+                }
+
+                const data = await response.json();
+                aiAnalysisState.selfreview.loaded = true;
+                aiAnalysisState.selfreview.data = data.report;
+
+                displayAIReport('selfreview', aiAnalysisState.selfreview.data);
+            } catch (err) {
+                loadingDiv.classList.remove('loading');
+                contentDiv.innerHTML = '<div class="ai-error">Failed to load self-review: ' + esc(err.message) + '</div>';
+                contentDiv.style.display = 'block';
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        function displayAIReport(type, report) {
+            const loadingDiv = document.getElementById(type + '-loading');
+            const contentDiv = document.getElementById(type + '-content');
+
+            loadingDiv.classList.remove('loading');
+            loadingDiv.style.display = 'none';
+            contentDiv.style.display = 'block';
+
+            const htmlContent = markdownToHtml(report);
+            contentDiv.innerHTML = '<div class="ai-report">' + htmlContent + '</div>';
+        }
+
+        function resetAIAnalysisState() {
+            aiAnalysisState.tactical = { loaded: false, data: null };
+            aiAnalysisState.stratsteal = { loaded: false, data: null };
+            aiAnalysisState.selfreview = { loaded: false, data: null };
         }
 
         // Scouting upload zone handlers
@@ -2927,11 +3279,15 @@
                     // Poll for job completion
                     const result = await pollForJobCompletion(data.job_id, data.status_url, data.download_url);
                     analysisData = result;
+                    currentJobId = data.job_id;  // Store job ID for AI analysis endpoints
+                    resetAIAnalysisState();  // Reset AI state for new analysis
                     window.currentAnalysis = result; // Store for General stats tab
                     renderResults(result);
                 } else {
                     // Direct response (from cache or immediate processing)
                     analysisData = data;
+                    currentJobId = data.job_id || null;  // Store job ID if available
+                    resetAIAnalysisState();  // Reset AI state for new analysis
                     window.currentAnalysis = data; // Store for General stats tab
                     renderResults(data);
                 }
@@ -3140,6 +3496,15 @@
                     <button class="tab-btn" data-tab="coaching" title="Press 8">AI Coaching</button>
                     <button class="tab-btn" data-tab="replay" title="Press 9">2D Replay</button>
                     <button class="tab-btn" data-tab="trends" title="Press 0">Trends</button>
+                    <button class="tab-btn ai-tab" data-tab="tactical" title="Tactical Analysis">
+                        <span class="ai-icon">AI</span> Tactical
+                    </button>
+                    <button class="tab-btn ai-tab" data-tab="stratsteal" title="Strat-Stealing">
+                        <span class="ai-icon">AI</span> Strat-Steal
+                    </button>
+                    <button class="tab-btn ai-tab" data-tab="selfreview" title="Team Self-Review">
+                        <span class="ai-icon">AI</span> Self-Review
+                    </button>
                 </div>
 
                 <div class="tab-content active" id="tab-overview">
@@ -3180,6 +3545,33 @@
 
                 <div class="tab-content" id="tab-trends">
                     ${renderTrendsDashboard(players)}
+                </div>
+
+                <div class="tab-content" id="tab-tactical">
+                    <div class="ai-panel-loading" id="tactical-loading">
+                        <div class="ai-loading-spinner"></div>
+                        <p>Click to load Claude Tactical Analysis...</p>
+                        <button class="ai-load-btn" onclick="loadTacticalAnalysis()">Load Tactical Analysis</button>
+                    </div>
+                    <div class="ai-panel-content" id="tactical-content" style="display: none;"></div>
+                </div>
+
+                <div class="tab-content" id="tab-stratsteal">
+                    <div class="ai-panel-loading" id="stratsteal-loading">
+                        <div class="ai-loading-spinner"></div>
+                        <p>Click to analyze opponent patterns and strategies...</p>
+                        <button class="ai-load-btn" onclick="loadStratSteal()">Load Strat-Steal Analysis</button>
+                    </div>
+                    <div class="ai-panel-content" id="stratsteal-content" style="display: none;"></div>
+                </div>
+
+                <div class="tab-content" id="tab-selfreview">
+                    <div class="ai-panel-loading" id="selfreview-loading">
+                        <div class="ai-loading-spinner"></div>
+                        <p>Click to analyze your team's mistakes and get improvement recommendations...</p>
+                        <button class="ai-load-btn" onclick="loadSelfReview()">Load Self-Review</button>
+                    </div>
+                    <div class="ai-panel-content" id="selfreview-content" style="display: none;"></div>
                 </div>
             `;
 

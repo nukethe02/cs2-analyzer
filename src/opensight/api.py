@@ -722,6 +722,36 @@ RATE_LIMIT_API = os.getenv("RATE_LIMIT_API", "120/minute")  # Default: 120 API c
 # Determine if rate limiting should be enabled
 SHOULD_ENABLE_RATE_LIMITING = (IS_PRODUCTION or FORCE_ENABLE) and not FORCE_DISABLE
 
+
+def get_real_client_ip(request: Request) -> str:
+    """
+    Get real client IP from X-Forwarded-For header (for reverse proxies like HF Spaces).
+
+    HF Spaces and most reverse proxies pass the real client IP in the X-Forwarded-For header.
+    Format: "client, proxy1, proxy2" - first IP is the real client.
+
+    Falls back to direct connection IP if no proxy header present.
+    """
+    # Check X-Forwarded-For header (standard for reverse proxies)
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        # X-Forwarded-For: client, proxy1, proxy2 - first is real client
+        client_ip = forwarded.split(",")[0].strip()
+        if client_ip:
+            return client_ip
+
+    # Check X-Real-IP header (alternative used by some proxies)
+    real_ip = request.headers.get("X-Real-IP", "")
+    if real_ip:
+        return real_ip.strip()
+
+    # Fallback to direct connection IP
+    if request.client and request.client.host:
+        return request.client.host
+
+    return "unknown"
+
+
 if not SHOULD_ENABLE_RATE_LIMITING:
     RATE_LIMITING_ENABLED = False
     limiter = None
@@ -730,14 +760,15 @@ else:
     try:
         from slowapi import Limiter, _rate_limit_exceeded_handler
         from slowapi.errors import RateLimitExceeded
-        from slowapi.util import get_remote_address
 
-        limiter = Limiter(key_func=get_remote_address)
+        # Use custom function that reads X-Forwarded-For for HF Spaces
+        limiter = Limiter(key_func=get_real_client_ip)
         app.state.limiter = limiter
         app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
         RATE_LIMITING_ENABLED = True
         logger.info(
-            f"Rate limiting enabled (upload: {RATE_LIMIT_UPLOAD}, replay: {RATE_LIMIT_REPLAY}, api: {RATE_LIMIT_API})"
+            f"Rate limiting enabled with X-Forwarded-For support "
+            f"(upload: {RATE_LIMIT_UPLOAD}, replay: {RATE_LIMIT_REPLAY}, api: {RATE_LIMIT_API})"
         )
     except ImportError as e:
         if IS_PRODUCTION:
@@ -1119,6 +1150,438 @@ async def download_job_result(job_id: str):
             result["ai_summary"] = "Tactical Analysis unavailable (Check ANTHROPIC_API_KEY)."
 
     return JSONResponse(content=result)
+
+
+# =============================================================================
+# TACTICAL AI ANALYSIS ENDPOINTS
+# =============================================================================
+
+
+@app.post("/api/tactical-analysis/{job_id}")
+@rate_limit(RATE_LIMIT_API)
+async def tactical_analysis(job_id: str, request: Request) -> dict[str, Any]:
+    """
+    Generate Claude-powered tactical analysis for a completed demo.
+
+    Request body:
+        - type: Analysis type (overview, strat-steal, self-review, scout, quick)
+        - focus: Optional focus area (specific round, player, or side)
+
+    Returns:
+        - analysis: Markdown-formatted tactical report
+    """
+    # Validate job_id format
+    validate_job_id(job_id)
+
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != JobStatus.COMPLETED.value:
+        raise HTTPException(status_code=400, detail="Job not completed")
+    if not job.result:
+        raise HTTPException(status_code=400, detail="No analysis result available")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    analysis_type = body.get("type", "overview")
+    focus = body.get("focus", None)
+
+    # Validate analysis type
+    valid_types = ["overview", "strat-steal", "self-review", "scout", "quick"]
+    if analysis_type not in valid_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid analysis type. Must be one of: {valid_types}",
+        )
+
+    try:
+        from opensight.ai.llm_client import get_tactical_ai_client
+
+        ai = get_tactical_ai_client()
+        analysis = ai.analyze(
+            match_data=job.result,
+            analysis_type=analysis_type,
+            focus=focus,
+        )
+        logger.info(f"Tactical analysis generated for job {job_id}: type={analysis_type}")
+        return {"analysis": analysis, "type": analysis_type}
+
+    except ValueError as e:
+        # API key not configured
+        logger.warning(f"Tactical analysis unavailable: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Tactical AI not configured. Set ANTHROPIC_API_KEY environment variable.",
+        ) from e
+    except ImportError as e:
+        logger.warning(f"Anthropic library not available: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Anthropic library not installed. Install with: pip install anthropic",
+        ) from e
+    except Exception as e:
+        logger.exception(f"Tactical analysis failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Tactical analysis failed: {type(e).__name__}",
+        ) from e
+
+
+@app.post("/api/strat-steal/{job_id}")
+@rate_limit(RATE_LIMIT_API)
+async def steal_strats(job_id: str, request: Request) -> dict[str, Any]:
+    """
+    Generate a strat-stealing report from a parsed demo.
+
+    This is the core feature: upload a pro team's demo, get a structured
+    tactical breakdown that an IGL can immediately use in their stratbook.
+
+    Request body:
+        - team: Which team in the demo to analyze (optional)
+        - side: "T", "CT", or None for both (optional)
+
+    Returns:
+        - report: Markdown-formatted strat-stealing report
+        - patterns: Summary of detected patterns
+    """
+    # Validate job_id format
+    validate_job_id(job_id)
+
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != JobStatus.COMPLETED.value:
+        raise HTTPException(status_code=400, detail="Job not completed")
+    if not job.result:
+        raise HTTPException(status_code=400, detail="No analysis result available")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    team_focus = body.get("team", None)
+    side_focus = body.get("side", None)
+
+    # Validate side
+    if side_focus and side_focus not in ["T", "CT"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid side. Must be 'T', 'CT', or omitted for both.",
+        )
+
+    try:
+        from opensight.ai.strat_engine import get_strat_engine
+
+        engine = get_strat_engine()
+        report = engine.generate_strat_report(
+            match_data=job.result,
+            team_focus=team_focus,
+            side_focus=side_focus,
+        )
+
+        # Also return the raw pattern analysis for the UI
+        analysis = engine.analyze(job.result, team_focus, side_focus)
+        patterns_summary = {
+            "defaults_detected": len(analysis.defaults),
+            "executes_detected": len(analysis.executes),
+            "economy_patterns": len(analysis.economy),
+            "player_tendencies": len(analysis.tendencies),
+        }
+
+        logger.info(
+            f"Strat report generated for job {job_id}: team={team_focus}, side={side_focus}"
+        )
+        return {
+            "report": report,
+            "patterns": patterns_summary,
+            "team": analysis.team_name,
+            "map": analysis.map_name,
+        }
+
+    except ValueError as e:
+        # API key not configured
+        logger.warning(f"Strat stealing unavailable: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Tactical AI not configured. Set ANTHROPIC_API_KEY environment variable.",
+        ) from e
+    except ImportError as e:
+        logger.warning(f"Required library not available: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Required library not installed. Check installation.",
+        ) from e
+    except Exception as e:
+        logger.exception(f"Strat stealing failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Strat analysis failed: {type(e).__name__}",
+        ) from e
+
+
+# =============================================================================
+# OPPONENT SCOUTING ENDPOINTS
+# =============================================================================
+
+
+@app.post("/api/scout/add-demo")
+@rate_limit(RATE_LIMIT_UPLOAD)
+async def add_scout_demo(job_id: str, opponent_team: str) -> dict[str, Any]:
+    """
+    Add a completed demo to the opponent scouting pool.
+
+    Query parameters:
+        - job_id: ID of a completed analysis job
+        - opponent_team: Name of the opponent team in the demo
+
+    Returns:
+        - message: Success message
+        - demos_count: Total demos in scouting pool
+    """
+    validate_job_id(job_id)
+
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != JobStatus.COMPLETED.value:
+        raise HTTPException(status_code=400, detail="Job not completed")
+    if not job.result:
+        raise HTTPException(status_code=400, detail="No analysis result available")
+
+    if not opponent_team or len(opponent_team.strip()) == 0:
+        raise HTTPException(status_code=400, detail="opponent_team is required")
+
+    try:
+        from opensight.ai.scouting import get_opponent_scout
+
+        scout = get_opponent_scout()
+        scout.add_demo(job.result, opponent_team.strip())
+
+        logger.info(f"Added demo to scouting pool: job={job_id}, team={opponent_team}")
+        return {
+            "message": f"Demo added to scouting pool for {opponent_team}",
+            "demos_count": len(scout.demos),
+            "opponent_team": scout.team_name,
+        }
+
+    except Exception as e:
+        logger.exception(f"Failed to add demo to scouting: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to add demo: {type(e).__name__}",
+        ) from e
+
+
+@app.post("/api/scout/report")
+@rate_limit(RATE_LIMIT_API)
+async def generate_scout_report(request: Request) -> dict[str, Any]:
+    """
+    Generate a scouting report from all demos in the pool.
+
+    Request body:
+        - map: Optional map filter (only analyze demos on this map)
+
+    Returns:
+        - report: Markdown-formatted scouting report
+        - demos_analyzed: Number of demos included
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    map_filter = body.get("map", None)
+
+    try:
+        from opensight.ai.scouting import get_opponent_scout
+
+        scout = get_opponent_scout()
+
+        if not scout.demos:
+            raise HTTPException(
+                status_code=400,
+                detail="No demos in scouting pool. Add demos with /api/scout/add-demo first.",
+            )
+
+        report = scout.generate_scout_report(map_name=map_filter)
+
+        logger.info(f"Generated scout report: team={scout.team_name}, demos={len(scout.demos)}")
+        return {
+            "report": report,
+            "demos_analyzed": len(scout.demos),
+            "opponent_team": scout.team_name,
+            "map_filter": map_filter,
+        }
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"Scouting unavailable: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Tactical AI not configured. Set ANTHROPIC_API_KEY environment variable.",
+        ) from e
+    except Exception as e:
+        logger.exception(f"Scout report generation failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Report generation failed: {type(e).__name__}",
+        ) from e
+
+
+@app.get("/api/scout/demos")
+async def list_scout_demos() -> dict[str, Any]:
+    """
+    List all demos currently in the scouting pool.
+
+    Returns:
+        - demos: List of demo summaries
+        - opponent_team: Current opponent being scouted
+    """
+    try:
+        from opensight.ai.scouting import get_opponent_scout
+
+        scout = get_opponent_scout()
+
+        demos = []
+        for i, demo in enumerate(scout.demos):
+            match_info = demo["data"].get("match_info", {})
+            demos.append(
+                {
+                    "index": i,
+                    "opponent_team": demo["opponent_team"],
+                    "map": match_info.get("map", "unknown"),
+                    "total_rounds": match_info.get("total_rounds", 0),
+                }
+            )
+
+        return {
+            "demos": demos,
+            "opponent_team": scout.team_name,
+            "count": len(demos),
+        }
+
+    except Exception as e:
+        logger.exception(f"Failed to list scout demos: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list demos: {type(e).__name__}",
+        ) from e
+
+
+@app.delete("/api/scout/clear")
+async def clear_scout_demos() -> dict[str, Any]:
+    """
+    Clear all demos from the scouting pool.
+
+    Returns:
+        - message: Success message
+    """
+    try:
+        from opensight.ai.scouting import get_opponent_scout
+
+        scout = get_opponent_scout()
+        count = len(scout.demos)
+        scout.clear()
+
+        logger.info(f"Cleared scouting pool: {count} demos removed")
+        return {
+            "message": f"Cleared {count} demos from scouting pool",
+            "demos_count": 0,
+        }
+
+    except Exception as e:
+        logger.exception(f"Failed to clear scout demos: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to clear demos: {type(e).__name__}",
+        ) from e
+
+
+# =============================================================================
+# SELF-REVIEW ENDPOINTS
+# =============================================================================
+
+
+@app.post("/api/self-review/{job_id}")
+async def self_review_analysis(
+    job_id: str,
+    request: Request,
+) -> dict[str, Any]:
+    """
+    Generate team self-review report analyzing mistakes and improvement areas.
+
+    Requires a completed analysis job. This endpoint analyzes your team's
+    mistakes, generates player report cards, and recommends practice priorities.
+
+    Request body (optional):
+        - our_team: Team name to focus on (defaults to auto-detect)
+
+    Returns:
+        - report: Markdown-formatted self-review report
+        - patterns_detected: Breakdown of detected mistakes
+        - player_report_cards: Individual player grades
+        - practice_priorities: Recommended focus areas
+    """
+    # Validate job_id
+    if not validate_demo_id(job_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid job_id format. Use alphanumeric, dash, underscore only.",
+        )
+
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job {job_id} not found",
+        )
+
+    if job.status != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job {job_id} is not completed yet. Status: {job.status}",
+        )
+
+    if not job.result:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Job {job_id} completed but has no result data",
+        )
+
+    try:
+        # Parse optional our_team from request body
+        our_team: str | None = None
+        try:
+            body = await request.json()
+            our_team = body.get("our_team")
+        except Exception:
+            # No body or invalid JSON - use default
+            pass
+
+        from opensight.ai.self_review import get_self_review_engine
+
+        engine = get_self_review_engine()
+        report = engine.generate_review_report(job.result, our_team=our_team)
+
+        logger.info(f"Generated self-review report for job {job_id}")
+        return {
+            "job_id": job_id,
+            "report": report,
+            "our_team": our_team or "auto-detected",
+            "status": "success",
+        }
+
+    except Exception as e:
+        logger.exception(f"Self-review analysis failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Self-review analysis failed: {type(e).__name__}: {str(e)}",
+        ) from e
 
 
 @app.get("/jobs")

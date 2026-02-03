@@ -2946,7 +2946,7 @@ class CachedAnalyzer:
                     player_data["ai_summary"] = (
                         "**AI Summary Unavailable**\n\n"
                         "Unable to generate personalized insights at this time. "
-                        "Check your OPENAI_API_KEY configuration."
+                        "Check your ANTHROPIC_API_KEY configuration."
                     )
 
             logger.info(f"Generated AI summaries for {len(players)} players")
@@ -2957,9 +2957,9 @@ class CachedAnalyzer:
             for player_data in players.values():
                 player_data["ai_summary"] = (
                     "**AI Coaching Not Configured**\n\n"
-                    "To enable AI-powered coaching insights, install the OpenAI library:\n"
-                    "```\npip install openai\n```\n"
-                    "Then set your `OPENAI_API_KEY` environment variable."
+                    "To enable AI-powered coaching insights, install the Anthropic library:\n"
+                    "```\npip install anthropic\n```\n"
+                    "Then set your `ANTHROPIC_API_KEY` environment variable."
                 )
         except Exception as e:
             logger.error(f"Unexpected error in AI summary generation: {e}")
