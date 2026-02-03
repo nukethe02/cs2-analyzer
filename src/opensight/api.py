@@ -1330,7 +1330,7 @@ async def steal_strats(job_id: str, request: Request) -> dict[str, Any]:
 
 @app.post("/api/scout/add-demo")
 @rate_limit(RATE_LIMIT_UPLOAD)
-async def add_scout_demo(job_id: str, opponent_team: str) -> dict[str, Any]:
+async def add_scout_demo(request: Request, job_id: str, opponent_team: str) -> dict[str, Any]:
     """
     Add a completed demo to the opponent scouting pool.
 
@@ -1342,6 +1342,7 @@ async def add_scout_demo(job_id: str, opponent_team: str) -> dict[str, Any]:
         - message: Success message
         - demos_count: Total demos in scouting pool
     """
+    _ = request  # Required for rate limiting
     validate_job_id(job_id)
 
     job = job_store.get_job(job_id)
