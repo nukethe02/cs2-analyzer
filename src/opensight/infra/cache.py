@@ -987,7 +987,7 @@ class CachedAnalyzer:
         # Get clutch data from combat analysis for timeline enrichment
         clutch_by_round: dict[int, list[dict]] = {}
         try:
-            from opensight.domains.combat import CombatAnalyzer, ClutchResult
+            from opensight.domains.combat import ClutchResult, CombatAnalyzer
 
             combat_analyzer = CombatAnalyzer(demo_data)
             combat_result = combat_analyzer.analyze()

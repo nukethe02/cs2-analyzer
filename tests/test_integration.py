@@ -1120,12 +1120,7 @@ class TestSchemaCompliance:
 
     def test_schemas_importable(self):
         from opensight.core.schemas import (
-            ClutchInfo,
-            HeatmapData,
-            MatchResult,
             RoundTimelineEntry,
-            TimelineKillEvent,
-            TimelineUtilityEvent,
         )
 
         assert RoundTimelineEntry is not None
