@@ -45,7 +45,7 @@ class TestDecodeEndpoint:
     def test_decode_valid_sharecode(self):
         """Decode endpoint returns match info for valid code."""
         # Use a mock to avoid needing a real sharecode
-        with patch("opensight.sharecode.decode_sharecode") as mock_decode:
+        with patch("opensight.integrations.sharecode.decode_sharecode") as mock_decode:
             mock_decode.return_value = MagicMock(match_id=12345, outcome_id=67890, token=11111)
             response = client.post("/decode", json={"code": "CSGO-test-code-here-xxxx-xxxxx"})
             assert response.status_code == 200
@@ -56,7 +56,7 @@ class TestDecodeEndpoint:
 
     def test_decode_invalid_sharecode(self):
         """Decode endpoint returns 400 for invalid code."""
-        with patch("opensight.sharecode.decode_sharecode") as mock_decode:
+        with patch("opensight.integrations.sharecode.decode_sharecode") as mock_decode:
             mock_decode.side_effect = ValueError("Invalid sharecode")
             response = client.post("/decode", json={"code": "invalid"})
             assert response.status_code == 400
