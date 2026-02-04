@@ -1173,9 +1173,7 @@ class TestSchemaCompliance:
         assert "grenade_positions" in fields
 
 
-@pytest.mark.skipif(
-    not (DEMO_PATH and os.path.exists(DEMO_PATH)), reason="Set DEMO_PATH env var"
-)
+@pytest.mark.skipif(not (DEMO_PATH and os.path.exists(DEMO_PATH)), reason="Set DEMO_PATH env var")
 class TestRealPipeline:
     """Full pipeline test with a real demo file."""
 
