@@ -146,19 +146,22 @@ class StratEngine:
         defaults = []
 
         for round_data in round_timeline:
-            round_num = round_data.get("round_number", 0)
+            round_num = round_data.get("round_num", 0)
             if round_num == 0:
                 continue
 
-            # Get player positions at start of round (if available)
-            positions = round_data.get("player_positions", {})
+            # Get player positions at start of round (schema: list of PlayerPositionSnapshot)
+            positions = round_data.get("player_positions", [])
             if not positions:
                 continue
 
             # Analyze T-side default (rounds 1-12, 16-27)
             if side_focus in [None, "T"]:
+                # Filter to T-side positions and convert to dict by player_name
                 t_positions = {
-                    name: pos for name, pos in positions.items() if pos.get("side") == "T"
+                    pos.get("player_name", "Unknown"): pos
+                    for pos in positions
+                    if pos.get("side") == "T" and pos.get("is_alive", True)
                 }
                 if t_positions:
                     setup_type = self._classify_setup(t_positions)
@@ -167,7 +170,7 @@ class StratEngine:
                             round_number=round_num,
                             side="T",
                             player_positions={
-                                name: pos.get("callout", "Unknown")
+                                name: pos.get("zone", "Unknown")  # Schema uses "zone" not "callout"
                                 for name, pos in t_positions.items()
                             },
                             setup_type=setup_type,
@@ -178,7 +181,9 @@ class StratEngine:
             # Analyze CT-side default
             if side_focus in [None, "CT"]:
                 ct_positions = {
-                    name: pos for name, pos in positions.items() if pos.get("side") == "CT"
+                    pos.get("player_name", "Unknown"): pos
+                    for pos in positions
+                    if pos.get("side") == "CT" and pos.get("is_alive", True)
                 }
                 if ct_positions:
                     setup_type = self._classify_setup(ct_positions)
@@ -187,7 +192,7 @@ class StratEngine:
                             round_number=round_num,
                             side="CT",
                             player_positions={
-                                name: pos.get("callout", "Unknown")
+                                name: pos.get("zone", "Unknown")  # Schema uses "zone" not "callout"
                                 for name, pos in ct_positions.items()
                             },
                             setup_type=setup_type,
@@ -202,13 +207,14 @@ class StratEngine:
         # Group positions by general area
         areas = defaultdict(int)
         for _name, pos in positions.items():
-            callout = pos.get("callout", "Unknown") if isinstance(pos, dict) else pos
-            # Simplify callout to area
-            if "A" in callout.upper():
+            # Schema uses "zone" field for callout/position name
+            zone = pos.get("zone", "Unknown") if isinstance(pos, dict) else pos
+            # Simplify zone to area
+            if "A" in zone.upper():
                 areas["A"] += 1
-            elif "B" in callout.upper():
+            elif "B" in zone.upper():
                 areas["B"] += 1
-            elif "MID" in callout.upper():
+            elif "MID" in zone.upper():
                 areas["Mid"] += 1
             else:
                 areas["Other"] += 1
@@ -222,7 +228,7 @@ class StratEngine:
         executes = []
 
         for round_data in round_timeline:
-            round_num = round_data.get("round_number", 0)
+            round_num = round_data.get("round_num", 0)
             if round_num == 0:
                 continue
 
@@ -237,14 +243,14 @@ class StratEngine:
             if len(utility) < 2 or len(kills) < 1:
                 continue
 
-            # Detect A site execute
-            a_utility = [u for u in utility if "A" in u.get("target_area", "").upper()]
+            # Detect A site execute (using zone field from schema)
+            a_utility = [u for u in utility if "A" in u.get("zone", "").upper()]
             if len(a_utility) >= 2:
                 # Check if kills happened at A site after utility
                 a_kills = [
                     k
                     for k in kills
-                    if "A" in k.get("location", "").upper() and k.get("attacker_side") == "T"
+                    if "A" in k.get("victim_zone", "").upper() and k.get("killer_team") == "T"
                 ]
                 if a_kills:
                     executes.append(
@@ -255,23 +261,23 @@ class StratEngine:
                                 {
                                     "type": u.get("type"),
                                     "player": u.get("player"),
-                                    "time": u.get("time", 0),
+                                    "time": u.get("time_seconds", 0),
                                 }
                                 for u in a_utility[:5]
                             ],
-                            entry_point=a_kills[0].get("location", "A Site"),
+                            entry_point=a_kills[0].get("victim_zone", "A Site"),
                             success=round_data.get("winner") == "T",
-                            timing=a_utility[0].get("time", 45.0),
+                            timing=a_utility[0].get("time_seconds", 45.0),
                         )
                     )
 
-            # Detect B site execute
-            b_utility = [u for u in utility if "B" in u.get("target_area", "").upper()]
+            # Detect B site execute (using zone field from schema)
+            b_utility = [u for u in utility if "B" in u.get("zone", "").upper()]
             if len(b_utility) >= 2:
                 b_kills = [
                     k
                     for k in kills
-                    if "B" in k.get("location", "").upper() and k.get("attacker_side") == "T"
+                    if "B" in k.get("victim_zone", "").upper() and k.get("killer_team") == "T"
                 ]
                 if b_kills:
                     executes.append(
@@ -282,13 +288,13 @@ class StratEngine:
                                 {
                                     "type": u.get("type"),
                                     "player": u.get("player"),
-                                    "time": u.get("time", 0),
+                                    "time": u.get("time_seconds", 0),
                                 }
                                 for u in b_utility[:5]
                             ],
-                            entry_point=b_kills[0].get("location", "B Site"),
+                            entry_point=b_kills[0].get("victim_zone", "B Site"),
                             success=round_data.get("winner") == "T",
-                            timing=b_utility[0].get("time", 45.0),
+                            timing=b_utility[0].get("time_seconds", 45.0),
                         )
                     )
 
@@ -307,7 +313,7 @@ class StratEngine:
         full_buy_rounds = []
 
         for round_data in round_timeline:
-            round_num = round_data.get("round_number", 0)
+            round_num = round_data.get("round_num", 0)
             round_type = round_data.get("round_type", "")
             winner = round_data.get("winner", "")
 
@@ -375,14 +381,14 @@ class StratEngine:
 
             for kill in kills:
                 weapon = kill.get("weapon", "").lower()
-                attacker = kill.get("attacker_name", "")
+                killer = kill.get("killer", "")  # Schema uses "killer" not "attacker_name"
 
                 if "awp" in weapon:
-                    awp_players[attacker] += 1
+                    awp_players[killer] += 1
 
                 # First kill of round = entry
                 if kill == kills[0]:
-                    entry_players[attacker] += 1
+                    entry_players[killer] += 1
 
             # Check for clutch situations
             clutches = round_data.get("clutches", [])

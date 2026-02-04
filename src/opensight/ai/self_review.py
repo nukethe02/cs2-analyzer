@@ -169,16 +169,16 @@ class SelfReviewEngine:
         our_names = {p.get("name", "") for p in our_players.values()}
 
         for round_data in round_timeline:
-            round_num = round_data.get("round_number", 0)
+            round_num = round_data.get("round_num", 0)
             kills = round_data.get("kills", [])
 
             # Track teammate deaths and check if traded
             for i, kill in enumerate(kills):
-                victim = kill.get("victim_name", "")
+                victim = kill.get("victim", "")
                 if victim not in our_names:
                     continue
 
-                attacker = kill.get("attacker_name", "")
+                attacker = kill.get("killer", "")
                 kill_time = kill.get("tick", 0)
 
                 # Check if attacker was killed within 5 seconds (320 ticks at 64 tick)
@@ -186,7 +186,7 @@ class SelfReviewEngine:
                 was_traded = False
 
                 for subsequent_kill in kills[i + 1 :]:
-                    if subsequent_kill.get("victim_name") == attacker:
+                    if subsequent_kill.get("victim") == attacker:
                         if subsequent_kill.get("tick", 0) - kill_time <= trade_window:
                             was_traded = True
                             break
@@ -222,7 +222,7 @@ class SelfReviewEngine:
         our_names = {p.get("name", "") for p in our_players.values()}
 
         for round_data in round_timeline:
-            round_num = round_data.get("round_number", 0)
+            round_num = round_data.get("round_num", 0)
             utility = round_data.get("utility", [])
             blinds = round_data.get("blinds", [])
 
@@ -265,7 +265,7 @@ class SelfReviewEngine:
         mistakes = []
 
         for i, round_data in enumerate(round_timeline):
-            round_num = round_data.get("round_number", 0)
+            round_num = round_data.get("round_num", 0)
             if round_num == 0:
                 continue
 
@@ -301,11 +301,11 @@ class SelfReviewEngine:
         our_names = {p.get("name", "") for p in our_players.values()}
 
         for round_data in round_timeline:
-            round_num = round_data.get("round_number", 0)
+            round_num = round_data.get("round_num", 0)
             kills = round_data.get("kills", [])
 
             for kill in kills:
-                victim = kill.get("victim_name", "")
+                victim = kill.get("victim", "")
                 if victim not in our_names:
                     continue
 
