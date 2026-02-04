@@ -203,6 +203,25 @@ class SynergyAnalyzer:
             logger.warning("No kill data for synergy analysis")
             return self._empty_result()
 
+        # Find active players (those with at least 1 kill or death)
+        # This filters out ghost players (spectators, coaches, disconnected players)
+        att_col = self._find_col(kills_df, ["attacker_steamid", "attacker_steam_id"])
+        vic_col = self._find_col(kills_df, ["user_steamid", "victim_steamid"])
+        active_players: set[int] = set()
+        if att_col:
+            active_players.update(kills_df[att_col].dropna().astype(int).unique().tolist())
+        if vic_col:
+            active_players.update(kills_df[vic_col].dropna().astype(int).unique().tolist())
+        active_players.discard(0)  # Remove invalid steamid
+
+        # Filter pair synergies to only include active players
+        self._pair_synergies = {
+            key: pair
+            for key, pair in self._pair_synergies.items()
+            if pair.player_a_steamid in active_players and pair.player_b_steamid in active_players
+        }
+        logger.debug(f"Filtered to {len(self._pair_synergies)} pairs with active players")
+
         # Compute all synergy metrics
         self._compute_trade_synergy(kills_df)
         self._compute_flash_synergy(kills_df, blinds_df)

@@ -503,7 +503,6 @@ class CachedAnalyzer:
         # Run analysis
         logger.info(f"Analyzing {demo_path.name}")
         from opensight.analysis.analytics import DemoAnalyzer
-        from opensight.core.enhanced_parser import CoachingAnalysisEngine
         from opensight.core.parser import DemoParser
 
         parser = DemoParser(demo_path)
@@ -512,14 +511,10 @@ class CachedAnalyzer:
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()
 
-        # Calculate professional metrics using enhanced parser
-        try:
-            logger.info("Calculating professional metrics (TTD, CP, Entry/Trade/Clutch)")
-            engine = CoachingAnalysisEngine(demo_path)
-            enhanced_metrics = engine.analyze()
-        except Exception as e:
-            logger.warning(f"Enhanced metrics calculation failed, using basic analysis only: {e}")
-            enhanced_metrics = {}
+        # NOTE: Previously we had a second parse with CoachingAnalysisEngine here.
+        # This was removed because DemoAnalyzer already calculates all the same metrics
+        # (TTD, CP, trades, clutches, entry frags). The double-parse doubled processing time.
+        enhanced_metrics = {}  # Keep structure for backwards compatibility
 
         # Calculate RWS using direct method (more reliable)
         rws_data = self._calculate_rws_direct(demo_data)
@@ -802,6 +797,8 @@ class CachedAnalyzer:
                 "rounds": analysis.total_rounds,
                 "duration_minutes": getattr(analysis, "duration_minutes", 30),
                 "score": f"{analysis.team1_score} - {analysis.team2_score}",
+                "score_ct": analysis.team1_score,  # Numeric CT score for AI modules
+                "score_t": analysis.team2_score,  # Numeric T score for AI modules
                 "total_kills": sum(p["stats"]["kills"] for p in players.values()),
                 "team1_name": getattr(analysis, "team1_name", "Counter-Terrorists"),
                 "team2_name": getattr(analysis, "team2_name", "Terrorists"),
@@ -990,6 +987,15 @@ class CachedAnalyzer:
         kills = getattr(demo_data, "kills", [])
         rounds_data = getattr(demo_data, "rounds", [])
         player_names = getattr(demo_data, "player_names", {})
+        grenades = getattr(demo_data, "grenades", [])
+        blinds = getattr(demo_data, "blinds", [])
+        map_name = getattr(demo_data, "map_name", "")
+
+        # Import zone lookup for kill event enrichment
+        try:
+            from opensight.visualization.radar import get_zone_for_position
+        except ImportError:
+            get_zone_for_position = None
 
         logger.info(
             f"Building timeline: {len(kills)} kills, {len(rounds_data)} rounds, "
@@ -1080,21 +1086,46 @@ class CachedAnalyzer:
             else:
                 round_stats[round_num]["t_kills"] += 1
 
-            # Create kill event
-            round_events[round_num].append(
-                {
-                    "tick": tick,
-                    "time_seconds": round(time_seconds, 1),
-                    "type": "kill",
-                    "killer": attacker_name,
-                    "killer_team": attacker_team,
-                    "victim": victim_name,
-                    "victim_team": victim_team,
-                    "weapon": getattr(kill, "weapon", "unknown"),
-                    "headshot": bool(getattr(kill, "headshot", False)),
-                    "is_first_kill": len(round_events[round_num]) == 0,
-                }
-            )
+            # Get position data
+            killer_x = getattr(kill, "attacker_x", None)
+            killer_y = getattr(kill, "attacker_y", None)
+            victim_x = getattr(kill, "victim_x", None)
+            victim_y = getattr(kill, "victim_y", None)
+
+            # Create kill event with position data
+            kill_event = {
+                "tick": tick,
+                "time_seconds": round(time_seconds, 1),
+                "type": "kill",
+                "killer": attacker_name,
+                "killer_team": attacker_team,
+                "killer_steamid": attacker_id,
+                "victim": victim_name,
+                "victim_team": victim_team,
+                "victim_steamid": victim_id,
+                "weapon": getattr(kill, "weapon", "unknown"),
+                "headshot": bool(getattr(kill, "headshot", False)),
+                "is_first_kill": len(round_events[round_num]) == 0,
+            }
+
+            # Add position data if available
+            if killer_x is not None:
+                kill_event["killer_x"] = killer_x
+            if killer_y is not None:
+                kill_event["killer_y"] = killer_y
+            if victim_x is not None:
+                kill_event["victim_x"] = victim_x
+            if victim_y is not None:
+                kill_event["victim_y"] = victim_y
+
+            # Add zone data for strat engine
+            if get_zone_for_position and map_name:
+                if killer_x is not None and killer_y is not None:
+                    kill_event["killer_zone"] = get_zone_for_position(map_name, killer_x, killer_y)
+                if victim_x is not None and victim_y is not None:
+                    kill_event["victim_zone"] = get_zone_for_position(map_name, victim_x, victim_y)
+
+            round_events[round_num].append(kill_event)
 
         # Add bomb events from round data
         for round_num, r in round_info.items():
@@ -1143,6 +1174,78 @@ class CachedAnalyzer:
                         "type": "bomb_explode",
                     }
                 )
+
+        # Build utility events by round
+        utility_by_round: dict[int, list] = {}
+        for grenade in grenades:
+            round_num = getattr(grenade, "round_num", 0)
+            if round_num == 0 and round_boundaries:
+                tick = getattr(grenade, "tick", 0)
+                round_num = infer_round(tick)
+            if round_num == 0:
+                continue
+
+            if round_num not in utility_by_round:
+                utility_by_round[round_num] = []
+
+            round_start = round_boundaries.get(round_num, (0, 0))[0]
+            tick = getattr(grenade, "tick", 0)
+            time_seconds = tick_to_round_time(tick, round_start)
+
+            player_name = getattr(grenade, "player_name", "") or player_names.get(
+                getattr(grenade, "player_steamid", 0), "Unknown"
+            )
+            player_side = str(getattr(grenade, "player_side", "Unknown")).upper()
+            player_team = "CT" if "CT" in player_side else "T"
+
+            utility_by_round[round_num].append(
+                {
+                    "tick": tick,
+                    "time_seconds": round(time_seconds, 1),
+                    "type": getattr(grenade, "grenade_type", "unknown"),
+                    "player": player_name,
+                    "player_team": player_team,
+                    "player_steamid": getattr(grenade, "player_steamid", 0),
+                    "x": getattr(grenade, "x", None),
+                    "y": getattr(grenade, "y", None),
+                }
+            )
+
+        # Build blind events by round
+        blinds_by_round: dict[int, list] = {}
+        for blind in blinds:
+            round_num = getattr(blind, "round_num", 0)
+            if round_num == 0 and round_boundaries:
+                tick = getattr(blind, "tick", 0)
+                round_num = infer_round(tick)
+            if round_num == 0:
+                continue
+
+            if round_num not in blinds_by_round:
+                blinds_by_round[round_num] = []
+
+            round_start = round_boundaries.get(round_num, (0, 0))[0]
+            tick = getattr(blind, "tick", 0)
+            time_seconds = tick_to_round_time(tick, round_start)
+
+            attacker_name = getattr(blind, "attacker_name", "") or player_names.get(
+                getattr(blind, "attacker_steamid", 0), "Unknown"
+            )
+            attacker_side = str(getattr(blind, "attacker_side", "Unknown")).upper()
+            player_team = "CT" if "CT" in attacker_side else "T"
+
+            blinds_by_round[round_num].append(
+                {
+                    "tick": tick,
+                    "time_seconds": round(time_seconds, 1),
+                    "type": "flash",
+                    "player": attacker_name,
+                    "player_team": player_team,
+                    "victim": getattr(blind, "victim_name", ""),
+                    "duration": getattr(blind, "blind_duration", 0),
+                    "enemy": not getattr(blind, "is_teammate", False),
+                }
+            )
 
         # Use actual round data if available, otherwise use analysis total_rounds
         total_rounds = (
@@ -1235,6 +1338,11 @@ class CachedAnalyzer:
                             "prediction": team_pred if team_pred else None,
                         }
 
+            # Extract structured event lists for consumers
+            kills_list = [e for e in events if e.get("type") == "kill"]
+            utility_list = utility_by_round.get(round_num, [])
+            blinds_list = blinds_by_round.get(round_num, [])
+
             timeline.append(
                 {
                     "round_num": round_num,
@@ -1246,6 +1354,10 @@ class CachedAnalyzer:
                     "ct_kills": stats["ct_kills"],
                     "t_kills": stats["t_kills"],
                     "events": events,
+                    # Structured access to events by type (so consumers don't have to filter)
+                    "kills": kills_list,
+                    "utility": utility_list,
+                    "blinds": blinds_list,
                     "momentum": momentum,
                     "economy": economy_iq,
                 }
@@ -2345,10 +2457,59 @@ class CachedAnalyzer:
         # Collect dry peek visualization data
         dry_peek_data = self._collect_dry_peek_events(demo_data, player_names)
 
+        # Collect grenade landing positions for visualization
+        grenades = getattr(demo_data, "grenades", [])
+        grenade_positions = []
+        for grenade in grenades:
+            gx = getattr(grenade, "x", None)
+            gy = getattr(grenade, "y", None)
+            if gx is not None and gy is not None:
+                gz = getattr(grenade, "z", 0) or 0
+                round_num = getattr(grenade, "round_num", 0)
+                r_info = round_info.get(round_num, {})
+
+                # Determine grenade type
+                grenade_type = getattr(grenade, "grenade_type", "unknown")
+
+                # Get player info
+                player_steamid = getattr(grenade, "player_steamid", 0)
+                player_name = player_names.get(player_steamid, "Unknown")
+                player_side = str(getattr(grenade, "player_side", "")).upper()
+                team = "CT" if "CT" in player_side else "T"
+
+                # Get zone
+                zone = get_zone_for_position(map_name, gx, gy, gz)
+
+                # Determine round type
+                stored_round_type = (
+                    str(r_info.get("round_type", "")) if r_info.get("round_type") else ""
+                )
+                if stored_round_type:
+                    round_type = stored_round_type
+                else:
+                    is_pistol = check_pistol(round_num, rounds_per_half)
+                    round_type = "pistol" if is_pistol else "unknown"
+
+                grenade_positions.append(
+                    {
+                        "x": gx,
+                        "y": gy,
+                        "z": gz,
+                        "zone": zone,
+                        "grenade_type": grenade_type,
+                        "player_name": player_name,
+                        "player_steamid": player_steamid,
+                        "team": team,
+                        "round_num": round_num,
+                        "round_type": round_type,
+                    }
+                )
+
         return {
             "map_name": map_name,
             "kill_positions": kill_positions,
             "death_positions": death_positions,
+            "grenade_positions": grenade_positions,
             "zone_stats": zone_stats,
             "zone_definitions": zone_definitions,
             "dry_peek_data": dry_peek_data,
