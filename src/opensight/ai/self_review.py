@@ -209,10 +209,18 @@ class SelfReviewEngine:
         return mistakes
 
     def _find_nearby_teammates(self, round_data: dict, victim: str, our_names: set) -> list[str]:
-        """Find teammates who were near the victim when they died."""
-        # Simplified: return all alive teammates
-        alive = round_data.get("alive_players", [])
-        return [p for p in alive if p in our_names and p != victim][:2]
+        """Find teammates who were alive when victim died (computed from kills list)."""
+        kills = round_data.get("kills", [])
+
+        # Find all players dead before or at the same time as victim
+        dead_before_victim = set()
+        for k in kills:
+            dead_before_victim.add(k.get("victim", ""))
+            if k.get("victim", "") == victim:
+                break
+
+        # Return alive teammates (not dead and not the victim)
+        return [p for p in our_names if p not in dead_before_victim and p != victim][:2]
 
     def _detect_wasted_utility(
         self, round_timeline: list[dict], our_players: dict

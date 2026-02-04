@@ -1103,3 +1103,138 @@ class TestSchemaContracts:
         assert len(utility) == 1
         assert utility[0].get("zone") == "A Site"
         assert utility[0].get("time_seconds") == 25.0
+
+
+# =============================================================================
+# SCHEMA COMPLIANCE TESTS (Prompt 6 - Feb 2026)
+# =============================================================================
+
+
+import os
+
+DEMO_PATH = os.environ.get("DEMO_PATH", "")
+
+
+class TestSchemaCompliance:
+    """Verify all modules agree on field names. Always runs."""
+
+    def test_schemas_importable(self):
+        from opensight.core.schemas import (
+            ClutchInfo,
+            HeatmapData,
+            MatchResult,
+            RoundTimelineEntry,
+            TimelineKillEvent,
+            TimelineUtilityEvent,
+        )
+
+        assert RoundTimelineEntry is not None
+
+    def test_timeline_has_fields_strat_engine_reads(self):
+        """strat_engine.py reads these fields from round_data.get(...)."""
+        from opensight.core.schemas import RoundTimelineEntry
+
+        fields = set(RoundTimelineEntry.__annotations__.keys())
+        for f in [
+            "round_num",
+            "round_type",
+            "winner",
+            "kills",
+            "utility",
+            "clutches",
+            "events",
+        ]:
+            assert f in fields, f"strat_engine reads '{f}' but RoundTimelineEntry missing it"
+
+    def test_timeline_has_fields_self_review_reads(self):
+        """self_review.py reads these fields."""
+        from opensight.core.schemas import RoundTimelineEntry
+
+        fields = set(RoundTimelineEntry.__annotations__.keys())
+        for f in ["round_num", "kills", "utility", "blinds", "winner"]:
+            assert f in fields, f"self_review reads '{f}' but schema missing it"
+
+    def test_kill_event_field_names(self):
+        """Kill events use 'killer'/'victim', not legacy 'attacker_name'/'victim_name'."""
+        from opensight.core.schemas import TimelineKillEvent
+
+        fields = set(TimelineKillEvent.__annotations__.keys())
+        assert "killer" in fields
+        assert "victim" in fields
+        assert "killer_team" in fields
+        assert "attacker_name" not in fields, "Old field name in schema"
+
+    def test_clutch_info_fields(self):
+        from opensight.core.schemas import ClutchInfo
+
+        fields = set(ClutchInfo.__annotations__.keys())
+        for f in ["player", "player_team", "scenario", "won"]:
+            assert f in fields, f"ClutchInfo missing '{f}'"
+
+    def test_heatmap_has_grenade_positions(self):
+        from opensight.core.schemas import HeatmapData
+
+        fields = set(HeatmapData.__annotations__.keys())
+        assert "grenade_positions" in fields
+
+
+@pytest.mark.skipif(
+    not (DEMO_PATH and os.path.exists(DEMO_PATH)), reason="Set DEMO_PATH env var"
+)
+class TestRealPipeline:
+    """Full pipeline test with a real demo file."""
+
+    @pytest.fixture(scope="class")
+    def result(self):
+        from opensight.infra.cache import CachedAnalyzer
+
+        analyzer = CachedAnalyzer()
+        return analyzer.analyze(DEMO_PATH)
+
+    def test_has_10_players(self, result):
+        players = result.get("players", [])
+        assert len(players) == 10, f"Expected 10 players, got {len(players)}"
+
+    def test_players_have_steam_id(self, result):
+        for p in result["players"]:
+            sid = p.get("steam_id")
+            assert sid is not None and sid != "0", f"Player {p.get('name')} missing steam_id"
+
+    def test_no_ghost_players(self, result):
+        for p in result["players"]:
+            s = p.get("stats", {})
+            if s.get("kills", 0) == 0 and s.get("deaths", 0) == 0:
+                pytest.fail(f"Ghost player: {p.get('name')} has 0K/0D")
+
+    def test_round_nums_sequential(self, result):
+        nums = [r["round_num"] for r in result["round_timeline"]]
+        assert all(n > 0 for n in nums), "Round nums should be > 0"
+        assert len(nums) > 10, "Expected at least 10 rounds"
+
+    def test_timeline_kills_have_correct_fields(self, result):
+        all_kills = []
+        for r in result["round_timeline"]:
+            all_kills.extend(r.get("kills", []))
+        assert len(all_kills) > 0, "No kills in timeline"
+        k = all_kills[0]
+        assert "killer" in k, f"Kill has wrong fields: {list(k.keys())}"
+        assert "victim" in k
+        assert "killer_team" in k
+
+    def test_timeline_has_utility(self, result):
+        total = sum(len(r.get("utility", [])) for r in result["round_timeline"])
+        assert total > 0, "No utility events in timeline"
+
+    def test_heatmap_has_data(self, result):
+        hm = result["heatmap_data"]
+        assert len(hm["kill_positions"]) > 0, "No kill positions"
+        assert len(hm["death_positions"]) > 0, "No death positions"
+
+    def test_heatmap_has_grenades(self, result):
+        hm = result["heatmap_data"]
+        assert len(hm.get("grenade_positions", [])) > 0, "No grenade positions"
+
+    def test_clutches_in_timeline(self, result):
+        """Clutch data should reach timeline (wired in Prompt 2)."""
+        has_clutches_field = any("clutches" in r for r in result["round_timeline"])
+        assert has_clutches_field, "No 'clutches' field in any timeline entry"

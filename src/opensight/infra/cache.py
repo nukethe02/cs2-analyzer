@@ -530,6 +530,7 @@ class CachedAnalyzer:
         for sid, p in analysis.players.items():
             mk = multikills.get(sid, {"2k": 0, "3k": 0, "4k": 0, "5k": 0})
             players[str(sid)] = {
+                "steam_id": str(sid),
                 "name": p.name,
                 "team": p.team,
                 "stats": {
@@ -983,6 +984,31 @@ class CachedAnalyzer:
         except Exception as e:
             logger.debug(f"Economy analysis not available: {e}")
 
+        # Get clutch data from combat analysis for timeline enrichment
+        clutch_by_round: dict[int, list[dict]] = {}
+        try:
+            from opensight.domains.combat import CombatAnalyzer, ClutchResult
+
+            combat_analyzer = CombatAnalyzer(demo_data)
+            combat_result = combat_analyzer.analyze()
+            for c in combat_result.clutch_situations:
+                rn = c.round_num
+                if rn not in clutch_by_round:
+                    clutch_by_round[rn] = []
+                clutch_by_round[rn].append(
+                    {
+                        "player": c.clutcher_name,
+                        "player_steamid": c.clutcher_id,
+                        "player_team": "CT" if c.clutcher_team == 3 else "T",
+                        "scenario": c.scenario,
+                        "won": c.result == ClutchResult.WON,
+                        "kills_in_clutch": c.kills_in_clutch,
+                    }
+                )
+            logger.debug(f"Extracted clutch data for {len(clutch_by_round)} rounds")
+        except Exception as e:
+            logger.warning(f"Could not extract clutch data for timeline: {e}")
+
         timeline = []
         kills = getattr(demo_data, "kills", [])
         rounds_data = getattr(demo_data, "rounds", [])
@@ -1360,6 +1386,7 @@ class CachedAnalyzer:
                     "blinds": blinds_list,
                     "momentum": momentum,
                     "economy": economy_iq,
+                    "clutches": clutch_by_round.get(round_num, []),
                 }
             )
 

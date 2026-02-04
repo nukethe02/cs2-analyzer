@@ -3087,7 +3087,7 @@ class DemoAnalyzer:
         self._safe_calculate("greedy_repeeks", self._detect_greedy_repeeks)
 
         # Run State Machine for pro-level analytics (Entry/Trade/Lurk)
-        self._safe_calculate("state_machine", self._run_state_machine)
+        # self._safe_calculate("state_machine", self._run_state_machine)  # Disabled: produces zeros, no UI consumes output
 
         # Integrate Economy Module
         if "economy" in self._requested_metrics:

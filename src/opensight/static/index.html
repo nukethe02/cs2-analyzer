@@ -3285,6 +3285,7 @@
                     resetAIAnalysisState();  // Reset AI state for new analysis
                     window.currentAnalysis = result; // Store for General stats tab
                     renderResults(result);
+                    autoStoreMatchData(analysisData, currentJobId);
                 } else {
                     // Direct response (from cache or immediate processing)
                     analysisData = data;
@@ -3292,12 +3293,69 @@
                     resetAIAnalysisState();  // Reset AI state for new analysis
                     window.currentAnalysis = data; // Store for General stats tab
                     renderResults(data);
+                    autoStoreMatchData(analysisData, currentJobId);
                 }
             } catch (error) {
                 showError('Analysis Failed', error.message);
             } finally {
                 loading.classList.remove('show');
             }
+        }
+
+        // Auto-store match data for trends tracking
+        async function autoStoreMatchData(data, jobId) {
+            if (!data || !data.players || !data.demo_info) return;
+            const mapName = data.demo_info.map || '';
+            const score = data.demo_info.score || '';
+            const parts = score.split('-').map(s => parseInt(s.trim()));
+
+            for (const player of data.players) {
+                const steamId = player.steam_id || player.steamid || player.id;
+                if (!steamId || steamId === '0' || steamId === 0) continue;
+
+                // Determine win/loss from team perspective
+                let result = 'unknown';
+                if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                    const team = (player.team || '').toUpperCase();
+                    if (team === 'CT') {
+                        result = parts[0] > parts[1] ? 'win' : parts[0] < parts[1] ? 'loss' : 'tie';
+                    } else if (team === 'T') {
+                        result = parts[1] > parts[0] ? 'win' : parts[1] < parts[0] ? 'loss' : 'tie';
+                    }
+                }
+
+                const s = player.stats || {};
+                const r = player.rating || {};
+                const c = player.clutches || {};
+                const e = player.entry || {};
+
+                try {
+                    await fetch('/api/your-match/store', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            steam_id: String(steamId),
+                            demo_hash: jobId || `demo_${Date.now()}`,
+                            map_name: mapName,
+                            result: result,
+                            player_stats: {
+                                kills: s.kills || 0,
+                                deaths: s.deaths || 0,
+                                assists: s.assists || 0,
+                                adr: s.adr || 0,
+                                hltv_rating: r.hltv_rating || 0,
+                                kast: r.kast_percentage || 0,
+                                headshot_pct: s.headshot_pct || 0,
+                                clutches_won: c.won || c.clutch_wins || 0,
+                                entry_kills: e.entry_kills || 0,
+                            }
+                        })
+                    });
+                } catch (err) {
+                    console.warn('Auto-store failed for', steamId, err);
+                }
+            }
+            console.log('[OpenSight] Auto-stored match data for', data.players.length, 'players');
         }
 
         // Poll for async job completion
@@ -3996,7 +4054,29 @@
                 let teamHtml = `<div style="background: ${teamBgColor}; border: 1px solid ${teamBorderColor}; border-radius: var(--radius-lg); padding: 20px;">`;
                 teamHtml += `<h3 style="color: ${teamHeaderColor}; font-size: 1rem; margin-bottom: 16px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em;">${teamName}</h3>`;
                 teamHtml += '<div class="team-players-grid" style="display: flex; flex-direction: column; gap: 12px;">';
-                
+
+                // Helper to compute match persona from current stats
+                function getMatchPersona(p) {
+                    const ps = p.stats || {};
+                    const pr = p.rating || {};
+                    const padv = p.advanced || {};
+                    const pc = p.clutches || {};
+                    const rating = pr.hltv_rating || 0;
+                    const adr = ps.adr || 0;
+                    const entryKills = padv.opening_kills || 0;
+                    const entryDeaths = padv.opening_deaths || 0;
+                    const clutchWins = pc.won || pc.clutch_wins || 0;
+                    const assists = ps.assists || 0;
+                    const kills = ps.kills || 0;
+
+                    if (entryKills >= 3 && entryKills > entryDeaths) return {label: 'Entry Fragger', icon: '⚔️', color: '#ef4444'};
+                    if (rating >= 1.20 && adr >= 85) return {label: 'Star Player', icon: '⭐', color: '#f59e0b'};
+                    if (clutchWins >= 2) return {label: 'Clutch Master', icon: '🎯', color: '#8b5cf6'};
+                    if (assists >= kills * 0.4 && assists >= 5) return {label: 'Support', icon: '🛡️', color: '#3b82f6'};
+                    if (adr < 55 && rating < 0.85) return {label: 'Anchor', icon: '🏰', color: '#6b7280'};
+                    return {label: 'Rifler', icon: '🔫', color: '#10b981'};
+                }
+
                 for (const player of teamPlayers) {
                     const s = player.stats || {};
                     const r = player.rating || {};
@@ -4004,6 +4084,7 @@
                     const util = player.utility || {};
                     const teamClass = player.team === 'CT' ? 'ct' : player.team === 'T' ? 't' : '';
                     const teamBadgeClass = player.team === 'CT' ? 'team-ct' : player.team === 'T' ? 'team-t' : '';
+                    const persona = getMatchPersona(player);
 
                     teamHtml += `
                         <div class="player-card">
@@ -4013,6 +4094,7 @@
                                     <div>
                                         <div class="player-name">${esc(player.name) || 'Unknown Player'}</div>
                                         <span class="player-team ${teamBadgeClass}">${esc(player.team) || '?'}</span>
+                                        <span style="font-size: 0.6rem; padding: 1px 5px; border-radius: 8px; background: ${persona.color}18; color: ${persona.color}; border: 1px solid ${persona.color}33; margin-left: 4px;">${persona.icon} ${persona.label}</span>
                                     </div>
                                 </div>
                                 <div class="rating-badge">${(r.hltv_rating || 0).toFixed(2)}</div>
@@ -4131,6 +4213,7 @@
                         <button class="stats-tab-btn" data-stats-tab="activity" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Activity</button>
                         <button class="stats-tab-btn" data-stats-tab="utility" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Utility</button>
                         <button class="stats-tab-btn" data-stats-tab="clutch" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Clutch</button>
+                        <button class="stats-tab-btn" data-stats-tab="tradechains" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">⛓️ Trade Chains</button>
                         <button class="stats-tab-btn" data-stats-tab="rating" style="padding: 8px 16px; background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem;">Rating</button>
                     </div>
 
@@ -4154,6 +4237,21 @@
                     </div>
                     <div class="stats-tab-content" id="stats-clutch" style="display: none;">
                         ${renderClutchStatsTable(teamA, teamB, ctTeamName, tTeamName)}
+                    </div>
+                    <div class="stats-tab-content" id="stats-tradechains" style="display: none;">
+                        <div id="trade-chains-container">
+                            <div id="trade-chains-prompt" style="text-align: center; padding: 24px;">
+                                <button id="load-trade-chains-btn" onclick="loadTradeChains()" style="padding: 12px 24px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; font-size: 0.95rem;">
+                                    ⛓️ Load Trade Chain Analysis
+                                </button>
+                                <p style="margin-top: 8px; color: var(--text-muted); font-size: 0.8rem;">Visualizes sequences of linked trade kills — unique to OpenSight</p>
+                            </div>
+                            <div id="trade-chains-loading" style="display: none; text-align: center; padding: 24px;">
+                                <div class="ai-loading-spinner"></div>
+                                <p style="color: var(--text-muted);">Analyzing trade sequences...</p>
+                            </div>
+                            <div id="trade-chains-content" style="display: none;"></div>
+                        </div>
                     </div>
                     <div class="stats-tab-content" id="stats-rating" style="display: none;">
                         ${renderRatingBreakdownTable(teamA, teamB, ctTeamName, tTeamName)}
@@ -6225,6 +6323,10 @@
                                         <input type="checkbox" id="show-zones" checked>
                                         Zones
                                     </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; color: #e2e8f0;">
+                                        <input type="checkbox" id="show-grenades" style="accent-color: #f59e0b;">
+                                        Grenades
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -6266,6 +6368,33 @@
                                 <span style="display: inline-block; width: 20px; height: 20px; background: rgba(16, 185, 129, 0.4); border-radius: 4px;"></span>
                                 <span style="font-size: 0.75rem; color: #94a3b8;">Good (&gt;1.2)</span>
                             </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span>
+                                <span style="font-size: 0.7rem; color: #94a3b8;">Flash</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;"></span>
+                                <span style="font-size: 0.7rem; color: #94a3b8;">Smoke</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f97316;"></span>
+                                <span style="font-size: 0.7rem; color: #94a3b8;">Molly/HE</span>
+                            </div>
+                        </div>
+
+                        <!-- Per-Player Positioning Analysis -->
+                        <div style="margin-top: 20px; padding: 16px; background: rgba(30, 41, 59, 0.5); border-radius: 8px; border: 1px solid #334155;">
+                            <h4 style="color: #e2e8f0; margin-bottom: 12px; font-size: 0.9rem; display: flex; align-items: center; gap: 8px;">
+                                Per-Player Positioning
+                                <span style="font-size: 0.6rem; padding: 2px 6px; background: #3b82f6; color: white; border-radius: 4px;">NEW</span>
+                            </h4>
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <select id="positioning-player-select" style="padding: 6px 12px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.8rem;">
+                                    <option value="">Select player...</option>
+                                </select>
+                                <button id="load-positioning-btn" style="padding: 6px 14px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">Analyze</button>
+                            </div>
+                            <div id="positioning-result" style="display: none; margin-top: 12px;"></div>
                         </div>
                     </div>
 
@@ -6901,6 +7030,42 @@
                     }
                 }
 
+                // Draw grenade positions
+                const showGrenades = document.getElementById('show-grenades')?.checked;
+                if (showGrenades && heatmapData.grenade_positions && !dryPeekMode) {
+                    const grenadeColors = {
+                        'flashbang': '#FFD700',
+                        'smokegrenade': '#94a3b8',
+                        'hegrenade': '#ef4444',
+                        'molotov': '#f97316',
+                        'incgrenade': '#f97316',
+                        'decoy': '#6b7280'
+                    };
+                    // Filter grenades using team instead of side
+                    const filteredGrenades = heatmapData.grenade_positions.filter(g => {
+                        if (filters.side !== 'all' && g.team !== filters.side) return false;
+                        if (filters.round_type !== 'all') {
+                            const rt = g.round_type || '';
+                            if (filters.round_type === 'eco') {
+                                if (rt !== 'eco' && rt !== 'semi_eco') return false;
+                            } else if (rt !== filters.round_type) return false;
+                        }
+                        if (filters.player !== 'all' && g.player_name !== filters.player) return false;
+                        return true;
+                    });
+                    for (const g of filteredGrenades) {
+                        if (g.x == null || g.y == null) continue;
+                        const canvasPos = gameToCanvas(g.x, g.y);
+                        const color = grenadeColors[g.grenade_type] || '#ffffff';
+                        ctx.beginPath();
+                        ctx.arc(canvasPos.x, canvasPos.y, 3, 0, Math.PI * 2);
+                        ctx.fillStyle = color;
+                        ctx.globalAlpha = 0.6;
+                        ctx.fill();
+                        ctx.globalAlpha = 1.0;
+                    }
+                }
+
                 // Draw dry peek overlay when in dry peek mode
                 if (dryPeekMode && dryPeekData) {
                     drawDryPeekOverlay();
@@ -7099,6 +7264,68 @@
             document.getElementById('show-kills')?.addEventListener('change', draw);
             document.getElementById('show-deaths')?.addEventListener('change', draw);
             document.getElementById('show-zones')?.addEventListener('change', draw);
+            document.getElementById('show-grenades')?.addEventListener('change', draw);
+
+            // Populate positioning player select with steam IDs from current analysis
+            const posSelect = document.getElementById('positioning-player-select');
+            if (posSelect && window.currentAnalysis?.players) {
+                window.currentAnalysis.players.forEach(p => {
+                    const steamId = p.steam_id || p.steamid || '';
+                    if (steamId && steamId !== '0') {
+                        const opt = document.createElement('option');
+                        opt.value = steamId;
+                        opt.textContent = p.name || steamId;
+                        posSelect.appendChild(opt);
+                    }
+                });
+            }
+
+            // Positioning analysis click handler
+            document.getElementById('load-positioning-btn')?.addEventListener('click', async () => {
+                const steamId = document.getElementById('positioning-player-select')?.value;
+                const resultDiv = document.getElementById('positioning-result');
+                if (!steamId || !currentJobId || !resultDiv) return;
+
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = '<div style="text-align: center; padding: 12px;"><div class="ai-loading-spinner"></div></div>';
+
+                try {
+                    const resp = await fetch(`/api/positioning/${currentJobId}/${steamId}`);
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const data = await resp.json();
+
+                    const favZones = data.favorite_zones || [];
+                    const dangerZones = data.danger_zones || [];
+                    const timeDist = data.zone_time_distribution || {};
+
+                    resultDiv.innerHTML = `
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div>
+                                <h5 style="color: #10b981; font-size: 0.8rem; margin-bottom: 6px;">🏠 Favorite Zones</h5>
+                                ${favZones.slice(0, 5).map((z, i) => `
+                                    <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.8rem; border-bottom: 1px solid #1e293b;">
+                                        <span style="color: #e2e8f0;">${i+1}. ${esc(z)}</span>
+                                        <span style="color: #94a3b8;">${timeDist[z] ? (timeDist[z] * 100).toFixed(0) + '%' : ''}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div>
+                                <h5 style="color: #ef4444; font-size: 0.8rem; margin-bottom: 6px;">💀 Danger Zones</h5>
+                                ${dangerZones.slice(0, 5).map((z, i) => `
+                                    <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.8rem; border-bottom: 1px solid #1e293b;">
+                                        <span style="color: #e2e8f0;">${i+1}. ${esc(z)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 0.7rem; color: #64748b;">
+                            ${data.total_positions || 0} position samples · ${data.total_kills || 0} kills · ${data.total_deaths || 0} deaths
+                        </div>
+                    `;
+                } catch (e) {
+                    resultDiv.innerHTML = `<div style="color: #ef4444; font-size: 0.8rem;">Failed: ${esc(e.message)}</div>`;
+                }
+            });
 
             // Dry Peek Mode toggle
             const dryPeekToggle = document.getElementById('dry-peek-mode');
@@ -7581,6 +7808,99 @@
             `;
         }
 
+        // Load and display trade chain analysis
+        async function loadTradeChains() {
+            const prompt = document.getElementById('trade-chains-prompt');
+            const loading = document.getElementById('trade-chains-loading');
+            const content = document.getElementById('trade-chains-content');
+            if (!currentJobId || !loading || !content) return;
+
+            if (prompt) prompt.style.display = 'none';
+            loading.style.display = 'block';
+            content.style.display = 'none';
+
+            try {
+                const response = await fetch(`/api/trade-chains/${currentJobId}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+
+                loading.style.display = 'none';
+                content.style.display = 'block';
+
+                const chains = data.chains || [];
+                const stats = data.stats || {};
+
+                if (chains.length === 0) {
+                    content.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--text-muted);">No trade chains detected (all trades were simple 1-for-1).</div>';
+                    return;
+                }
+
+                let html = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                        <div style="background: var(--bg-tertiary); padding: 14px; border-radius: var(--radius-md); text-align: center; border: 1px solid var(--border);">
+                            <div style="font-size: 1.6rem; font-weight: 700; color: var(--accent-primary);">${chains.length}</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Chains</div>
+                        </div>
+                        <div style="background: var(--bg-tertiary); padding: 14px; border-radius: var(--radius-md); text-align: center; border: 1px solid var(--border);">
+                            <div style="font-size: 1.6rem; font-weight: 700; color: var(--accent-secondary);">${(stats.avg_chain_length || 0).toFixed(1)}</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Avg Length</div>
+                        </div>
+                        <div style="background: var(--bg-tertiary); padding: 14px; border-radius: var(--radius-md); text-align: center; border: 1px solid var(--border);">
+                            <div style="font-size: 1.6rem; font-weight: 700; color: #f59e0b;">${stats.max_chain_length || 0}</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Longest</div>
+                        </div>
+                        <div style="background: var(--bg-tertiary); padding: 14px; border-radius: var(--radius-md); text-align: center; border: 1px solid var(--border);">
+                            <div style="font-size: 1.6rem; font-weight: 700; color: #8b5cf6;">${stats.extended_chain_count || 0}</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Extended (3+)</div>
+                        </div>
+                    </div>
+                `;
+
+                // Render individual chains
+                html += '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                chains.forEach((chain) => {
+                    const frames = chain.frames || [];
+                    if (frames.length === 0) return;
+
+                    html += `
+                        <div style="background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <span style="font-weight: 600; color: var(--text-primary); font-size: 0.9rem;">
+                                    Round ${chain.round_num} — ${chain.chain_length}-kill chain
+                                    ${chain.is_extended ? '<span style="font-size: 0.65rem; padding: 2px 6px; background: rgba(139, 92, 246, 0.2); color: #8b5cf6; border-radius: 4px; margin-left: 6px;">EXTENDED</span>' : ''}
+                                </span>
+                                <span style="font-size: 0.7rem; padding: 3px 8px; border-radius: var(--radius-sm); background: ${chain.winning_team === 'CT' ? 'rgba(92, 156, 255, 0.15)' : 'rgba(255, 179, 71, 0.15)'}; color: ${chain.winning_team === 'CT' ? '#5c9cff' : '#ffb347'};">
+                                    ${esc(chain.winning_team)} wins chain
+                                </span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                                ${frames.map((frame, j) => `
+                                    <div style="display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); font-size: 0.82rem;">
+                                        <span style="color: var(--text-muted); font-size: 0.65rem; min-width: 18px;">${frame.kill_type === 'trigger' ? '⚡' : '↩️'}</span>
+                                        <span style="color: ${frame.attacker?.team === 'CT' ? '#5c9cff' : '#ffb347'}; font-weight: 500; min-width: 80px;">${esc(frame.attacker?.name || '?')}</span>
+                                        <span style="color: var(--text-muted);">→</span>
+                                        <span style="color: ${frame.victim?.team === 'CT' ? '#5c9cff' : '#ffb347'}; min-width: 80px;">${esc(frame.victim?.name || '?')}</span>
+                                        <span style="color: var(--text-muted); font-size: 0.7rem;">${esc(frame.weapon || '')} ${frame.headshot ? '🎯' : ''}</span>
+                                        ${frame.trade_time_ms ? `<span style="font-size: 0.65rem; color: var(--accent-primary); margin-left: auto;">${(frame.trade_time_ms / 1000).toFixed(1)}s trade</span>` : '<span style="font-size: 0.65rem; color: var(--text-muted); margin-left: auto;">trigger</span>'}
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div style="margin-top: 6px; font-size: 0.7rem; color: var(--text-muted);">
+                                Duration: ${(chain.duration_ms / 1000).toFixed(1)}s
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+
+                content.innerHTML = html;
+            } catch (error) {
+                loading.style.display = 'none';
+                content.style.display = 'block';
+                content.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--danger);">Failed: ${esc(error.message)}</div>`;
+            }
+        }
+
         // Load and display player trends
         async function loadPlayerTrends() {
             const steamId = document.getElementById('trends-player-select')?.value;
@@ -7611,9 +7931,10 @@
                 if (!data || data.matches_analyzed < 2) {
                     contentDiv.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-                            <div style="font-size: 2rem; margin-bottom: 8px;">Not Enough Data</div>
-                            <p>${data.message || 'This player needs at least 2 analyzed matches to show trends.'}</p>
-                            <p style="margin-top: 8px;">Matches found: ${data.matches_analyzed || 0}</p>
+                            <div style="font-size: 2rem; margin-bottom: 8px;">📈</div>
+                            <p>Analyze multiple demos in this session to see performance trends.</p>
+                            <p style="margin-top: 8px; font-size: 0.85rem;">Matches analyzed: ${data?.matches_analyzed || 0}. Need at least 2.</p>
+                            <p style="margin-top: 4px; font-size: 0.75rem; color: var(--text-muted);">Note: Trends reset between sessions on the hosted version.</p>
                         </div>
                     `;
                     return;
