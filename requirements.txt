@@ -31,6 +31,7 @@ pyyaml>=6.0
 
 # Database (FREE - SQLite with SQLAlchemy)
 sqlalchemy>=2.0.0
+alembic>=1.13.0
 
 # PDF Export (optional, FREE - reportlab community edition)
 # Install with: pip install reportlab
