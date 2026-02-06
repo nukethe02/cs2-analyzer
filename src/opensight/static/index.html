@@ -3180,6 +3180,23 @@
             return output;
         }
 
+        function handleExportDownload(format) {
+            if (!format) return;
+
+            if (!currentJobId) {
+                showToast('No analysis available for export', 'error');
+                document.getElementById('export-format-select').value = '';
+                return;
+            }
+
+            const url = `/api/export/${currentJobId}/${format}`;
+            window.open(url, '_blank');
+            showToast(`Downloading ${format.toUpperCase()} export...`, 'success');
+
+            // Reset select
+            document.getElementById('export-format-select').value = '';
+        }
+
         async function copyToClipboard(format) {
             if (!analysisData) {
                 showToast('No analysis data available', 'error');
@@ -3532,6 +3549,13 @@
                             Copy
                         </button>
                     </div>
+                    <div style="margin-left: 12px;">
+                        <select id="export-format-select" style="padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer;" onchange="handleExportDownload(this.value)">
+                            <option value="">Export Data...</option>
+                            <option value="json">Download JSON</option>
+                            <option value="players-csv">Download Players CSV</option>
+                        </select>
+                    </div>
                 </div>
 
                 ${data.ai_summary ? `
@@ -3544,6 +3568,11 @@
                     <div class="ai-match-summary-content">${formatAISummary(data.ai_summary)}</div>
                 </div>
                 ` : ''}
+
+                <div id="highlights-section" style="margin: 20px 0; padding: 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md);">
+                    <h3 style="margin: 0 0 8px 0; color: var(--text-primary); font-size: 1.1rem;">🎯 Match Highlights</h3>
+                    <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Coming soon: Key moments, clutches, multi-kills, and standout plays.</p>
+                </div>
 
                 <div class="tabs">
                     <button class="tab-btn active" data-tab="overview" title="Press 1">Overview</button>

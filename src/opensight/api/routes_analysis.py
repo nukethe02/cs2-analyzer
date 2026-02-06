@@ -38,6 +38,9 @@ router = APIRouter(tags=["analysis"])
 
 def _get_job_store():
     """Lazy import to avoid circular dependency."""
+    # To use persistent jobs (survives restart):
+    # from opensight.infra.job_store import PersistentJobStore
+    # job_store = PersistentJobStore()
     from opensight.api import job_store
 
     return job_store
