@@ -160,6 +160,10 @@ module = [
     "opensight.team_comparison",
     "opensight.video_analyzer",
     "opensight.api",
+    "opensight.api.*",
+    "opensight.pipeline.*",
+    "opensight.scouting.*",
+    "opensight.auth.*",
     "opensight.cli",
     "opensight",
 ]

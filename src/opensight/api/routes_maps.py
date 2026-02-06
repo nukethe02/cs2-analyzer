@@ -356,59 +356,28 @@ async def analyze_rotations(
         advice = analyzer.get_rotation_advice()
         summary = get_rotation_summary(data, data.map_name)
 
-        player_stats = []
-        for player in team_stats.player_stats:
-            player_stats.append(
-                {
-                    "steam_id": str(player.steam_id),
-                    "name": player.name,
-                    "rotation_count": player.rotation_count,
-                    "avg_reaction_time_ms": round(player.avg_reaction_time_ms, 0)
-                    if player.avg_reaction_time_ms
-                    else None,
-                    "avg_travel_time_ms": round(player.avg_travel_time_ms, 0)
-                    if player.avg_travel_time_ms
-                    else None,
-                    "fastest_rotation_ms": round(player.fastest_rotation_ms, 0)
-                    if player.fastest_rotation_ms
-                    else None,
-                    "slowest_rotation_ms": round(player.slowest_rotation_ms, 0)
-                    if player.slowest_rotation_ms
-                    else None,
-                    "classification": player.classification.value
-                    if player.classification
-                    else "unknown",
-                    "over_rotations": player.over_rotations,
-                    "late_rotations": player.late_rotations,
-                }
-            )
+        player_stats_list = []
+        for player in team_stats.player_stats.values():
+            player_stats_list.append(player.to_dict())
 
-        contact_events = []
-        for event in team_stats.contact_events[:50]:
-            contact_events.append(
-                {
-                    "round_num": event.round_num,
-                    "site": event.site,
-                    "trigger": event.trigger.value,
-                    "tick": event.tick,
-                    "t_players_present": event.t_players_present,
-                }
-            )
+        total_rotations = (
+            team_stats.total_over_rotations
+            + team_stats.total_balanced_rotations
+            + team_stats.total_slow_rotations
+        )
 
         return {
             "map_name": data.map_name,
             "team_stats": {
-                "team_avg_reaction_ms": round(team_stats.team_avg_reaction_ms, 0)
-                if team_stats.team_avg_reaction_ms
-                else None,
-                "team_avg_travel_ms": round(team_stats.team_avg_travel_ms, 0)
-                if team_stats.team_avg_travel_ms
-                else None,
-                "total_rotations": team_stats.total_rotations,
-                "successful_rotations": team_stats.successful_rotations,
+                "team_avg_reaction_sec": team_stats.avg_team_reaction_time,
+                "team_avg_travel_sec": team_stats.avg_team_travel_time,
+                "total_rotations": total_rotations,
+                "total_over_rotations": team_stats.total_over_rotations,
+                "total_balanced_rotations": team_stats.total_balanced_rotations,
+                "total_slow_rotations": team_stats.total_slow_rotations,
+                "rounds_analyzed": team_stats.rounds_analyzed,
             },
-            "player_stats": player_stats,
-            "contact_events": contact_events,
+            "player_stats": player_stats_list,
             "advice": advice,
             "summary": summary,
         }
