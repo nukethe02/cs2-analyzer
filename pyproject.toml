@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opensight"
-version = "0.1.0"
+version = "0.5.0"
 description = "Local CS2 analytics framework - professional-grade metrics without cloud dependencies"
 readme = "README.md"
 license = {text = "MIT"}
@@ -42,9 +42,6 @@ dependencies = [
     "python-multipart>=0.0.6",
     "pydantic>=2.0.0",
     "slowapi>=0.1.9",
-    # Flask (Render.com deployment)
-    "flask>=3.0.0",
-    "werkzeug>=3.0.0",
     # Database (FREE - SQLite with SQLAlchemy)
     "sqlalchemy>=2.0.0",
     "alembic>=1.13.0",
@@ -62,12 +59,6 @@ yaml = ["pyyaml>=6.0"]
 
 # Web server for production
 web = ["gunicorn>=21.0.0"]
-
-# Discord bot integration
-discord = [
-    "discord.py>=2.3.0",
-    "aiohttp>=3.9.0",
-]
 
 # All export formats
 export = [
@@ -149,16 +140,12 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = [
     "opensight.ai.*",
-    "opensight.player_performance_metrics",
     "opensight.visualization.*",
     "opensight.integrations.*",
     "opensight.analysis.*",
     "opensight.infra.*",
     "opensight.domains.*",
     "opensight.core.*",
-    "opensight.discord_bot",
-    "opensight.team_comparison",
-    "opensight.video_analyzer",
     "opensight.api",
     "opensight.api.*",
     "opensight.pipeline.*",
