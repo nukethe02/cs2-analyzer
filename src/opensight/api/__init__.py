@@ -222,11 +222,17 @@ async def root() -> HTMLResponse:
 # =============================================================================
 
 from opensight.api.routes_analysis import router as analysis_router  # noqa: E402
+from opensight.api.routes_auth import router as auth_router  # noqa: E402
+from opensight.api.routes_export import router as export_router  # noqa: E402
+from opensight.api.routes_heatmap import router as heatmap_router  # noqa: E402
 from opensight.api.routes_maps import router as maps_router  # noqa: E402
 from opensight.api.routes_match import router as match_router  # noqa: E402
 from opensight.api.routes_misc import router as misc_router  # noqa: E402
 
 app.include_router(analysis_router)
+app.include_router(auth_router)
+app.include_router(export_router)
+app.include_router(heatmap_router)
 app.include_router(match_router)
 app.include_router(maps_router)
 app.include_router(misc_router)
