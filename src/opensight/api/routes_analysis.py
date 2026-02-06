@@ -188,25 +188,24 @@ async def download_job_result(job_id: str):
             hero_player = players[0] if isinstance(players, list) else list(players.values())[0]
 
             player_stats = {
-                "kills": hero_player.get("kills", 0),
-                "deaths": hero_player.get("deaths", 0),
-                "assists": hero_player.get("assists", 0),
+                "kills": hero_player.get("stats", {}).get("kills", 0),
+                "deaths": hero_player.get("stats", {}).get("deaths", 0),
+                "assists": hero_player.get("stats", {}).get("assists", 0),
                 "hltv_rating": hero_player.get("rating", {}).get("hltv_rating", 0.0),
-                "adr": hero_player.get("adr", 0.0),
-                "headshot_pct": hero_player.get("headshot_pct", 0.0),
-                "kast_percentage": hero_player.get("kast_percentage", 0.0),
-                "ttd_median_ms": hero_player.get("aim_stats", {}).get("time_to_damage_ms", 0),
-                "cp_median_error_deg": hero_player.get("aim_stats", {}).get(
-                    "crosshair_placement_deg", 0.0
+                "adr": hero_player.get("stats", {}).get("adr", 0.0),
+                "headshot_pct": hero_player.get("stats", {}).get("headshot_pct", 0.0),
+                "kast_percentage": hero_player.get("rating", {}).get("kast_percentage", 0.0),
+                "ttd_median_ms": hero_player.get("advanced", {}).get("ttd_median_ms", 0),
+                "cp_median_error_deg": hero_player.get("advanced", {}).get(
+                    "cp_median_error_deg", 0.0
                 ),
-                "entry_kills": hero_player.get("opening_duels", {}).get("wins", 0),
-                "entry_deaths": hero_player.get("opening_duels", {}).get("losses", 0),
-                "trade_kill_success": hero_player.get("trades", {}).get("trade_kill_success", 0),
-                "trade_kill_opportunities": hero_player.get("trades", {}).get(
-                    "trade_kill_opportunities", 0
-                ),
-                "clutch_wins": hero_player.get("clutches", {}).get("wins", 0),
-                "clutch_attempts": hero_player.get("clutches", {}).get("attempts", 0),
+                "entry_kills": hero_player.get("entry", {}).get("entry_kills", 0),
+                "entry_deaths": hero_player.get("entry", {}).get("entry_deaths", 0),
+                "trade_kill_success": hero_player.get("trades", {}).get("trade_kills", 0),
+                "trade_kill_opportunities": 0,
+                "clutch_wins": hero_player.get("clutches", {}).get("clutch_wins", 0),
+                "clutch_attempts": hero_player.get("clutches", {}).get("clutch_wins", 0)
+                + hero_player.get("clutches", {}).get("clutch_losses", 0),
             }
 
             ai_insight_text = generate_match_summary(player_stats)
