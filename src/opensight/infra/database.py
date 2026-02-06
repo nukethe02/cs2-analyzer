@@ -628,6 +628,63 @@ class BombEvent(Base):
     )
 
 
+class FeedbackRecord(Base):
+    """User feedback on analysis quality."""
+
+    __tablename__ = "feedback"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    demo_hash = Column(String(64), nullable=False, index=True)
+    user_id = Column(String(100), nullable=False)
+    rating = Column(Integer, nullable=False)
+    category = Column(String(100))
+    comment = Column(Text)
+    analysis_version = Column(String(20))
+    metadata_json = Column(Text)
+    created_at = Column(DateTime, default=_utc_now)
+
+    __table_args__ = (
+        Index("idx_feedback_demo", "demo_hash"),
+        Index("idx_feedback_user", "user_id"),
+    )
+
+
+class CoachingFeedbackRecord(Base):
+    """Feedback on coaching insights."""
+
+    __tablename__ = "coaching_feedback"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    demo_hash = Column(String(64), nullable=False, index=True)
+    player_steam_id = Column(String(20))
+    insight_category = Column(String(100), nullable=False)
+    insight_message = Column(Text, nullable=False)
+    was_helpful = Column(Boolean, nullable=False)
+    user_correction = Column(Text)
+    created_at = Column(DateTime, default=_utc_now)
+
+    __table_args__ = (Index("idx_coaching_demo", "demo_hash"),)
+
+
+class AnnotationRecord(Base):
+    """User annotations on analyses."""
+
+    __tablename__ = "annotations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    demo_hash = Column(String(64), nullable=False, index=True)
+    user_id = Column(String(100), nullable=False)
+    round_num = Column(Integer)
+    tick = Column(Integer)
+    annotation_type = Column(String(50), nullable=False)
+    content = Column(Text, nullable=False)
+    x = Column(Float)
+    y = Column(Float)
+    created_at = Column(DateTime, default=_utc_now)
+
+    __table_args__ = (Index("idx_annotations_demo", "demo_hash"),)
+
+
 class Job(Base):
     """Persistent job tracking for async analysis."""
 

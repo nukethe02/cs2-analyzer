@@ -42,86 +42,87 @@ PYTHONPATH=src pytest tests/test_metrics.py -v    # Metric changes
 
 ```
 src/opensight/
-├── api.py                 # FastAPI web app (main entry point)
+├── __init__.py            # Package init, version (importlib.metadata)
 ├── cli.py                 # Typer CLI
 ├── server.py              # Uvicorn server entry
 │
+├── api/                   # FastAPI web app (package)
+│   ├── __init__.py        # App creation, middleware, routers, job_store
+│   ├── shared.py          # Pydantic models, validation, rate limiting, JobStore
+│   ├── routes_analysis.py # POST /analyze, GET /analyze/{job_id}, AI endpoints
+│   ├── routes_auth.py     # POST /auth/register, /auth/login, GET /auth/me
+│   ├── routes_export.py   # GET /api/export/{job_id}/json, csv
+│   ├── routes_heatmap.py  # GET /api/heatmap/{job_id}/kills, grenades
+│   ├── routes_maps.py     # GET /maps, /radar/transform, /hltv/*, /replay
+│   ├── routes_match.py    # GET /api/your-match/*, /api/players/*
+│   └── routes_misc.py     # /health, /readiness, /decode, /feedback, /scouting
+│
 ├── core/                  # Demo parsing layer
 │   ├── parser.py          # DemoParser class (demoparser2/awpy backends)
-│   ├── enhanced_parser.py # Advanced parsing features
 │   ├── constants.py       # TICK_RATE, TRADE_WINDOW_MS, HLTV coefficients
 │   ├── config.py          # Configuration management
+│   ├── schemas.py         # Shared schema definitions
 │   ├── utils.py           # safe_int, safe_str, safe_float, safe_bool
 │   └── map_zones.py       # Map area definitions (A site, B site, Mid, etc.)
 │
 ├── analysis/              # Metrics and analytics
-│   ├── analytics.py       # DemoAnalyzer - main analysis engine
-│   ├── models.py          # MatchAnalysis, PlayerMatchStats dataclasses
-│   ├── compute_combat.py  # Combat metrics (kills, deaths, trades)
-│   ├── compute_aim.py     # Aim metrics (accuracy, headshot %, spray control)
-│   ├── compute_economy.py # Economy metrics (buy patterns, eco detection)
-│   ├── compute_utility.py # Utility metrics (grenade effectiveness)
+│   ├── analytics.py       # DemoAnalyzer - orchestration skeleton (~3200 lines)
+│   ├── models.py          # 28 dataclasses (MatchAnalysis, PlayerMatchStats, etc.)
+│   ├── compute_combat.py  # Combat: trades, clutches, opening duels, multi-kills
+│   ├── compute_aim.py     # Aim: TTD, crosshair placement, accuracy stats
+│   ├── compute_economy.py # Economy: KAST, side stats, economy history
+│   ├── compute_utility.py # Utility: grenade stats, mistakes, utility metrics
 │   ├── highlights.py      # Match highlights (clutches, aces, multi-kills)
 │   ├── hltv_rating.py     # HLTV 2.0 Rating formula
+│   ├── metrics_optimized.py # Vectorized computations (numpy)
 │   ├── persona.py         # Player identity classification
-│   ├── positioning.py     # Positioning analysis (map control, trades)
+│   ├── positioning.py     # Positioning analysis (map control)
 │   ├── rotation.py        # CT rotation latency analysis
-│   ├── metrics.py         # TTD, CP, utility calculations (legacy)
-│   ├── metrics_optimized.py # Vectorized computations
-│   ├── combat.py          # Accuracy, spray, counter-strafe (legacy)
-│   ├── economy.py         # Buy patterns, eco detection (legacy)
-│   ├── utility.py         # Grenade effectiveness (legacy)
-│   ├── game_state.py      # Tick-level state tracking
-│   └── detection.py       # Event classification
+│   └── tactical_service.py # Tactical analysis service
 │
 ├── pipeline/              # Analysis orchestration
-│   ├── orchestrator.py    # Main analysis orchestrator
+│   ├── orchestrator.py    # DemoOrchestrator (parse → analyze → serialize)
 │   └── store_events.py    # Event storage (kills, damage, grenades, bombs)
 │
 ├── domains/               # Domain-specific analysis
 │   ├── combat.py          # Combat analytics (refrag, trade chains)
 │   ├── economy.py         # Economy analytics (force buy detection)
-│   └── synergy.py         # Team synergy metrics
+│   ├── synergy.py         # Team synergy metrics
+│   └── utility.py         # Utility analytics
 │
 ├── auth/                  # Authentication system
 │   ├── passwords.py       # Password hashing with bcrypt
 │   ├── jwt.py             # JWT token generation/validation
-│   └── tiers.py           # User tier limits (Free, Pro, Team)
+│   ├── middleware.py       # Auth middleware (get_current_user)
+│   └── tiers.py           # User tier limits (Free, Pro, Team, Admin)
 │
 ├── scouting/              # Opponent scouting
-│   └── engine.py          # Scouting report generation
+│   ├── engine.py          # Scouting report generation
+│   ├── anti_strats.py     # Anti-stratting analysis
+│   └── models.py          # Scouting data models
 │
 ├── ai/                    # AI/LLM integrations
-│   └── llm_client.py      # Anthropic Claude API client
+│   ├── llm_client.py      # Anthropic Claude API client
+│   ├── self_review.py     # AI self-review of analyses
+│   ├── strat_engine.py    # Strategy analysis engine
+│   └── tactical.py        # Tactical analysis module
 │
 ├── integrations/          # External services
 │   ├── sharecode.py       # CS2 share code encode/decode
 │   ├── hltv.py            # HLTV API (rankings, player data)
-│   ├── faceit.py          # FACEIT API integration
-│   ├── feedback.py        # Community feedback collection
-│   └── profiles.py        # Player profile management
+│   └── feedback.py        # Community feedback (SQLAlchemy-backed)
 │
 ├── infra/                 # Infrastructure
-│   ├── cache.py           # SHA256-based file caching
-│   ├── database.py        # SQLite (match history, baselines, events, jobs)
-│   ├── job_store.py       # Persistent job tracking
-│   ├── parallel.py        # Batch demo processing
-│   ├── watcher.py         # File system monitoring
-│   └── backend.py         # DataFrame backend (pandas/polars)
+│   ├── cache.py           # SHA256-based file caching (~540 lines)
+│   ├── database.py        # SQLite (matches, players, events, jobs, feedback)
+│   ├── job_store.py       # Persistent job tracking (PersistentJobStore)
+│   └── parallel.py        # Batch demo processing
 │
 ├── visualization/         # Output generation
 │   ├── heatmaps.py        # Heatmap generation (kills, deaths, damage)
 │   ├── exports.py         # Export to JSON, CSV, HTML
 │   ├── replay.py          # 2D replay data extraction
-│   ├── radar.py           # Map coordinate transformation
-│   ├── export.py          # JSON/CSV/Excel/HTML export (legacy)
-│   └── trajectory.py      # Player movement visualization
-│
-├── coaching/              # AI coaching features
-│   ├── coaching.py        # Adaptive coaching engine
-│   ├── patterns.py        # Temporal pattern analysis
-│   ├── opponent.py        # Opponent modeling
-│   └── playbook.py        # Team playbook generation
+│   └── radar.py           # Map coordinate transformation
 │
 └── static/                # Web UI
     ├── index.html         # Main interface (with Export dropdown, Highlights)
@@ -189,11 +190,11 @@ Rating = 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + 0.2372*Impact + 0.0032*ADR + 0.
 ```
 
 ### Time to Damage (TTD)
-Milliseconds from engagement start to damage dealt. Located in `analysis/metrics.py`.
+Milliseconds from engagement start to damage dealt. Located in `analysis/compute_aim.py`.
 - Elite: <200ms | Good: 200-350ms | Average: 350-500ms | Slow: >500ms
 
 ### Crosshair Placement (CP)
-Angular error in degrees. Located in `analysis/metrics.py`.
+Angular error in degrees. Located in `analysis/compute_aim.py`.
 - Elite: <5° | Good: 5-15° | Average: 15-25° | Needs work: >25°
 
 ### Trade Detection
@@ -445,20 +446,20 @@ Each worktree = separate Claude session. Never block feature work with bugfixes.
 
 ## Module-Specific Gotchas
 
-### api.py (80KB - handle with care)
+### api/ package (7 route modules + shared.py)
 - Changes often need test_api.py updates
 - Rate limiting decorator order matters
 - Security headers tested in TestSecurityHeaders
-- Known debug artifacts at lines 861-870, 942-948
+- `from opensight.api import app, job_store, sharecode_cache` is the critical import
 
-### analytics.py (7,882 lines)
+### analytics.py (~3,200 lines — delegation skeleton)
 - Uses safe_* accessors throughout
-- Metric changes cascade to PlayerMatchStats
-- Multiple import guards for optional modules
+- Metric changes cascade to PlayerMatchStats in models.py
+- Delegates to compute_combat.py, compute_aim.py, compute_economy.py, compute_utility.py
 
-### ai/coaching.py
-- Requires OPENAI_API_KEY environment variable
-- `_recalculate_stats_from_kill_matrix()` now implemented for stale data recovery
+### ai/llm_client.py
+- Requires ANTHROPIC_API_KEY environment variable
+- Uses Claude Sonnet for match analysis
 
 ### cli.py
 - All metrics display functions now implemented (utility, trade, opening duels)

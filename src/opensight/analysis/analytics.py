@@ -634,9 +634,6 @@ class DemoAnalyzer:
         # Detect greedy re-peeks (discipline tracking)
         self._safe_calculate("greedy_repeeks", self._detect_greedy_repeeks)
 
-        # Run State Machine for pro-level analytics (Entry/Trade/Lurk)
-        # self._safe_calculate("state_machine", self._run_state_machine)  # Disabled: produces zeros, no UI consumes output
-
         # Integrate Economy Module
         if "economy" in self._requested_metrics:
             self._integrate_economy()
@@ -2060,68 +2057,6 @@ class DemoAnalyzer:
         from opensight.analysis.compute_combat import detect_greedy_repeeks
 
         detect_greedy_repeeks(self)
-
-    def _run_state_machine(self) -> None:
-        """
-        Run State Machine analysis for pro-level metrics.
-
-        Enhances PlayerMatchStats with:
-        - Entry Kill (from State Machine - more accurate than opening duels)
-        - Trade Kill (with 4-second window and proper killer tracking)
-        - Lurk Kill (distance from team center of mass)
-        - Flash Effectiveness (>2.0s blind duration)
-        - Utility ADR (HE + Molotov damage per round)
-        """
-        try:
-            from opensight.visualization.state_machine import StateMachine
-        except ImportError as e:
-            logger.warning(f"State Machine not available: {e}")
-            return
-
-        try:
-            machine = StateMachine(self.data)
-            result = machine.analyze()
-
-            # Merge state machine results into PlayerMatchStats
-            for steam_id, context_stats in result.players.items():
-                if steam_id not in self._players:
-                    continue
-
-                player = self._players[steam_id]
-
-                # Update entry stats (State Machine is more accurate)
-                player.opening_duels.wins = context_stats.entry_kills
-                player.opening_duels.losses = context_stats.entry_deaths
-                player.opening_duels.attempts = context_stats.entry_attempts
-
-                # Update trade stats (State Machine uses tighter 4-second window)
-                player.trades.kills_traded = context_stats.trade_kills
-                player.trades.deaths_traded = context_stats.deaths_traded
-                player.trades.trade_attempts = context_stats.trade_opportunities
-
-                # Add lurk stats
-                player.lurk.kills = context_stats.lurk_kills
-                player.lurk.deaths = context_stats.lurk_deaths
-
-                # Flash effectiveness (>2.0 seconds = effective)
-                player.effective_flashes = context_stats.effective_flashes
-                player.ineffective_flashes = context_stats.ineffective_flashes
-
-                # Utility ADR
-                util_damage = context_stats.he_damage + context_stats.molotov_damage
-                player.utility_adr = (
-                    round(util_damage / player.rounds_played, 1)
-                    if player.rounds_played > 0
-                    else 0.0
-                )
-
-            logger.info(
-                f"State Machine complete: {result.total_entry_kills} entries, "
-                f"{result.total_trade_kills} trades, {result.total_lurk_kills} lurks"
-            )
-
-        except Exception as e:
-            logger.warning(f"State Machine analysis failed: {e}")
 
     def _integrate_economy(self) -> dict:
         """Integrate economy module data into player stats."""

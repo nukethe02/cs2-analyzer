@@ -20,9 +20,6 @@ python-multipart>=0.0.6
 websockets>=11.0.0  # For real-time coaching WebSocket support
 slowapi>=0.1.9  # Rate limiting for API endpoints
 
-# Legacy Flask support
-flask>=3.0.0
-werkzeug>=3.0.0
 gunicorn>=21.0.0
 
 # Export formats
