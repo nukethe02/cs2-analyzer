@@ -107,7 +107,7 @@ def verify_analyzer(demo_data) -> dict | None:
         zero_stat_players = []
         valid_players = 0
 
-        for steam_id, player in analysis.players.items():
+        for _steam_id, player in analysis.players.items():
             if player.kills == 0 and player.deaths == 0:
                 zero_stat_players.append(player.name)
             else:
@@ -166,12 +166,10 @@ def verify_cached_analyzer(demo_path: Path) -> dict | None:
         issues = []
         zero_stat_count = 0
 
-        for steam_id, player in players.items():
+        for _steam_id, player in players.items():
             stats = player.get("stats", {})
-            name = player.get("name", "Unknown")
             kills = stats.get("kills", 0)
             deaths = stats.get("deaths", 0)
-            adr = stats.get("adr", 0)
 
             if kills == 0 and deaths == 0:
                 zero_stat_count += 1
@@ -186,7 +184,7 @@ def verify_cached_analyzer(demo_path: Path) -> dict | None:
 
         # Print sample player stats
         print("\n  Sample player stats:")
-        for i, (steam_id, player) in enumerate(players.items()):
+        for i, (_steam_id, player) in enumerate(players.items()):
             if i >= 5:
                 break
             stats = player.get("stats", {})

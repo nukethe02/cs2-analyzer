@@ -78,7 +78,7 @@ def main():
             print(f"  Found {len(kills)} kills")
             print(f"  Columns: {list(kills.columns)[:10]}...")
             print("\n  First 3 kills:")
-            for i, row in kills.head(3).iterrows():
+            for _i, row in kills.head(3).iterrows():
                 attacker = row.get("attacker_name", "Unknown")
                 victim = row.get("user_name", "Unknown")
                 weapon = row.get("weapon", "Unknown")

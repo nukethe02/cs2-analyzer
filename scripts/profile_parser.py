@@ -112,7 +112,7 @@ def profile_parser(demo_path: str, top_n: int = 20, output_file: str | None = No
     # Extract top bottlenecks
     stats.sort_stats("cumulative")
     bottlenecks = []
-    for (filename, lineno, funcname), (cc, nc, tt, ct, callers) in list(stats.stats.items())[:10]:
+    for (filename, lineno, funcname), (_cc, nc, tt, ct, _callers) in list(stats.stats.items())[:10]:
         if "parser.py" in filename or "analytics.py" in filename or "metrics.py" in filename:
             bottlenecks.append(
                 {
@@ -233,12 +233,12 @@ def compare_implementations(
     for _ in range(iterations):
         # Time old implementation
         start = time.perf_counter()
-        old_result = old_func(test_data)
+        old_func(test_data)
         old_times.append(time.perf_counter() - start)
 
         # Time new implementation
         start = time.perf_counter()
-        new_result = new_func(test_data)
+        new_func(test_data)
         new_times.append(time.perf_counter() - start)
 
     old_mean = sum(old_times) / len(old_times)
