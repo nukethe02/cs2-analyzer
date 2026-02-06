@@ -15,7 +15,6 @@ Implements industry-standard metrics:
 
 import logging
 import math
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
