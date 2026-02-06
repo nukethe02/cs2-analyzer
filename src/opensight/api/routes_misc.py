@@ -550,13 +550,13 @@ async def add_demo_to_scouting_session(
         from opensight.analysis.analytics import DemoAnalyzer
         from opensight.core.parser import DemoParser
 
-        parser = DemoParser()
-        demo_data = parser.parse(temp_path)
+        parser = DemoParser(temp_path)
+        demo_data = parser.parse()
         if not demo_data:
             raise HTTPException(status_code=400, detail="Failed to parse demo file")
 
-        analyzer = DemoAnalyzer()
-        analysis = analyzer.analyze(demo_data)
+        analyzer = DemoAnalyzer(demo_data)
+        analysis = analyzer.analyze()
         if not analysis:
             raise HTTPException(status_code=400, detail="Failed to analyze demo")
 

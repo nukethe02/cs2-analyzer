@@ -348,15 +348,14 @@ def compute_ttd(analyzer: "DemoAnalyzer") -> None:
 
                     analyzer._ttd_results.append(
                         TTDResult(
-                            tick_spotted=first_dmg_tick,
-                            tick_damage=kill_tick,
-                            ttd_ticks=ttd_ticks,
-                            ttd_ms=ttd_ms,
+                            tick_first_damage=first_dmg_tick,
+                            tick_kill=kill_tick,
+                            duration_ticks=ttd_ticks,
+                            duration_ms=ttd_ms,
                             attacker_steamid=att_id,
                             victim_steamid=vic_id,
                             weapon=str(row.get("weapon", "unknown")),
                             headshot=bool(row.get("headshot", False)),
-                            is_prefire=is_prefire,
                             round_num=round_num,
                         )
                     )
@@ -416,15 +415,14 @@ def compute_ttd(analyzer: "DemoAnalyzer") -> None:
 
                 analyzer._ttd_results.append(
                     TTDResult(
-                        tick_spotted=first_dmg_tick,
-                        tick_damage=kill_tick,
-                        ttd_ticks=ttd_ticks,
-                        ttd_ms=ttd_ms,
+                        tick_first_damage=first_dmg_tick,
+                        tick_kill=kill_tick,
+                        duration_ticks=ttd_ticks,
+                        duration_ms=ttd_ms,
                         attacker_steamid=att_id,
                         victim_steamid=vic_id,
                         weapon=kill.weapon,
                         headshot=kill.headshot,
-                        is_prefire=is_prefire,
                         round_num=round_num,
                     )
                 )

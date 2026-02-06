@@ -351,10 +351,10 @@ async def analyze_rotations(
         parser = DemoParser(tmp_path)
         data = parser.parse()
 
-        analyzer = CTRotationAnalyzer(data)
+        analyzer = CTRotationAnalyzer(data, data.map_name)
         team_stats = analyzer.analyze()
         advice = analyzer.get_rotation_advice()
-        summary = get_rotation_summary(team_stats)
+        summary = get_rotation_summary(data, data.map_name)
 
         player_stats = []
         for player in team_stats.player_stats:
