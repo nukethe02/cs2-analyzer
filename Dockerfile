@@ -43,7 +43,8 @@ RUN echo "Verifying critical packages..." && \
     pip show fastapi || (echo "CRITICAL: fastapi not installed!" && exit 1) && \
     pip show uvicorn || (echo "CRITICAL: uvicorn not installed!" && exit 1) && \
     pip show pandas || (echo "CRITICAL: pandas not installed!" && exit 1) && \
-    echo "✅ All critical packages verified"
+    pip show anthropic || (echo "CRITICAL: anthropic not installed!" && exit 1) && \
+    echo "All critical packages verified"
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime Stage

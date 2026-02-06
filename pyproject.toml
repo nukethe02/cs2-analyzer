@@ -48,8 +48,8 @@ dependencies = [
     # Database (FREE - SQLite with SQLAlchemy)
     "sqlalchemy>=2.0.0",
     "alembic>=1.13.0",
-    # AI Coaching (LLM integration)
-    "openai>=1.0.0",
+    # AI Coaching (Anthropic Claude for LLM-powered match insights)
+    "anthropic>=0.77.0",
     # Authentication
     "bcrypt>=4.0.0",
     "python-jose[cryptography]>=3.3.0",
