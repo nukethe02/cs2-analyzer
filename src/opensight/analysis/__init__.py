@@ -9,6 +9,7 @@ This module contains:
 - rotation: CT rotation latency analysis
 """
 
+from opensight.analysis.models import MatchAnalysis, PlayerMatchStats
 from opensight.analysis.rotation import (
     CTRotationAnalyzer,
     PlayerRotationStats,
@@ -20,6 +21,8 @@ from opensight.analysis.rotation import (
 )
 
 __all__: list[str] = [
+    "MatchAnalysis",
+    "PlayerMatchStats",
     "CTRotationAnalyzer",
     "analyze_ct_rotations",
     "get_rotation_summary",
