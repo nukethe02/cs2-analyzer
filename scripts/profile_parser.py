@@ -42,10 +42,10 @@ def profile_parser(demo_path: str, top_n: int = 20, output_file: str | None = No
     if not demo_path.exists():
         raise FileNotFoundError(f"Demo file not found: {demo_path}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Profiling Parser: {demo_path.name}")
-    print(f"File size: {demo_path.stat().st_size / (1024*1024):.1f} MB")
-    print(f"{'='*60}\n")
+    print(f"File size: {demo_path.stat().st_size / (1024 * 1024):.1f} MB")
+    print(f"{'=' * 60}\n")
 
     # Profile the parsing
     profiler = cProfile.Profile()
@@ -99,23 +99,31 @@ def profile_parser(demo_path: str, top_n: int = 20, output_file: str | None = No
         summary["total_time_seconds"] = total_stats.total_tt
     else:
         # Fallback: sum all cumulative times at top level
-        summary["total_time_seconds"] = sum(
-            stat[3] for stat in stats.stats.values()  # cumtime
-        ) / len(stats.stats) if stats.stats else 0
+        summary["total_time_seconds"] = (
+            sum(
+                stat[3]
+                for stat in stats.stats.values()  # cumtime
+            )
+            / len(stats.stats)
+            if stats.stats
+            else 0
+        )
 
     # Extract top bottlenecks
     stats.sort_stats("cumulative")
     bottlenecks = []
     for (filename, lineno, funcname), (cc, nc, tt, ct, callers) in list(stats.stats.items())[:10]:
         if "parser.py" in filename or "analytics.py" in filename or "metrics.py" in filename:
-            bottlenecks.append({
-                "function": funcname,
-                "file": Path(filename).name,
-                "line": lineno,
-                "calls": nc,
-                "total_time": tt,
-                "cumulative_time": ct,
-            })
+            bottlenecks.append(
+                {
+                    "function": funcname,
+                    "file": Path(filename).name,
+                    "line": lineno,
+                    "calls": nc,
+                    "total_time": tt,
+                    "cumulative_time": ct,
+                }
+            )
 
     summary["bottlenecks"] = bottlenecks
 
@@ -131,8 +139,10 @@ def profile_parser(demo_path: str, top_n: int = 20, output_file: str | None = No
                     f.write(f"{key}: {value}\n")
             f.write("\nTOP BOTTLENECKS:\n")
             for b in summary["bottlenecks"]:
-                f.write(f"  {b['function']} ({b['file']}:{b['line']}): "
-                       f"{b['cumulative_time']:.3f}s cumulative, {b['calls']} calls\n")
+                f.write(
+                    f"  {b['function']} ({b['file']}:{b['line']}): "
+                    f"{b['cumulative_time']:.3f}s cumulative, {b['calls']} calls\n"
+                )
         print(f"\nDetailed results written to: {output_file}")
 
     # Print summary
@@ -167,6 +177,7 @@ def benchmark_function(demo_path: str, func_name: str, iterations: int = 5) -> d
         Dict with benchmark results
     """
     import time
+
     from opensight.core.parser import DemoParser
 
     demo_path = Path(demo_path)
@@ -251,16 +262,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--top", "-t", type=int, default=20, help="Number of top functions to show (default: 20)"
     )
+    parser.add_argument("--output", "-o", help="Output file for detailed results")
     parser.add_argument(
-        "--output", "-o", help="Output file for detailed results"
+        "--benchmark", "-b", action="store_true", help="Run benchmark mode (multiple iterations)"
     )
     parser.add_argument(
-        "--benchmark", "-b", action="store_true",
-        help="Run benchmark mode (multiple iterations)"
-    )
-    parser.add_argument(
-        "--iterations", "-i", type=int, default=5,
-        help="Number of iterations for benchmark mode (default: 5)"
+        "--iterations",
+        "-i",
+        type=int,
+        default=5,
+        help="Number of iterations for benchmark mode (default: 5)",
     )
 
     args = parser.parse_args()

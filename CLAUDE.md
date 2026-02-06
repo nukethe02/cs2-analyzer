@@ -35,6 +35,8 @@ PYTHONPATH=src pytest tests/test_metrics.py -v    # Metric changes
 | `ruff format src/ tests/ && ruff check --fix src/ tests/` | Format + lint |
 | `opensight analyze demo.dem` | CLI analysis |
 | `opensight watch` | Watch replays folder |
+| `PYTHONPATH=src python scripts/smoke_test.py` | Verify all module imports |
+| `PYTHONPATH=src python scripts/check_deployment.py` | Pre-deployment checklist |
 
 ## Architecture
 
@@ -49,19 +51,48 @@ src/opensight/
 │   ├── enhanced_parser.py # Advanced parsing features
 │   ├── constants.py       # TICK_RATE, TRADE_WINDOW_MS, HLTV coefficients
 │   ├── config.py          # Configuration management
+│   ├── map_zones.py       # Map zone definitions and utilities
 │   └── utils.py           # safe_int, safe_str, safe_float, safe_bool
 │
 ├── analysis/              # Metrics and analytics
 │   ├── analytics.py       # DemoAnalyzer - main analysis engine
+│   ├── models.py          # Data models for analysis
 │   ├── metrics.py         # TTD, CP, utility calculations
 │   ├── metrics_optimized.py # Vectorized computations
 │   ├── hltv_rating.py     # HLTV 2.0 Rating formula
 │   ├── persona.py         # Player identity classification
-│   ├── combat.py          # Accuracy, spray, counter-strafe
-│   ├── economy.py         # Buy patterns, eco detection
-│   ├── utility.py         # Grenade effectiveness
+│   ├── compute_combat.py  # Combat metrics computation
+│   ├── compute_aim.py     # Aim metrics computation
+│   ├── compute_economy.py # Economy metrics computation
+│   ├── compute_utility.py # Utility metrics computation
+│   ├── highlights.py      # Match highlights extraction
+│   ├── positioning.py     # Positioning analysis
+│   ├── rotation.py        # Rotation analysis
+│   ├── combat.py          # [Legacy] Accuracy, spray, counter-strafe
+│   ├── economy.py         # [Legacy] Buy patterns, eco detection
+│   ├── utility.py         # [Legacy] Grenade effectiveness
 │   ├── game_state.py      # Tick-level state tracking
 │   └── detection.py       # Event classification
+│
+├── pipeline/              # Analysis pipeline
+│   ├── orchestrator.py    # Pipeline orchestration
+│   └── store_events.py    # Event storage
+│
+├── domains/               # Domain logic
+│   ├── combat.py          # Combat domain logic
+│   ├── economy.py         # Economy domain logic
+│   └── synergy.py         # Synergy domain logic
+│
+├── auth/                  # Authentication & authorization
+│   ├── passwords.py       # Password hashing
+│   ├── jwt.py             # JWT token management
+│   └── tiers.py           # User tier management
+│
+├── scouting/              # Opponent scouting
+│   └── engine.py          # Scouting engine
+│
+├── ai/                    # AI features
+│   └── llm_client.py      # LLM client for AI features
 │
 ├── integrations/          # External services
 │   ├── sharecode.py       # CS2 share code encode/decode
@@ -72,7 +103,8 @@ src/opensight/
 │
 ├── infra/                 # Infrastructure
 │   ├── cache.py           # SHA256-based file caching
-│   ├── database.py        # SQLite (match history, baselines)
+│   ├── database.py        # SQLite (match history, baselines, events, jobs)
+│   ├── job_store.py       # Persistent job storage
 │   ├── parallel.py        # Batch demo processing
 │   ├── watcher.py         # File system monitoring
 │   └── backend.py         # DataFrame backend (pandas/polars)
@@ -80,7 +112,9 @@ src/opensight/
 ├── visualization/         # Output generation
 │   ├── replay.py          # 2D replay data extraction
 │   ├── radar.py           # Map coordinate transformation
-│   ├── export.py          # JSON/CSV/Excel/HTML export
+│   ├── heatmaps.py        # Heatmap generation
+│   ├── exports.py         # JSON/CSV/Excel/HTML export
+│   ├── export.py          # [Legacy] JSON/CSV/Excel/HTML export
 │   └── trajectory.py      # Player movement visualization
 │
 ├── coaching/              # AI coaching features
@@ -89,10 +123,15 @@ src/opensight/
 │   ├── opponent.py        # Opponent modeling
 │   └── playbook.py        # Team playbook generation
 │
-└── static/                # Web UI
-    ├── index.html         # Main interface
-    ├── css/               # Stylesheets
-    └── js/                # Frontend scripts
+├── static/                # Web UI
+│   ├── index.html         # Main interface (with Export dropdown, Highlights)
+│   ├── css/               # Stylesheets
+│   └── js/                # Frontend scripts
+│
+└── scripts/               # Utility scripts
+    ├── smoke_test.py      # Module import verification
+    ├── check_deployment.py # Pre-deployment checklist
+    └── worktree-setup.ps1 # Git worktree setup
 ```
 
 ## API Endpoints
@@ -441,5 +480,20 @@ Cleaned up as of 2026-02-01:
 - ~~`api.py:861-870` - Timeline debug logging~~ Converted to logger.debug()
 - ~~`api.py:942-948` - Download endpoint debug logging~~ Converted to logger.debug()
 - ~~`cache.py:686-695` - Round timeline debug logging~~ Converted to logger.debug()
+
+### Wave 4 Refactoring (Completed 2026-02-05)
+✅ Event storage tables added (Kill, DamageEvent, GrenadeEvent, BombEvent, Job)
+✅ Authentication system implemented (passwords, JWT, tiers)
+✅ New features added (highlights, heatmaps, scouting, domains)
+✅ Analysis split into compute_*.py modules (combat, aim, economy, utility)
+✅ Pipeline orchestrator created
+✅ Persistent job store implemented
+
+### Wave 5 Deployment (Completed 2026-02-05)
+✅ Smoke test script for import verification
+✅ Pre-deployment checklist script
+✅ Frontend export dropdown added (JSON, Players CSV)
+✅ Highlights section placeholder added to UI
+✅ CLAUDE.md updated with full architecture
 
 Use `/techdebt` to scan for new technical debt.

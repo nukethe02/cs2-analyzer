@@ -31,7 +31,7 @@ def main():
         print(f"ERROR: Demo file not found: {demo_path}")
         sys.exit(2)
 
-    print(f"=== OpenSight Demo Diagnostic ===")
+    print("=== OpenSight Demo Diagnostic ===")
     print(f"Demo file: {demo_path}")
     print(f"File size: {demo_path.stat().st_size / 1024 / 1024:.1f} MB")
     print()
@@ -162,9 +162,7 @@ def main():
     # Test 9: Parse player positions (first 100 ticks)
     print("\n=== TEST 9: Player Positions (tick data) ===")
     try:
-        ticks = parser.parse_ticks(
-            ["X", "Y", "Z", "health", "team_num"], ticks=list(range(100))
-        )
+        ticks = parser.parse_ticks(["X", "Y", "Z", "health", "team_num"], ticks=list(range(100)))
         if ticks is not None and len(ticks) > 0:
             print(f"  Got {len(ticks)} position records (first 100 ticks)")
             unique_players = ticks["steamid"].nunique() if "steamid" in ticks.columns else 0

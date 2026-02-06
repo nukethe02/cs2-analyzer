@@ -18,7 +18,6 @@ Exit codes:
     2 - Critical failure (missing dependencies, no demo file)
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -87,6 +86,7 @@ def verify_parser(demo_path: Path) -> dict | None:
     except Exception as e:
         print(f"  FAIL: Parser error: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -113,10 +113,14 @@ def verify_analyzer(demo_data) -> dict | None:
             else:
                 valid_players += 1
                 if valid_players <= 3:
-                    print(f"    {player.name}: {player.kills}K/{player.deaths}D, ADR: {player.adr:.1f}, Rating: {player.hltv_rating:.2f}")
+                    print(
+                        f"    {player.name}: {player.kills}K/{player.deaths}D, ADR: {player.adr:.1f}, Rating: {player.hltv_rating:.2f}"
+                    )
 
         if zero_stat_players:
-            print(f"  WARN: {len(zero_stat_players)} players with 0K/0D: {zero_stat_players[:3]}...")
+            print(
+                f"  WARN: {len(zero_stat_players)} players with 0K/0D: {zero_stat_players[:3]}..."
+            )
 
         if valid_players == 0:
             print("  FAIL: All players have 0 kills AND 0 deaths")
@@ -130,6 +134,7 @@ def verify_analyzer(demo_data) -> dict | None:
     except Exception as e:
         print(f"  FAIL: Analyzer error: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -186,7 +191,9 @@ def verify_cached_analyzer(demo_path: Path) -> dict | None:
                 break
             stats = player.get("stats", {})
             rating = player.get("rating", {})
-            print(f"    {player.get('name', 'Unknown')}: {stats.get('kills', 0)}K/{stats.get('deaths', 0)}D, ADR: {stats.get('adr', 0)}, Rating: {rating.get('hltv_rating', 0)}")
+            print(
+                f"    {player.get('name', 'Unknown')}: {stats.get('kills', 0)}K/{stats.get('deaths', 0)}D, ADR: {stats.get('adr', 0)}, Rating: {rating.get('hltv_rating', 0)}"
+            )
 
         # Check for zero-stat issues (the main bug we're looking for)
         valid_player_count = len(players) - zero_stat_count
@@ -204,6 +211,7 @@ def verify_cached_analyzer(demo_path: Path) -> dict | None:
     except Exception as e:
         print(f"  FAIL: CachedAnalyzer error: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
