@@ -3,8 +3,8 @@ Smoke test - Comprehensive import verification for all OpenSight modules.
 Run with: PYTHONPATH=src python scripts/smoke_test.py
 """
 
-import sys
 import importlib
+import sys
 
 MODULES = [
     "opensight.api",
@@ -54,10 +54,10 @@ print("=" * 60)
 for mod in MODULES:
     try:
         importlib.import_module(mod)
-        print(f"  ✓ {mod}")
+        print(f"  [OK] {mod}")
         passed += 1
     except Exception as e:
-        print(f"  ✗ {mod} — {e}")
+        print(f"  [FAIL] {mod} - {e}")
         failed += 1
 
 # Check app specifically
@@ -69,17 +69,17 @@ try:
     from opensight.api import app, job_store, sharecode_cache
 
     routes = [r for r in app.routes if hasattr(r, "methods")]
-    print(f"  ✓ App loaded: {len(routes)} endpoints registered")
-    print(f"  ✓ job_store: {type(job_store).__name__}")
-    print(f"  ✓ sharecode_cache: {type(sharecode_cache).__name__}")
+    print(f"  [OK] App loaded: {len(routes)} endpoints registered")
+    print(f"  [OK] job_store: {type(job_store).__name__}")
+    print(f"  [OK] sharecode_cache: {type(sharecode_cache).__name__}")
     passed += 1
 except Exception as e:
-    print(f"  ✗ App failed: {e}")
+    print(f"  [FAIL] App failed: {e}")
     failed += 1
 
 # Summary
 print("\n" + "=" * 60)
-print(f"✓ {passed} passed, ✗ {failed} failed")
+print(f"[PASS] {passed} passed, [FAIL] {failed} failed")
 print("=" * 60)
 
 sys.exit(1 if failed else 0)

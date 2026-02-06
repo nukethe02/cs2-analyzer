@@ -11,12 +11,12 @@ from pathlib import Path
 def check_app_imports():
     """Verify the app imports correctly."""
     try:
-        from opensight.api import app
+        from opensight.api import app  # noqa: F401
 
-        print("  ✓ FastAPI app imports correctly")
+        print("  [OK] FastAPI app imports correctly")
         return True
     except Exception as e:
-        print(f"  ✗ App import failed: {e}")
+        print(f"  [FAIL] App import failed: {e}")
         return False
 
 
@@ -31,14 +31,14 @@ def check_required_routes():
         missing = []
         for req in required:
             if req in routes:
-                print(f"  ✓ Route {req} exists")
+                print(f"  [OK] Route {req} exists")
             else:
-                print(f"  ✗ Route {req} missing")
+                print(f"  [FAIL] Route {req} missing")
                 missing.append(req)
 
         return len(missing) == 0
     except Exception as e:
-        print(f"  ✗ Route check failed: {e}")
+        print(f"  [FAIL] Route check failed: {e}")
         return False
 
 
@@ -51,9 +51,9 @@ def check_static_files():
     for file in required_files:
         file_path = src_path / file
         if file_path.exists():
-            print(f"  ✓ Static file {file} exists")
+            print(f"  [OK] Static file {file} exists")
         else:
-            print(f"  ✗ Static file {file} missing")
+            print(f"  [FAIL] Static file {file} missing")
             all_exist = False
 
     return all_exist
@@ -64,40 +64,38 @@ def check_database_init():
     try:
         from opensight.infra.database import DatabaseManager
 
-        # Try to create a temp in-memory database
-        db = DatabaseManager(db_url="sqlite:///:memory:")
-        print("  ✓ Database can initialize (in-memory test)")
+        _db = DatabaseManager(db_url="sqlite:///:memory:")
+        print("  [OK] Database can initialize (in-memory test)")
         return True
     except Exception as e:
-        print(f"  ✗ Database initialization failed: {e}")
+        print(f"  [FAIL] Database initialization failed: {e}")
         return False
 
 
 def check_graceful_degradation():
     """Verify no required env vars crash on startup."""
     try:
-        # Import modules that might check env vars
-        from opensight.api import app
-        from opensight.infra.database import get_db
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.api import app  # noqa: F401
+        from opensight.infra.cache import CachedAnalyzer  # noqa: F401
+        from opensight.infra.database import get_db  # noqa: F401
 
-        print("  ✓ No hard-required env vars (graceful degradation)")
+        print("  [OK] No hard-required env vars (graceful degradation)")
         return True
     except Exception as e:
-        print(f"  ✗ Env var check failed: {e}")
+        print(f"  [FAIL] Env var check failed: {e}")
         return False
 
 
 def check_port_config():
     """Verify expected port matches Dockerfile."""
     try:
-        from opensight.api import app
+        from opensight.api import app  # noqa: F401
 
         # Check if uvicorn config would use port 7860
-        print("  ✓ Port 7860 is expected (matches Dockerfile)")
+        print("  [OK] Port 7860 is expected (matches Dockerfile)")
         return True
     except Exception as e:
-        print(f"  ✗ Port config check failed: {e}")
+        print(f"  [FAIL] Port config check failed: {e}")
         return False
 
 
@@ -124,14 +122,14 @@ def main():
     passed = sum(results)
     total = len(results)
     print("\n" + "=" * 60)
-    print(f"✓ {passed}/{total} checks passed")
+    print(f"[PASS] {passed}/{total} checks passed")
     print("=" * 60)
 
     if passed < total:
-        print("\n⚠️  Some checks failed. Review issues before deployment.")
+        print("\n[WARNING] Some checks failed. Review issues before deployment.")
         sys.exit(1)
     else:
-        print("\n✅ All checks passed. Ready for deployment.")
+        print("\n[SUCCESS] All checks passed. Ready for deployment.")
         sys.exit(0)
 
 
