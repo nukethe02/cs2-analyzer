@@ -238,15 +238,18 @@ class TestDemoParser:
         with pytest.raises(FileNotFoundError):
             DemoParser("/nonexistent/path/demo.dem")
 
-    def test_parser_raises_on_missing_awpy(self, tmp_path):
-        """Parser raises ImportError when awpy not available."""
+    def test_parser_raises_on_no_backend(self, tmp_path):
+        """Parser raises ImportError when no parsing backend is available."""
         demo_file = tmp_path / "test.dem"
         demo_file.write_bytes(b"FAKE_DEMO_DATA")
 
-        # Patch the lazy availability check function
-        with patch("opensight.core.parser._check_awpy_available", return_value=False):
+        # Patch both backends as unavailable
+        with (
+            patch("opensight.core.parser.DEMOPARSER2_AVAILABLE", False),
+            patch("opensight.core.parser.AWPY_AVAILABLE", False),
+        ):
             parser = DemoParser(demo_file)
-            with pytest.raises(ImportError, match="awpy is required"):
+            with pytest.raises(ImportError, match="No parser available"):
                 parser.parse()
 
     def test_parse_caches_result(self, tmp_path):
