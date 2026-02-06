@@ -1013,6 +1013,7 @@ class DemoAnalyzer:
         Each round is assigned to exactly one category (1K, 2K, 3K, 4K, or 5K).
         """
         from opensight.analysis.compute_combat import calculate_multi_kills
+
         calculate_multi_kills(self)
 
     def _is_utility_supported(
@@ -1114,6 +1115,7 @@ class DemoAnalyzer:
         4. Detects "dry peeks" - entries without teammate utility support
         """
         from opensight.analysis.compute_combat import detect_opening_duels
+
         detect_opening_duels(self)
 
     def _detect_opening_engagements(self) -> None:
@@ -1128,6 +1130,7 @@ class DemoAnalyzer:
         initiates combat but doesn't secure the kill.
         """
         from opensight.analysis.compute_combat import detect_opening_engagements
+
         detect_opening_engagements(self)
 
     def _detect_entry_frags(self) -> None:
@@ -1141,6 +1144,7 @@ class DemoAnalyzer:
         - Entry frags: First kills inside bombsite zones
         """
         from opensight.analysis.compute_combat import detect_entry_frags
+
         detect_entry_frags(self)
 
     def _get_player_team_for_engagement(self, steam_id: int) -> str | None:
@@ -1171,6 +1175,7 @@ class DemoAnalyzer:
         - Time to Trade: How fast successful trades were completed
         """
         from opensight.analysis.compute_combat import detect_trades
+
         detect_trades(self)
 
     def _detect_clutches(self) -> None:
@@ -1186,6 +1191,7 @@ class DemoAnalyzer:
         - Individual clutch events with round_number, type, and outcome
         """
         from opensight.analysis.compute_combat import detect_clutches
+
         detect_clutches(self)
 
     def _calculate_kast(self) -> None:
@@ -1197,6 +1203,7 @@ class DemoAnalyzer:
     def _compute_ttd(self) -> None:
         """Compute Time to Damage for each kill with optimized indexing."""
         from opensight.analysis.compute_aim import compute_ttd
+
         compute_ttd(self)
 
     def _compute_true_ttd(self) -> None:
@@ -1429,6 +1436,7 @@ class DemoAnalyzer:
         Falls back to per-kill loop for compatibility.
         """
         from opensight.analysis.compute_aim import compute_crosshair_placement
+
         compute_crosshair_placement(self)
 
     def _compute_cp_from_kill_events(self, kills: list) -> None:
@@ -1828,6 +1836,7 @@ class DemoAnalyzer:
     def _calculate_accuracy_stats(self) -> None:
         """Calculate accuracy statistics from weapon_fire events."""
         from opensight.analysis.compute_aim import calculate_accuracy_stats
+
         calculate_accuracy_stats(self)
 
     def _calculate_spray_accuracy_for_player(
@@ -2028,6 +2037,7 @@ class DemoAnalyzer:
         instead of repositioning - a common mistake that gets punished.
         """
         from opensight.analysis.compute_combat import detect_greedy_repeeks
+
         detect_greedy_repeeks(self)
 
     def _run_state_machine(self) -> None:
@@ -3194,7 +3204,6 @@ def compare_players(match_analysis: MatchAnalysis, player_a_name: str, player_b_
 
 # Alias for backward compatibility
 PlayerAnalytics = PlayerMatchStats
-
 
 
 def calculate_economy_history(match_data: DemoData) -> list[dict]:
