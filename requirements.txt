@@ -44,6 +44,10 @@ alembic>=1.13.0
 # AI Coaching - Anthropic Claude for LLM-powered match insights
 anthropic>=0.77.0
 
+# Authentication
+bcrypt>=4.0.0
+python-jose[cryptography]>=3.3.0
+
 # Optional: Speech-to-text for sentiment analysis (install separately if needed)
 # openai-whisper>=20231117
 # azure-cognitiveservices-speech>=1.35.0
