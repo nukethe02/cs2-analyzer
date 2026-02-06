@@ -64,7 +64,7 @@ def check_database_init():
     try:
         from opensight.infra.database import DatabaseManager
 
-        _db = DatabaseManager(db_url="sqlite:///:memory:")
+        _db = DatabaseManager(db_path=":memory:")
         print("  [OK] Database can initialize (in-memory test)")
         return True
     except Exception as e:
