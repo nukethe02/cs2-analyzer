@@ -84,21 +84,21 @@ class TestTimelineGraphData:
 
     def test_empty_demo_data(self):
         """Empty demo data returns empty timeline."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         assert result["max_rounds"] == 1
         assert result["players"] == []
 
     def test_single_kill_tracks_correctly(self):
         """Single kill is tracked for attacker and death for victim."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.kills = [
             MockKillEvent(round_num=1, attacker_steamid=111, victim_steamid=222, weapon="ak47")
@@ -107,7 +107,7 @@ class TestTimelineGraphData:
         demo_data.player_teams = {111: "CT", 222: "T"}
         demo_data.num_rounds = 1
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         assert result["max_rounds"] == 1
         assert len(result["players"]) == 2
@@ -128,9 +128,9 @@ class TestTimelineGraphData:
 
     def test_awp_kills_tracked_separately(self):
         """AWP kills are tracked in awp_kills field."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.kills = [
             MockKillEvent(round_num=1, attacker_steamid=111, victim_steamid=222, weapon="awp"),
@@ -139,7 +139,7 @@ class TestTimelineGraphData:
         demo_data.player_names = {111: "AWPer", 222: "Victim1", 333: "Victim2"}
         demo_data.num_rounds = 1
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         attacker = next(p for p in result["players"] if p["steam_id"] == 111)
         assert attacker["rounds"][0]["kills"] == 2
@@ -147,9 +147,9 @@ class TestTimelineGraphData:
 
     def test_cumulative_stats_over_rounds(self):
         """Stats accumulate correctly over multiple rounds."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.kills = [
             MockKillEvent(round_num=1, attacker_steamid=111, victim_steamid=222, weapon="ak47"),
@@ -160,7 +160,7 @@ class TestTimelineGraphData:
         demo_data.player_names = {111: "Fragger"}
         demo_data.num_rounds = 3
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         fragger = next(p for p in result["players"] if p["steam_id"] == 111)
 
@@ -171,9 +171,9 @@ class TestTimelineGraphData:
 
     def test_damage_tracking(self):
         """Damage is tracked and accumulated."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.damages = [
             MockDamageEvent(round_num=1, attacker_steamid=111, damage=50),
@@ -183,7 +183,7 @@ class TestTimelineGraphData:
         demo_data.player_names = {111: "Damager"}
         demo_data.num_rounds = 2
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         damager = next(p for p in result["players"] if p["steam_id"] == 111)
         assert damager["rounds"][0]["damage"] == 80  # 50 + 30
@@ -191,9 +191,9 @@ class TestTimelineGraphData:
 
     def test_enemy_flashes_tracked(self):
         """Enemy flashes (duration > 0.5, not teammate) are tracked."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.blinds = [
             # Valid enemy flash
@@ -214,7 +214,7 @@ class TestTimelineGraphData:
         demo_data.player_names = {111: "Flasher"}
         demo_data.num_rounds = 2
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         flasher = next(p for p in result["players"] if p["steam_id"] == 111)
         assert flasher["rounds"][0]["enemies_flashed"] == 1  # Only 1 valid flash
@@ -222,9 +222,9 @@ class TestTimelineGraphData:
 
     def test_players_sorted_by_team(self):
         """Players are sorted CT first, then T, then Unknown."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.kills = [
             MockKillEvent(
@@ -250,7 +250,7 @@ class TestTimelineGraphData:
         demo_data.player_teams = {111: "T", 222: "CT", 333: "Unknown"}
         demo_data.num_rounds = 1
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         # CT should come first
         teams = [p["team"] for p in result["players"]]
@@ -260,9 +260,9 @@ class TestTimelineGraphData:
 
     def test_round_level_stats_included(self):
         """Per-round stats are included for tooltips."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.kills = [
             MockKillEvent(round_num=1, attacker_steamid=111, victim_steamid=222, weapon="ak47"),
@@ -272,7 +272,7 @@ class TestTimelineGraphData:
         demo_data.player_names = {111: "Player1"}
         demo_data.num_rounds = 2
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         player = next(p for p in result["players"] if p["steam_id"] == 111)
         assert player["rounds"][0]["round_kills"] == 1  # Per-round kills
@@ -284,28 +284,28 @@ class TestTimelineGraphDataEdgeCases:
 
     def test_missing_round_num_uses_fallback(self):
         """When round_num is 0, use fallback logic."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.kills = [MockKillEvent(round_num=0, attacker_steamid=111, victim_steamid=222)]
         demo_data.player_names = {111: "Player1"}
 
         # No round boundaries, so should fallback to round 1
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         player = next(p for p in result["players"] if p["steam_id"] == 111)
         assert len(player["rounds"]) >= 1
 
     def test_missing_attacker_id_skipped(self):
         """Kills without attacker_id are skipped."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.kills = [MockKillEvent(round_num=1, attacker_steamid=0, victim_steamid=222)]
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         # Only victim should be tracked (for death)
         assert len(result["players"]) == 1
@@ -313,9 +313,9 @@ class TestTimelineGraphDataEdgeCases:
 
     def test_team_inferred_from_kills_if_missing(self):
         """Team is inferred from kill events if not in player_teams."""
-        from opensight.infra.cache import CachedAnalyzer
+        from opensight.pipeline.orchestrator import DemoOrchestrator
 
-        analyzer = CachedAnalyzer()
+        orchestrator = DemoOrchestrator()
         demo_data = MockDemoData()
         demo_data.kills = [
             MockKillEvent(
@@ -329,7 +329,7 @@ class TestTimelineGraphDataEdgeCases:
         demo_data.player_names = {111: "CTPlayer", 222: "TPlayer"}
         demo_data.player_teams = {}  # Empty - should infer
 
-        result = analyzer._build_timeline_graph_data(demo_data)
+        result = orchestrator._build_timeline_graph_data(demo_data)
 
         attacker = next(p for p in result["players"] if p["steam_id"] == 111)
         victim = next(p for p in result["players"] if p["steam_id"] == 222)
