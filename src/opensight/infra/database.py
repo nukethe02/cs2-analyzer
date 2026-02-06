@@ -497,6 +497,163 @@ class PlayerProfile(Base):
         }
 
 
+class Kill(Base):
+    """Individual kill event storage for detailed analysis."""
+
+    __tablename__ = "kills"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False, index=True)
+
+    tick = Column(Integer)
+    round_num = Column(Integer, index=True)
+
+    attacker_steam_id = Column(String(20), index=True)
+    attacker_name = Column(String(100))
+    attacker_team = Column(String(20))
+    attacker_x = Column(Float)
+    attacker_y = Column(Float)
+    attacker_z = Column(Float)
+
+    victim_steam_id = Column(String(20), index=True)
+    victim_name = Column(String(100))
+    victim_team = Column(String(20))
+    victim_x = Column(Float)
+    victim_y = Column(Float)
+    victim_z = Column(Float)
+
+    weapon = Column(String(50))
+    headshot = Column(Boolean, default=False)
+    penetrated = Column(Boolean, default=False)
+    noscope = Column(Boolean, default=False)
+    thrusmoke = Column(Boolean, default=False)
+    attackerblind = Column(Boolean, default=False)
+    distance = Column(Float)
+
+    assister_steam_id = Column(String(20))
+    assister_name = Column(String(100))
+
+    __table_args__ = (
+        Index("idx_kill_match_round", "match_id", "round_num"),
+        Index("idx_kill_attacker", "attacker_steam_id"),
+        Index("idx_kill_victim", "victim_steam_id"),
+    )
+
+
+class DamageEvent(Base):
+    """Damage event storage for TTD and engagement analysis."""
+
+    __tablename__ = "damage_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False, index=True)
+
+    tick = Column(Integer)
+    round_num = Column(Integer, index=True)
+
+    attacker_steam_id = Column(String(20), index=True)
+    victim_steam_id = Column(String(20), index=True)
+
+    dmg_health = Column(Integer, default=0)
+    dmg_armor = Column(Integer, default=0)
+    hitgroup = Column(String(20))
+    weapon = Column(String(50))
+
+    attacker_x = Column(Float)
+    attacker_y = Column(Float)
+    attacker_z = Column(Float)
+
+    victim_x = Column(Float)
+    victim_y = Column(Float)
+    victim_z = Column(Float)
+
+    __table_args__ = (
+        Index("idx_damage_match_round", "match_id", "round_num"),
+        Index("idx_damage_attacker", "attacker_steam_id"),
+    )
+
+
+class GrenadeEvent(Base):
+    """Grenade throw/detonate events for utility analysis."""
+
+    __tablename__ = "grenade_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False, index=True)
+
+    tick = Column(Integer)
+    round_num = Column(Integer, index=True)
+
+    thrower_steam_id = Column(String(20), index=True)
+    thrower_name = Column(String(100))
+
+    grenade_type = Column(String(20))
+    event_type = Column(String(20))
+
+    x = Column(Float)
+    y = Column(Float)
+    z = Column(Float)
+
+    __table_args__ = (
+        Index("idx_grenade_match_round", "match_id", "round_num"),
+        Index("idx_grenade_thrower", "thrower_steam_id"),
+    )
+
+
+class BombEvent(Base):
+    """Bomb plant/defuse/explode events."""
+
+    __tablename__ = "bomb_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False, index=True)
+
+    tick = Column(Integer)
+    round_num = Column(Integer, index=True)
+
+    player_steam_id = Column(String(20), index=True)
+    player_name = Column(String(100))
+
+    event_type = Column(String(20))
+
+    site = Column(String(10))
+
+    x = Column(Float)
+    y = Column(Float)
+    z = Column(Float)
+
+    __table_args__ = (
+        Index("idx_bomb_match_round", "match_id", "round_num"),
+        Index("idx_bomb_player", "player_steam_id"),
+    )
+
+
+class Job(Base):
+    """Persistent job tracking for async analysis."""
+
+    __tablename__ = "jobs"
+
+    id = Column(String(36), primary_key=True)
+    filename = Column(String(500), nullable=False)
+    file_size = Column(Integer)
+
+    status = Column(String(20), default="queued", index=True)
+
+    created_at = Column(DateTime, default=_utc_now)
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+
+    result_json = Column(Text)
+    error_message = Column(Text)
+
+    demo_hash = Column(String(64), index=True)
+
+    __table_args__ = (
+        Index("idx_job_status", "status"),
+        Index("idx_job_created", "created_at"),
+    )
+
+
 # =============================================================================
 # Database Manager
 # =============================================================================
