@@ -314,9 +314,9 @@ async def get_player_metrics(steam_id: str, demo_id: str = Query(None, max_lengt
         validate_demo_id(demo_id)
 
     try:
-        from opensight.infra.cache import CacheManager
+        from opensight.infra.cache import DemoCache
 
-        CacheManager()
+        DemoCache()
 
         if demo_id:
             pass
