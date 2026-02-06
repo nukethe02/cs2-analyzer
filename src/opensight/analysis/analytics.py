@@ -23,9 +23,8 @@ import pandas as pd
 from opensight.analysis.models import *  # noqa: F403, F405
 from opensight.core.constants import (
     CS2_TICK_RATE,
-    TRADE_WINDOW_SECONDS,
 )
-from opensight.core.parser import DemoData, safe_float, safe_int, safe_str
+from opensight.core.parser import DemoData, safe_float, safe_int
 
 logger = logging.getLogger(__name__)
 
