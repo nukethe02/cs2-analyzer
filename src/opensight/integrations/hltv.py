@@ -232,7 +232,8 @@ class HLTVCache:
 
             return data.get("value")
 
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to read cache for key {key}: {e}")
             return None
 
     def set(self, key: str, value: dict):
@@ -255,8 +256,8 @@ class HLTVCache:
         for path in self.cache_dir.glob("*.json"):
             try:
                 path.unlink()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to delete cache file {path}: {e}")
 
 
 class HLTVClient:

@@ -902,6 +902,226 @@ class TestImportSanity:
         assert callable(validate_steamid)
 
 
+class TestNullComponentPassthrough:
+    """Test that None/default component stats produce zero-value dicts without crashing."""
+
+    def test_trades_none_returns_all_zero(self):
+        """When PlayerMatchStats.trades is None, _get_trade_stats returns all zeros."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = PlayerMatchStats(
+            steam_id=1,
+            name="NullTrades",
+            team="CT",
+            kills=0,
+            deaths=0,
+            assists=0,
+            headshots=0,
+            total_damage=0,
+            rounds_played=1,
+        )
+        # Force trades to None (bypassing default_factory)
+        object.__setattr__(p, "trades", None)
+        orch = DemoOrchestrator()
+        trades = orch._get_trade_stats(p)
+        assert isinstance(trades, dict)
+        assert trades["trade_kill_opportunities"] == 0
+        assert trades["trade_kill_success"] == 0
+        assert trades["trade_kills"] == 0
+        assert trades["deaths_traded"] == 0
+        assert trades["untraded_deaths"] == 0
+
+    def test_clutches_none_returns_all_zero(self):
+        """When PlayerMatchStats.clutches is None, _get_clutch_stats returns all zeros."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = PlayerMatchStats(
+            steam_id=1,
+            name="NullClutches",
+            team="CT",
+            kills=0,
+            deaths=0,
+            assists=0,
+            headshots=0,
+            total_damage=0,
+            rounds_played=1,
+        )
+        object.__setattr__(p, "clutches", None)
+        orch = DemoOrchestrator()
+        clutches = orch._get_clutch_stats(p)
+        assert isinstance(clutches, dict)
+        assert clutches["clutch_wins"] == 0
+        assert clutches["total_situations"] == 0
+        assert clutches["v1_wins"] == 0
+
+    def test_opening_duels_none_returns_all_zero(self):
+        """When PlayerMatchStats.opening_duels is None, _get_entry_stats returns all zeros."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = PlayerMatchStats(
+            steam_id=1,
+            name="NullEntries",
+            team="CT",
+            kills=0,
+            deaths=0,
+            assists=0,
+            headshots=0,
+            total_damage=0,
+            rounds_played=1,
+        )
+        object.__setattr__(p, "opening_duels", None)
+        orch = DemoOrchestrator()
+        entry = orch._get_entry_stats(p)
+        assert isinstance(entry, dict)
+        assert entry["entry_kills"] == 0
+        assert entry["entry_deaths"] == 0
+        assert entry["entry_attempts"] == 0
+        assert entry["entry_diff"] == 0
+
+
+class TestExtremeValues:
+    """Test that extreme/boundary values don't cause crashes (division by zero, overflow)."""
+
+    def test_kills_99999_deaths_0(self):
+        """Extreme kills with zero deaths should not crash K/D ratio calculation."""
+        p = PlayerMatchStats(
+            steam_id=1,
+            name="Extreme",
+            team="CT",
+            kills=99999,
+            deaths=0,
+            assists=0,
+            headshots=50000,
+            total_damage=200000,
+            rounds_played=24,
+        )
+        # kd_ratio should handle deaths=0 gracefully
+        assert p.kd_ratio == 99999.0  # float(kills) when deaths==0
+        # adr should be fine with large total_damage
+        assert p.adr > 0
+        # headshot_percentage should be fine
+        assert p.headshot_percentage > 0
+
+    def test_rounds_played_0(self):
+        """Zero rounds_played should not cause division by zero in ADR, KAST%, etc."""
+        p = PlayerMatchStats(
+            steam_id=1,
+            name="ZeroRounds",
+            team="CT",
+            kills=5,
+            deaths=3,
+            assists=1,
+            headshots=2,
+            total_damage=500,
+            rounds_played=0,
+        )
+        # All per-round metrics must handle rounds_played=0
+        assert p.adr == 0.0
+        assert p.kast_percentage == 0.0
+        assert p.survival_rate == 0.0
+        assert p.kills_per_round == 0.0
+        assert p.deaths_per_round == 0.0
+        assert p.assists_per_round == 0.0
+
+    def test_total_damage_0(self):
+        """Zero total_damage should not crash any calculations."""
+        p = PlayerMatchStats(
+            steam_id=1,
+            name="NoDamage",
+            team="CT",
+            kills=0,
+            deaths=10,
+            assists=0,
+            headshots=0,
+            total_damage=0,
+            rounds_played=24,
+        )
+        assert p.adr == 0.0
+        assert p.headshot_percentage == 0.0
+        # hltv_rating should still compute (may be low but not crash)
+        rating = p.hltv_rating
+        assert isinstance(rating, float)
+
+    def test_orchestrator_serialization_extreme_values(self):
+        """Orchestrator helper methods handle extreme player stats without crashing."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = PlayerMatchStats(
+            steam_id=1,
+            name="Extreme",
+            team="CT",
+            kills=99999,
+            deaths=0,
+            assists=0,
+            headshots=50000,
+            total_damage=200000,
+            rounds_played=0,  # division edge case
+        )
+        orch = DemoOrchestrator()
+        # These must not crash even with extreme values
+        entry = orch._get_entry_stats(p)
+        trades = orch._get_trade_stats(p)
+        clutches = orch._get_clutch_stats(p)
+        assert isinstance(entry, dict)
+        assert isinstance(trades, dict)
+        assert isinstance(clutches, dict)
+
+
+class TestEmptyMatchAnalysis:
+    """Test that validate_result handles edge cases with empty players."""
+
+    def test_validate_result_empty_players_dict(self):
+        """validate_result with empty players dict should NOT crash."""
+        from datetime import datetime
+
+        result = {
+            "demo_info": {
+                "map": "de_dust2",
+                "rounds": 0,
+                "duration_minutes": 0,
+                "score": "0 - 0",
+                "score_ct": 0,
+                "score_t": 0,
+                "total_kills": 0,
+                "team1_name": "CT",
+                "team2_name": "T",
+            },
+            "players": {},  # empty players dict
+            "mvp": {"name": "Nobody", "rating": 0},
+            "round_timeline": [],
+            "kill_matrix": [],
+            "heatmap_data": {},
+            "coaching": {},
+            "tactical": {},
+            "synergy": {},
+            "timeline_graph": {},
+            "analyzed_at": datetime.now().isoformat(),
+        }
+        errors = validate_result(result)
+        # Should not crash; may or may not report errors but must not throw
+        assert isinstance(errors, list)
+
+    def test_validate_result_players_none_reports_error(self):
+        """validate_result with players=None should report a type error."""
+        result = {
+            "demo_info": {},
+            "players": None,
+            "mvp": {},
+            "round_timeline": [],
+            "kill_matrix": [],
+            "heatmap_data": {},
+            "coaching": {},
+            "tactical": {},
+            "synergy": {},
+            "timeline_graph": {},
+            "analyzed_at": "",
+        }
+        errors = validate_result(result)
+        assert isinstance(errors, list)
+        # Should have reported that players is not a dict
+        assert any("players" in e.lower() or "dict" in e.lower() for e in errors)
+
+
 class TestKeyNameConsistency:
     """Verify AI modules use correct key names from the contract."""
 

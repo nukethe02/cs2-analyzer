@@ -57,7 +57,11 @@ def _get_sharecode_cache():
 
 
 def _get_job_store():
-    """Lazy import to avoid circular dependency."""
+    """Lazy import to avoid circular dependency.
+
+    NOTE(DRY-intentional): Identical in all 5 route modules. See routes_analysis.py
+    for full explanation of why this duplication is intentional.
+    """
     from opensight.api import job_store
 
     return job_store
@@ -342,8 +346,8 @@ async def clear_cache() -> dict[str, str]:
 
         try:
             sharecode_cache.clear()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to clear sharecode cache: {e}")
 
         return {"status": "ok", "message": "Cache cleared"}
     except ImportError as e:
@@ -597,8 +601,8 @@ async def add_demo_to_scouting_session(
         if temp_file:
             try:
                 Path(temp_file.name).unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp file {temp_file.name}: {e}")
 
 
 @router.post("/api/scouting/session/{session_id}/report")

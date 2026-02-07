@@ -21,14 +21,21 @@ router = APIRouter(tags=["heatmaps"])
 
 
 def _get_job_store():
-    """Lazy import to avoid circular dependency."""
+    """Lazy import to avoid circular dependency.
+
+    NOTE(DRY-intentional): Identical in all 5 route modules. See routes_analysis.py
+    for full explanation of why this duplication is intentional.
+    """
     from opensight.api import job_store
 
     return job_store
 
 
 def _get_completed_result(job_id: str) -> dict[str, Any]:
-    """Validate job_id, fetch job, ensure completed, return result dict."""
+    """Validate job_id, fetch job, ensure completed, return result dict.
+
+    TODO(DRY): extract to shared.py — identical copy exists in routes_export.py.
+    """
     validate_job_id(job_id)
     job_store = _get_job_store()
 

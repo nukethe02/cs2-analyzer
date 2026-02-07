@@ -37,7 +37,14 @@ router = APIRouter(tags=["analysis"])
 
 
 def _get_job_store():
-    """Lazy import to avoid circular dependency."""
+    """Lazy import to avoid circular dependency.
+
+    NOTE(DRY-intentional): This identical pattern exists in all 5 route modules
+    (routes_analysis, routes_heatmap, routes_match, routes_export, routes_misc).
+    The duplication is INTENTIONAL — each module needs its own lazy import to
+    break the circular dependency between route modules and api/__init__.py.
+    Do NOT consolidate into shared.py; that would re-introduce the circular import.
+    """
     # To use persistent jobs (survives restart):
     # from opensight.infra.job_store import PersistentJobStore
     # job_store = PersistentJobStore()
@@ -151,6 +158,10 @@ async def analyze_demo(request: Request, file: UploadFile = File(...)):
 @router.get("/analyze/{job_id}")
 async def get_job_status(job_id: str) -> dict[str, Any]:
     """Get the status of an analysis job."""
+    # TODO(DRY): extract "validate + get_job + 404 check" to shared utility
+    # in shared.py — this pattern repeats 6+ times across route modules.
+    # See also _get_completed_result() in routes_heatmap.py / routes_export.py
+    # which partially consolidates this for the "completed job + result" variant.
     validate_job_id(job_id)
     job_store = _get_job_store()
 

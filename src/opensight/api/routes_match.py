@@ -32,7 +32,11 @@ router = APIRouter(tags=["match"])
 
 
 def _get_job_store():
-    """Lazy import to avoid circular dependency."""
+    """Lazy import to avoid circular dependency.
+
+    NOTE(DRY-intentional): Identical in all 5 route modules. See routes_analysis.py
+    for full explanation of why this duplication is intentional.
+    """
     from opensight.api import job_store
 
     return job_store

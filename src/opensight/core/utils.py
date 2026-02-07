@@ -202,3 +202,65 @@ def format_percentage(value: float, decimals: int = 1) -> str:
     if value < 1.0:
         value *= 100
     return f"{value:.{decimals}f}%"
+
+
+# =============================================================================
+# Round boundary utilities (shared by orchestrator, state_machine, etc.)
+# =============================================================================
+
+
+def build_round_boundaries(
+    rounds: list,
+) -> dict[int, tuple[int, int]]:
+    """
+    Extract round boundaries from parsed round data.
+
+    Builds a mapping of round_num -> (start_tick, end_tick) from round objects
+    that have round_num, start_tick, and end_tick attributes.
+
+    Args:
+        rounds: List of round objects with round_num, start_tick, end_tick attrs.
+
+    Returns:
+        Dict mapping round_num to (start_tick, end_tick).
+    """
+    boundaries: dict[int, tuple[int, int]] = {}
+    for r in rounds:
+        round_num = getattr(r, "round_num", 0)
+        start_tick = getattr(r, "start_tick", 0)
+        end_tick = getattr(r, "end_tick", 0)
+        if round_num and end_tick > 0:
+            boundaries[round_num] = (start_tick, end_tick)
+    return boundaries
+
+
+def infer_round_from_tick(
+    tick: int,
+    round_boundaries: dict[int, tuple[int, int]],
+) -> int:
+    """
+    Infer which round a given tick belongs to, using round boundary data.
+
+    First checks if the tick falls within any round's [start_tick, end_tick]
+    range. If not, falls back to finding the latest round whose end_tick
+    is before the given tick. Returns 1 as ultimate fallback.
+
+    Args:
+        tick: The game tick to look up.
+        round_boundaries: Dict mapping round_num -> (start_tick, end_tick).
+
+    Returns:
+        The inferred round number (1-based), or 1 if no boundaries exist.
+    """
+    # Direct match: tick falls within a round's range
+    for rn, (st, et) in round_boundaries.items():
+        if st <= tick <= et:
+            return rn
+    # Fallback: find the latest round that ended before this tick
+    if round_boundaries:
+        for rn in sorted(round_boundaries.keys(), reverse=True):
+            _st, et = round_boundaries[rn]
+            if tick > et:
+                return rn
+        return 1
+    return 1

@@ -16,9 +16,8 @@ from opensight.analysis.analytics import (
     PlayerMatchStats,
     ValidationResult,
     analyze_demo,
-    safe_float,
 )
-from opensight.core.parser import DemoData
+from opensight.core.parser import DemoData, safe_float
 
 
 class TestSafeFloat:
@@ -314,11 +313,11 @@ class TestDemoAnalyzer:
 
 
 class TestAngularErrorCalculation:
-    """Tests for angular error calculation in DemoAnalyzer."""
+    """Tests for angular error calculation (module-level function in compute_aim)."""
 
     def test_angular_error_forward_looking(self):
         """Zero error when looking directly at target."""
-        analyzer = DemoAnalyzer(MagicMock())
+        from opensight.analysis.compute_aim import calculate_angular_error
 
         # Attacker at origin, looking forward (+X)
         attacker_pos = np.array([0.0, 0.0, 64.0])
@@ -327,9 +326,7 @@ class TestAngularErrorCalculation:
         # Target directly ahead
         victim_pos = np.array([100.0, 0.0, 64.0])
 
-        total, pitch_err, yaw_err = analyzer._calculate_angular_error(
-            attacker_pos, pitch, yaw, victim_pos
-        )
+        total, pitch_err, yaw_err = calculate_angular_error(attacker_pos, pitch, yaw, victim_pos)
 
         assert total == pytest.approx(0.0, abs=0.1)
         assert pitch_err == pytest.approx(0.0, abs=0.1)
@@ -337,7 +334,7 @@ class TestAngularErrorCalculation:
 
     def test_angular_error_90_degrees(self):
         """90 degree error when target is to the side."""
-        analyzer = DemoAnalyzer(MagicMock())
+        from opensight.analysis.compute_aim import calculate_angular_error
 
         # Attacker at origin, looking forward (+X)
         attacker_pos = np.array([0.0, 0.0, 64.0])
@@ -346,18 +343,16 @@ class TestAngularErrorCalculation:
         # Target to the left (+Y)
         victim_pos = np.array([0.0, 100.0, 64.0])
 
-        total, pitch_err, yaw_err = analyzer._calculate_angular_error(
-            attacker_pos, pitch, yaw, victim_pos
-        )
+        total, pitch_err, yaw_err = calculate_angular_error(attacker_pos, pitch, yaw, victim_pos)
 
         assert total == pytest.approx(90.0, abs=1.0)
 
     def test_angular_error_same_position(self):
         """Zero error when at same position."""
-        analyzer = DemoAnalyzer(MagicMock())
+        from opensight.analysis.compute_aim import calculate_angular_error
 
         pos = np.array([100.0, 100.0, 64.0])
-        total, pitch_err, yaw_err = analyzer._calculate_angular_error(pos, 0.0, 0.0, pos)
+        total, pitch_err, yaw_err = calculate_angular_error(pos, 0.0, 0.0, pos)
 
         assert total == 0.0
         assert pitch_err == 0.0

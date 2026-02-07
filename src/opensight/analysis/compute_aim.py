@@ -147,7 +147,8 @@ def _compute_angular_error(
 
         return float(angular_error_deg)
 
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Angular error computation failed: {e}")
         return None
 
 
@@ -668,7 +669,8 @@ def find_visibility_start_simple(
                 # No view angles - assume visible if in range
                 return tick
 
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Error checking visibility at tick: {e}")
             continue
 
     return None

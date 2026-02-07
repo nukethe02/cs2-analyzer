@@ -14,6 +14,8 @@ from typing import Any
 
 import numpy as np
 
+from opensight.core.utils import build_round_boundaries, infer_round_from_tick
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,10 +77,16 @@ class DemoOrchestrator:
                     "deaths": p.deaths,
                     "assists": p.assists,
                     "rounds_played": p.rounds_played,
+                    # NOTE: duplicates analytics.py computation — p.adr is already rounded
+                    # in PlayerMatchStats.adr property. Consider using p.adr directly.
                     "adr": round(p.adr, 1) if p.adr is not None else 0,
+                    # NOTE: duplicates analytics.py computation — p.headshot_percentage is
+                    # already rounded in PlayerMatchStats.headshot_percentage property.
                     "headshot_pct": (
                         round(p.headshot_percentage, 1) if p.headshot_percentage is not None else 0
                     ),
+                    # NOTE: duplicates analytics.py computation — consider consolidating
+                    # with PlayerMatchStats.kd_ratio property (models.py)
                     "kd_ratio": round(p.kills / max(1, p.deaths), 2),
                     "total_damage": p.total_damage,
                     "2k": mk["2k"],
@@ -556,30 +564,13 @@ class DemoOrchestrator:
             f"{len(player_names)} players"
         )
 
-        # Build round boundaries for tick-based inference
-        round_boundaries = {}  # round_num -> (start_tick, end_tick)
+        # Build round boundaries for tick-based inference (uses shared utility)
+        round_boundaries = build_round_boundaries(rounds_data)
         round_info = {}  # round_num -> round data
         for r in rounds_data:
             round_num = getattr(r, "round_num", 0)
-            start_tick = getattr(r, "start_tick", 0)
-            end_tick = getattr(r, "end_tick", 0)
             if round_num:
-                round_boundaries[round_num] = (start_tick, end_tick)
                 round_info[round_num] = r
-
-        def infer_round(tick: int) -> int:
-            """Infer round number from tick."""
-            for rn, (st, et) in round_boundaries.items():
-                if st <= tick <= et:
-                    return rn
-            # Fallback: find closest round
-            if round_boundaries:
-                for rn in sorted(round_boundaries.keys(), reverse=True):
-                    st, et = round_boundaries[rn]
-                    if tick > et:
-                        return rn
-                return 1
-            return 1
 
         def tick_to_round_time(tick: int, round_start: int) -> float:
             """Convert tick to seconds from round start."""
@@ -600,7 +591,7 @@ class DemoOrchestrator:
             # Infer round from tick if needed
             if round_num == 0:
                 if round_boundaries and not has_round_data:
-                    round_num = infer_round(tick)
+                    round_num = infer_round_from_tick(tick, round_boundaries)
                 else:
                     round_num = 1
 
@@ -612,6 +603,9 @@ class DemoOrchestrator:
             round_start = round_boundaries.get(round_num, (0, 0))[0]
             time_seconds = tick_to_round_time(tick, round_start)
 
+            # TODO(DRY): extract player name resolution to shared utility — this
+            # "getattr name or player_names.get or Player_{id[-4:]}" pattern repeats
+            # 4+ times in orchestrator.py. Consider resolve_player_name(event, attr, steam_id, names).
             # Resolve attacker name with proper fallback
             attacker_id = getattr(kill, "attacker_steamid", 0)
             attacker_name = getattr(kill, "attacker_name", "") or player_names.get(attacker_id)
@@ -630,7 +624,9 @@ class DemoOrchestrator:
             attacker_side = str(getattr(kill, "attacker_side", "")).upper()
             victim_side = str(getattr(kill, "victim_side", "")).upper()
 
-            # Normalize team names
+            # TODO(DRY): extract team side normalization to shared utility — this
+            # '"CT" if "CT" in side else "T"' pattern repeats 9+ times across
+            # orchestrator.py and parser.py. Consider normalize_team_side(side_str).
             attacker_team = "CT" if "CT" in attacker_side else "T"
             victim_team = "CT" if "CT" in victim_side else "T"
 
@@ -741,7 +737,7 @@ class DemoOrchestrator:
             round_num = getattr(grenade, "round_num", 0)
             if round_num == 0 and round_boundaries:
                 tick = getattr(grenade, "tick", 0)
-                round_num = infer_round(tick)
+                round_num = infer_round_from_tick(tick, round_boundaries)
             if round_num == 0:
                 continue
 
@@ -791,7 +787,7 @@ class DemoOrchestrator:
             round_num = getattr(blind, "round_num", 0)
             if round_num == 0 and round_boundaries:
                 tick = getattr(blind, "tick", 0)
-                round_num = infer_round(tick)
+                round_num = infer_round_from_tick(tick, round_boundaries)
             if round_num == 0:
                 continue
 
@@ -1117,28 +1113,8 @@ class DemoOrchestrator:
         kills = getattr(demo_data, "kills", [])
         rounds = getattr(demo_data, "rounds", [])
 
-        # Build round boundaries for inferring round_num from tick
-        round_boundaries: list[tuple[int, int, int]] = []  # (round_num, start_tick, end_tick)
-        for r in rounds:
-            round_num = getattr(r, "round_num", 0)
-            start_tick = getattr(r, "start_tick", 0)
-            end_tick = getattr(r, "end_tick", 0)
-            if round_num and end_tick > 0:
-                round_boundaries.append((round_num, start_tick, end_tick))
-        round_boundaries.sort(key=lambda x: x[1])
-
-        def infer_round_from_tick(tick: int) -> int:
-            """Infer round number from tick using round boundaries."""
-            for rnd_num, start_tick, end_tick in round_boundaries:
-                if start_tick <= tick <= end_tick:
-                    return rnd_num
-            # Fallback: find closest round after tick
-            if round_boundaries:
-                for rnd_num, _start_tick, end_tick in reversed(round_boundaries):
-                    if tick > end_tick:
-                        return rnd_num
-                return 1
-            return 1
+        # Build round boundaries using shared utility
+        round_boundaries = build_round_boundaries(rounds)
 
         # Check if kills have valid round data
         has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
@@ -1157,7 +1133,7 @@ class DemoOrchestrator:
             if round_num == 0:
                 if round_boundaries and not has_round_data:
                     tick = getattr(kill, "tick", 0)
-                    round_num = infer_round_from_tick(tick)
+                    round_num = infer_round_from_tick(tick, round_boundaries)
                 else:
                     round_num = 1  # Fallback to round 1 if no boundary data
 
@@ -1198,27 +1174,8 @@ class DemoOrchestrator:
         player_teams = getattr(demo_data, "player_teams", {})
         rounds = getattr(demo_data, "rounds", [])
 
-        # Build round boundaries from round events (for inferring round_num from tick)
-        round_boundaries = []  # List of (round_num, start_tick, end_tick)
-        for r in rounds:
-            round_num = getattr(r, "round_num", 0)
-            start_tick = getattr(r, "start_tick", 0)
-            end_tick = getattr(r, "end_tick", 0)
-            if round_num and end_tick > 0:
-                round_boundaries.append((round_num, start_tick, end_tick))
-        round_boundaries.sort(key=lambda x: x[1])  # Sort by start_tick
-
-        def infer_round_from_tick(tick: int) -> int:
-            """Infer round number from tick using round boundaries."""
-            for round_num, start_tick, end_tick in round_boundaries:
-                if start_tick <= tick <= end_tick:
-                    return round_num
-            if round_boundaries:
-                for round_num, _start_tick, end_tick in reversed(round_boundaries):
-                    if tick > end_tick:
-                        return round_num
-                return 1
-            return 1
+        # Build round boundaries using shared utility
+        round_boundaries = build_round_boundaries(rounds)
 
         # Check if kills have valid round data
         has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
@@ -1254,7 +1211,7 @@ class DemoOrchestrator:
             if round_num == 0:
                 if round_boundaries and not has_round_data:
                     tick = getattr(kill, "tick", 0)
-                    round_num = infer_round_from_tick(tick)
+                    round_num = infer_round_from_tick(tick, round_boundaries)
                 else:
                     round_num = 1
 
@@ -1285,7 +1242,7 @@ class DemoOrchestrator:
             if round_num == 0:
                 if round_boundaries and not has_round_data:
                     tick = getattr(dmg, "tick", 0)
-                    round_num = infer_round_from_tick(tick)
+                    round_num = infer_round_from_tick(tick, round_boundaries)
                 else:
                     round_num = 1
 
@@ -1307,7 +1264,7 @@ class DemoOrchestrator:
             if round_num == 0:
                 if round_boundaries and not has_round_data:
                     tick = getattr(blind, "tick", 0)
-                    round_num = infer_round_from_tick(tick)
+                    round_num = infer_round_from_tick(tick, round_boundaries)
                 else:
                     round_num = 1
 
