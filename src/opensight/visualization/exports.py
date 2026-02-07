@@ -54,18 +54,24 @@ def export_player_stats_csv(players: list[dict]) -> str:
     writer.writerow(_PLAYER_CSV_COLUMNS)
 
     for p in players:
+        stats = p.get("stats", {})
+        rating_data = p.get("rating", {})
         writer.writerow(
             [
                 p.get("name", p.get("player_name", "")),
                 p.get("steam_id", p.get("steamid", "")),
                 p.get("team", ""),
-                p.get("kills", 0),
-                p.get("deaths", 0),
-                p.get("assists", 0),
-                p.get("adr", 0.0),
-                p.get("rating", p.get("hltv_rating", 0.0)),
-                p.get("kast_pct", p.get("kast", 0.0)),
-                p.get("hs_pct", p.get("headshot_pct", p.get("headshot_percentage", 0.0))),
+                stats.get("kills", p.get("kills", 0)),
+                stats.get("deaths", p.get("deaths", 0)),
+                stats.get("assists", p.get("assists", 0)),
+                stats.get("adr", p.get("adr", 0.0)),
+                rating_data.get("hltv_rating", p.get("hltv_rating", 0.0))
+                if isinstance(rating_data, dict)
+                else p.get("rating", p.get("hltv_rating", 0.0)),
+                rating_data.get("kast_percentage", p.get("kast_pct", p.get("kast", 0.0)))
+                if isinstance(rating_data, dict)
+                else p.get("kast_pct", p.get("kast", 0.0)),
+                stats.get("headshot_pct", p.get("hs_pct", p.get("headshot_percentage", 0.0))),
             ]
         )
 
@@ -102,17 +108,20 @@ def export_rounds_csv(rounds: list[dict]) -> str:
     writer.writerow(_ROUND_CSV_COLUMNS)
 
     for r in rounds:
+        econ = r.get("economy") or {}
+        t_econ = econ.get("t") or {}
+        ct_econ = econ.get("ct") or {}
         writer.writerow(
             [
-                r.get("round", r.get("round_num", "")),
+                r.get("round_num", r.get("round", "")),
                 r.get("winner", ""),
                 r.get("win_reason", r.get("reason", "")),
                 r.get("t_score", 0),
                 r.get("ct_score", 0),
-                r.get("t_equipment", r.get("team_t_val", 0)),
-                r.get("ct_equipment", r.get("team_ct_val", 0)),
-                r.get("t_buy_type", r.get("t_buy", "")),
-                r.get("ct_buy_type", r.get("ct_buy", "")),
+                t_econ.get("equipment", r.get("t_equipment", r.get("team_t_val", 0))),
+                ct_econ.get("equipment", r.get("ct_equipment", r.get("team_ct_val", 0))),
+                t_econ.get("buy_type", r.get("t_buy_type", r.get("t_buy", ""))),
+                ct_econ.get("buy_type", r.get("ct_buy_type", r.get("ct_buy", ""))),
             ]
         )
 

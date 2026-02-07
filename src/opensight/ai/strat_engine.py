@@ -104,7 +104,7 @@ class StratEngine:
         Returns:
             StratAnalysis with detected patterns
         """
-        match_info = match_data.get("match_info", {})
+        match_info = match_data.get("demo_info", {})
         map_name = match_info.get("map", "unknown")
         round_timeline = match_data.get("round_timeline", [])
         players = match_data.get("players", {})
@@ -243,16 +243,19 @@ class StratEngine:
             if len(utility) < 2 or len(kills) < 1:
                 continue
 
-            # Detect A site execute (using zone field from schema)
-            a_utility = [u for u in utility if "A" in u.get("zone", "").upper()]
-            if len(a_utility) >= 2:
-                # Check if kills happened at A site after utility
-                a_kills = [
-                    k
-                    for k in kills
-                    if "A" in k.get("victim_zone", "").upper() and k.get("killer_team") == "T"
-                ]
-                if a_kills:
+            # Detect A site execute based on kill positions (victim_zone)
+            # Utility events don't have a "zone" field, so we detect executes
+            # by checking if T-side kills happened at a specific site after utility
+            a_kills = [
+                k
+                for k in kills
+                if "A" in (k.get("victim_zone") or "").upper() and k.get("killer_team") == "T"
+            ]
+            if len(a_kills) >= 1 and len(utility) >= 2:
+                # Utility thrown before the kills is likely part of the execute
+                first_kill_tick = a_kills[0].get("tick", 0)
+                pre_kill_utility = [u for u in utility if u.get("tick", 0) <= first_kill_tick]
+                if len(pre_kill_utility) >= 2:
                     executes.append(
                         Execute(
                             round_number=round_num,
@@ -263,23 +266,24 @@ class StratEngine:
                                     "player": u.get("player"),
                                     "time": u.get("time_seconds", 0),
                                 }
-                                for u in a_utility[:5]
+                                for u in pre_kill_utility[:5]
                             ],
                             entry_point=a_kills[0].get("victim_zone", "A Site"),
                             success=round_data.get("winner") == "T",
-                            timing=a_utility[0].get("time_seconds", 45.0),
+                            timing=pre_kill_utility[0].get("time_seconds", 45.0),
                         )
                     )
 
-            # Detect B site execute (using zone field from schema)
-            b_utility = [u for u in utility if "B" in u.get("zone", "").upper()]
-            if len(b_utility) >= 2:
-                b_kills = [
-                    k
-                    for k in kills
-                    if "B" in k.get("victim_zone", "").upper() and k.get("killer_team") == "T"
-                ]
-                if b_kills:
+            # Detect B site execute based on kill positions (victim_zone)
+            b_kills = [
+                k
+                for k in kills
+                if "B" in (k.get("victim_zone") or "").upper() and k.get("killer_team") == "T"
+            ]
+            if len(b_kills) >= 1 and len(utility) >= 2:
+                first_kill_tick = b_kills[0].get("tick", 0)
+                pre_kill_utility = [u for u in utility if u.get("tick", 0) <= first_kill_tick]
+                if len(pre_kill_utility) >= 2:
                     executes.append(
                         Execute(
                             round_number=round_num,
@@ -290,11 +294,11 @@ class StratEngine:
                                     "player": u.get("player"),
                                     "time": u.get("time_seconds", 0),
                                 }
-                                for u in b_utility[:5]
+                                for u in pre_kill_utility[:5]
                             ],
                             entry_point=b_kills[0].get("victim_zone", "B Site"),
                             success=round_data.get("winner") == "T",
-                            timing=b_utility[0].get("time_seconds", 45.0),
+                            timing=pre_kill_utility[0].get("time_seconds", 45.0),
                         )
                     )
 

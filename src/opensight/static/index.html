@@ -3349,7 +3349,9 @@
             const score = data.demo_info.score || '';
             const parts = score.split('-').map(s => parseInt(s.trim()));
 
-            for (const player of data.players) {
+            const playersList = Array.isArray(data.players) ? data.players :
+                Object.values(data.players || {});
+            for (const player of playersList) {
                 const steamId = player.steam_id || player.steamid || player.id;
                 if (!steamId || steamId === '0' || steamId === 0) continue;
 
@@ -3395,7 +3397,7 @@
                     console.warn('Auto-store failed for', steamId, err);
                 }
             }
-            console.log('[OpenSight] Auto-stored match data for', data.players.length, 'players');
+            console.log('[OpenSight] Auto-stored match data for', playersList.length, 'players');
         }
 
         // Poll for async job completion
@@ -3936,11 +3938,11 @@
             `;
 
             roundTimeline.forEach((round, idx) => {
-                const roundNum = round.round || idx + 1;
+                const roundNum = round.round_num || round.round || idx + 1;
                 const winner = round.winner || 'Unknown';
-                const winType = round.win_type || '';
-                const ctScore = round.ct_score || 0;
-                const tScore = round.t_score || 0;
+                const winType = round.win_reason || round.win_type || '';
+                const ctScore = round.ct_kills || round.ct_score || 0;
+                const tScore = round.t_kills || round.t_score || 0;
                 const winColor = winner === 'CT' ? 'var(--ct-color)' : 'var(--t-color)';
 
                 html += `
@@ -4849,7 +4851,7 @@
                     const shotsFired = p.aim_stats?.shots_fired || p.shots_fired || 0;
                     const dmgPerShot = shotsFired > 0 ? (totalDamage / shotsFired) : 0;
                     const roundsPlayed = p.rounds_played || p.stats?.rounds_played || 1;
-                    const deaths = p.deaths || p.stats?.deaths || 0;
+                    const deaths = p.stats?.deaths || p.deaths || 0;
                     const roundsSurvived = Math.max(0, roundsPlayed - deaths);
                     const survivalPct = roundsPlayed > 0 ? Math.max(0, (roundsSurvived / roundsPlayed * 100)) : 0;
                     const damageBarWidth = maxDamage > 0 ? (totalDamage / maxDamage * 100) : 0;
@@ -5381,7 +5383,7 @@
             const renderTeamTable = (players, teamName) => {
                 if (!players || players.length === 0) return '';
 
-                const sorted = [...players].sort((a, b) => safeNum(b.hltv_rating, 0) - safeNum(a.hltv_rating, 0));
+                const sorted = [...players].sort((a, b) => safeNum(b.rating?.hltv_rating || b.hltv_rating, 0) - safeNum(a.rating?.hltv_rating || a.hltv_rating, 0));
 
                 let html = `
                     <div style="margin-bottom: 24px;">
@@ -5489,10 +5491,10 @@
                 }
                 // Fallback: simple K/D based calculation (legacy)
                 const stats = p.stats || {};
-                const kills = p.kills || stats.kills || 0;
-                const deaths = p.deaths || stats.deaths || 0;
-                const assists = p.assists || stats.assists || 0;
-                const rounds = p.rounds_played || stats.rounds_played || 1;
+                const kills = stats.kills || p.kills || 0;
+                const deaths = stats.deaths || p.deaths || 0;
+                const assists = stats.assists || p.assists || 0;
+                const rounds = stats.rounds_played || p.rounds_played || 1;
                 const expectedKills = rounds * 0.7;
                 const expectedDeaths = rounds * 0.7;
                 const killDiff = kills - expectedKills;
@@ -5508,7 +5510,7 @@
                 if (!players || players.length === 0) return '';
 
                 // Sort by HLTV rating by default
-                const sorted = [...players].sort((a, b) => (b.hltv_rating || 0) - (a.hltv_rating || 0));
+                const sorted = [...players].sort((a, b) => (b.rating?.hltv_rating || b.hltv_rating || 0) - (a.rating?.hltv_rating || a.hltv_rating || 0));
 
                 let html = `
                     <div class="team-section" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 16px;">
@@ -5587,7 +5589,7 @@
                             </td>
                             <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace;">${renderStar(kills, best.kills)}${kills}</td>
                             <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace;">${assists}</td>
-                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace;">${p.deaths || 0}</td>
+                            <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace;">${deaths}</td>
                             <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${kdColor};">${renderStar(kdNum, best.kd)}${kd}</td>
                             <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace;">${renderStar(adr, best.adr)}${adr.toFixed(1)}</td>
                             <td style="text-align: center; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; color: ${tradeColor};" title="${tradeOpps > 0 ? Math.round(tradeRate) + '% success rate' : 'No opportunities'}">${tradeDisplay}</td>
@@ -5605,8 +5607,8 @@
             };
 
             // Get scores from analysis data (these would come from the parent scope)
-            const team1Score = window.currentAnalysis?.team1_score || 0;
-            const team2Score = window.currentAnalysis?.team2_score || 0;
+            const team1Score = window.currentAnalysis?.demo_info?.score_ct || window.currentAnalysis?.team1_score || 0;
+            const team2Score = window.currentAnalysis?.demo_info?.score_t || window.currentAnalysis?.team2_score || 0;
             const team1Result = team1Score > team2Score ? 'WIN' : team1Score < team2Score ? 'LOSS' : 'TIE';
             const team2Result = team2Score > team1Score ? 'WIN' : team2Score < team1Score ? 'LOSS' : 'TIE';
 
@@ -7383,7 +7385,9 @@
             // Populate positioning player select with steam IDs from current analysis
             const posSelect = document.getElementById('positioning-player-select');
             if (posSelect && window.currentAnalysis?.players) {
-                window.currentAnalysis.players.forEach(p => {
+                const posPlayers = Array.isArray(window.currentAnalysis.players) ? window.currentAnalysis.players :
+                    Object.values(window.currentAnalysis.players || {});
+                posPlayers.forEach(p => {
                     const steamId = p.steam_id || p.steamid || '';
                     if (steamId && steamId !== '0') {
                         const opt = document.createElement('option');

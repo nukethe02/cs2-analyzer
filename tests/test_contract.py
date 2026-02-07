@@ -594,3 +594,344 @@ class TestContractValidation:
 
         errors = validate_result(result)
         assert errors == [], "Contract violations:\n" + "\n".join(errors)
+
+
+class TestContractConstants:
+    """Verify the PLAYER_CONTRACT and RESULT_CONTRACT constants are complete."""
+
+    def test_player_contract_has_all_top_level_sections(self):
+        """PLAYER_CONTRACT must define all required top-level sections."""
+        from opensight.pipeline.contract import PLAYER_CONTRACT
+
+        required_sections = {
+            "steam_id",
+            "name",
+            "team",
+            "rounds_played",
+            "total_damage",
+            "stats",
+            "rating",
+            "advanced",
+            "utility",
+            "aim_stats",
+            "duels",
+            "spray_transfers",
+            "entry",
+            "trades",
+            "clutches",
+            "rws",
+        }
+        actual_keys = set(PLAYER_CONTRACT.keys())
+        missing = required_sections - actual_keys
+        assert missing == set(), f"PLAYER_CONTRACT missing sections: {missing}"
+
+    def test_result_contract_has_all_top_level_keys(self):
+        """RESULT_CONTRACT must define all required top-level keys."""
+        from opensight.pipeline.contract import RESULT_CONTRACT
+
+        required_keys = {
+            "demo_info",
+            "players",
+            "mvp",
+            "round_timeline",
+            "kill_matrix",
+            "heatmap_data",
+            "coaching",
+            "tactical",
+            "synergy",
+            "timeline_graph",
+            "analyzed_at",
+        }
+        actual_keys = set(RESULT_CONTRACT.keys())
+        missing = required_keys - actual_keys
+        assert missing == set(), f"RESULT_CONTRACT missing keys: {missing}"
+
+    def test_trade_contract_keys_match_orchestrator(self):
+        """The 'trades' section in PLAYER_CONTRACT must match _get_trade_stats output."""
+        from opensight.pipeline.contract import PLAYER_CONTRACT
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        trades_output = orch._get_trade_stats(p)
+
+        contract_trades_keys = set(PLAYER_CONTRACT["trades"].keys())
+        output_keys = set(trades_output.keys())
+
+        missing_from_output = contract_trades_keys - output_keys
+        extra_in_output = output_keys - contract_trades_keys
+
+        assert missing_from_output == set(), (
+            f"Contract requires keys not in _get_trade_stats output: {missing_from_output}"
+        )
+        assert extra_in_output == set(), (
+            f"_get_trade_stats returns keys not in contract: {extra_in_output}"
+        )
+
+    def test_clutch_contract_keys_match_orchestrator(self):
+        """The 'clutches' section in PLAYER_CONTRACT must match _get_clutch_stats output."""
+        from opensight.pipeline.contract import PLAYER_CONTRACT
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        clutches_output = orch._get_clutch_stats(p)
+
+        contract_clutch_keys = set(PLAYER_CONTRACT["clutches"].keys())
+        output_keys = set(clutches_output.keys())
+
+        missing_from_output = contract_clutch_keys - output_keys
+        extra_in_output = output_keys - contract_clutch_keys
+
+        assert missing_from_output == set(), (
+            f"Contract requires keys not in _get_clutch_stats output: {missing_from_output}"
+        )
+        assert extra_in_output == set(), (
+            f"_get_clutch_stats returns keys not in contract: {extra_in_output}"
+        )
+
+    def test_entry_contract_keys_match_orchestrator(self):
+        """The 'entry' section in PLAYER_CONTRACT must match _get_entry_stats output."""
+        from opensight.pipeline.contract import PLAYER_CONTRACT
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        entry_output = orch._get_entry_stats(p)
+
+        contract_entry_keys = set(PLAYER_CONTRACT["entry"].keys())
+        output_keys = set(entry_output.keys())
+
+        missing_from_output = contract_entry_keys - output_keys
+        extra_in_output = output_keys - contract_entry_keys
+
+        assert missing_from_output == set(), (
+            f"Contract requires keys not in _get_entry_stats output: {missing_from_output}"
+        )
+        assert extra_in_output == set(), (
+            f"_get_entry_stats returns keys not in contract: {extra_in_output}"
+        )
+
+    def test_validate_result_catches_each_missing_top_level_key(self):
+        """validate_result reports an error for EACH missing top-level key."""
+        from opensight.pipeline.contract import RESULT_CONTRACT
+
+        errors = validate_result({})
+        # Should have at least one error per top-level key
+        assert len(errors) >= len(RESULT_CONTRACT), (
+            f"Expected at least {len(RESULT_CONTRACT)} errors for empty dict, got {len(errors)}"
+        )
+
+    def test_validate_player_catches_missing_nested_keys(self):
+        """validate_player reports errors for missing nested keys."""
+        # Provide top-level keys but empty nested dicts
+        incomplete_player = {
+            "steam_id": "123",
+            "name": "Test",
+            "team": "CT",
+            "rounds_played": 1,
+            "total_damage": 0,
+            "stats": {},  # empty -- should trigger errors for every stats subkey
+            "rating": {},
+            "advanced": {},
+            "utility": {},
+            "aim_stats": {},
+            "duels": {},
+            "spray_transfers": {},
+            "entry": {},
+            "trades": {},
+            "clutches": {},
+            "rws": {},
+        }
+        errors = validate_player(incomplete_player)
+        # Should have errors for missing keys within each nested dict
+        assert len(errors) > 10, (
+            f"Expected many missing-key errors for empty nested dicts, got {len(errors)}: {errors}"
+        )
+
+
+class TestTradeStatsValuePassthrough:
+    """Verify _get_trade_stats reads real attribute values, not defaults."""
+
+    def test_nonzero_trade_kill_attempts(self):
+        """trade_kill_attempts passes through from TradeStats."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        trades = orch._get_trade_stats(p)
+        assert trades["trade_kill_attempts"] == 6
+
+    def test_nonzero_traded_death_stats(self):
+        """Traded death stats pass through from TradeStats."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        trades = orch._get_trade_stats(p)
+        assert trades["traded_death_opportunities"] == 5
+        assert trades["traded_death_attempts"] == 3
+        assert trades["traded_death_success"] == 2
+
+    def test_traded_entry_stats_passthrough(self):
+        """Entry-specific trade stats pass through."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        trades = orch._get_trade_stats(p)
+        assert trades["traded_entry_kills"] == 1
+        assert trades["traded_entry_deaths"] == 1
+
+    def test_percentage_properties_computed(self):
+        """Computed percentage properties are included and correct."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        trades = orch._get_trade_stats(p)
+
+        # trade_kill_attempts_pct = 6/8 * 100 = 75.0
+        assert trades["trade_kill_attempts_pct"] == 75.0
+        # trade_kill_success_pct = 4/6 * 100 = 66.7
+        assert trades["trade_kill_success_pct"] == 66.7
+
+
+class TestClutchStatsValuePassthrough:
+    """Verify _get_clutch_stats reads real attribute values."""
+
+    def test_clutch_losses_computed(self):
+        """clutch_losses = total_situations - total_wins."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        clutches = orch._get_clutch_stats(p)
+        assert clutches["clutch_losses"] == 3  # 5 - 2
+
+    def test_v1_wins_passthrough(self):
+        """v1_wins passes through from ClutchStats."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        clutches = orch._get_clutch_stats(p)
+        assert clutches["v1_wins"] == 2
+
+    def test_clutch_success_pct_computed(self):
+        """clutch_success_pct = wins/total * 100."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        p = _make_player()
+        orch = DemoOrchestrator()
+        clutches = orch._get_clutch_stats(p)
+        # 2/5 * 100 = 40.0
+        assert clutches["clutch_success_pct"] == 40
+
+
+class TestImportSanity:
+    """Import sanity tests to catch circular imports and missing modules."""
+
+    def test_orchestrator_imports(self):
+        """DemoOrchestrator can be imported without errors."""
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        assert DemoOrchestrator is not None
+
+    def test_contract_imports(self):
+        """Contract module can be imported without errors."""
+        from opensight.pipeline.contract import (
+            PLAYER_CONTRACT,
+            RESULT_CONTRACT,
+            validate_player,
+            validate_result,
+        )
+
+        assert PLAYER_CONTRACT is not None
+        assert RESULT_CONTRACT is not None
+        assert callable(validate_player)
+        assert callable(validate_result)
+
+    def test_routes_import(self):
+        """API route modules can be imported without errors."""
+        from opensight.api.routes_analysis import router
+
+        assert router is not None
+
+    def test_ai_modules_import(self):
+        """AI modules can be imported without errors."""
+        from opensight.ai.llm_client import TacticalAIClient
+        from opensight.ai.self_review import SelfReviewEngine
+        from opensight.ai.strat_engine import StratEngine
+
+        assert SelfReviewEngine is not None
+        assert StratEngine is not None
+        assert TacticalAIClient is not None
+
+    def test_models_import(self):
+        """Analysis models can be imported without errors."""
+        from opensight.analysis.models import (
+            ClutchStats,
+            MatchAnalysis,
+            MultiKillStats,
+            OpeningDuelStats,
+            PlayerMatchStats,
+            SprayTransferStats,
+            TradeStats,
+            UtilityStats,
+        )
+
+        assert PlayerMatchStats is not None
+        assert TradeStats is not None
+        assert ClutchStats is not None
+        assert OpeningDuelStats is not None
+        assert UtilityStats is not None
+        assert MultiKillStats is not None
+        assert SprayTransferStats is not None
+        assert MatchAnalysis is not None
+
+    def test_core_modules_import(self):
+        """Core modules can be imported without errors."""
+        from opensight.core.constants import CS2_TICK_RATE, TRADE_WINDOW_SECONDS
+        from opensight.core.utils import safe_divide, validate_steamid
+
+        assert CS2_TICK_RATE > 0
+        assert TRADE_WINDOW_SECONDS > 0
+        assert callable(safe_divide)
+        assert callable(validate_steamid)
+
+
+class TestKeyNameConsistency:
+    """Verify AI modules use correct key names from the contract."""
+
+    def test_ai_modules_read_demo_info_not_match_info(self):
+        """AI modules must access match data via 'demo_info' key, not 'match_info' key.
+
+        The local variable name 'match_info' is fine, but the key used to
+        access the data from match_data dict MUST be 'demo_info'.
+        """
+        import inspect
+
+        from opensight.ai import llm_client, self_review, strat_engine
+
+        for module in [self_review, strat_engine, llm_client]:
+            source = inspect.getsource(module)
+            # Check that nobody does match_data["match_info"] or match_data.get("match_info")
+            # The pattern .get("demo_info" should be present; .get("match_info" should NOT
+            assert '.get("match_info"' not in source and "['match_info']" not in source, (
+                f"{module.__name__} accesses 'match_info' key instead of 'demo_info' — "
+                f"this would silently return empty data"
+            )
+
+    def test_ai_modules_use_demo_info_key(self):
+        """Confirm AI modules DO access 'demo_info' key."""
+        import inspect
+
+        from opensight.ai import llm_client, self_review, strat_engine
+
+        for module in [self_review, strat_engine, llm_client]:
+            source = inspect.getsource(module)
+            assert '"demo_info"' in source, (
+                f"{module.__name__} does not reference 'demo_info' — "
+                f"may not be reading match metadata correctly"
+            )

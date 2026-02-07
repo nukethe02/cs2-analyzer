@@ -98,7 +98,7 @@ class SelfReviewEngine:
         Returns:
             SelfReviewReport with mistakes and report cards
         """
-        match_info = match_data.get("match_info", {})
+        match_info = match_data.get("demo_info", {})
         map_name = match_info.get("map", "unknown")
         round_timeline = match_data.get("round_timeline", [])
         players = match_data.get("players", {})
@@ -244,12 +244,10 @@ class SelfReviewEngine:
                 # Check if flash had effect
                 if util_type == "flashbang":
                     enemies_flashed = [
-                        b for b in blinds if b.get("attacker") == player and b.get("enemy", False)
+                        b for b in blinds if b.get("player") == player and b.get("enemy", False)
                     ]
                     teammates_flashed = [
-                        b
-                        for b in blinds
-                        if b.get("attacker") == player and not b.get("enemy", False)
+                        b for b in blinds if b.get("player") == player and not b.get("enemy", False)
                     ]
 
                     if not enemies_flashed and teammates_flashed:

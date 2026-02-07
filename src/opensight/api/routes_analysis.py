@@ -201,8 +201,10 @@ async def download_job_result(job_id: str):
                 ),
                 "entry_kills": hero_player.get("entry", {}).get("entry_kills", 0),
                 "entry_deaths": hero_player.get("entry", {}).get("entry_deaths", 0),
-                "trade_kill_success": hero_player.get("trades", {}).get("trade_kills", 0),
-                "trade_kill_opportunities": 0,
+                "trade_kill_success": hero_player.get("trades", {}).get("trade_kill_success", 0),
+                "trade_kill_opportunities": hero_player.get("trades", {}).get(
+                    "trade_kill_opportunities", 0
+                ),
                 "clutch_wins": hero_player.get("clutches", {}).get("clutch_wins", 0),
                 "clutch_attempts": hero_player.get("clutches", {}).get("clutch_wins", 0)
                 + hero_player.get("clutches", {}).get("clutch_losses", 0),

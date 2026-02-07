@@ -354,7 +354,7 @@ class TacticalAIClient:
             round_num = tool_input.get("round_number", 1)
             timeline = match_data.get("round_timeline", [])
             for r in timeline:
-                if r.get("round_number") == round_num:
+                if r.get("round_num") == round_num:
                     return json.dumps(r, indent=2, default=str)
             return json.dumps({"error": f"Round {round_num} not found"})
 
@@ -370,45 +370,48 @@ class TacticalAIClient:
             team = tool_input.get("team", "CT")
             timeline = match_data.get("round_timeline", [])
             economy = []
+            team_key = "ct" if team == "CT" else "t"
             for r in timeline:
-                round_num = r.get("round_number", 0)
-                if team == "CT":
-                    economy.append(
-                        {
-                            "round": round_num,
-                            "team_money": r.get("ct_team_money", 0),
-                            "equipment_value": r.get("ct_equipment_value", 0),
-                            "round_type": r.get("ct_buy_type", "unknown"),
-                        }
-                    )
-                else:
-                    economy.append(
-                        {
-                            "round": round_num,
-                            "team_money": r.get("t_team_money", 0),
-                            "equipment_value": r.get("t_equipment_value", 0),
-                            "round_type": r.get("t_buy_type", "unknown"),
-                        }
-                    )
+                rn = r.get("round_num", 0)
+                econ = r.get("economy") or {}
+                team_econ = econ.get(team_key) or {}
+                economy.append(
+                    {
+                        "round": rn,
+                        "equipment_value": team_econ.get("equipment", 0),
+                        "round_type": team_econ.get("buy_type", "unknown"),
+                        "loss_bonus": team_econ.get("loss_bonus", 0),
+                        "decision_grade": team_econ.get("decision_grade", ""),
+                    }
+                )
             return json.dumps(economy, indent=2, default=str)
 
         elif tool_name == "get_kills_by_round":
             round_num = tool_input.get("round_number", 1)
             timeline = match_data.get("round_timeline", [])
             for r in timeline:
-                if r.get("round_number") == round_num:
+                if r.get("round_num") == round_num:
                     kills = r.get("kills", [])
                     return json.dumps(kills, indent=2, default=str)
             return json.dumps({"error": f"Round {round_num} not found"})
 
         elif tool_name == "get_utility_usage":
-            # Extract utility from match data if available
+            # Extract utility from round timeline
             round_num = tool_input.get("round_number")
-            utility_data = match_data.get("utility_stats", {})
+            timeline = match_data.get("round_timeline", [])
             if round_num:
-                round_utility = utility_data.get(f"round_{round_num}", [])
-                return json.dumps(round_utility, indent=2, default=str)
-            return json.dumps(utility_data, indent=2, default=str)
+                for r in timeline:
+                    if r.get("round_num") == round_num:
+                        return json.dumps(r.get("utility", []), indent=2, default=str)
+                return json.dumps({"error": f"Round {round_num} not found"})
+            # Return all utility across all rounds
+            all_utility = {}
+            for r in timeline:
+                rn = r.get("round_num", 0)
+                util = r.get("utility", [])
+                if util:
+                    all_utility[f"round_{rn}"] = util
+            return json.dumps(all_utility, indent=2, default=str)
 
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
@@ -446,9 +449,9 @@ class TacticalAIClient:
             system_prompt = get_system_prompt(analysis_type)
 
         # Build initial context
-        match_info = match_data.get("match_info", {})
+        match_info = match_data.get("demo_info", {})
         map_name = match_info.get("map", "unknown")
-        total_rounds = match_info.get("total_rounds", 0)
+        total_rounds = match_info.get("rounds", 0)
         players = match_data.get("players", {})
         player_names = [p.get("name", "Unknown") for p in players.values()]
 

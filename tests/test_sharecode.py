@@ -35,19 +35,15 @@ class TestDecodeSharecode:
     """Tests for share code decoding."""
 
     def test_decode_returns_sharecode_info(self):
-        """Verify decode returns ShareCodeInfo dataclass."""
-        # Note: This uses a placeholder code - real codes would need valid encoding
-        # This test verifies the structure, not actual decoding accuracy
-        try:
-            result = decode_sharecode("CSGO-ABCDE-FGHIJ-KLMNO-PQRST-UVWXY")
-            assert isinstance(result, ShareCodeInfo)
-            assert hasattr(result, "match_id")
-            assert hasattr(result, "outcome_id")
-            assert hasattr(result, "token")
-            assert hasattr(result, "raw_code")
-        except ValueError:
-            # Invalid code format is acceptable for placeholder
-            pass
+        """Verify decode returns ShareCodeInfo dataclass with correct fields."""
+        # Use a valid round-tripped code instead of a placeholder
+        encoded = encode_sharecode(12345, 67890, 100)
+        result = decode_sharecode(encoded)
+        assert isinstance(result, ShareCodeInfo)
+        assert hasattr(result, "match_id")
+        assert hasattr(result, "outcome_id")
+        assert hasattr(result, "token")
+        assert hasattr(result, "raw_code")
 
     def test_decode_empty_code_raises(self):
         """Verify empty code raises ValueError."""
@@ -61,12 +57,10 @@ class TestDecodeSharecode:
 
     def test_decode_preserves_raw_code(self):
         """Verify raw code is preserved in result."""
-        code = "CSGO-ABCDE-FGHIJ-KLMNO-PQRST-UVWXY"
-        try:
-            result = decode_sharecode(code)
-            assert result.raw_code == code
-        except ValueError:
-            pass
+        # Use a valid round-tripped code so decode actually runs
+        code = encode_sharecode(99999, 88888, 500)
+        result = decode_sharecode(code)
+        assert result.raw_code == code
 
 
 class TestEncodeSharecode:

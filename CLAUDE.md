@@ -2,6 +2,32 @@
 
 Local Counter-Strike 2 analytics framework providing Leetify/Scope.gg quality metrics without cloud dependencies. Works with Valve MM, FACEIT, ESEA, HLTV, scrims, and POV demos.
 
+## THE RULE: NO IMAGINARY CODE
+
+This codebase was damaged by AI inventing field names. Before touching ANY code that reads player/round/match data:
+
+1. Read `analysis/models.py` — confirm the attribute exists on the dataclass
+2. Read `pipeline/orchestrator.py` — confirm the serialized dict key matches
+3. If a field isn't in models.py, IT DOES NOT EXIST
+4. Trace: dataclass attr → orchestrator key → route response → frontend JS
+
+## Known Landmines — VERIFY BEFORE TOUCHING
+
+- Null checks: `if x is not None` NOT `if x` (0.0 is valid ADR)
+- Trades: nested `p.trades.kills_traded` NOT flat `p.trade_kills`
+- Clutches: nested `p.clutches.total_wins` NOT flat `p.clutch_wins`
+- Players dict: keyed by steam_id string NOT a list
+- Hero player: `player.get("stats", {}).get("kills")` NOT `player.get("kills")`
+- AI modules: `"demo_info"` NOT `"match_info"`
+- Round number: `"round_num"` NOT `"round_number"`
+- Economy: nested `r["economy"]["ct"]["equipment"]` NOT flat `r["ct_team_money"]`
+- Opening duels: `p.opening_duels.wins` / `.losses` NOT `p.entry_kills` / `p.entry_deaths`
+- Trade stats: `p.trades.trade_kill_success_pct` NOT `_rate_pct`
+- Utility stats: `p.utility.flashbangs_thrown` NOT `flashes_thrown`
+- TTD fields: `ttd_median_ms` = engagement duration, NOT reaction time
+- `cp_median_error_deg` on PlayerMatchStats, NOT `cp_median_deg`
+- After ANY correction: update this section with the lesson learned
+
 ## Before Making Any Changes (CRITICAL)
 
 **Always run these commands before committing:**

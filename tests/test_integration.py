@@ -578,7 +578,7 @@ class TestFullAnalysisPipeline:
 
         # Should have results
         assert result is not None
-        assert len(result.trade_kills) >= 0  # May have trades
+        assert isinstance(result.trade_kills, list)  # Must be a list (may be empty)
         assert len(result.opening_duels) > 0  # Should have openings
         assert len(result.player_stats) > 0  # Should have player stats
 
@@ -835,9 +835,10 @@ class TestBoundaryConditions:
         """Loss bonus handles negative input gracefully."""
         from opensight.domains.economy import calculate_loss_bonus
 
-        # Should not crash, return base or 0
+        # Should not crash, return a positive dollar amount
         result = calculate_loss_bonus(-1)
-        assert result >= 0
+        assert isinstance(result, int), f"Expected int, got {type(result)}"
+        assert result > 0, f"Loss bonus should be positive, got {result}"
 
 
 # =============================================================================

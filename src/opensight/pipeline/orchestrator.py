@@ -50,11 +50,6 @@ class DemoOrchestrator:
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()
 
-        # NOTE: Previously we had a second parse with CoachingAnalysisEngine here.
-        # This was removed because DemoAnalyzer already calculates all the same metrics
-        # (TTD, CP, trades, clutches, entry frags). The double-parse doubled processing time.
-        enhanced_metrics = {}  # Keep structure for backwards compatibility
-
         # Calculate RWS using direct method (more reliable)
         rws_data = self._calculate_rws_direct(demo_data)
 
@@ -74,7 +69,7 @@ class DemoOrchestrator:
                 "team": p.team,
                 # Top-level convenience fields for frontend flat-access fallbacks
                 "rounds_played": p.rounds_played,
-                "total_damage": getattr(p, "total_damage", 0) or 0,
+                "total_damage": p.total_damage,
                 "stats": {
                     "kills": p.kills,
                     "deaths": p.deaths,
@@ -85,7 +80,7 @@ class DemoOrchestrator:
                         round(p.headshot_percentage, 1) if p.headshot_percentage is not None else 0
                     ),
                     "kd_ratio": round(p.kills / max(1, p.deaths), 2),
-                    "total_damage": getattr(p, "total_damage", 0) or 0,
+                    "total_damage": p.total_damage,
                     "2k": mk["2k"],
                     "3k": mk["3k"],
                     "4k": mk["4k"],
@@ -101,22 +96,30 @@ class DemoOrchestrator:
                     "utility_rating": (
                         round(p.utility_rating, 1) if p.utility_rating is not None else 0
                     ),
-                    "impact_rating": round(getattr(p, "impact_rating", None) or 0, 2),
+                    "impact_rating": (
+                        round(p.impact_rating, 2) if p.impact_rating is not None else 0
+                    ),
                 },
                 "advanced": {
                     # TTD - Time to Damage (engagement duration)
-                    "ttd_median_ms": round(p.ttd_median_ms or 0, 1),
-                    "ttd_mean_ms": round(p.ttd_mean_ms or 0, 1),
+                    "ttd_median_ms": (
+                        round(p.ttd_median_ms, 1) if p.ttd_median_ms is not None else 0
+                    ),
+                    "ttd_mean_ms": (round(p.ttd_mean_ms, 1) if p.ttd_mean_ms is not None else 0),
                     "ttd_95th_ms": (
                         round(float(np.percentile(p.engagement_duration_values, 95)), 1)
                         if p.engagement_duration_values
                         else 0
                     ),
                     # CP - Crosshair Placement
-                    "cp_median_error_deg": round(p.cp_median_error_deg or 0, 1),
-                    "cp_mean_error_deg": round(p.cp_mean_error_deg or 0, 1),
+                    "cp_median_error_deg": (
+                        round(p.cp_median_error_deg, 1) if p.cp_median_error_deg is not None else 0
+                    ),
+                    "cp_mean_error_deg": (
+                        round(p.cp_mean_error_deg, 1) if p.cp_mean_error_deg is not None else 0
+                    ),
                     # Other advanced stats — read from actual dataclass attributes
-                    "prefire_kills": getattr(p, "prefire_count", 0) or 0,
+                    "prefire_kills": p.prefire_count,
                     "opening_kills": p.opening_duels.wins if p.opening_duels else 0,
                     "opening_deaths": p.opening_duels.losses if p.opening_duels else 0,
                 },
@@ -160,28 +163,33 @@ class DemoOrchestrator:
                 },
                 "aim_stats": {
                     # Accuracy metrics (from weapon_fire events)
-                    "shots_fired": getattr(p, "shots_fired", 0) or 0,
-                    "shots_hit": getattr(p, "shots_hit", 0) or 0,
-                    "accuracy_all": round(getattr(p, "accuracy", 0) or 0, 1),
-                    "headshot_hits": getattr(p, "headshot_hits", 0) or 0,
-                    "head_accuracy": round(getattr(p, "head_hit_rate", 0) or 0, 1),
+                    "shots_fired": p.shots_fired,
+                    "shots_hit": p.shots_hit,
+                    "accuracy_all": round(p.accuracy, 1),
+                    "headshot_hits": p.headshot_hits,
+                    "head_accuracy": round(p.head_hit_rate, 1),
                     # Spray accuracy (hits after 4th bullet in burst)
-                    "spray_shots_fired": getattr(p, "spray_shots_fired", 0) or 0,
-                    "spray_shots_hit": getattr(p, "spray_shots_hit", 0) or 0,
-                    "spray_accuracy": round(getattr(p, "spray_accuracy", 0) or 0, 1),
+                    "spray_shots_fired": p.spray_shots_fired,
+                    "spray_shots_hit": p.spray_shots_hit,
+                    "spray_accuracy": round(p.spray_accuracy, 1),
                     # Counter-strafing (shots while near-stationary)
-                    "shots_stationary": getattr(p, "shots_stationary", 0) or 0,
-                    "shots_with_velocity": getattr(p, "shots_with_velocity", 0) or 0,
-                    "counter_strafe_pct": round(getattr(p, "counter_strafe_pct", 0) or 0, 1),
+                    "shots_stationary": p.shots_stationary,
+                    "shots_with_velocity": p.shots_with_velocity,
+                    "counter_strafe_pct": round(p.counter_strafe_pct, 1),
                     # TTD and CP (duplicated here for frontend convenience)
-                    "time_to_damage_ms": round(getattr(p, "ttd_median_ms", None) or 0, 1),
-                    "crosshair_placement_deg": round(
-                        getattr(p, "cp_median_error_deg", None) or 0, 1
+                    "time_to_damage_ms": (
+                        round(p.ttd_median_ms, 1) if p.ttd_median_ms is not None else 0
+                    ),
+                    "crosshair_placement_deg": (
+                        round(p.cp_median_error_deg, 1) if p.cp_median_error_deg is not None else 0
                     ),
                 },
                 "duels": {
                     "trade_kills": p.trades.kills_traded if p.trades else 0,
                     "traded_deaths": p.trades.deaths_traded if p.trades else 0,
+                    "trade_kill_opportunities": (
+                        p.trades.trade_kill_opportunities if p.trades else 0
+                    ),
                     "clutch_wins": p.clutches.total_wins if p.clutches else 0,
                     "clutch_attempts": p.clutches.total_situations if p.clutches else 0,
                     "opening_kills": p.opening_duels.wins if p.opening_duels else 0,
@@ -227,83 +235,6 @@ class DemoOrchestrator:
                     },
                 ),
             }
-
-        # Merge enhanced metrics from professional parser
-        # NOTE: enhanced_metrics use integer steam IDs, but players dict uses string keys
-        if enhanced_metrics and "entry_frags" in enhanced_metrics:
-            for steam_id, entry_data in enhanced_metrics.get("entry_frags", {}).items():
-                sid_str = str(steam_id)
-                if sid_str in players:
-                    if "entry" not in players[sid_str]:
-                        players[sid_str]["entry"] = {}
-                    players[sid_str]["entry"].update(
-                        {
-                            "entry_attempts": entry_data.get("entry_attempts", 0),
-                            "entry_kills": entry_data.get("entry_kills", 0),
-                            "entry_deaths": entry_data.get("entry_deaths", 0),
-                        }
-                    )
-
-        # Merge TTD metrics
-        if enhanced_metrics and "ttd_metrics" in enhanced_metrics:
-            for steam_id, ttd_data in enhanced_metrics.get("ttd_metrics", {}).items():
-                sid_str = str(steam_id)
-                if sid_str in players:
-                    players[sid_str]["advanced"].update(
-                        {
-                            "ttd_median_ms": ttd_data.get("ttd_median_ms", 0),
-                            "ttd_mean_ms": ttd_data.get("ttd_mean_ms", 0),
-                            "ttd_95th_ms": ttd_data.get("ttd_95th_ms", 0),
-                        }
-                    )
-
-        # Merge CP metrics
-        if enhanced_metrics and "crosshair_placement" in enhanced_metrics:
-            for steam_id, cp_data in enhanced_metrics.get("crosshair_placement", {}).items():
-                sid_str = str(steam_id)
-                if sid_str in players:
-                    players[sid_str]["advanced"].update(
-                        {
-                            "cp_median_error_deg": cp_data.get("cp_median_error_deg", 0),
-                            "cp_mean_error_deg": cp_data.get("cp_mean_error_deg", 0),
-                        }
-                    )
-
-        # Merge Trade Kill metrics
-        if enhanced_metrics and "trade_kills" in enhanced_metrics:
-            for steam_id, trade_data in enhanced_metrics.get("trade_kills", {}).items():
-                sid_str = str(steam_id)
-                if sid_str in players:
-                    players[sid_str]["duels"].update(
-                        {
-                            "trade_kills": trade_data.get("trade_kills", 0),
-                            "deaths_traded": trade_data.get("deaths_traded", 0),
-                        }
-                    )
-
-        # Merge Clutch metrics (enhanced_parser uses "clutch_statistics")
-        if enhanced_metrics and "clutch_statistics" in enhanced_metrics:
-            for steam_id, clutch_data in enhanced_metrics.get("clutch_statistics", {}).items():
-                sid_str = str(steam_id)
-                if sid_str in players:
-                    players[sid_str]["duels"].update(
-                        {
-                            "clutch_wins": clutch_data.get("clutch_wins", 0),
-                            "clutch_attempts": clutch_data.get("clutch_attempts", 0),
-                        }
-                    )
-                    # Add breakdown by variant
-                    if "clutches" not in players[sid_str]:
-                        players[sid_str]["clutches"] = {}
-                    players[sid_str]["clutches"].update(
-                        {
-                            "v1_wins": clutch_data.get("v1_wins", 0),
-                            "v2_wins": clutch_data.get("v2_wins", 0),
-                            "v3_wins": clutch_data.get("v3_wins", 0),
-                            "v4_wins": clutch_data.get("v4_wins", 0),
-                            "v5_wins": clutch_data.get("v5_wins", 0),
-                        }
-                    )
 
         # Build round timeline
         round_timeline = self._build_round_timeline(demo_data, analysis)
@@ -386,9 +317,9 @@ class DemoOrchestrator:
         """Get comprehensive entry/opening duel stats like FACEIT."""
         opening = getattr(player, "opening_duels", None)
         if opening:
-            attempts = getattr(opening, "attempts", 0) or 0
-            wins = getattr(opening, "wins", 0) or 0
-            losses = getattr(opening, "losses", 0) or 0
+            attempts = opening.attempts
+            wins = opening.wins
+            losses = opening.losses
             rounds = getattr(player, "rounds_played", 0) or 1
             return {
                 "entry_attempts": attempts,
@@ -413,30 +344,22 @@ class DemoOrchestrator:
         if trades:
             return {
                 # Trade kill stats (you trading for teammates)
-                "trade_kill_opportunities": getattr(trades, "trade_kill_opportunities", 0) or 0,
-                "trade_kill_attempts": getattr(trades, "trade_kill_attempts", 0) or 0,
-                "trade_kill_attempts_pct": round(
-                    getattr(trades, "trade_kill_attempts_pct", 0) or 0, 1
-                ),
-                "trade_kill_success": getattr(trades, "trade_kill_success", 0) or 0,
-                "trade_kill_success_pct": round(
-                    getattr(trades, "trade_kill_success_pct", 0) or 0, 1
-                ),
+                "trade_kill_opportunities": trades.trade_kill_opportunities,
+                "trade_kill_attempts": trades.trade_kill_attempts,
+                "trade_kill_attempts_pct": round(trades.trade_kill_attempts_pct, 1),
+                "trade_kill_success": trades.trade_kill_success,
+                "trade_kill_success_pct": round(trades.trade_kill_success_pct, 1),
                 # Traded death stats (teammates trading for you)
-                "traded_death_opportunities": getattr(trades, "traded_death_opportunities", 0) or 0,
-                "traded_death_attempts": getattr(trades, "traded_death_attempts", 0) or 0,
-                "traded_death_attempts_pct": round(
-                    getattr(trades, "traded_death_attempts_pct", 0) or 0, 1
-                ),
-                "traded_death_success": getattr(trades, "traded_death_success", 0) or 0,
-                "traded_death_success_pct": round(
-                    getattr(trades, "traded_death_success_pct", 0) or 0, 1
-                ),
+                "traded_death_opportunities": trades.traded_death_opportunities,
+                "traded_death_attempts": trades.traded_death_attempts,
+                "traded_death_attempts_pct": round(trades.traded_death_attempts_pct, 1),
+                "traded_death_success": trades.traded_death_success,
+                "traded_death_success_pct": round(trades.traded_death_success_pct, 1),
                 # Legacy aliases
-                "trade_kills": getattr(trades, "kills_traded", 0) or 0,
-                "deaths_traded": getattr(trades, "deaths_traded", 0) or 0,
-                "traded_entry_kills": getattr(trades, "traded_entry_kills", 0) or 0,
-                "traded_entry_deaths": getattr(trades, "traded_entry_deaths", 0) or 0,
+                "trade_kills": trades.kills_traded,
+                "deaths_traded": trades.deaths_traded,
+                "traded_entry_kills": trades.traded_entry_kills,
+                "traded_entry_deaths": trades.traded_entry_deaths,
             }
         return {
             "trade_kill_opportunities": 0,
@@ -459,18 +382,18 @@ class DemoOrchestrator:
         """Get comprehensive clutch stats like FACEIT."""
         clutches = getattr(player, "clutches", None)
         if clutches:
-            total = getattr(clutches, "total_situations", 0) or 0
-            wins = getattr(clutches, "total_wins", 0) or 0
+            total = clutches.total_situations
+            wins = clutches.total_wins
             return {
                 "clutch_wins": wins,
                 "clutch_losses": total - wins,
                 "clutch_success_pct": round(wins / total * 100, 0) if total > 0 else 0,
                 "total_situations": total,
-                "v1_wins": getattr(clutches, "v1_wins", 0) or 0,
-                "v2_wins": getattr(clutches, "v2_wins", 0) or 0,
-                "v3_wins": getattr(clutches, "v3_wins", 0) or 0,
-                "v4_wins": getattr(clutches, "v4_wins", 0) or 0,
-                "v5_wins": getattr(clutches, "v5_wins", 0) or 0,
+                "v1_wins": clutches.v1_wins,
+                "v2_wins": clutches.v2_wins,
+                "v3_wins": clutches.v3_wins,
+                "v4_wins": clutches.v4_wins,
+                "v5_wins": clutches.v5_wins,
             }
         return {
             "clutch_wins": 0,
@@ -3072,16 +2995,12 @@ class DemoOrchestrator:
         # Headshot percentage
         rifler_score += min(hs_pct / 50, 1.0) * 20  # Up to 20 points
 
-        # Multi-kills
+        # Multi-kills (weighted: 2k=1, 3k=2, 4k=3, 5k=4)
         mk_score = (
-            multikills
-            if "multikills" in dir()
-            else (
-                stats.get("2k", 0)
-                + stats.get("3k", 0) * 2
-                + stats.get("4k", 0) * 3
-                + stats.get("5k", 0) * 4
-            )
+            stats.get("2k", 0)
+            + stats.get("3k", 0) * 2
+            + stats.get("4k", 0) * 3
+            + stats.get("5k", 0) * 4
         )
         rifler_score += min(mk_score / 8, 1.0) * 15  # Up to 15 points
 
