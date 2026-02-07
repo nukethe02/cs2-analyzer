@@ -389,17 +389,17 @@ async def get_player_positioning(job_id: str, steam_id: str) -> dict[str, object
     validate_steam_id(steam_id)
 
     job_store = _get_job_store()
-    job = job_store.get(job_id)
+    job = job_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "completed":
-        raise HTTPException(status_code=400, detail=f"Job not completed: {job['status']}")
+    if job.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job.status}")
 
     try:
         from opensight.analysis.positioning import PositioningAnalyzer
         from opensight.core.parser import DemoParser
 
-        demo_path = job.get("demo_path")
+        demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
 
@@ -429,17 +429,17 @@ async def compare_player_positioning(
     validate_steam_id(steam_id_b)
 
     job_store = _get_job_store()
-    job = job_store.get(job_id)
+    job = job_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "completed":
-        raise HTTPException(status_code=400, detail=f"Job not completed: {job['status']}")
+    if job.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job.status}")
 
     try:
         from opensight.analysis.positioning import PositioningAnalyzer
         from opensight.core.parser import DemoParser
 
-        demo_path = job.get("demo_path")
+        demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
 
@@ -465,17 +465,17 @@ async def get_all_player_positioning(job_id: str) -> dict[str, object]:
     validate_demo_id(job_id)
 
     job_store = _get_job_store()
-    job = job_store.get(job_id)
+    job = job_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "completed":
-        raise HTTPException(status_code=400, detail=f"Job not completed: {job['status']}")
+    if job.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job.status}")
 
     try:
         from opensight.analysis.positioning import PositioningAnalyzer
         from opensight.core.parser import DemoParser
 
-        demo_path = job.get("demo_path")
+        demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
 
@@ -512,17 +512,17 @@ async def get_trade_chains(
     validate_demo_id(job_id)
 
     job_store = _get_job_store()
-    job = job_store.get(job_id)
+    job = job_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "completed":
-        raise HTTPException(status_code=400, detail=f"Job not completed: {job['status']}")
+    if job.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job.status}")
 
     try:
         from opensight.core.parser import DemoParser
         from opensight.domains.combat import CombatAnalyzer
 
-        demo_path = job.get("demo_path")
+        demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
 

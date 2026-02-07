@@ -1219,6 +1219,7 @@ class DatabaseManager:
             )
             session.add(entry)
             session.commit()
+            session.refresh(entry)
             logger.info(f"Saved match history for {steam_id[:8]}...")
             return entry
         except Exception as e:
