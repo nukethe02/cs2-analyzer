@@ -345,10 +345,10 @@ class TestInputValidation:
     def test_player_metrics_valid_steam_id(self):
         """Player metrics accepts valid 17-digit Steam ID (validation passes)."""
         # Valid 17-digit Steam ID - validation should pass
-        # Note: Endpoint may return 500 if cache module not available
+        # Note: Endpoint may return 404 if player not found, or 500 on internal error
         response = client.get("/api/players/76561198012345678/metrics")
-        # Validation passes (not 400), but may fail due to missing module (500)
-        assert response.status_code in (200, 500)
+        # Validation passes (not 400), but may return 404 (not found) or 500 (internal)
+        assert response.status_code in (200, 404, 500)
 
     def test_player_metrics_invalid_demo_id(self):
         """Player metrics rejects invalid demo_id."""
@@ -366,8 +366,8 @@ class TestInputValidation:
             "/api/players/76561198012345678/metrics",
             params={"demo_id": "abc123-def456"},
         )
-        # Validation passes (not 400), but may fail due to missing module (500)
-        assert response.status_code in (200, 500)
+        # Validation passes (not 400), but may return 404 (not found) or 500 (internal)
+        assert response.status_code in (200, 404, 500)
 
 
 class TestXSSPrevention:

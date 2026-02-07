@@ -170,7 +170,7 @@ class SelfReviewEngine:
 
         for round_data in round_timeline:
             round_num = round_data.get("round_num", 0)
-            kills = round_data.get("kills", [])
+            kills = round_data.get("kills") or []
 
             # Track teammate deaths and check if traded
             for i, kill in enumerate(kills):
@@ -210,7 +210,7 @@ class SelfReviewEngine:
 
     def _find_nearby_teammates(self, round_data: dict, victim: str, our_names: set) -> list[str]:
         """Find teammates who were alive when victim died (computed from kills list)."""
-        kills = round_data.get("kills", [])
+        kills = round_data.get("kills") or []
 
         # Find all players dead before or at the same time as victim
         dead_before_victim = set()
@@ -231,8 +231,8 @@ class SelfReviewEngine:
 
         for round_data in round_timeline:
             round_num = round_data.get("round_num", 0)
-            utility = round_data.get("utility", [])
-            blinds = round_data.get("blinds", [])
+            utility = round_data.get("utility") or []
+            blinds = round_data.get("blinds") or []
 
             for util in utility:
                 player = util.get("player", "")
@@ -302,13 +302,18 @@ class SelfReviewEngine:
     def _detect_positioning_errors(
         self, round_timeline: list[dict], our_players: dict
     ) -> list[Mistake]:
-        """Detect positioning mistakes."""
+        """Detect positioning mistakes.
+
+        Note: ``was_dry_peek`` is NOT currently produced by the
+        orchestrator kill events.  If the field is absent we silently
+        skip dry-peek detection rather than crashing.
+        """
         mistakes = []
         our_names = {p.get("name", "") for p in our_players.values()}
 
         for round_data in round_timeline:
             round_num = round_data.get("round_num", 0)
-            kills = round_data.get("kills", [])
+            kills = round_data.get("kills") or []
 
             for kill in kills:
                 victim = kill.get("victim", "")
@@ -316,7 +321,11 @@ class SelfReviewEngine:
                     continue
 
                 # Check for dry peek (death without utility support)
-                if kill.get("was_dry_peek", False):
+                # was_dry_peek may not be present in orchestrator output
+                dry_peek = kill.get("was_dry_peek")
+                if dry_peek is None:
+                    continue  # Dry peek detection not available for this event
+                if dry_peek:
                     mistakes.append(
                         Mistake(
                             round_number=round_num,

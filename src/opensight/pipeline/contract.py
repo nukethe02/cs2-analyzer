@@ -176,6 +176,7 @@ PLAYER_CONTRACT: dict = {
         "deaths_traded": int,
         "traded_entry_kills": int,
         "traded_entry_deaths": int,
+        "untraded_deaths": int,
     },
     # ── clutches: 1vX detail ──
     "clutches": {

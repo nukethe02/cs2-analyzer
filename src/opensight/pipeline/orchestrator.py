@@ -190,6 +190,7 @@ class DemoOrchestrator:
                     "trade_kill_opportunities": (
                         p.trades.trade_kill_opportunities if p.trades else 0
                     ),
+                    "untraded_deaths": p.untraded_deaths,
                     "clutch_wins": p.clutches.total_wins if p.clutches else 0,
                     "clutch_attempts": p.clutches.total_situations if p.clutches else 0,
                     "opening_kills": p.opening_duels.wins if p.opening_duels else 0,
@@ -288,6 +289,7 @@ class DemoOrchestrator:
 
         # Convert to dict for caching
         result = {
+            "demo_path": str(demo_path),
             "demo_info": {
                 "map": analysis.map_name,
                 "rounds": analysis.total_rounds,
@@ -341,6 +343,12 @@ class DemoOrchestrator:
     def _get_trade_stats(self, player) -> dict:
         """Get comprehensive Leetify-style trade stats."""
         trades = getattr(player, "trades", None)
+        # Compute untraded_deaths: deaths that were NOT avenged by teammates
+        untraded = getattr(player, "untraded_deaths", 0)
+        if not untraded and trades:
+            # Fallback: compute from deaths - deaths_traded
+            deaths = getattr(player, "deaths", 0)
+            untraded = max(0, deaths - trades.deaths_traded)
         if trades:
             return {
                 # Trade kill stats (you trading for teammates)
@@ -355,6 +363,8 @@ class DemoOrchestrator:
                 "traded_death_attempts_pct": round(trades.traded_death_attempts_pct, 1),
                 "traded_death_success": trades.traded_death_success,
                 "traded_death_success_pct": round(trades.traded_death_success_pct, 1),
+                # Untraded deaths (needed by lurker persona detection)
+                "untraded_deaths": untraded,
                 # Legacy aliases
                 "trade_kills": trades.kills_traded,
                 "deaths_traded": trades.deaths_traded,
@@ -372,6 +382,7 @@ class DemoOrchestrator:
             "traded_death_attempts_pct": 0,
             "traded_death_success": 0,
             "traded_death_success_pct": 0,
+            "untraded_deaths": 0,
             "trade_kills": 0,
             "deaths_traded": 0,
             "traded_entry_kills": 0,
@@ -718,6 +729,12 @@ class DemoOrchestrator:
                     }
                 )
 
+        # Import zone lookup for utility event enrichment
+        try:
+            from opensight.core.map_zones import get_callout
+        except ImportError:
+            get_callout = None
+
         # Build utility events by round
         utility_by_round: dict[int, list] = {}
         for grenade in grenades:
@@ -741,6 +758,19 @@ class DemoOrchestrator:
             player_side = str(getattr(grenade, "player_side", "Unknown")).upper()
             player_team = "CT" if "CT" in player_side else "T"
 
+            # Determine zone from grenade coordinates (needed by strat engine)
+            grenade_x = getattr(grenade, "x", None)
+            grenade_y = getattr(grenade, "y", None)
+            grenade_z = getattr(grenade, "z", None)
+            zone = "Unknown"
+            if get_callout and map_name and grenade_x is not None and grenade_y is not None:
+                zone = get_callout(
+                    map_name,
+                    float(grenade_x),
+                    float(grenade_y),
+                    float(grenade_z) if grenade_z is not None else 0.0,
+                )
+
             utility_by_round[round_num].append(
                 {
                     "tick": tick,
@@ -749,8 +779,9 @@ class DemoOrchestrator:
                     "player": player_name,
                     "player_team": player_team,
                     "player_steamid": getattr(grenade, "player_steamid", 0),
-                    "x": getattr(grenade, "x", None),
-                    "y": getattr(grenade, "y", None),
+                    "x": grenade_x,
+                    "y": grenade_y,
+                    "zone": zone,
                 }
             )
 
@@ -789,6 +820,33 @@ class DemoOrchestrator:
                     "enemy": not getattr(blind, "is_teammate", False),
                 }
             )
+
+        # Enrich kill events with was_dry_peek detection
+        # A dry peek = player dies without any teammate utility support within ~3 seconds prior
+        dry_peek_window_ticks = 192  # ~3 seconds at 64 tick rate
+        for round_num, events in round_events.items():
+            round_utility = utility_by_round.get(round_num, [])
+            for event in events:
+                if event.get("type") != "kill":
+                    continue
+                victim_tick = event.get("tick", 0)
+                victim_team = event.get("victim_team", "")
+                if not victim_tick or not victim_team:
+                    event["was_dry_peek"] = False
+                    continue
+                # Check if any teammate threw utility within the window before the death
+                had_support = False
+                for util in round_utility:
+                    util_tick = util.get("tick", 0)
+                    util_team = util.get("player_team", "")
+                    # Utility must be from the victim's team (teammate support)
+                    if util_team != victim_team:
+                        continue
+                    # Utility must have been thrown within the window before (or at) the death
+                    if 0 <= (victim_tick - util_tick) <= dry_peek_window_ticks:
+                        had_support = True
+                        break
+                event["was_dry_peek"] = not had_support
 
         # Use actual round data if available, otherwise use analysis total_rounds
         total_rounds = (
@@ -901,6 +959,13 @@ class DemoOrchestrator:
                     "kills": kills_list,
                     "utility": utility_list,
                     "blinds": blinds_list,
+                    # player_positions: NOT populated in standard pipeline.
+                    # Per-round position snapshots require tick data (include_ticks=True)
+                    # which is too memory-intensive for default analysis.
+                    # Kill events already contain attacker/victim positions and zone data.
+                    # The strat engine handles absence gracefully (skips default detection).
+                    # Schema: list[PlayerPositionSnapshot] - see core/schemas.py
+                    "player_positions": [],
                     "momentum": momentum,
                     "economy": economy_iq,
                     "clutches": clutch_by_round.get(round_num, []),

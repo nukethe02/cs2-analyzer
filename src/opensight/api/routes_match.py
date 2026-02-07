@@ -312,71 +312,144 @@ async def get_your_match(demo_id: str, steam_id: str) -> dict[str, Any]:
 
 @router.get("/api/players/{steam_id}/metrics")
 async def get_player_metrics(steam_id: str, demo_id: str = Query(None, max_length=64)) -> dict:
-    """Get professional metrics for a player."""
+    """Get professional metrics for a player.
+
+    If demo_id is provided, looks up the job results and extracts real metrics.
+    If no demo_id, falls back to database history.
+    Returns null for unavailable metrics (not zero — zero means 'player got zero').
+    """
     validate_steam_id(steam_id)
 
     if demo_id:
         validate_demo_id(demo_id)
 
     try:
-        from opensight.infra.cache import DemoCache
+        player_data: dict[str, Any] | None = None
 
-        DemoCache()
-
+        # Strategy 1: Look up from job results if demo_id provided
         if demo_id:
-            pass
+            job_store = _get_job_store()
+            job = job_store.get_job(demo_id)
+            if job and job.result:
+                players = job.result.get("players", {})
+                if isinstance(players, dict):
+                    player_data = players.get(steam_id)
+                else:
+                    # Legacy list format fallback
+                    for p in players:
+                        if str(p.get("steam_id")) == steam_id:
+                            player_data = p
+                            break
+
+        # Strategy 2: Fall back to database history
+        if not player_data:
+            try:
+                from opensight.infra.database import get_db
+
+                db = get_db()
+                history = db.get_player_history(steam_id, limit=1)
+                if history:
+                    # Database history has a flat structure; wrap into expected shape
+                    h = history[0]
+                    player_data = {
+                        "stats": {
+                            "kills": h.get("kills"),
+                            "deaths": h.get("deaths"),
+                            "adr": h.get("adr"),
+                        },
+                        "rating": {
+                            "hltv_rating": h.get("hltv_rating"),
+                        },
+                        "advanced": {
+                            "ttd_median_ms": h.get("ttd_median_ms"),
+                            "ttd_mean_ms": h.get("ttd_mean_ms"),
+                            "ttd_95th_ms": h.get("ttd_95th_ms"),
+                            "cp_median_error_deg": h.get("cp_median_error_deg"),
+                            "cp_mean_error_deg": h.get("cp_mean_error_deg"),
+                        },
+                        "entry": {
+                            "entry_attempts": h.get("entry_attempts"),
+                            "entry_kills": h.get("entry_kills"),
+                            "entry_deaths": h.get("entry_deaths"),
+                            "entry_success_pct": h.get("entry_success_pct"),
+                        },
+                        "trades": h.get("trades", {}),
+                        "clutches": h.get("clutches", {}),
+                    }
+            except Exception:
+                logger.exception("Failed to fetch player history from database")
+
+        if not player_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No metrics found for player {steam_id}"
+                + (
+                    f" in demo {demo_id}"
+                    if demo_id
+                    else ". Provide a demo_id or play more matches."
+                ),
+            )
+
+        # Extract metrics from nested player data structure
+        advanced = player_data.get("advanced", {})
+        entry = player_data.get("entry", {})
+        trades = player_data.get("trades", {})
+        clutches = player_data.get("clutches", {})
 
         return {
             "steam_id": steam_id,
+            "demo_id": demo_id,
             "metrics": {
                 "timing": {
-                    "ttd_median_ms": 0,
-                    "ttd_mean_ms": 0,
-                    "ttd_95th_ms": 0,
+                    "ttd_median_ms": advanced.get("ttd_median_ms"),
+                    "ttd_mean_ms": advanced.get("ttd_mean_ms"),
+                    "ttd_95th_ms": advanced.get("ttd_95th_ms"),
                 },
                 "positioning": {
-                    "cp_median_error_deg": 0,
-                    "cp_mean_error_deg": 0,
+                    "cp_median_error_deg": advanced.get("cp_median_error_deg"),
+                    "cp_mean_error_deg": advanced.get("cp_mean_error_deg"),
                 },
                 "entries": {
-                    "attempts": 0,
-                    "kills": 0,
-                    "deaths": 0,
-                    "success_rate": 0.0,
+                    "attempts": entry.get("entry_attempts"),
+                    "kills": entry.get("entry_kills"),
+                    "deaths": entry.get("entry_deaths"),
+                    "success_rate": entry.get("entry_success_pct"),
                 },
                 "trades": {
-                    "trade_kill_opportunities": 0,
-                    "trade_kill_attempts": 0,
-                    "trade_kill_attempts_pct": 0.0,
-                    "trade_kill_success": 0,
-                    "trade_kill_success_pct": 0.0,
-                    "traded_death_opportunities": 0,
-                    "traded_death_attempts": 0,
-                    "traded_death_attempts_pct": 0.0,
-                    "traded_death_success": 0,
-                    "traded_death_success_pct": 0.0,
-                    "avg_time_to_trade_ms": None,
-                    "median_time_to_trade_ms": None,
-                    "traded_entry_kills": 0,
-                    "traded_entry_deaths": 0,
-                    "kills_traded": 0,
-                    "deaths_traded": 0,
-                    "trade_rate": 0.0,
+                    "trade_kill_opportunities": trades.get("trade_kill_opportunities"),
+                    "trade_kill_attempts": trades.get("trade_kill_attempts"),
+                    "trade_kill_attempts_pct": trades.get("trade_kill_attempts_pct"),
+                    "trade_kill_success": trades.get("trade_kill_success"),
+                    "trade_kill_success_pct": trades.get("trade_kill_success_pct"),
+                    "traded_death_opportunities": trades.get("traded_death_opportunities"),
+                    "traded_death_attempts": trades.get("traded_death_attempts"),
+                    "traded_death_attempts_pct": trades.get("traded_death_attempts_pct"),
+                    "traded_death_success": trades.get("traded_death_success"),
+                    "traded_death_success_pct": trades.get("traded_death_success_pct"),
+                    "avg_time_to_trade_ms": trades.get("avg_time_to_trade_ms"),
+                    "median_time_to_trade_ms": trades.get("median_time_to_trade_ms"),
+                    "traded_entry_kills": trades.get("traded_entry_kills"),
+                    "traded_entry_deaths": trades.get("traded_entry_deaths"),
+                    "kills_traded": trades.get("trade_kills"),
+                    "deaths_traded": trades.get("deaths_traded"),
+                    "trade_rate": trades.get("trade_rate"),
                 },
                 "clutches": {
-                    "wins": 0,
-                    "attempts": 0,
-                    "win_rate": 0.0,
+                    "wins": clutches.get("clutch_wins"),
+                    "attempts": clutches.get("total_situations"),
+                    "win_rate": clutches.get("clutch_success_pct"),
                     "breakdown": {
-                        "v1": 0,
-                        "v2": 0,
-                        "v3": 0,
-                        "v4": 0,
-                        "v5": 0,
+                        "v1": clutches.get("v1_wins"),
+                        "v2": clutches.get("v2_wins"),
+                        "v3": clutches.get("v3_wins"),
+                        "v4": clutches.get("v4_wins"),
+                        "v5": clutches.get("v5_wins"),
                     },
                 },
             },
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Failed to retrieve player metrics")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve metrics: {e!s}") from e
@@ -404,6 +477,7 @@ async def get_player_positioning(job_id: str, steam_id: str) -> dict[str, object
         from opensight.analysis.positioning import PositioningAnalyzer
         from opensight.core.parser import DemoParser
 
+        # Re-parse required: positioning needs tick-level position data not stored in job.result
         demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
@@ -415,12 +489,14 @@ async def get_player_positioning(job_id: str, steam_id: str) -> dict[str, object
 
         return result.to_dict()
 
+    except HTTPException:
+        raise
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"Positioning module not available: {e}") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid steam_id: {e}") from e
     except Exception as e:
-        logger.exception("Positioning analysis failed")
+        logger.exception("Positioning analysis failed for job %s, player %s", job_id, steam_id)
         raise HTTPException(status_code=500, detail=f"Positioning analysis failed: {e!s}") from e
 
 
@@ -444,6 +520,7 @@ async def compare_player_positioning(
         from opensight.analysis.positioning import PositioningAnalyzer
         from opensight.core.parser import DemoParser
 
+        # Re-parse required: positioning needs tick-level position data not stored in job.result
         demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
@@ -455,12 +532,14 @@ async def compare_player_positioning(
 
         return result.to_dict()
 
+    except HTTPException:
+        raise
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"Positioning module not available: {e}") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid steam_id: {e}") from e
     except Exception as e:
-        logger.exception("Positioning comparison failed")
+        logger.exception("Positioning comparison failed for job %s", job_id)
         raise HTTPException(status_code=500, detail=f"Positioning comparison failed: {e!s}") from e
 
 
@@ -480,6 +559,7 @@ async def get_all_player_positioning(job_id: str) -> dict[str, object]:
         from opensight.analysis.positioning import PositioningAnalyzer
         from opensight.core.parser import DemoParser
 
+        # Re-parse required: positioning needs tick-level position data not stored in job.result
         demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
@@ -492,13 +572,15 @@ async def get_all_player_positioning(job_id: str) -> dict[str, object]:
         return {
             "map_name": data.map_name,
             "player_count": len(results),
-            "players": {str(sid): data.to_dict() for sid, data in results.items()},
+            "players": {str(sid): pos_data.to_dict() for sid, pos_data in results.items()},
         }
 
+    except HTTPException:
+        raise
     except ImportError as e:
         raise HTTPException(status_code=503, detail=f"Positioning module not available: {e}") from e
     except Exception as e:
-        logger.exception("All players positioning analysis failed")
+        logger.exception("All players positioning analysis failed for job %s", job_id)
         raise HTTPException(status_code=500, detail=f"Positioning analysis failed: {e!s}") from e
 
 
@@ -527,6 +609,7 @@ async def get_trade_chains(
         from opensight.core.parser import DemoParser
         from opensight.domains.combat import CombatAnalyzer
 
+        # Re-parse required: trade chains need tick-level kill sequence data not stored in job.result
         demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
@@ -557,6 +640,8 @@ async def get_trade_chains(
             },
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("Trade chain analysis failed")
+        logger.exception("Trade chain analysis failed for job %s", job_id)
         raise HTTPException(status_code=500, detail=f"Trade chain analysis failed: {e!s}") from e

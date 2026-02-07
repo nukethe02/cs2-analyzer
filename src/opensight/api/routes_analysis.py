@@ -124,10 +124,11 @@ async def analyze_demo(request: Request, file: UploadFile = File(...)):
                     try:
                         demo_path.unlink(missing_ok=True)
                     except Exception:
-                        pass
+                        logger.warning("Failed to clean up temp demo file: %s", demo_path)
 
             threading.Thread(target=_process_job, args=(job.job_id, demo_path), daemon=True).start()
         except Exception:
+            logger.exception("Failed to start analysis thread for job %s", job.job_id)
             job_store.set_status(job.job_id, JobStatus.FAILED)
 
         base = f"/analyze/{job.job_id}"
@@ -244,6 +245,7 @@ async def tactical_analysis(job_id: str, request: Request) -> dict[str, Any]:
     try:
         body = await request.json()
     except Exception:
+        logger.debug("No JSON body provided for tactical analysis, using defaults")
         body = {}
 
     analysis_type = body.get("type", "overview")
@@ -306,6 +308,7 @@ async def steal_strats(job_id: str, request: Request) -> dict[str, Any]:
     try:
         body = await request.json()
     except Exception:
+        logger.debug("No JSON body provided for strat-steal, using defaults")
         body = {}
 
     team_focus = body.get("team", None)
@@ -409,7 +412,7 @@ async def self_review_analysis(
             body = await request.json()
             our_team = body.get("our_team")
         except Exception:
-            pass
+            logger.debug("No JSON body provided for self-review, using defaults")
 
         from opensight.ai.self_review import get_self_review_engine
 

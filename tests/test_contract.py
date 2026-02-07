@@ -321,7 +321,7 @@ class TestContractValidation:
         assert set(entry.keys()) == expected_keys
 
     def test_trade_stats_contract(self):
-        """_get_trade_stats returns all 14 contracted fields."""
+        """_get_trade_stats returns all 15 contracted fields."""
         from opensight.pipeline.orchestrator import DemoOrchestrator
 
         p = _make_player()
@@ -343,6 +343,7 @@ class TestContractValidation:
             "deaths_traded",
             "traded_entry_kills",
             "traded_entry_deaths",
+            "untraded_deaths",
         }
         assert set(trades.keys()) == expected_keys
 

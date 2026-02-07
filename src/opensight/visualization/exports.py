@@ -97,8 +97,12 @@ def export_rounds_csv(rounds: list[dict]) -> str:
     Each row contains: round, winner, win_reason, t_score, ct_score,
     t_equipment, ct_equipment, t_buy_type, ct_buy_type.
 
+    Scores are computed cumulatively from the ``winner`` field of each
+    round since the orchestrator round_timeline does not include running
+    score totals.
+
     Args:
-        rounds: List of round dicts.
+        rounds: List of round dicts (from ``round_timeline``).
 
     Returns:
         CSV string including a header row.
@@ -107,21 +111,33 @@ def export_rounds_csv(rounds: list[dict]) -> str:
     writer = csv.writer(output)
     writer.writerow(_ROUND_CSV_COLUMNS)
 
+    # Orchestrator round_timeline does NOT include running t_score / ct_score.
+    # Compute cumulatively from the winner field of each round.
+    ct_score = 0
+    t_score = 0
+
     for r in rounds:
+        # Accumulate scores from round winner
+        winner = r.get("winner", "")
+        if winner == "CT":
+            ct_score += 1
+        elif winner == "T":
+            t_score += 1
+
         econ = r.get("economy") or {}
         t_econ = econ.get("t") or {}
         ct_econ = econ.get("ct") or {}
         writer.writerow(
             [
                 r.get("round_num", r.get("round", "")),
-                r.get("winner", ""),
+                winner,
                 r.get("win_reason", r.get("reason", "")),
-                r.get("t_score", 0),
-                r.get("ct_score", 0),
-                t_econ.get("equipment", r.get("t_equipment", r.get("team_t_val", 0))),
-                ct_econ.get("equipment", r.get("ct_equipment", r.get("team_ct_val", 0))),
-                t_econ.get("buy_type", r.get("t_buy_type", r.get("t_buy", ""))),
-                ct_econ.get("buy_type", r.get("ct_buy_type", r.get("ct_buy", ""))),
+                t_score,
+                ct_score,
+                t_econ.get("equipment", r.get("t_equipment", 0)),
+                ct_econ.get("equipment", r.get("ct_equipment", 0)),
+                t_econ.get("buy_type", r.get("t_buy_type", "")),
+                ct_econ.get("buy_type", r.get("ct_buy_type", "")),
             ]
         )
 

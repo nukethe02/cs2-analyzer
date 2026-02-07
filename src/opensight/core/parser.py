@@ -835,22 +835,23 @@ class DemoParser:
         # ===========================================
         # EXTENDED EVENTS - For comprehensive analysis
         # ===========================================
-        weapon_fires_df = pd.DataFrame()
+        # NOTE: weapon_fires_df is already parsed above (line ~819) with position/angle data.
+        # Do NOT overwrite it here. The comprehensive block below may re-parse with
+        # additional props (velocity_Z, is_scoped) if needed.
         blinds_df = pd.DataFrame()
         grenades_thrown_df = pd.DataFrame()
         flash_det_df = pd.DataFrame()
         he_det_df = pd.DataFrame()
         smoke_det_df = pd.DataFrame()
         molly_det_df = pd.DataFrame()
-        pd.DataFrame()
-        pd.DataFrame()
         bomb_planted_df = pd.DataFrame()
         bomb_defused_df = pd.DataFrame()
         bomb_exploded_df = pd.DataFrame()
 
         if comprehensive:
-            # Weapon fire events (for accuracy tracking)
-            weapon_fires_df = self._parse_event_safe(
+            # Re-parse weapon fire events with additional props (velocity_Z, is_scoped)
+            # only if we need the extra columns not in the initial parse
+            comprehensive_weapon_fires_df = self._parse_event_safe(
                 parser,
                 "weapon_fire",
                 player_props=[
@@ -865,7 +866,9 @@ class DemoParser:
                     "is_scoped",
                 ],
             )
-            if weapon_fires_df.empty:
+            if not comprehensive_weapon_fires_df.empty:
+                weapon_fires_df = comprehensive_weapon_fires_df
+            elif weapon_fires_df.empty:
                 weapon_fires_df = self._parse_event_safe(parser, "weapon_fire")
             logger.info(f"Parsed {len(weapon_fires_df)} weapon_fire events (for accuracy)")
 

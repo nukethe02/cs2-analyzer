@@ -142,7 +142,12 @@ class StratEngine:
     def _detect_defaults(
         self, round_timeline: list[dict], side_focus: str | None
     ) -> list[DefaultSetup]:
-        """Detect default setup patterns from round data."""
+        """Detect default setup patterns from round data.
+
+        Note: The orchestrator round_timeline does NOT currently include
+        ``player_positions``.  If the data is absent we skip default
+        detection gracefully and return an empty list.
+        """
         defaults = []
 
         for round_data in round_timeline:
@@ -150,8 +155,8 @@ class StratEngine:
             if round_num == 0:
                 continue
 
-            # Get player positions at start of round (schema: list of PlayerPositionSnapshot)
-            positions = round_data.get("player_positions", [])
+            # player_positions may not be present in the orchestrator output
+            positions = round_data.get("player_positions")
             if not positions:
                 continue
 
@@ -161,7 +166,9 @@ class StratEngine:
                 t_positions = {
                     pos.get("player_name", "Unknown"): pos
                     for pos in positions
-                    if pos.get("side") == "T" and pos.get("is_alive", True)
+                    if isinstance(pos, dict)
+                    and pos.get("side") == "T"
+                    and pos.get("is_alive", True)
                 }
                 if t_positions:
                     setup_type = self._classify_setup(t_positions)
@@ -170,7 +177,7 @@ class StratEngine:
                             round_number=round_num,
                             side="T",
                             player_positions={
-                                name: pos.get("zone", "Unknown")  # Schema uses "zone" not "callout"
+                                name: pos.get("zone", "Unknown")
                                 for name, pos in t_positions.items()
                             },
                             setup_type=setup_type,
@@ -183,7 +190,9 @@ class StratEngine:
                 ct_positions = {
                     pos.get("player_name", "Unknown"): pos
                     for pos in positions
-                    if pos.get("side") == "CT" and pos.get("is_alive", True)
+                    if isinstance(pos, dict)
+                    and pos.get("side") == "CT"
+                    and pos.get("is_alive", True)
                 }
                 if ct_positions:
                     setup_type = self._classify_setup(ct_positions)
@@ -192,7 +201,7 @@ class StratEngine:
                             round_number=round_num,
                             side="CT",
                             player_positions={
-                                name: pos.get("zone", "Unknown")  # Schema uses "zone" not "callout"
+                                name: pos.get("zone", "Unknown")
                                 for name, pos in ct_positions.items()
                             },
                             setup_type=setup_type,
@@ -224,7 +233,12 @@ class StratEngine:
         return "-".join(str(c) for c in counts)
 
     def _detect_executes(self, round_timeline: list[dict], side_focus: str | None) -> list[Execute]:
-        """Detect execute patterns from round data."""
+        """Detect execute patterns from round data.
+
+        Uses ``victim_zone`` on kill events (populated by the orchestrator
+        via ``get_zone_for_position`` when position data is available).
+        If zone data is missing the detection is skipped for that round.
+        """
         executes = []
 
         for round_data in round_timeline:
@@ -237,22 +251,24 @@ class StratEngine:
                 continue
 
             # Check for coordinated utility usage followed by kills
-            utility = round_data.get("utility", [])
-            kills = round_data.get("kills", [])
+            utility = round_data.get("utility") or []
+            kills = round_data.get("kills") or []
 
             if len(utility) < 2 or len(kills) < 1:
                 continue
 
+            # Check if any kills have zone data; if none do, skip execute detection
+            has_zone_data = any(k.get("victim_zone") for k in kills)
+            if not has_zone_data:
+                continue
+
             # Detect A site execute based on kill positions (victim_zone)
-            # Utility events don't have a "zone" field, so we detect executes
-            # by checking if T-side kills happened at a specific site after utility
             a_kills = [
                 k
                 for k in kills
                 if "A" in (k.get("victim_zone") or "").upper() and k.get("killer_team") == "T"
             ]
             if len(a_kills) >= 1 and len(utility) >= 2:
-                # Utility thrown before the kills is likely part of the execute
                 first_kill_tick = a_kills[0].get("tick", 0)
                 pre_kill_utility = [u for u in utility if u.get("tick", 0) <= first_kill_tick]
                 if len(pre_kill_utility) >= 2:
@@ -381,11 +397,11 @@ class StratEngine:
         clutch_players = Counter()
 
         for round_data in round_timeline:
-            kills = round_data.get("kills", [])
+            kills = round_data.get("kills") or []
 
             for kill in kills:
-                weapon = kill.get("weapon", "").lower()
-                killer = kill.get("killer", "")  # Schema uses "killer" not "attacker_name"
+                weapon = (kill.get("weapon") or "").lower()
+                killer = kill.get("killer", "")
 
                 if "awp" in weapon:
                     awp_players[killer] += 1
@@ -395,7 +411,7 @@ class StratEngine:
                     entry_players[killer] += 1
 
             # Check for clutch situations
-            clutches = round_data.get("clutches", [])
+            clutches = round_data.get("clutches") or []
             for clutch in clutches:
                 clutch_players[clutch.get("player", "")] += 1
 
