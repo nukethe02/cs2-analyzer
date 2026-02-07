@@ -180,7 +180,7 @@ async def download_job_result(job_id: str):
     logger.debug(f"Returning analysis result for job {job_id}")
 
     # --- AI COACHING INTEGRATION ---
-    players = result.get("players", [])
+    players = result.get("players", {})
     if players and len(players) > 0:
         try:
             from opensight.ai.llm_client import generate_match_summary

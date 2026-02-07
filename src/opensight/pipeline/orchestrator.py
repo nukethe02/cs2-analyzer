@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,6 +72,9 @@ class DemoOrchestrator:
                 "steam_id": str(sid),
                 "name": p.name,
                 "team": p.team,
+                # Top-level convenience fields for frontend flat-access fallbacks
+                "rounds_played": p.rounds_played,
+                "total_damage": getattr(p, "total_damage", 0) or 0,
                 "stats": {
                     "kills": p.kills,
                     "deaths": p.deaths,
@@ -99,17 +104,21 @@ class DemoOrchestrator:
                     "impact_rating": round(getattr(p, "impact_rating", None) or 0, 2),
                 },
                 "advanced": {
-                    # From enhanced parser (TTD - Time to Damage)
-                    "ttd_median_ms": round(getattr(p, "ttd_median_ms", None) or 0, 1),
-                    "ttd_mean_ms": round(getattr(p, "ttd_mean_ms", None) or 0, 1),
-                    "ttd_95th_ms": round(getattr(p, "ttd_95th_ms", None) or 0, 1),
-                    # From enhanced parser (CP - Crosshair Placement)
-                    "cp_median_error_deg": round(getattr(p, "cp_median_error_deg", None) or 0, 1),
-                    "cp_mean_error_deg": round(getattr(p, "cp_mean_error_deg", None) or 0, 1),
-                    # Other advanced stats
-                    "prefire_kills": getattr(p, "prefire_kills", None) or 0,
-                    "opening_kills": getattr(p, "opening_kills", None) or 0,
-                    "opening_deaths": getattr(p, "opening_deaths", None) or 0,
+                    # TTD - Time to Damage (engagement duration)
+                    "ttd_median_ms": round(p.ttd_median_ms or 0, 1),
+                    "ttd_mean_ms": round(p.ttd_mean_ms or 0, 1),
+                    "ttd_95th_ms": (
+                        round(float(np.percentile(p.engagement_duration_values, 95)), 1)
+                        if p.engagement_duration_values
+                        else 0
+                    ),
+                    # CP - Crosshair Placement
+                    "cp_median_error_deg": round(p.cp_median_error_deg or 0, 1),
+                    "cp_mean_error_deg": round(p.cp_mean_error_deg or 0, 1),
+                    # Other advanced stats — read from actual dataclass attributes
+                    "prefire_kills": getattr(p, "prefire_count", 0) or 0,
+                    "opening_kills": p.opening_duels.wins if p.opening_duels else 0,
+                    "opening_deaths": p.opening_duels.losses if p.opening_duels else 0,
                 },
                 "utility": {
                     # Raw counts
@@ -134,28 +143,14 @@ class DemoOrchestrator:
                     "flash_effectiveness_pct": (
                         p.utility.flash_effectiveness_pct if p.utility else 0
                     ),
-                    "flash_assist_pct": (p.utility.flash_effectiveness_pct if p.utility else 0),
-                    "he_team_damage": 0,
-                    "unused_utility_value": 0,
+                    "flash_assist_pct": (p.utility.flash_assist_pct if p.utility else 0),
+                    "he_team_damage": p.utility.he_team_damage if p.utility else 0,
+                    "unused_utility_value": p.utility.unused_utility_value if p.utility else 0,
                     "utility_quality_rating": (
-                        round(p.utility_rating, 1) if getattr(p, "utility_rating", None) else 0
+                        round(p.utility.utility_quality_rating, 1) if p.utility else 0
                     ),
                     "utility_quantity_rating": (
-                        round(
-                            (
-                                (
-                                    p.utility.flashbangs_thrown
-                                    + p.utility.smokes_thrown
-                                    + p.utility.he_thrown
-                                    + p.utility.molotovs_thrown
-                                )
-                                / max(1, getattr(p, "rounds_played", 1))
-                            )
-                            * 25,
-                            1,
-                        )
-                        if p.utility
-                        else 0
+                        round(p.utility.utility_quantity_rating, 1) if p.utility else 0
                     ),
                     "effective_flashes": p.utility.effective_flashes if p.utility else 0,
                     "total_blind_time": p.utility.total_blind_time if p.utility else 0,
@@ -189,28 +184,32 @@ class DemoOrchestrator:
                     "traded_deaths": p.trades.deaths_traded if p.trades else 0,
                     "clutch_wins": p.clutches.total_wins if p.clutches else 0,
                     "clutch_attempts": p.clutches.total_situations if p.clutches else 0,
+                    "opening_kills": p.opening_duels.wins if p.opening_duels else 0,
+                    "opening_deaths": p.opening_duels.losses if p.opening_duels else 0,
+                    "opening_wins": p.opening_duels.wins if p.opening_duels else 0,
+                    "opening_losses": p.opening_duels.losses if p.opening_duels else 0,
+                    "opening_win_rate": (p.opening_duels.win_rate if p.opening_duels else 0),
                 },
                 "spray_transfers": {
-                    "double_sprays": (
-                        p.spray_transfers.double_sprays if hasattr(p, "spray_transfers") else 0
-                    ),
-                    "triple_sprays": (
-                        p.spray_transfers.triple_sprays if hasattr(p, "spray_transfers") else 0
-                    ),
-                    "quad_sprays": (
-                        p.spray_transfers.quad_sprays if hasattr(p, "spray_transfers") else 0
-                    ),
-                    "ace_sprays": (
-                        p.spray_transfers.ace_sprays if hasattr(p, "spray_transfers") else 0
-                    ),
-                    "total_sprays": (
-                        p.spray_transfers.total_sprays if hasattr(p, "spray_transfers") else 0
-                    ),
+                    "double_sprays": p.spray_transfers.double_sprays if p.spray_transfers else 0,
+                    "triple_sprays": p.spray_transfers.triple_sprays if p.spray_transfers else 0,
+                    "quad_sprays": p.spray_transfers.quad_sprays if p.spray_transfers else 0,
+                    "ace_sprays": p.spray_transfers.ace_sprays if p.spray_transfers else 0,
+                    "total_sprays": p.spray_transfers.total_sprays if p.spray_transfers else 0,
                     "total_spray_kills": (
-                        p.spray_transfers.total_spray_kills if hasattr(p, "spray_transfers") else 0
+                        p.spray_transfers.total_spray_kills if p.spray_transfers else 0
                     ),
                     "avg_spray_time_ms": (
-                        p.spray_transfers.avg_spray_time_ms if hasattr(p, "spray_transfers") else 0
+                        p.spray_transfers.avg_spray_time_ms if p.spray_transfers else 0
+                    ),
+                    "avg_kills_per_spray": (
+                        round(
+                            p.spray_transfers.total_spray_kills
+                            / max(1, p.spray_transfers.total_sprays),
+                            1,
+                        )
+                        if p.spray_transfers and p.spray_transfers.total_sprays > 0
+                        else 0
                     ),
                 },
                 "entry": self._get_entry_stats(p),
@@ -466,6 +465,7 @@ class DemoOrchestrator:
                 "clutch_wins": wins,
                 "clutch_losses": total - wins,
                 "clutch_success_pct": round(wins / total * 100, 0) if total > 0 else 0,
+                "total_situations": total,
                 "v1_wins": getattr(clutches, "v1_wins", 0) or 0,
                 "v2_wins": getattr(clutches, "v2_wins", 0) or 0,
                 "v3_wins": getattr(clutches, "v3_wins", 0) or 0,
@@ -476,6 +476,7 @@ class DemoOrchestrator:
             "clutch_wins": 0,
             "clutch_losses": 0,
             "clutch_success_pct": 0,
+            "total_situations": 0,
             "v1_wins": 0,
             "v2_wins": 0,
             "v3_wins": 0,

@@ -75,9 +75,12 @@ async def export_players_csv(job_id: str) -> Response:
     """Download player stats as a CSV file."""
     result = _get_completed_result(job_id)
 
-    players = result.get("players", [])
-    if not players:
+    players_raw = result.get("players", {})
+    if not players_raw:
         raise HTTPException(status_code=404, detail="No player data in analysis result")
+
+    # Convert dict → list for CSV export (orchestrator outputs dict keyed by steam_id)
+    players = list(players_raw.values()) if isinstance(players_raw, dict) else players_raw
 
     try:
         from opensight.visualization.exports import export_player_stats_csv

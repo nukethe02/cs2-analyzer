@@ -255,11 +255,16 @@ async def get_your_match(demo_id: str, steam_id: str) -> dict[str, Any]:
         job = job_store.get_job(demo_id)
 
         if job and job.result:
-            players = job.result.get("players", [])
-            for player in players:
-                if str(player.get("steam_id")) == steam_id:
-                    current_stats = player
-                    break
+            players = job.result.get("players", {})
+            # players is a dict keyed by steam_id string
+            if isinstance(players, dict):
+                current_stats = players.get(steam_id)
+            else:
+                # Legacy list format fallback
+                for player in players:
+                    if str(player.get("steam_id")) == steam_id:
+                        current_stats = player
+                        break
 
         if not current_stats:
             history = db.get_player_history(steam_id, limit=1)
