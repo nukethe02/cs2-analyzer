@@ -80,6 +80,7 @@ class DemoOrchestrator:
                         round(p.headshot_percentage, 1) if p.headshot_percentage is not None else 0
                     ),
                     "kd_ratio": round(p.kills / max(1, p.deaths), 2),
+                    "total_damage": getattr(p, "total_damage", 0) or 0,
                     "2k": mk["2k"],
                     "3k": mk["3k"],
                     "4k": mk["4k"],
@@ -132,6 +133,29 @@ class DemoOrchestrator:
                     "avg_he_damage": p.utility.avg_he_damage if p.utility else 0,
                     "flash_effectiveness_pct": (
                         p.utility.flash_effectiveness_pct if p.utility else 0
+                    ),
+                    "flash_assist_pct": (p.utility.flash_effectiveness_pct if p.utility else 0),
+                    "he_team_damage": 0,
+                    "unused_utility_value": 0,
+                    "utility_quality_rating": (
+                        round(p.utility_rating, 1) if getattr(p, "utility_rating", None) else 0
+                    ),
+                    "utility_quantity_rating": (
+                        round(
+                            (
+                                (
+                                    p.utility.flashbangs_thrown
+                                    + p.utility.smokes_thrown
+                                    + p.utility.he_thrown
+                                    + p.utility.molotovs_thrown
+                                )
+                                / max(1, getattr(p, "rounds_played", 1))
+                            )
+                            * 25,
+                            1,
+                        )
+                        if p.utility
+                        else 0
                     ),
                     "effective_flashes": p.utility.effective_flashes if p.utility else 0,
                     "total_blind_time": p.utility.total_blind_time if p.utility else 0,
@@ -385,16 +409,47 @@ class DemoOrchestrator:
         }
 
     def _get_trade_stats(self, player) -> dict:
-        """Get comprehensive trade stats like FACEIT."""
+        """Get comprehensive Leetify-style trade stats."""
         trades = getattr(player, "trades", None)
         if trades:
             return {
+                # Trade kill stats (you trading for teammates)
+                "trade_kill_opportunities": getattr(trades, "trade_kill_opportunities", 0) or 0,
+                "trade_kill_attempts": getattr(trades, "trade_kill_attempts", 0) or 0,
+                "trade_kill_attempts_pct": round(
+                    getattr(trades, "trade_kill_attempts_pct", 0) or 0, 1
+                ),
+                "trade_kill_success": getattr(trades, "trade_kill_success", 0) or 0,
+                "trade_kill_success_pct": round(
+                    getattr(trades, "trade_kill_success_pct", 0) or 0, 1
+                ),
+                # Traded death stats (teammates trading for you)
+                "traded_death_opportunities": getattr(trades, "traded_death_opportunities", 0) or 0,
+                "traded_death_attempts": getattr(trades, "traded_death_attempts", 0) or 0,
+                "traded_death_attempts_pct": round(
+                    getattr(trades, "traded_death_attempts_pct", 0) or 0, 1
+                ),
+                "traded_death_success": getattr(trades, "traded_death_success", 0) or 0,
+                "traded_death_success_pct": round(
+                    getattr(trades, "traded_death_success_pct", 0) or 0, 1
+                ),
+                # Legacy aliases
                 "trade_kills": getattr(trades, "kills_traded", 0) or 0,
                 "deaths_traded": getattr(trades, "deaths_traded", 0) or 0,
                 "traded_entry_kills": getattr(trades, "traded_entry_kills", 0) or 0,
                 "traded_entry_deaths": getattr(trades, "traded_entry_deaths", 0) or 0,
             }
         return {
+            "trade_kill_opportunities": 0,
+            "trade_kill_attempts": 0,
+            "trade_kill_attempts_pct": 0,
+            "trade_kill_success": 0,
+            "trade_kill_success_pct": 0,
+            "traded_death_opportunities": 0,
+            "traded_death_attempts": 0,
+            "traded_death_attempts_pct": 0,
+            "traded_death_success": 0,
+            "traded_death_success_pct": 0,
             "trade_kills": 0,
             "deaths_traded": 0,
             "traded_entry_kills": 0,
