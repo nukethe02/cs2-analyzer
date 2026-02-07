@@ -75,9 +75,9 @@ class DemoOrchestrator:
                     "deaths": p.deaths,
                     "assists": p.assists,
                     "rounds_played": p.rounds_played,
-                    "adr": round(p.adr, 1) if p.adr else 0,
+                    "adr": round(p.adr, 1) if p.adr is not None else 0,
                     "headshot_pct": (
-                        round(p.headshot_percentage, 1) if p.headshot_percentage else 0
+                        round(p.headshot_percentage, 1) if p.headshot_percentage is not None else 0
                     ),
                     "kd_ratio": round(p.kills / max(1, p.deaths), 2),
                     "2k": mk["2k"],
@@ -86,11 +86,15 @@ class DemoOrchestrator:
                     "5k": mk["5k"],
                 },
                 "rating": {
-                    "hltv_rating": round(p.hltv_rating, 2) if p.hltv_rating else 0,
-                    "kast_percentage": (round(p.kast_percentage, 1) if p.kast_percentage else 0),
+                    "hltv_rating": round(p.hltv_rating, 2) if p.hltv_rating is not None else 0,
+                    "kast_percentage": (
+                        round(p.kast_percentage, 1) if p.kast_percentage is not None else 0
+                    ),
                     # aim_rating: 0 = missing data, actual values 1-100
                     "aim_rating": round(p.aim_rating, 1),
-                    "utility_rating": (round(p.utility_rating, 1) if p.utility_rating else 0),
+                    "utility_rating": (
+                        round(p.utility_rating, 1) if p.utility_rating is not None else 0
+                    ),
                     "impact_rating": round(getattr(p, "impact_rating", None) or 0, 2),
                 },
                 "advanced": {
@@ -157,10 +161,10 @@ class DemoOrchestrator:
                     ),
                 },
                 "duels": {
-                    "trade_kills": getattr(p, "trade_kills", None) or 0,
-                    "traded_deaths": getattr(p, "traded_deaths", None) or 0,
-                    "clutch_wins": getattr(p, "clutch_wins", None) or 0,
-                    "clutch_attempts": getattr(p, "clutch_attempts", None) or 0,
+                    "trade_kills": p.trades.kills_traded if p.trades else 0,
+                    "traded_deaths": p.trades.deaths_traded if p.trades else 0,
+                    "clutch_wins": p.clutches.total_wins if p.clutches else 0,
+                    "clutch_attempts": p.clutches.total_situations if p.clutches else 0,
                 },
                 "spray_transfers": {
                     "double_sprays": (
@@ -341,7 +345,7 @@ class DemoOrchestrator:
                 "team1_name": getattr(analysis, "team1_name", "Counter-Terrorists"),
                 "team2_name": getattr(analysis, "team2_name", "Terrorists"),
             },
-            "players": players_sorted,
+            "players": {p["steam_id"]: p for p in players_sorted},
             "mvp": mvp,
             "round_timeline": round_timeline,
             "kill_matrix": kill_matrix,
@@ -1266,6 +1270,13 @@ class DemoOrchestrator:
             max_round = max(max_round, round_num)
             ensure_player_round(attacker_id, round_num)
             player_round_data[attacker_id][round_num]["enemies_flashed"] += 1
+
+        # Filter to known players only (removes phantom entities)
+        if player_names:
+            known_players = set(player_names.keys())
+            player_round_data = {
+                sid: data for sid, data in player_round_data.items() if sid in known_players
+            }
 
         # Build cumulative data for graphs
         players_timeline = []
@@ -2642,14 +2653,11 @@ class DemoOrchestrator:
                         # Entry/Trade/Clutch
                         "entry_kills": player_data["entry"].get("entry_kills", 0),
                         "entry_deaths": player_data["entry"].get("entry_deaths", 0),
-                        "trade_kill_success": player_data["trades"].get("trade_kill_success", 0),
-                        "trade_kill_opportunities": player_data["trades"].get(
-                            "trade_kill_opportunities", 0
-                        ),
-                        "clutch_wins": player_data["clutches"].get("v1_wins", 0)
-                        + player_data["clutches"].get("v2_wins", 0)
-                        + player_data["clutches"].get("v3_wins", 0),
-                        "clutch_attempts": player_data["duels"].get("clutch_attempts", 0),
+                        "trade_kill_success": player_data["trades"].get("trade_kills", 0),
+                        "trade_kill_opportunities": 0,
+                        "clutch_wins": player_data["clutches"].get("clutch_wins", 0),
+                        "clutch_attempts": player_data["clutches"].get("clutch_wins", 0)
+                        + player_data["clutches"].get("clutch_losses", 0),
                     }
 
                     # Generate AI summary
