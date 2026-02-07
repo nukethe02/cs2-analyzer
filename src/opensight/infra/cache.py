@@ -242,6 +242,10 @@ class DemoCache:
         Get cache key for a demo file.
 
         The key is based on file hash + analysis version.
+        NOTE(perf): The SHA256 hash is computed by streaming the file in 64KB chunks
+        (see compute_file_hash). The result is NOT cached across calls, so callers
+        that need the key multiple times should store the return value and pass it
+        to put() via the cache_key parameter to avoid re-hashing the same file.
         """
         file_hash = compute_file_hash(demo_path)
         return f"{file_hash[:16]}_{self.ANALYSIS_VERSION}"
@@ -251,12 +255,14 @@ class DemoCache:
         key = self.get_cache_key(demo_path)
         return key in self._index and self._get_data_path(key).exists()
 
-    def get(self, demo_path: Path) -> dict | None:
+    def get(self, demo_path: Path, cache_key: str | None = None) -> dict | None:
         """
         Get cached analysis for a demo.
 
         Args:
             demo_path: Path to demo file
+            cache_key: Pre-computed cache key (avoids re-hashing the file).
+                       If None, the key is computed from demo_path.
 
         Returns:
             Cached analysis dict or None if not cached
@@ -267,7 +273,7 @@ class DemoCache:
             self._miss_count += 1
             return None
 
-        key = self.get_cache_key(demo_path)
+        key = cache_key or self.get_cache_key(demo_path)
 
         with open(self.index_path) as f:  # Add lock for thread safety
             if key not in self._index:
@@ -301,15 +307,17 @@ class DemoCache:
             self._miss_count += 1
             return None
 
-    def put(self, demo_path: Path, analysis_data: dict):
+    def put(self, demo_path: Path, analysis_data: dict, cache_key: str | None = None):
         """
         Cache analysis for a demo.
 
         Args:
             demo_path: Path to demo file
             analysis_data: Analysis result dict
+            cache_key: Pre-computed cache key (avoids re-hashing the file).
+                       If None, the key is computed from demo_path.
         """
-        key = self.get_cache_key(demo_path)
+        key = cache_key or self.get_cache_key(demo_path)
         data_path = self._get_data_path(key)
 
         try:
@@ -493,9 +501,12 @@ class CachedAnalyzer:
         Returns:
             Comprehensive analysis result dict including tactical data
         """
+        # Compute cache key once to avoid re-hashing the file in both get() and put()
+        cache_key = self.cache.get_cache_key(demo_path)
+
         # Check cache first
         if not force:
-            cached = self.cache.get(demo_path)
+            cached = self.cache.get(demo_path, cache_key=cache_key)
             if cached:
                 logger.info(f"Using cached analysis for {demo_path.name}")
                 return cached
@@ -507,8 +518,8 @@ class CachedAnalyzer:
         orchestrator = DemoOrchestrator()
         result = orchestrator.analyze(demo_path)
 
-        # Cache result
-        self.cache.put(demo_path, result)
+        # Cache result (pass pre-computed key to avoid re-hashing)
+        self.cache.put(demo_path, result, cache_key=cache_key)
 
         return result
 

@@ -1183,6 +1183,8 @@ class DemoAnalyzer:
             return {}
 
         try:
+            # NOTE(perf): single-instantiation here; orchestrator creates a separate
+            # instance for timeline enrichment (see orchestrator.py _build_round_timeline).
             economy_analyzer = EconomyAnalyzer(self.data)
             economy_stats = economy_analyzer.analyze()
 
@@ -1213,6 +1215,8 @@ class DemoAnalyzer:
             return {}
 
         try:
+            # NOTE(perf): single-instantiation here; orchestrator creates a separate
+            # instance for timeline enrichment (see orchestrator.py _build_round_timeline).
             combat_analyzer = CombatAnalyzer(self.data)
             combat_stats = combat_analyzer.analyze()
 

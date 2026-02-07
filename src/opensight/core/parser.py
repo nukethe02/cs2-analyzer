@@ -547,6 +547,12 @@ class DemoData:
     bomb_events: list[BombEvent] = field(default_factory=list)
 
     # DataFrames for detailed analysis
+    # TODO(perf): These DataFrames duplicate the list-based events above (kills, damages,
+    # etc.). Both forms are actively used: lists by analysis/ modules (analytics,
+    # compute_utility, replay, state_machine) and DataFrames by pipeline/store_events.py
+    # and domains/. Consider returning dicts directly from parser to avoid the
+    # DataFrame→list[dataclass] conversion overhead, or lazily constructing one format
+    # from the other on first access. Estimated memory overhead: ~2x for large demos.
     kills_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     damages_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     rounds_df: pd.DataFrame = field(default_factory=pd.DataFrame)

@@ -456,6 +456,11 @@ class DemoOrchestrator:
             calculate_win_probability = None
 
         # Import Economy IQ analysis and Prediction Engine
+        # NOTE(perf): EconomyAnalyzer is also instantiated in DemoAnalyzer._integrate_economy()
+        # (analytics.py). Both instances are needed: analytics merges economy data into player
+        # stats, while this instance enriches the round timeline. The analyzer is lightweight
+        # (stateless, reads from demo_data) so the duplicate instantiation cost is negligible
+        # compared to the actual analysis work.
         economy_by_round: dict[int, dict[int, Any]] = {}
         economy_predictions: dict[int, dict[str, dict]] = {}  # round -> {team: prediction}
         try:
@@ -521,6 +526,11 @@ class DemoOrchestrator:
             logger.debug(f"Economy analysis not available: {e}")
 
         # Get clutch data from combat analysis for timeline enrichment
+        # NOTE(perf): CombatAnalyzer is also instantiated in DemoAnalyzer._integrate_combat()
+        # (analytics.py). Same pattern as EconomyAnalyzer above — both instances serve
+        # different purposes (player stat merging vs. timeline enrichment). Single-instantiation
+        # would require threading the analyzer instance through the pipeline, which adds
+        # complexity for minimal gain since CombatAnalyzer is stateless.
         clutch_by_round: dict[int, list[dict]] = {}
         try:
             from opensight.domains.combat import ClutchResult, CombatAnalyzer

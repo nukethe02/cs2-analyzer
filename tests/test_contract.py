@@ -1122,6 +1122,33 @@ class TestEmptyMatchAnalysis:
         assert any("players" in e.lower() or "dict" in e.lower() for e in errors)
 
 
+class TestSerializationPerformance:
+    """Performance tests for orchestrator serialization."""
+
+    def test_orchestrator_serialization_performance(self):
+        """Orchestrator player serialization completes in under 100ms for 10 players."""
+        import time
+
+        from opensight.pipeline.orchestrator import DemoOrchestrator
+
+        # Build 10 synthetic players
+        players = {}
+        for i in range(10):
+            p = _make_player(76561198000000000 + i, f"Player{i}")
+            players[p.steam_id] = p
+
+        orch = DemoOrchestrator()
+        start = time.perf_counter()
+
+        for _sid, p in players.items():
+            orch._get_entry_stats(p)
+            orch._get_trade_stats(p)
+            orch._get_clutch_stats(p)
+
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        assert elapsed_ms < 100, f"Serialization took {elapsed_ms:.1f}ms, expected <100ms"
+
+
 class TestKeyNameConsistency:
     """Verify AI modules use correct key names from the contract."""
 

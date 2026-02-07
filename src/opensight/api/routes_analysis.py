@@ -77,28 +77,39 @@ async def analyze_demo(request: Request, file: UploadFile = File(...)):
         )
 
     try:
-        content = await file.read()
-        file_size_bytes = len(content)
-
-        if file_size_bytes > MAX_FILE_SIZE_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large: {file_size_bytes / (1024 * 1024):.1f}MB",
-            )
+        # Write upload to disk in chunks to avoid loading entire 500MB demo into memory
+        CHUNK_SIZE = 1024 * 1024  # 1MB chunks
+        try:
+            tmp = NamedTemporaryFile(suffix=".dem", delete=False)
+            file_size_bytes = 0
+            try:
+                while chunk := await file.read(CHUNK_SIZE):
+                    file_size_bytes += len(chunk)
+                    if file_size_bytes > MAX_FILE_SIZE_BYTES:
+                        tmp.close()
+                        Path(tmp.name).unlink(missing_ok=True)
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"File too large: {file_size_bytes / (1024 * 1024):.1f}MB",
+                        )
+                    tmp.write(chunk)
+                tmp.flush()
+                demo_path = Path(tmp.name)
+            finally:
+                tmp.close()
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Failed to write uploaded demo to temp file")
+            raise
 
         if file_size_bytes == 0:
+            demo_path.unlink(missing_ok=True)
             raise HTTPException(status_code=400, detail="Empty file uploaded")
 
         job = job_store.create_job(file.filename, file_size_bytes)
 
         try:
-            tmp = NamedTemporaryFile(suffix=".dem", delete=False)
-            try:
-                tmp.write(content)
-                tmp.flush()
-                demo_path = Path(tmp.name)
-            finally:
-                tmp.close()
 
             def _process_job(jid: str, demo_path: Path):
                 try:
@@ -192,43 +203,48 @@ async def download_job_result(job_id: str):
     logger.debug(f"Returning analysis result for job {job_id}")
 
     # --- AI COACHING INTEGRATION ---
-    players = result.get("players", {})
-    if players and len(players) > 0:
-        try:
-            from opensight.ai.llm_client import generate_match_summary
+    # NOTE: AI summaries are cached in the result dict after first generation.
+    # Subsequent downloads of the same job reuse the cached summary.
+    if "ai_summary" not in result:
+        players = result.get("players", {})
+        if players and len(players) > 0:
+            try:
+                from opensight.ai.llm_client import generate_match_summary
 
-            hero_player = players[0] if isinstance(players, list) else list(players.values())[0]
+                hero_player = players[0] if isinstance(players, list) else list(players.values())[0]
 
-            player_stats = {
-                "kills": hero_player.get("stats", {}).get("kills", 0),
-                "deaths": hero_player.get("stats", {}).get("deaths", 0),
-                "assists": hero_player.get("stats", {}).get("assists", 0),
-                "hltv_rating": hero_player.get("rating", {}).get("hltv_rating", 0.0),
-                "adr": hero_player.get("stats", {}).get("adr", 0.0),
-                "headshot_pct": hero_player.get("stats", {}).get("headshot_pct", 0.0),
-                "kast_percentage": hero_player.get("rating", {}).get("kast_percentage", 0.0),
-                "ttd_median_ms": hero_player.get("advanced", {}).get("ttd_median_ms", 0),
-                "cp_median_error_deg": hero_player.get("advanced", {}).get(
-                    "cp_median_error_deg", 0.0
-                ),
-                "entry_kills": hero_player.get("entry", {}).get("entry_kills", 0),
-                "entry_deaths": hero_player.get("entry", {}).get("entry_deaths", 0),
-                "trade_kill_success": hero_player.get("trades", {}).get("trade_kill_success", 0),
-                "trade_kill_opportunities": hero_player.get("trades", {}).get(
-                    "trade_kill_opportunities", 0
-                ),
-                "clutch_wins": hero_player.get("clutches", {}).get("clutch_wins", 0),
-                "clutch_attempts": hero_player.get("clutches", {}).get("clutch_wins", 0)
-                + hero_player.get("clutches", {}).get("clutch_losses", 0),
-            }
+                player_stats = {
+                    "kills": hero_player.get("stats", {}).get("kills", 0),
+                    "deaths": hero_player.get("stats", {}).get("deaths", 0),
+                    "assists": hero_player.get("stats", {}).get("assists", 0),
+                    "hltv_rating": hero_player.get("rating", {}).get("hltv_rating", 0.0),
+                    "adr": hero_player.get("stats", {}).get("adr", 0.0),
+                    "headshot_pct": hero_player.get("stats", {}).get("headshot_pct", 0.0),
+                    "kast_percentage": hero_player.get("rating", {}).get("kast_percentage", 0.0),
+                    "ttd_median_ms": hero_player.get("advanced", {}).get("ttd_median_ms", 0),
+                    "cp_median_error_deg": hero_player.get("advanced", {}).get(
+                        "cp_median_error_deg", 0.0
+                    ),
+                    "entry_kills": hero_player.get("entry", {}).get("entry_kills", 0),
+                    "entry_deaths": hero_player.get("entry", {}).get("entry_deaths", 0),
+                    "trade_kill_success": hero_player.get("trades", {}).get(
+                        "trade_kill_success", 0
+                    ),
+                    "trade_kill_opportunities": hero_player.get("trades", {}).get(
+                        "trade_kill_opportunities", 0
+                    ),
+                    "clutch_wins": hero_player.get("clutches", {}).get("clutch_wins", 0),
+                    "clutch_attempts": hero_player.get("clutches", {}).get("clutch_wins", 0)
+                    + hero_player.get("clutches", {}).get("clutch_losses", 0),
+                }
 
-            ai_insight_text = generate_match_summary(player_stats)
-            result["ai_summary"] = ai_insight_text
-            logger.info(f"AI summary generated for job {job_id}")
+                ai_insight_text = generate_match_summary(player_stats)
+                result["ai_summary"] = ai_insight_text
+                logger.info(f"AI summary generated for job {job_id}")
 
-        except Exception as e:
-            logger.warning(f"AI coaching unavailable: {e}")
-            result["ai_summary"] = "Tactical Analysis unavailable (Check ANTHROPIC_API_KEY)."
+            except Exception as e:
+                logger.warning(f"AI coaching unavailable: {e}")
+                result["ai_summary"] = "Tactical Analysis unavailable (Check ANTHROPIC_API_KEY)."
 
     return JSONResponse(content=result)
 
