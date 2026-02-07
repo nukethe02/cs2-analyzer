@@ -3,6 +3,10 @@ Persistent Job Store - Track async analysis jobs across restarts.
 
 Provides persistent job tracking using the database, allowing jobs to survive
 server restarts and be queried by external systems.
+
+STATUS: Not yet wired in. The API currently uses the in-memory JobStore from
+api/shared.py. To switch to persistent storage, update _get_job_store() in
+api/shared.py to return a PersistentJobStore instance instead.
 """
 
 from __future__ import annotations

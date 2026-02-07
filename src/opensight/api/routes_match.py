@@ -22,6 +22,7 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from opensight.api.shared import (
+    _get_job_store,
     validate_demo_id,
     validate_steam_id,
 )
@@ -29,17 +30,6 @@ from opensight.api.shared import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["match"])
-
-
-def _get_job_store():
-    """Lazy import to avoid circular dependency.
-
-    NOTE(DRY-intentional): Identical in all 5 route modules. See routes_analysis.py
-    for full explanation of why this duplication is intentional.
-    """
-    from opensight.api import job_store
-
-    return job_store
 
 
 # NOTE: Static path routes must come BEFORE parameterized routes to avoid conflicts

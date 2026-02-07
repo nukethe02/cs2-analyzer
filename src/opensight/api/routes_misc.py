@@ -41,6 +41,7 @@ from opensight.api.shared import (
     ShareCodeRequest,
     ShareCodeResponse,
     __version__,
+    _get_job_store,
     rate_limit,
 )
 
@@ -54,17 +55,6 @@ def _get_sharecode_cache():
     from opensight.api import sharecode_cache
 
     return sharecode_cache
-
-
-def _get_job_store():
-    """Lazy import to avoid circular dependency.
-
-    NOTE(DRY-intentional): Identical in all 5 route modules. See routes_analysis.py
-    for full explanation of why this duplication is intentional.
-    """
-    from opensight.api import job_store
-
-    return job_store
 
 
 # =============================================================================

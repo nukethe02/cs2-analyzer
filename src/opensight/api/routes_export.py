@@ -15,22 +15,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from opensight.api.shared import JobStatus, validate_job_id
+from opensight.api.shared import JobStatus, _get_job_store, validate_job_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["export"])
-
-
-def _get_job_store():
-    """Lazy import to avoid circular dependency.
-
-    NOTE(DRY-intentional): Identical in all 5 route modules. See routes_analysis.py
-    for full explanation of why this duplication is intentional.
-    """
-    from opensight.api import job_store
-
-    return job_store
 
 
 def _get_completed_result(job_id: str) -> dict[str, Any]:

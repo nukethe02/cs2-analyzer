@@ -352,11 +352,14 @@ class DemoOrchestrator:
         """Get comprehensive Leetify-style trade stats."""
         trades = getattr(player, "trades", None)
         # Compute untraded_deaths: deaths that were NOT avenged by teammates
-        untraded = getattr(player, "untraded_deaths", 0)
-        if not untraded and trades:
+        # Use None sentinel to distinguish "not set" from "explicitly 0"
+        untraded = getattr(player, "untraded_deaths", None)
+        if untraded is None and trades:
             # Fallback: compute from deaths - deaths_traded
             deaths = getattr(player, "deaths", 0)
             untraded = max(0, deaths - trades.deaths_traded)
+        if untraded is None:
+            untraded = 0
         if trades:
             return {
                 # Trade kill stats (you trading for teammates)

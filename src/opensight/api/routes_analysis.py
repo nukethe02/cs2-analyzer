@@ -26,6 +26,7 @@ from opensight.api.shared import (
     RATE_LIMIT_API,
     RATE_LIMIT_UPLOAD,
     JobStatus,
+    _get_job_store,
     rate_limit,
     validate_demo_id,
     validate_job_id,
@@ -34,23 +35,6 @@ from opensight.api.shared import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["analysis"])
-
-
-def _get_job_store():
-    """Lazy import to avoid circular dependency.
-
-    NOTE(DRY-intentional): This identical pattern exists in all 5 route modules
-    (routes_analysis, routes_heatmap, routes_match, routes_export, routes_misc).
-    The duplication is INTENTIONAL — each module needs its own lazy import to
-    break the circular dependency between route modules and api/__init__.py.
-    Do NOT consolidate into shared.py; that would re-introduce the circular import.
-    """
-    # To use persistent jobs (survives restart):
-    # from opensight.infra.job_store import PersistentJobStore
-    # job_store = PersistentJobStore()
-    from opensight.api import job_store
-
-    return job_store
 
 
 @router.post("/analyze", status_code=202)
@@ -234,8 +218,7 @@ async def download_job_result(job_id: str):
                         "trade_kill_opportunities", 0
                     ),
                     "clutch_wins": hero_player.get("clutches", {}).get("clutch_wins", 0),
-                    "clutch_attempts": hero_player.get("clutches", {}).get("clutch_wins", 0)
-                    + hero_player.get("clutches", {}).get("clutch_losses", 0),
+                    "clutch_attempts": hero_player.get("clutches", {}).get("total_situations", 0),
                 }
 
                 ai_insight_text = generate_match_summary(player_stats)

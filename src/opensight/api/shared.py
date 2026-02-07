@@ -214,6 +214,23 @@ class SharecodeCache:
 
 
 # =============================================================================
+# Lazy Job Store Accessor
+# =============================================================================
+
+
+def _get_job_store():
+    """Lazy import of job_store to avoid circular dependency.
+
+    api/__init__.py creates the JobStore instance, and route modules are
+    imported by api/__init__.py at module load time. This lazy accessor
+    breaks the circular import by deferring the import to call time.
+    """
+    from opensight.api import job_store
+
+    return job_store
+
+
+# =============================================================================
 # Player Stats Serialization
 # =============================================================================
 
