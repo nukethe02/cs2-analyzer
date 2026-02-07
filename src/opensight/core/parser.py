@@ -1007,6 +1007,16 @@ class DemoParser:
             rounds=rounds,
         )
 
+        # Correlate bomb plant events to rounds
+        for bomb in bomb_events:
+            if bomb.event_type == "planted" and bomb.round_num > 0 and bomb.tick > 0:
+                for r in rounds:
+                    if r.round_num == bomb.round_num:
+                        r.bomb_plant_tick = bomb.tick
+                        if bomb.site:
+                            r.bomb_site = bomb.site
+                        break
+
         # Merge grenade DataFrames efficiently (only include non-empty ones)
         grenades_df = pd.DataFrame()
         if comprehensive:
