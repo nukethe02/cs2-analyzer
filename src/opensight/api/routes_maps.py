@@ -219,6 +219,10 @@ async def generate_replay_data(
             tmp.write(content)
             tmp_path = Path(tmp.name)
 
+        # Direct parsing — this endpoint is not job-based, it accepts ad-hoc uploads
+        # for 2D replay visualization. Replay generation requires raw tick-level
+        # positional data (player coords, bomb state per-frame) that is NOT stored
+        # in cached orchestrator results. Not an orchestrator bypass.
         parser = DemoParser(tmp_path)
         data = parser.parse()
 
@@ -348,6 +352,10 @@ async def analyze_rotations(
             tmp.write(content)
             tmp_path = Path(tmp.name)
 
+        # Direct parsing — this endpoint is not job-based, it accepts ad-hoc uploads
+        # for CT rotation latency analysis. The CTRotationAnalyzer requires raw
+        # tick-level positional data (player movement over time) that is NOT stored
+        # in cached orchestrator results. Not an orchestrator bypass.
         parser = DemoParser(tmp_path)
         data = parser.parse()
 

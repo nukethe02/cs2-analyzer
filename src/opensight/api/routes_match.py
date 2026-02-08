@@ -471,7 +471,8 @@ async def get_player_positioning(job_id: str, steam_id: str) -> dict[str, object
         from opensight.analysis.positioning import PositioningAnalyzer
         from opensight.core.parser import DemoParser
 
-        # Re-parse required: positioning needs tick-level position data not stored in job.result
+        # NOTE: This endpoint requires raw tick-level position data not stored in orchestrator output.
+        # Re-parsing is intentional here. PositioningAnalyzer needs DemoData with per-tick coordinates.
         demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
@@ -514,7 +515,8 @@ async def compare_player_positioning(
         from opensight.analysis.positioning import PositioningAnalyzer
         from opensight.core.parser import DemoParser
 
-        # Re-parse required: positioning needs tick-level position data not stored in job.result
+        # NOTE: This endpoint requires raw tick-level position data not stored in orchestrator output.
+        # Re-parsing is intentional here. PositioningAnalyzer needs DemoData with per-tick coordinates.
         demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
@@ -553,7 +555,8 @@ async def get_all_player_positioning(job_id: str) -> dict[str, object]:
         from opensight.analysis.positioning import PositioningAnalyzer
         from opensight.core.parser import DemoParser
 
-        # Re-parse required: positioning needs tick-level position data not stored in job.result
+        # NOTE: This endpoint requires raw tick-level position data not stored in orchestrator output.
+        # Re-parsing is intentional here. PositioningAnalyzer needs DemoData with per-tick coordinates.
         demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")
@@ -603,7 +606,8 @@ async def get_trade_chains(
         from opensight.core.parser import DemoParser
         from opensight.domains.combat import CombatAnalyzer
 
-        # Re-parse required: trade chains need tick-level kill sequence data not stored in job.result
+        # NOTE: This endpoint requires raw tick-level kill sequence data not stored in orchestrator output.
+        # Re-parsing is intentional here. CombatAnalyzer needs DemoData with kills_df for chain detection.
         demo_path = job.result.get("demo_path") if job.result else None
         if not demo_path or not Path(demo_path).exists():
             raise HTTPException(status_code=404, detail="Demo file no longer available")

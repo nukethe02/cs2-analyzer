@@ -304,9 +304,10 @@ class SelfReviewEngine:
     ) -> list[Mistake]:
         """Detect positioning mistakes.
 
-        Note: ``was_dry_peek`` is NOT currently produced by the
-        orchestrator kill events.  If the field is absent we silently
-        skip dry-peek detection rather than crashing.
+        Note: ``was_dry_peek`` is computed by the orchestrator based on
+        whether friendly utility was used within 192 ticks of the kill
+        event.  If the field is absent we silently skip dry-peek
+        detection rather than crashing.
         """
         mistakes = []
         our_names = {p.get("name", "") for p in our_players.values()}

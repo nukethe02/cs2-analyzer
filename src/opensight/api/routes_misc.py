@@ -544,6 +544,11 @@ async def add_demo_to_scouting_session(
         from opensight.analysis.analytics import DemoAnalyzer
         from opensight.core.parser import DemoParser
 
+        # Direct parsing — this endpoint is not job-based, it accepts ad-hoc uploads
+        # for multi-demo scouting sessions. Scouting is a separate workflow from the
+        # job store: users upload multiple demos to build opponent profiles via
+        # ScoutingEngine. The engine needs both raw parsed data and analysis results
+        # to aggregate cross-demo patterns. Not an orchestrator bypass.
         parser = DemoParser(temp_path)
         demo_data = parser.parse()
         if not demo_data:
