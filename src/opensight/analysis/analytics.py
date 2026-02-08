@@ -293,6 +293,7 @@ class DemoAnalyzer:
         "victim_side",
         "user_team_name",
         "victim_team",
+        "user_team",
         "user_team_num",
         "victim_team_num",
     ]

@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from opensight.analysis.analytics import ClutchEvent
-from opensight.core.constants import TRADE_WINDOW_SECONDS
+from opensight.core.constants import TRADE_PROXIMITY_UNITS, TRADE_WINDOW_SECONDS
 from opensight.core.parser import safe_float, safe_int, safe_str
 
 if TYPE_CHECKING:
@@ -605,6 +605,87 @@ def _infer_teams_from_kills(kills_df: pd.DataFrame, att_col: str, vic_col: str) 
     return color
 
 
+def _get_nearby_teammates(
+    teammates_alive: list[int],
+    death_x: float,
+    death_y: float,
+    kill_tick: int,
+    ticks_df: pd.DataFrame | None,
+    ticks_steamid_col: str | None,
+    proximity: float = TRADE_PROXIMITY_UNITS,
+) -> list[int]:
+    """Filter teammates to only those within proximity of a death location.
+
+    Uses ticks_df position data to check each teammate's position at (or near)
+    the tick when the death occurred. Returns only teammates within the
+    proximity threshold (in game units).
+
+    If ticks_df or position data is unavailable, returns ALL teammates
+    (graceful fallback to old behavior).
+
+    Args:
+        teammates_alive: List of alive teammate steam IDs.
+        death_x: X coordinate where the death occurred.
+        death_y: Y coordinate where the death occurred.
+        kill_tick: The tick when the death occurred.
+        ticks_df: Per-tick player position data (may be None).
+        ticks_steamid_col: Name of the steamid column in ticks_df.
+        proximity: Distance threshold in game units (default 1500).
+
+    Returns:
+        List of teammate steam IDs within proximity of the death.
+    """
+    if (
+        ticks_df is None
+        or ticks_df.empty
+        or ticks_steamid_col is None
+        or "X" not in ticks_df.columns
+        or "Y" not in ticks_df.columns
+    ):
+        # No position data available — fall back to all alive teammates
+        return teammates_alive
+
+    if math.isnan(death_x) or math.isnan(death_y):
+        return teammates_alive
+
+    nearby: list[int] = []
+    proximity_sq = proximity * proximity  # Compare squared distances (faster)
+
+    for teammate_id in teammates_alive:
+        # Find this teammate's position at (or closest to) the kill tick
+        teammate_ticks = ticks_df[ticks_df[ticks_steamid_col] == teammate_id]
+        if teammate_ticks.empty:
+            # No tick data for this player — include them conservatively
+            nearby.append(teammate_id)
+            continue
+
+        # Find the tick closest to the kill tick
+        tick_diffs = (teammate_ticks["tick"] - kill_tick).abs()
+        closest_idx = tick_diffs.idxmin()
+        closest_row = teammate_ticks.loc[closest_idx]
+
+        # Only use if within 2 seconds of the kill tick (128 ticks at 64 tick rate)
+        if abs(int(closest_row["tick"]) - kill_tick) > 128:
+            # Tick data too far from kill moment — include conservatively
+            nearby.append(teammate_id)
+            continue
+
+        tm_x = safe_float(closest_row.get("X"))
+        tm_y = safe_float(closest_row.get("Y"))
+        if tm_x is None or tm_y is None:
+            nearby.append(teammate_id)
+            continue
+
+        dx = tm_x - death_x
+        dy = tm_y - death_y
+        dist_sq = dx * dx + dy * dy
+
+        if dist_sq <= proximity_sq:
+            nearby.append(teammate_id)
+
+    return nearby
+
+
 def detect_trades(analyzer: DemoAnalyzer) -> None:
     """Detect trade kills with Leetify-style opportunity/attempt/success tracking.
 
@@ -641,6 +722,30 @@ def detect_trades(analyzer: DemoAnalyzer) -> None:
     dmg_round_col = (
         analyzer._find_col(damages_df, analyzer.ROUND_COLS) if not damages_df.empty else None
     )
+
+    # Set up ticks_df for proximity-based trade opportunity filtering.
+    # Leetify only counts a death as "tradeable" when a teammate is nearby.
+    ticks_df = analyzer.data.ticks_df
+    ticks_steamid_col: str | None = None
+    if ticks_df is not None and not ticks_df.empty:
+        for col in ["steamid", "steam_id", "user_steamid"]:
+            if col in ticks_df.columns:
+                ticks_steamid_col = col
+                break
+        if ticks_steamid_col and "X" in ticks_df.columns and "Y" in ticks_df.columns:
+            logger.info("Trade detection: using proximity filtering (ticks_df available)")
+        else:
+            ticks_df = None  # Mark as unavailable if missing required columns
+            logger.info("Trade detection: no proximity filtering (ticks_df missing position cols)")
+    else:
+        logger.info("Trade detection: no proximity filtering (ticks_df unavailable)")
+
+    # Find victim position columns on kills_df for death location
+    vic_x_col = analyzer._find_col(kills_df, ["user_X", "victim_X", "user_x", "victim_x"])
+    vic_y_col = analyzer._find_col(kills_df, ["user_Y", "victim_Y", "user_y", "victim_y"])
+    has_death_positions = bool(vic_x_col and vic_y_col)
+    if has_death_positions:
+        logger.info(f"Trade detection: death positions available ({vic_x_col}, {vic_y_col})")
 
     # Build player team lookup for consistent team matching
     player_teams_lookup: dict[int, str] = {}
@@ -768,12 +873,33 @@ def detect_trades(analyzer: DemoAnalyzer) -> None:
                 and pid in analyzer._players
             ]
 
-            if teammates_alive and victim_id in analyzer._players:
-                # There's at least one teammate alive who could trade
+            # Get death position for proximity filtering.
+            # Leetify only counts a death as "tradeable" if a teammate was nearby.
+            death_x = float("nan")
+            death_y = float("nan")
+            if has_death_positions:
+                death_x = safe_float(kill.get(vic_x_col), default=float("nan"))
+                death_y = safe_float(kill.get(vic_y_col), default=float("nan"))
+
+            # Filter to nearby teammates for OPPORTUNITY counting.
+            # Full teammates_alive list is still used for attempt/success checks
+            # because a far-away teammate CAN rotate and get the trade kill.
+            nearby_teammates = _get_nearby_teammates(
+                teammates_alive,
+                death_x,
+                death_y,
+                kill_tick,
+                ticks_df,
+                ticks_steamid_col,
+            )
+
+            if nearby_teammates and victim_id in analyzer._players:
+                # There's at least one nearby teammate who could trade
                 analyzer._players[victim_id].trades.traded_death_opportunities += 1
                 total_traded_death_opportunities += 1
 
                 # Check if any teammate attempted or succeeded
+                # (check ALL alive teammates, not just nearby — the kill is ground truth)
                 teammate_attempted = False
                 teammate_succeeded = False
 
@@ -825,7 +951,9 @@ def detect_trades(analyzer: DemoAnalyzer) -> None:
                     total_traded_death_success += 1
 
             # === TRADE KILL OPPORTUNITIES ===
-            for teammate_id in teammates_alive:
+            # Only nearby teammates get trade opportunities (Leetify methodology).
+            # A teammate across the map shouldn't inflate their "opportunity" count.
+            for teammate_id in nearby_teammates:
                 if teammate_id in analyzer._players:
                     analyzer._players[teammate_id].trades.trade_kill_opportunities += 1
                     analyzer._players[teammate_id].trades.trade_attempts += 1

@@ -1237,10 +1237,12 @@ class AimStats:
             "spray_accuracy": self.spray_accuracy,
             "counter_strafe_pct": self.counter_strafe_pct,
             # TTD and CP
-            "time_to_damage_ms": round(self.ttd_median_ms, 1) if self.ttd_median_ms else None,
-            "crosshair_placement_deg": (
-                round(self.cp_median_deg, 1) if self.cp_median_deg else None
-            ),
+            "time_to_damage_ms": round(self.ttd_median_ms, 1)
+            if self.ttd_median_ms is not None
+            else None,
+            "crosshair_placement_deg": round(self.cp_median_deg, 1)
+            if self.cp_median_deg is not None
+            else None,
             # Benchmark indicators
             "ttd_rating": self._get_ttd_rating(),
             "cp_rating": self._get_cp_rating(),

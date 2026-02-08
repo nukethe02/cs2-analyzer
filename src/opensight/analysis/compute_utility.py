@@ -790,7 +790,7 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
                 break
 
         vic_side_col = None
-        for col in ["victim_side", "victim_team"]:
+        for col in ["victim_side", "victim_team", "user_team"]:
             if col in damages_df.columns:
                 vic_side_col = col
                 break

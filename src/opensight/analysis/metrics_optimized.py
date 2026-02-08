@@ -211,18 +211,29 @@ def compute_ttd_vectorized(
         return result
 
     # Standardize column names
+    # IMPORTANT: Use int64, NOT float, for steamid columns.
+    # Steam IDs are 17-digit integers (e.g. 76561198073476793).
+    # float64 only preserves ~15.9 significant digits, so
+    # int(float(76561198073476793)) == 76561198073476800 -- wrong!
+    # This precision loss causes player lookups to fail silently.
     kills = kills_df[[kill_att_col, kill_vic_col, "tick"]].copy()
     kills.columns = ["attacker_id", "victim_id", "kill_tick"]
-    kills["attacker_id"] = kills["attacker_id"].astype(float)
-    kills["victim_id"] = kills["victim_id"].astype(float)
+    kills["attacker_id"] = pd.to_numeric(kills["attacker_id"], errors="coerce").astype("Int64")
+    kills["victim_id"] = pd.to_numeric(kills["victim_id"], errors="coerce").astype("Int64")
 
     damages = damages_df[[dmg_att_col, dmg_vic_col, "tick"]].copy()
     damages.columns = ["attacker_id", "victim_id", "dmg_tick"]
-    damages["attacker_id"] = damages["attacker_id"].astype(float)
-    damages["victim_id"] = damages["victim_id"].astype(float)
+    damages["attacker_id"] = pd.to_numeric(damages["attacker_id"], errors="coerce").astype("Int64")
+    damages["victim_id"] = pd.to_numeric(damages["victim_id"], errors="coerce").astype("Int64")
 
     # For each kill, find the first damage from the same attacker to same victim
-    # that occurred BEFORE the kill tick
+    # that occurred within an engagement window BEFORE the kill tick.
+    # Without a window, damage from previous rounds contaminates the TTD,
+    # producing enormous values (e.g. 60000ms) that get filtered out,
+    # causing ALL TTD values to be null.
+
+    # Maximum engagement window: 5 seconds before the kill (matches non-vectorized path)
+    max_engagement_ticks = int(5000 / ms_per_tick) + 1
 
     # Step 1: Create a unique engagement key
     kills["engagement_idx"] = range(len(kills))
@@ -230,14 +241,18 @@ def compute_ttd_vectorized(
     # Step 2: Merge kills with all damage events for the same attacker-victim pair
     merged = kills.merge(damages, on=["attacker_id", "victim_id"], how="left")
 
-    # Step 3: Filter to damages before kill
-    merged = merged[merged["dmg_tick"] <= merged["kill_tick"]]
+    # Step 3: Filter to damages within the engagement window before the kill
+    # (not just "before kill" -- must be within max_engagement_ticks)
+    engagement_start = merged["kill_tick"] - max_engagement_ticks
+    merged = merged[
+        (merged["dmg_tick"] <= merged["kill_tick"]) & (merged["dmg_tick"] >= engagement_start)
+    ]
 
     if merged.empty:
-        logger.debug("No damage events found before kills")
+        logger.debug("No damage events found within engagement window before kills")
         return result
 
-    # Step 4: For each engagement, get the FIRST damage tick
+    # Step 4: For each engagement, get the FIRST damage tick within the window
     first_damage = (
         merged.groupby("engagement_idx")
         .agg(
@@ -611,7 +626,7 @@ def compute_cp_from_dataframe_vectorized(kills_df: pd.DataFrame, player_ids: set
     player_cp_values: dict[int, list[float]] = {}
 
     for i, sid in enumerate(attacker_ids):
-        sid = int(float(sid))  # Handle float steamids
+        sid = int(sid)  # Keep as int (float conversion loses precision on 17-digit Steam IDs)
         if sid in player_ids:
             if sid not in player_cp_values:
                 player_cp_values[sid] = []

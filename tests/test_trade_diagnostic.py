@@ -426,3 +426,443 @@ class TestTradeDetectionDiagnostic:
 
         # With player_teams fallback, teams should be set correctly
         assert total_opps > 0, "Fallback should give us trade opportunities"
+
+
+class TestTradeProximityFiltering:
+    """Tests for proximity-based trade opportunity filtering.
+
+    Verifies that trade_kill_opportunities are only counted for teammates
+    within TRADE_PROXIMITY_UNITS (1500 game units) of the death location,
+    matching Leetify's methodology.
+    """
+
+    def _make_demo_with_positions(
+        self,
+        *,
+        nearby_x: float = 100.0,
+        nearby_y: float = 100.0,
+        far_x: float = 5000.0,
+        far_y: float = 5000.0,
+    ) -> tuple:
+        """Create demo data with position info for proximity testing.
+
+        Scenario (Round 1):
+          - T1(201) kills CT1(101) at tick 1000 at position (500, 500)
+          - CT2(102) is at (nearby_x, nearby_y) — may be within proximity
+          - CT3(103) is at (far_x, far_y) — should be outside proximity
+          - CT2(102) kills T1(201) at tick 1200 — successful trade
+
+        Returns (DemoData, ticks_df) where ticks_df has position data.
+        """
+        import numpy as np
+
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1200],
+                "attacker_steamid": [201, 102],
+                "user_steamid": [101, 201],
+                "weapon": ["ak47", "m4a1"],
+                "headshot": [True, False],
+                "total_rounds_played": [1, 1],
+                "attacker_team": [2, 3],
+                "user_team": [3, 2],
+                # Death positions (victim position)
+                "user_X": [500.0, 600.0],
+                "user_Y": [500.0, 500.0],
+            }
+        )
+
+        damages_df = pd.DataFrame(
+            {
+                "tick": [1000, 1200],
+                "attacker_steamid": [201, 102],
+                "user_steamid": [101, 201],
+                "dmg_health": [100, 100],
+                "total_rounds_played": [1, 1],
+                "attacker_team": [2, 3],
+                "user_team": [3, 2],
+            }
+        )
+
+        # ticks_df with player positions at relevant ticks
+        # Each player has position data near tick 1000
+        ticks_data = []
+        # CT1 (101) at death location
+        ticks_data.append({"steamid": 101, "tick": 999, "X": 500.0, "Y": 500.0, "Z": 0.0})
+        # CT2 (102) nearby or far depending on test
+        ticks_data.append({"steamid": 102, "tick": 999, "X": nearby_x, "Y": nearby_y, "Z": 0.0})
+        # CT3 (103) always far away
+        ticks_data.append({"steamid": 103, "tick": 999, "X": far_x, "Y": far_y, "Z": 0.0})
+        # CT4 (104) far away
+        ticks_data.append({"steamid": 104, "tick": 999, "X": 4000.0, "Y": 4000.0, "Z": 0.0})
+        # CT5 (105) far away
+        ticks_data.append({"steamid": 105, "tick": 999, "X": 3500.0, "Y": 3500.0, "Z": 0.0})
+        # T players
+        ticks_data.append({"steamid": 201, "tick": 999, "X": 600.0, "Y": 500.0, "Z": 0.0})
+        ticks_data.append({"steamid": 202, "tick": 999, "X": 700.0, "Y": 700.0, "Z": 0.0})
+        ticks_data.append({"steamid": 203, "tick": 999, "X": 2000.0, "Y": 2000.0, "Z": 0.0})
+        ticks_data.append({"steamid": 204, "tick": 999, "X": 3000.0, "Y": 3000.0, "Z": 0.0})
+        ticks_data.append({"steamid": 205, "tick": 999, "X": 2500.0, "Y": 2500.0, "Z": 0.0})
+
+        ticks_df = pd.DataFrame(ticks_data)
+        # Ensure correct dtypes
+        ticks_df["steamid"] = ticks_df["steamid"].astype(np.int64)
+        ticks_df["tick"] = ticks_df["tick"].astype(np.int64)
+
+        player_names = {
+            101: "CT1",
+            102: "CT2",
+            103: "CT3",
+            104: "CT4",
+            105: "CT5",
+            201: "T1",
+            202: "T2",
+            203: "T3",
+            204: "T4",
+            205: "T5",
+        }
+        player_teams = {
+            101: "CT",
+            102: "CT",
+            103: "CT",
+            104: "CT",
+            105: "CT",
+            201: "T",
+            202: "T",
+            203: "T",
+            204: "T",
+            205: "T",
+        }
+        player_persistent_teams = {
+            101: "Team A",
+            102: "Team A",
+            103: "Team A",
+            104: "Team A",
+            105: "Team A",
+            201: "Team B",
+            202: "Team B",
+            203: "Team B",
+            204: "Team B",
+            205: "Team B",
+        }
+        team_rosters = {
+            "Team A": {101, 102, 103, 104, 105},
+            "Team B": {201, 202, 203, 204, 205},
+        }
+        team_starting_sides = {"Team A": "CT", "Team B": "T"}
+
+        demo_data = DemoData(
+            file_path=Path("/tmp/test_proximity.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=1,
+            player_stats={},
+            player_names=player_names,
+            player_teams=player_teams,
+            player_persistent_teams=player_persistent_teams,
+            team_rosters=team_rosters,
+            team_starting_sides=team_starting_sides,
+            halftime_round=13,
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=damages_df,
+            ticks_df=ticks_df,
+        )
+
+        return demo_data
+
+    def test_nearby_teammate_gets_opportunity(self):
+        """Teammate within 1500 units of death gets a trade opportunity."""
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.analysis.compute_combat import detect_trades
+
+        # CT2 is at (600, 500), death at (500, 500) = 100 units away (nearby)
+        demo_data = self._make_demo_with_positions(nearby_x=600.0, nearby_y=500.0)
+        analyzer = DemoAnalyzer(demo_data)
+        analyzer._init_column_cache()
+        analyzer._init_player_stats()
+
+        detect_trades(analyzer)
+
+        ct2 = analyzer._players[102]
+        assert ct2.trades.trade_kill_opportunities >= 1, (
+            f"CT2 (100 units away) should get trade opportunity, got {ct2.trades.trade_kill_opportunities}"
+        )
+        # CT2 also successfully traded
+        assert ct2.trades.trade_kill_success >= 1, (
+            f"CT2 should have trade success, got {ct2.trades.trade_kill_success}"
+        )
+
+    def test_far_teammate_no_opportunity(self):
+        """Teammate 5000+ units away should NOT get a trade opportunity."""
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.analysis.compute_combat import detect_trades
+
+        # CT2 at (600, 500) is nearby; CT3 at (5000, 5000) is far
+        demo_data = self._make_demo_with_positions(nearby_x=600.0, nearby_y=500.0)
+        analyzer = DemoAnalyzer(demo_data)
+        analyzer._init_column_cache()
+        analyzer._init_player_stats()
+
+        detect_trades(analyzer)
+
+        ct3 = analyzer._players[103]
+        assert ct3.trades.trade_kill_opportunities == 0, (
+            f"CT3 (5000+ units away) should NOT get trade opportunity, "
+            f"got {ct3.trades.trade_kill_opportunities}"
+        )
+
+    def test_proximity_reduces_total_opportunities(self):
+        """With proximity filtering, total opportunities should be much less than
+        'all alive teammates' counting.
+
+        Old behavior: 4 alive CT teammates each get +1 = 4 opportunities per death.
+        New behavior: only 1 nearby teammate gets +1 = 1 opportunity per death.
+        """
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.analysis.compute_combat import detect_trades
+
+        # Only CT2 is near the death (600, 500). CT3-CT5 are 3500-5000 units away.
+        demo_data = self._make_demo_with_positions(nearby_x=600.0, nearby_y=500.0)
+        analyzer = DemoAnalyzer(demo_data)
+        analyzer._init_column_cache()
+        analyzer._init_player_stats()
+
+        detect_trades(analyzer)
+
+        # Count total CT trade_kill_opportunities
+        ct_opps = sum(
+            analyzer._players[sid].trades.trade_kill_opportunities
+            for sid in [102, 103, 104, 105]
+            if sid in analyzer._players
+        )
+
+        # With proximity: should be ~1 (only CT2 nearby)
+        # Without proximity: would be 4 (all alive CTs)
+        assert ct_opps <= 2, (
+            f"Expected at most 2 CT trade opportunities (proximity-filtered), got {ct_opps}. "
+            f"This suggests proximity filtering is not working."
+        )
+
+    def test_traded_death_only_when_nearby_teammate(self):
+        """A death is only 'tradeable' if a teammate was within proximity."""
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.analysis.compute_combat import detect_trades
+
+        # CT2 nearby, so CT1's death should be tradeable
+        demo_data = self._make_demo_with_positions(nearby_x=600.0, nearby_y=500.0)
+        analyzer = DemoAnalyzer(demo_data)
+        analyzer._init_column_cache()
+        analyzer._init_player_stats()
+
+        detect_trades(analyzer)
+
+        ct1 = analyzer._players[101]
+        assert ct1.trades.traded_death_opportunities >= 1, (
+            f"CT1 death should be tradeable (CT2 is nearby), "
+            f"got {ct1.trades.traded_death_opportunities}"
+        )
+
+    def test_trade_outside_window_not_counted(self):
+        """Kill outside 5-second window should not be a trade."""
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.analysis.compute_combat import detect_trades
+
+        # Create scenario where the "trade" kill is 6 seconds after death
+        # 6 seconds * 64 ticks = 384 ticks
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1000 + 384],
+                "attacker_steamid": [201, 102],
+                "user_steamid": [101, 201],
+                "weapon": ["ak47", "m4a1"],
+                "headshot": [True, False],
+                "total_rounds_played": [1, 1],
+                "attacker_team": [2, 3],
+                "user_team": [3, 2],
+                "user_X": [500.0, 600.0],
+                "user_Y": [500.0, 500.0],
+            }
+        )
+
+        demo_data = DemoData(
+            file_path=Path("/tmp/test_window.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=1,
+            player_stats={},
+            player_names={101: "CT1", 102: "CT2", 201: "T1", 202: "T2"},
+            player_teams={101: "CT", 102: "CT", 201: "T", 202: "T"},
+            player_persistent_teams={101: "Team A", 102: "Team A", 201: "Team B", 202: "Team B"},
+            team_rosters={"Team A": {101, 102}, "Team B": {201, 202}},
+            team_starting_sides={"Team A": "CT", "Team B": "T"},
+            halftime_round=13,
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+        analyzer = DemoAnalyzer(demo_data)
+        analyzer._init_column_cache()
+        analyzer._init_player_stats()
+
+        detect_trades(analyzer)
+
+        ct2 = analyzer._players[102]
+        assert ct2.trades.trade_kill_success == 0, (
+            f"Kill at 6s (outside 5s window) should NOT be a trade, "
+            f"got {ct2.trades.trade_kill_success} successes"
+        )
+
+    def test_trade_within_window_counted(self):
+        """Kill within 5-second window should be a trade."""
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.analysis.compute_combat import detect_trades
+
+        # 3 seconds * 64 ticks = 192 ticks (within window)
+        kills_df = pd.DataFrame(
+            {
+                "tick": [1000, 1192],
+                "attacker_steamid": [201, 102],
+                "user_steamid": [101, 201],
+                "weapon": ["ak47", "m4a1"],
+                "headshot": [True, False],
+                "total_rounds_played": [1, 1],
+                "attacker_team": [2, 3],
+                "user_team": [3, 2],
+                "user_X": [500.0, 600.0],
+                "user_Y": [500.0, 500.0],
+            }
+        )
+
+        demo_data = DemoData(
+            file_path=Path("/tmp/test_window2.dem"),
+            map_name="de_dust2",
+            duration_seconds=1800.0,
+            tick_rate=64,
+            num_rounds=1,
+            player_stats={},
+            player_names={101: "CT1", 102: "CT2", 201: "T1", 202: "T2"},
+            player_teams={101: "CT", 102: "CT", 201: "T", 202: "T"},
+            player_persistent_teams={101: "Team A", 102: "Team A", 201: "Team B", 202: "Team B"},
+            team_rosters={"Team A": {101, 102}, "Team B": {201, 202}},
+            team_starting_sides={"Team A": "CT", "Team B": "T"},
+            halftime_round=13,
+            kills=[],
+            damages=[],
+            kills_df=kills_df,
+            damages_df=pd.DataFrame(),
+        )
+
+        analyzer = DemoAnalyzer(demo_data)
+        analyzer._init_column_cache()
+        analyzer._init_player_stats()
+
+        detect_trades(analyzer)
+
+        ct2 = analyzer._players[102]
+        assert ct2.trades.trade_kill_success >= 1, (
+            f"Kill at 3s (within 5s window) should be a trade, "
+            f"got {ct2.trades.trade_kill_success} successes"
+        )
+
+    def test_no_ticks_df_falls_back_gracefully(self):
+        """Without ticks_df, proximity filtering falls back to all teammates."""
+        from opensight.analysis.analytics import DemoAnalyzer
+        from opensight.analysis.compute_combat import detect_trades
+
+        # Use existing make_demo_data_with_trades which has no ticks_df
+        demo_data = make_demo_data_with_trades()
+        analyzer = DemoAnalyzer(demo_data)
+        analyzer._init_column_cache()
+        analyzer._init_player_stats()
+
+        detect_trades(analyzer)
+
+        # Should still detect trades (fallback = all alive teammates)
+        total_success = sum(p.trades.trade_kill_success for p in analyzer._players.values())
+        assert total_success > 0, (
+            "Without ticks_df, trade detection should still work (fallback to all teammates)"
+        )
+
+    def test_get_nearby_teammates_helper(self):
+        """Direct unit test for the _get_nearby_teammates helper function."""
+        import numpy as np
+
+        from opensight.analysis.compute_combat import _get_nearby_teammates
+
+        # Create ticks_df with known positions
+        ticks_df = pd.DataFrame(
+            {
+                "steamid": np.array([102, 103, 104], dtype=np.int64),
+                "tick": np.array([1000, 1000, 1000], dtype=np.int64),
+                "X": [600.0, 5000.0, 400.0],
+                "Y": [500.0, 5000.0, 500.0],
+            }
+        )
+
+        teammates_alive = [102, 103, 104]
+        death_x = 500.0
+        death_y = 500.0
+        kill_tick = 1000
+
+        nearby = _get_nearby_teammates(
+            teammates_alive,
+            death_x,
+            death_y,
+            kill_tick,
+            ticks_df,
+            "steamid",
+            proximity=1500.0,
+        )
+
+        # 102 is 100 units away (nearby), 103 is ~6364 units away (far),
+        # 104 is 100 units away (nearby)
+        assert 102 in nearby, "Player 102 (100 units away) should be nearby"
+        assert 104 in nearby, "Player 104 (100 units away) should be nearby"
+        assert 103 not in nearby, "Player 103 (6364 units away) should NOT be nearby"
+
+    def test_get_nearby_teammates_no_ticks_df(self):
+        """Helper returns all teammates when ticks_df is None."""
+        from opensight.analysis.compute_combat import _get_nearby_teammates
+
+        teammates = [102, 103, 104]
+        result = _get_nearby_teammates(
+            teammates,
+            500.0,
+            500.0,
+            1000,
+            None,
+            None,
+        )
+        assert result == teammates, "Should return all teammates when ticks_df is None"
+
+    def test_get_nearby_teammates_nan_position(self):
+        """Helper returns all teammates when death position is NaN."""
+        import numpy as np
+
+        from opensight.analysis.compute_combat import _get_nearby_teammates
+
+        ticks_df = pd.DataFrame(
+            {
+                "steamid": np.array([102], dtype=np.int64),
+                "tick": np.array([1000], dtype=np.int64),
+                "X": [600.0],
+                "Y": [500.0],
+            }
+        )
+
+        teammates = [102]
+        result = _get_nearby_teammates(
+            teammates,
+            float("nan"),
+            float("nan"),
+            1000,
+            ticks_df,
+            "steamid",
+        )
+        assert result == teammates, "Should return all teammates when death position is NaN"
