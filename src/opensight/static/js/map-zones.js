@@ -125,6 +125,7 @@ const MAP_PARAMS = {
     'de_vertigo': { pos_x: -3168, pos_y: 1762, scale: 4.0 },
     'de_ancient': { pos_x: -2953, pos_y: 2164, scale: 5.0 },
     'de_anubis': { pos_x: -2796, pos_y: 3328, scale: 5.22 },
+    'de_train': { pos_x: -2477, pos_y: 2392, scale: 4.7 },
 };
 
 const _RADAR_BASE = 'https://raw.githubusercontent.com/2mlml/cs2-radar-images/master';
@@ -137,6 +138,7 @@ const RADAR_URLS = {
     'de_vertigo': _RADAR_BASE + '/de_vertigo.png',
     'de_ancient': _RADAR_BASE + '/de_ancient.png',
     'de_anubis': _RADAR_BASE + '/de_anubis.png',
+    'de_train': _RADAR_BASE + '/de_train.png',
 };
 
 // ============================================================================

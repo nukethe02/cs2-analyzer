@@ -69,6 +69,7 @@ class PlayerHeatmaps {
             'de_vertigo': _RADAR + '/de_vertigo.png',
             'de_ancient': _RADAR + '/de_ancient.png',
             'de_anubis': _RADAR + '/de_anubis.png',
+            'de_train': _RADAR + '/de_train.png',
         };
 
         const url = radarUrls[this.mapName];

@@ -7139,6 +7139,7 @@
                 'de_vertigo': { pos_x: -3168, pos_y: 1762, scale: 4.0 },
                 'de_ancient': { pos_x: -2953, pos_y: 2164, scale: 5.0 },
                 'de_anubis': { pos_x: -2796, pos_y: 3328, scale: 5.22 },
+                'de_train': { pos_x: -2477, pos_y: 2392, scale: 4.7 },
             };
 
             const radarUrls = {
@@ -7150,6 +7151,7 @@
                 'de_vertigo': RADAR_BASE + '/de_vertigo.png',
                 'de_ancient': RADAR_BASE + '/de_ancient.png',
                 'de_anubis': RADAR_BASE + '/de_anubis.png',
+                'de_train': RADAR_BASE + '/de_train.png',
             };
 
             const params = mapParams[mapName] || { pos_x: -3000, pos_y: 3000, scale: 5.0 };
@@ -7241,6 +7243,9 @@
             }
 
             // Draw a kill/death marker
+            // Track rendered markers for hover hit-testing
+            let renderedMarkers = [];
+
             function drawMarker(x, y, type, data) {
                 const color = type === 'kill' ? '16, 185, 129' : '239, 68, 68';
                 const highlight = selectedZone && data.zone === selectedZone;
@@ -7269,6 +7274,9 @@
                     ctx.arc(x, y, 6, 0, Math.PI * 2);
                     ctx.stroke();
                 }
+
+                // Store for hover hit-testing
+                renderedMarkers.push({ cx: x, cy: y, r: radius, type, data });
             }
 
             // Draw zone polygons
@@ -7371,6 +7379,9 @@
 
             // Main draw function
             function draw() {
+                // Reset marker hit-test list each frame
+                renderedMarkers = [];
+
                 // Clear canvas
                 ctx.fillStyle = '#0d0d12';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -7796,50 +7807,89 @@
 
             // Dry peek entry hover/click detection
             canvas.addEventListener('mousemove', (e) => {
-                if (!dryPeekMode || !dryPeekData?.events) return;
-
                 const rect = canvas.getBoundingClientRect();
-                const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-                const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+                const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+                const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+                const tooltip = document.getElementById('heatmap-tooltip');
 
-                let foundEntry = null;
-                for (const event of dryPeekData.events) {
-                    if (event._canvasX == null) continue;
-                    const dx = x - event._canvasX;
-                    const dy = y - event._canvasY;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist <= (event._radius || 8) + 5) {
-                        foundEntry = event.id;
+                // Dry peek mode: hover over dry peek entries
+                if (dryPeekMode && dryPeekData?.events) {
+                    let foundEntry = null;
+                    for (const event of dryPeekData.events) {
+                        if (event._canvasX == null) continue;
+                        const dx = mx - event._canvasX;
+                        const dy = my - event._canvasY;
+                        if (Math.sqrt(dx * dx + dy * dy) <= (event._radius || 8) + 5) {
+                            foundEntry = event.id;
+                            break;
+                        }
+                    }
+
+                    if (hoveredEntry !== foundEntry) {
+                        hoveredEntry = foundEntry;
+                        draw();
+                        if (tooltip && foundEntry) {
+                            const event = dryPeekData.events.find(ev => ev.id === foundEntry);
+                            if (event) {
+                                const statusIcon = event.is_supported ? '✓' : '✗';
+                                const statusText = event.is_supported ? 'Supported' : 'Dry Peek';
+                                const eventType = event.event_type === 'entry_kill' ? 'Entry Kill' : 'Entry Death';
+                                tooltip.innerHTML = `
+                                    <div><strong>${esc(event.player_name)}</strong> - Round ${event.round_num}</div>
+                                    <div>${eventType} (${event.weapon})</div>
+                                    <div style="color: ${event.is_supported ? '#10b981' : '#ef4444'}; font-weight: 600; margin-top: 4px;">
+                                        ${statusIcon} ${statusText}
+                                    </div>
+                                `;
+                                tooltip.style.display = 'block';
+                                tooltip.style.left = `${e.clientX - rect.left + 15}px`;
+                                tooltip.style.top = `${e.clientY - rect.top + 15}px`;
+                            }
+                        } else if (tooltip) {
+                            tooltip.style.display = 'none';
+                        }
+                    }
+                    return;
+                }
+
+                // Normal mode: hover over kill/death markers
+                if (!tooltip || renderedMarkers.length === 0) return;
+
+                let hit = null;
+                // Search in reverse so top-drawn markers (kills) are found first
+                for (let i = renderedMarkers.length - 1; i >= 0; i--) {
+                    const m = renderedMarkers[i];
+                    const dx = mx - m.cx;
+                    const dy = my - m.cy;
+                    if (dx * dx + dy * dy <= (m.r + 4) * (m.r + 4)) {
+                        hit = m;
                         break;
                     }
                 }
 
-                if (hoveredEntry !== foundEntry) {
-                    hoveredEntry = foundEntry;
-                    draw();
-
-                    // Show tooltip
-                    const tooltip = document.getElementById('heatmap-tooltip');
-                    if (tooltip && foundEntry) {
-                        const event = dryPeekData.events.find(e => e.id === foundEntry);
-                        if (event) {
-                            const statusIcon = event.is_supported ? '✓' : '✗';
-                            const statusText = event.is_supported ? 'Supported' : 'Dry Peek';
-                            const eventType = event.event_type === 'entry_kill' ? 'Entry Kill' : 'Entry Death';
-                            tooltip.innerHTML = `
-                                <div><strong>${esc(event.player_name)}</strong> - Round ${event.round_num}</div>
-                                <div>${eventType} (${event.weapon})</div>
-                                <div style="color: ${event.is_supported ? '#10b981' : '#ef4444'}; font-weight: 600; margin-top: 4px;">
-                                    ${statusIcon} ${statusText}
-                                </div>
-                            `;
-                            tooltip.style.display = 'block';
-                            tooltip.style.left = `${e.clientX - rect.left + 15}px`;
-                            tooltip.style.top = `${e.clientY - rect.top + 15}px`;
-                        }
-                    } else if (tooltip) {
-                        tooltip.style.display = 'none';
-                    }
+                if (hit) {
+                    const d = hit.data;
+                    const isKill = hit.type === 'kill';
+                    const color = isKill ? '#10b981' : '#ef4444';
+                    const label = isKill ? 'Kill' : 'Death';
+                    const hsTag = isKill && d.headshot ? ' <span style="color: #fbbf24;">HS</span>' : '';
+                    const weaponLine = d.weapon ? `<div style="color: #94a3b8;">${esc(d.weapon)}${hsTag}</div>` : '';
+                    tooltip.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${color};"></span>
+                            <strong>${esc(d.player_name || 'Unknown')}</strong>
+                            <span style="color: ${color}; font-size: 0.75rem;">${label}</span>
+                        </div>
+                        ${weaponLine}
+                        <div style="color: #64748b; font-size: 0.75rem;">Round ${d.round_num || '?'} &middot; ${esc(d.zone || 'Unknown')}</div>
+                    `;
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = `${e.clientX - rect.left + 15}px`;
+                    tooltip.style.top = `${e.clientY - rect.top + 15}px`;
+                    canvas.style.cursor = 'pointer';
+                } else {
+                    tooltip.style.display = 'none';
+                    canvas.style.cursor = 'crosshair';
                 }
             });
 
@@ -8741,6 +8791,10 @@
             'de_anubis': {
                 url: RADAR_BASE + '/de_anubis.png',
                 pos_x: -2796, pos_y: 3328, scale: 5.22
+            },
+            'de_train': {
+                url: RADAR_BASE + '/de_train.png',
+                pos_x: -2477, pos_y: 2392, scale: 4.7
             }
         };
 

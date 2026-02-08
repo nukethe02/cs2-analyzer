@@ -95,6 +95,14 @@ MAP_DATA = {
         "radar_url": f"{_RADAR_BASE}/de_anubis.png",
         "z_cutoff": None,
     },
+    "de_train": {
+        "name": "Train",
+        "pos_x": -2477,
+        "pos_y": 2392,
+        "scale": 4.7,
+        "radar_url": f"{_RADAR_BASE}/de_train.png",
+        "z_cutoff": None,
+    },
     "cs_office": {
         "name": "Office",
         "pos_x": -1838,
