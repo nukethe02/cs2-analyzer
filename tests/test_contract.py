@@ -294,6 +294,18 @@ class TestContractValidation:
                     "damage_per_round": 0,
                     "objective_completions": 0,
                 },
+                "economy": {
+                    "avg_equipment_value": round(p.avg_equipment_value, 0),
+                    "eco_rounds": p.eco_rounds,
+                    "force_rounds": p.force_rounds,
+                    "full_buy_rounds": p.full_buy_rounds,
+                    "damage_per_dollar": round(p.damage_per_dollar, 4),
+                    "kills_per_dollar": round(p.kills_per_dollar, 6),
+                },
+                "discipline": {
+                    "discipline_rating": round(p.discipline_rating, 1),
+                    "greedy_repeeks": p.greedy_repeeks,
+                },
             }
             players[str(sid)] = player_dict
 
@@ -567,6 +579,18 @@ class TestContractValidation:
                 "damage_per_round": 0,
                 "objective_completions": 0,
             },
+            "economy": {
+                "avg_equipment_value": 0,
+                "eco_rounds": 0,
+                "force_rounds": 0,
+                "full_buy_rounds": 0,
+                "damage_per_dollar": 0.0,
+                "kills_per_dollar": 0.0,
+            },
+            "discipline": {
+                "discipline_rating": 100.0,
+                "greedy_repeeks": 0,
+            },
         }
 
         result = {
@@ -743,6 +767,8 @@ class TestContractConstants:
             "trades": {},
             "clutches": {},
             "rws": {},
+            "economy": {},
+            "discipline": {},
         }
         errors = validate_player(incomplete_player)
         # Should have errors for missing keys within each nested dict

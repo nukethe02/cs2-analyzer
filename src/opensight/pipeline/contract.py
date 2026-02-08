@@ -199,6 +199,20 @@ PLAYER_CONTRACT: dict = {
         "damage_per_round": (int, float),
         "objective_completions": int,
     },
+    # ── economy: per-player spending efficiency ──
+    "economy": {
+        "avg_equipment_value": (int, float),
+        "eco_rounds": int,
+        "force_rounds": int,
+        "full_buy_rounds": int,
+        "damage_per_dollar": (int, float),
+        "kills_per_dollar": (int, float),
+    },
+    # ── discipline: re-peek and positioning discipline ──
+    "discipline": {
+        "discipline_rating": (int, float),
+        "greedy_repeeks": int,
+    },
 }
 
 

@@ -274,6 +274,18 @@ class DemoOrchestrator:
                         "objective_completions": 0,
                     },
                 ),
+                "economy": {
+                    "avg_equipment_value": round(p.avg_equipment_value, 0),
+                    "eco_rounds": p.eco_rounds,
+                    "force_rounds": p.force_rounds,
+                    "full_buy_rounds": p.full_buy_rounds,
+                    "damage_per_dollar": round(p.damage_per_dollar, 4),
+                    "kills_per_dollar": round(p.kills_per_dollar, 6),
+                },
+                "discipline": {
+                    "discipline_rating": round(p.discipline_rating, 1),
+                    "greedy_repeeks": p.greedy_repeeks,
+                },
             }
 
         # Build round timeline
