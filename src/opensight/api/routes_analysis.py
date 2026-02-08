@@ -298,9 +298,13 @@ async def tactical_analysis(job_id: str, request: Request) -> dict[str, Any]:
         logger.info(f"Tactical analysis generated for job {job_id}: type={analysis_type}")
         result_payload = {"analysis": analysis, "type": analysis_type}
 
-        # Cache in job result for subsequent requests
+        # Cache in job result for subsequent requests and persist to database
         if job.result is not None:
             job.result[cache_key] = result_payload
+            try:
+                job_store.update_job(job_id, result=job.result)
+            except Exception:
+                logger.warning("Failed to persist cached tactical result for job %s", job_id)
 
         return result_payload
 
@@ -391,9 +395,13 @@ async def steal_strats(job_id: str, request: Request) -> dict[str, Any]:
             "map": analysis.map_name,
         }
 
-        # Cache in job result
+        # Cache in job result and persist to database
         if job.result is not None:
             job.result[cache_key] = result_payload
+            try:
+                job_store.update_job(job_id, result=job.result)
+            except Exception:
+                logger.warning("Failed to persist cached strat-steal result for job %s", job_id)
 
         return result_payload
 
@@ -486,9 +494,13 @@ async def self_review_analysis(
             "status": "success",
         }
 
-        # Cache in job result
+        # Cache in job result and persist to database
         if job.result is not None:
             job.result[cache_key] = result_payload
+            try:
+                job_store.update_job(job_id, result=job.result)
+            except Exception:
+                logger.warning("Failed to persist cached self-review result for job %s", job_id)
 
         return result_payload
 

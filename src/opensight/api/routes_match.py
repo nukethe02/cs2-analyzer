@@ -19,6 +19,7 @@ Endpoints:
 - POST /api/query — natural language query interface
 """
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -1007,6 +1008,18 @@ async def analyze_veto(
 
     job_store = _get_job_store()
 
+    # Check cache on the first job (keyed by hash of all job IDs + format)
+    all_ids = sorted(your_job_ids) + sorted(opponent_job_ids or [])
+    veto_hash = hashlib.md5(f"{','.join(all_ids)}:{format}".encode()).hexdigest()[:12]
+    cache_key = f"_ai_veto_{veto_hash}"
+
+    anchor_job = job_store.get_job(your_job_ids[0])
+    if anchor_job and anchor_job.result is not None:
+        cached = anchor_job.result.get(cache_key)
+        if cached is not None:
+            logger.info("Veto cache hit: %s", cache_key)
+            return cached
+
     # Collect your demos
     your_demos: list[dict] = []
     for job_id in your_job_ids:
@@ -1050,7 +1063,17 @@ async def analyze_veto(
             opponent_data=opponent_data,
             format=format,
         )
-        return analysis.to_dict()
+        result_dict = analysis.to_dict()
+
+        # Cache in anchor job result and persist to database
+        if anchor_job and anchor_job.result is not None:
+            anchor_job.result[cache_key] = result_dict
+            try:
+                job_store.update_job(your_job_ids[0], result=anchor_job.result)
+            except Exception:
+                logger.warning("Failed to persist cached veto result")
+
+        return result_dict
 
     except Exception as e:
         logger.exception("Failed to generate veto analysis")
@@ -1097,10 +1120,31 @@ async def natural_language_query(
     if not job.result:
         raise HTTPException(status_code=400, detail="Job has no result data")
 
+    # Check cache (keyed by MD5 hash of normalized question)
+    q_normalized = question.strip().lower()
+    q_hash = hashlib.md5(q_normalized.encode()).hexdigest()[:12]
+    cache_key = f"_ai_query_{q_hash}"
+    if job.result is not None:
+        cached = job.result.get(cache_key)
+        if cached is not None:
+            logger.info("Query cache hit for job %s: %s", job_id, cache_key)
+            return cached
+
     try:
         qi = get_query_interface()
         result = qi.query(question=question.strip(), available_data=job.result)
-        return result.to_dict()
+        result_dict = result.to_dict()
+
+        # Cache in job result and persist to database
+        if job.result is not None:
+            job.result[cache_key] = result_dict
+            try:
+                job_store = _get_job_store()
+                job_store.update_job(job_id, result=job.result)
+            except Exception:
+                logger.warning("Failed to persist cached query result for job %s", job_id)
+
+        return result_dict
 
     except Exception as e:
         logger.exception("Natural language query failed")

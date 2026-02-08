@@ -696,7 +696,7 @@ JSON:"""
 Question: "{question}"
 
 Data:
-{json.dumps(data, indent=2, default=str)}
+{json.dumps(data, separators=(",", ":"), default=str)}
 
 Rules:
 - Be specific -- cite numbers
@@ -846,7 +846,7 @@ def _format_fallback(question: str, data: dict[str, Any]) -> str:
         )
     else:
         # Generic
-        parts.append(json.dumps(data, indent=2, default=str)[:500])
+        parts.append(json.dumps(data, separators=(",", ":"), default=str)[:500])
 
     return "\n".join(parts)
 
