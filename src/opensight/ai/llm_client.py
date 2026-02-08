@@ -14,7 +14,7 @@ and cache hit status.
 
 import logging
 import os
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
-class ModelTier(str, Enum):
+class ModelTier(StrEnum):
     """Two-tier model selection for cost optimization."""
 
     STANDARD = "claude-haiku-4-5-20251001"  # Fast, cheap, 90% of calls

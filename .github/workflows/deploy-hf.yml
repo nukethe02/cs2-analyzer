@@ -37,6 +37,12 @@ jobs:
           fetch-depth: 0
           lfs: true
 
+      - name: Migrate binary files to LFS for HF compatibility
+        run: |
+          git lfs install
+          git lfs migrate import --include="*.png" --everything
+          echo "Binary files migrated to LFS pointers"
+
       - name: Push to Hugging Face Spaces
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -55,7 +61,7 @@ jobs:
           # Add Hugging Face remote with configurable username and space name
           git remote add hf "https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
 
-          # Push current HEAD to HF's main branch
+          # Push current HEAD to HF's main branch (force needed after LFS migration)
           echo "Pushing ${CURRENT_REF} -> main on Hugging Face..."
           git push hf HEAD:main --force
 

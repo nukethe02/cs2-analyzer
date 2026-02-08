@@ -1,0 +1,2 @@
+# Track binary map images with Git LFS (required for HF Spaces deployment)
+*.png filter=lfs diff=lfs merge=lfs -text
