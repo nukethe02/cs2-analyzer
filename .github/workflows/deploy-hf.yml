@@ -35,13 +35,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          lfs: true
 
-      - name: Migrate binary files to LFS for HF compatibility
+      - name: Convert binary files to LFS for HF Spaces
         run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
           git lfs install
-          git lfs migrate import --include="*.png" --everything
-          echo "Binary files migrated to LFS pointers"
+
+          # Track PNGs as LFS (creates .gitattributes dynamically)
+          git lfs track "*.png"
+          git add .gitattributes
+
+          # Re-add all PNG files through the LFS filter
+          find . -name "*.png" -not -path "./.git/*" -exec git add --force {} + || true
+
+          # Commit the LFS conversion (only affects the HF push, not the source repo)
+          git commit -m "chore: convert PNGs to LFS for HF deployment" --allow-empty
+
+          echo "Binary files converted to LFS pointers"
 
       - name: Push to Hugging Face Spaces
         env:
@@ -49,21 +61,17 @@ jobs:
           HF_USERNAME: ${{ secrets.HF_USERNAME || 'thenuke02' }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME || 'cs2-analyzer' }}
         run: |
-          # Configure git
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-
           # Get current branch/ref for logging
           CURRENT_REF="${GITHUB_REF#refs/heads/}"
           echo "Source branch: $CURRENT_REF"
           echo "Deploying to: https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
 
-          # Add Hugging Face remote with configurable username and space name
+          # Add Hugging Face remote
           git remote add hf "https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
 
-          # Push current HEAD to HF's main branch (force needed after LFS migration)
+          # Push to HF's main branch (force push since we added an LFS commit)
           echo "Pushing ${CURRENT_REF} -> main on Hugging Face..."
           git push hf HEAD:main --force
 
-          echo "✅ Deployment complete!"
+          echo "Deployment complete!"
           echo "View your Space at: https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
