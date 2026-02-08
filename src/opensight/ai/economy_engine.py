@@ -357,9 +357,6 @@ class EconomyEngine:
         6. Force buy zone + low loss bonus → eco/save to guarantee next round
         7. Below eco threshold → full save
         """
-        # Per-player estimate (team equipment / 5)
-        per_player = our_money_estimate // 5 if our_money_estimate > 0 else 0
-
         if is_pistol:
             return EconomyState(
                 team=team,

@@ -19,7 +19,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # =============================================================================
 # Fixtures — realistic orchestrator + scouting data
 # =============================================================================

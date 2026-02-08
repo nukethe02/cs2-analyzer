@@ -495,7 +495,6 @@ class AntiStratGenerator:
         # Values from to_dict() are already percentages (multiplied by 100)
         awp_rate = player_dict.get("awp_usage_rate", 0)
         entry_rate = player_dict.get("entry_attempt_rate", 0)
-        entry_success = player_dict.get("entry_success_rate", 0)
         kpr = player_dict.get("avg_kills_per_round", 0)
 
         # AWPer: high AWP usage

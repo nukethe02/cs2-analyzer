@@ -358,7 +358,6 @@ def _build_player_summary(steam_id: str, pdata: dict, timeline: list[dict]) -> P
     """Build a PlayerSummary from a single player's orchestrator data."""
     stats = pdata.get("stats") or {}
     rating_data = pdata.get("rating") or {}
-    advanced = pdata.get("advanced") or {}
     utility = pdata.get("utility") or {}
     entry = pdata.get("entry") or {}
     trades = pdata.get("trades") or {}
@@ -597,7 +596,7 @@ def to_llm_prompt(summary: MatchSummary, focus: str = "coaching") -> str:
     parts.append("")
 
     # --- Team sections ---
-    for label, team_name, players in [
+    for _label, team_name, players in [
         ("team_a", summary.team_a_name, summary.team_a_players),
         ("team_b", summary.team_b_name, summary.team_b_players),
     ]:

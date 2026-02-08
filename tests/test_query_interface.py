@@ -1,6 +1,5 @@
 """Tests for the natural language query interface."""
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,7 +13,6 @@ from opensight.ai.query_interface import (
     _parse_json,
     get_query_interface,
 )
-
 
 # =============================================================================
 # Fixtures

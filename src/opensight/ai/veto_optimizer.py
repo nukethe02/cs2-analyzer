@@ -7,8 +7,8 @@ to generate optimal ban/pick sequences.
 Entirely heuristic — no LLM needed. Pure computation.
 """
 
-import math
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -280,7 +280,6 @@ class VetoOptimizer:
         are assumed to be their stronger maps).
         """
         map_tendencies = scouting.get("map_tendencies") or []
-        played_maps = {mt.get("map_name", "") for mt in map_tendencies}
 
         # Demos analyzed gives us confidence
         demos_analyzed = scouting.get("demos_analyzed", 0)
