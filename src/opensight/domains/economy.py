@@ -839,13 +839,17 @@ class EconomyAnalyzer:
             team_str = str(team) if isinstance(team, int) else team
 
             # Get this player's kills
-            player_kills = kills_df[kills_df[att_col] == steam_id]
+            # Normalize both sides to string — DataFrame values may be int or str
+            steam_id_str = str(steam_id)
+            player_kills = kills_df[kills_df[att_col].astype(str) == steam_id_str]
 
             if not player_kills.empty and weapon_col:
                 # Group by round if available
                 if round_col and round_col in player_kills.columns:
+                    # total_rounds_played is 0-indexed; pipeline uses 1-based round_num
+                    offset = 1 if round_col == "total_rounds_played" else 0
                     for round_num in player_kills[round_col].unique():
-                        round_num_int = int(round_num)
+                        round_num_int = int(round_num) + offset
                         round_kills = player_kills[player_kills[round_col] == round_num]
                         weapons = round_kills[weapon_col].unique()
 
@@ -946,9 +950,11 @@ class EconomyAnalyzer:
         num_rounds = self.data.num_rounds
         rounds_per_half = 12 if num_rounds <= 30 else 15
 
-        # Group players by team
-        t_players = [sid for sid, team in self.data.player_teams.items() if team == 2]
-        ct_players = [sid for sid, team in self.data.player_teams.items() if team == 3]
+        # Group players by team (player_teams values may be int (2/3) or str ('T'/'CT'))
+        t_players = [sid for sid, team in self.data.player_teams.items() if team in (2, "T", "t")]
+        ct_players = [
+            sid for sid, team in self.data.player_teams.items() if team in (3, "CT", "ct")
+        ]
 
         # Get all round numbers
         all_rounds = set()
