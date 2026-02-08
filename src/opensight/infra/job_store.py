@@ -66,7 +66,7 @@ class PersistentJobStore:
                 id=job_id,
                 filename=filename,
                 file_size=file_size,
-                status="queued",
+                status="pending",
                 created_at=_utc_now(),
             )
             session.add(job)
@@ -78,7 +78,7 @@ class PersistentJobStore:
                 "job_id": job_id,
                 "filename": filename,
                 "file_size": file_size,
-                "status": "queued",
+                "status": "pending",
                 "created_at": job.created_at.isoformat() if job.created_at else None,
             }
         except Exception as e:
@@ -133,7 +133,7 @@ class PersistentJobStore:
     def update_status(
         self,
         job_id: str,
-        status: str,
+        status: str | None = None,
         result: dict[str, Any] | None = None,
         error: str | None = None,
         demo_hash: str | None = None,
@@ -143,7 +143,7 @@ class PersistentJobStore:
 
         Args:
             job_id: Job UUID
-            status: New status ("queued", "processing", "completed", "failed")
+            status: New status ("pending", "processing", "completed", "failed"), or None to skip
             result: Optional result dictionary to serialize to JSON
             error: Optional error message
             demo_hash: Optional demo file hash for deduplication
@@ -155,13 +155,14 @@ class PersistentJobStore:
                 logger.warning(f"Job {job_id} not found for status update")
                 return
 
-            job.status = status
+            if status is not None:
+                job.status = status
 
-            if status == "processing" and not job.started_at:
-                job.started_at = _utc_now()
+                if status == "processing" and not job.started_at:
+                    job.started_at = _utc_now()
 
-            if status in ("completed", "failed"):
-                job.completed_at = _utc_now()
+                if status in ("completed", "failed"):
+                    job.completed_at = _utc_now()
 
             if result is not None:
                 job.result_json = json.dumps(result)
@@ -187,7 +188,7 @@ class PersistentJobStore:
 
         Args:
             limit: Maximum number of jobs to return
-            status_filter: Optional status to filter by ("queued", "processing", "completed", "failed")
+            status_filter: Optional status to filter by ("pending", "processing", "completed", "failed")
 
         Returns:
             List of job dictionaries, sorted by creation time (newest first)

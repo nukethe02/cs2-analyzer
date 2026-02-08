@@ -35,10 +35,14 @@ import pytest
 # GOLDEN MASTER CONFIGURATION
 # =============================================================================
 
-# Path to the reference demo file - SET THIS TO YOUR KNOWN-GOOD DEMO
-GOLDEN_DEMO_PATH = os.environ.get(
-    "GOLDEN_DEMO_PATH",
-    "C:/Users/lglea/Downloads/1-7d912af3-b313-498a-83f0-9a29366420b3-1-1.dem",
+# Path to the reference demo file - checked in order:
+# 1. GOLDEN_DEMO_PATH env var (CI or custom location)
+# 2. tests/fixtures/golden_master.dem (local dev standard location)
+# 3. Original Downloads path (legacy fallback)
+_FIXTURES_PATH = str(Path(__file__).parent / "fixtures" / "golden_master.dem")
+_DOWNLOADS_PATH = "C:/Users/lglea/Downloads/1-7d912af3-b313-498a-83f0-9a29366420b3-1-1.dem"
+GOLDEN_DEMO_PATH = os.environ.get("GOLDEN_DEMO_PATH") or (
+    _FIXTURES_PATH if Path(_FIXTURES_PATH).exists() else _DOWNLOADS_PATH
 )
 
 # Expected values for the golden demo - UPDATE THESE WHEN LEGITIMATELY CHANGED

@@ -23,26 +23,19 @@ from opensight.api.shared import (
     ALLOWED_EXTENSIONS,  # noqa: F401
     IS_PRODUCTION,
     MAX_FILE_SIZE_BYTES,  # noqa: F401
-    MAX_FILE_SIZE_MB,  # noqa: F401
     SHOULD_ENABLE_RATE_LIMITING,
     CoachingFeedbackRequest,  # noqa: F401
     FeedbackRequest,  # noqa: F401
-    Job,  # noqa: F401
+    Job,
     JobStatus,  # noqa: F401
     JobStore,
-    RadarRequest,  # noqa: F401
-    ScoutingReportRequest,  # noqa: F401
     SharecodeCache,
     ShareCodeRequest,  # noqa: F401
     ShareCodeResponse,  # noqa: F401
-    YourMatchResponse,  # noqa: F401
     __version__,
-    build_player_response,  # noqa: F401
     get_real_client_ip,
-    player_stats_to_dict,  # noqa: F401
     rate_limit,  # noqa: F401
     validate_demo_id,  # noqa: F401
-    validate_job_id,  # noqa: F401
     validate_steam_id,  # noqa: F401
 )
 
@@ -79,7 +72,91 @@ app.add_middleware(
 # Global Instances (test_api.py imports these)
 # =============================================================================
 
-job_store = JobStore()
+
+class _PersistentJobStoreAdapter:
+    """Adapts PersistentJobStore (dict-based) to the in-memory JobStore interface.
+
+    Route modules expect get_job() to return shared.Job dataclass objects with
+    .job_id, .status, .result attributes.  PersistentJobStore returns plain dicts
+    and uses update_status() instead of update_job()/set_status().
+    This thin adapter bridges both interfaces so routes work unchanged.
+    """
+
+    def __init__(self, persistent_store):
+        self._store = persistent_store
+
+    def create_job(self, filename: str, size: int) -> Job:
+        result = self._store.create_job(filename, size)
+        return Job(
+            job_id=result["job_id"],
+            filename=filename,
+            size=size,
+            status=result["status"],
+        )
+
+    def get_job(self, job_id: str) -> Job | None:
+        result = self._store.get_job(job_id)
+        if result is None:
+            return None
+        job = Job(
+            job_id=result["job_id"],
+            filename=result.get("filename", ""),
+            size=result.get("file_size", 0),
+            status=result.get("status", "pending"),
+        )
+        if "result" in result and result["result"] is not None:
+            job.result = result["result"]
+        if "error" in result:
+            job.error = result["error"]
+        return job
+
+    def set_status(self, job_id: str, status: JobStatus) -> None:
+        self._store.update_status(job_id, status=status.value)
+
+    def update_job(
+        self,
+        job_id: str,
+        status: JobStatus | None = None,
+        progress: int | None = None,
+        result: dict | None = None,
+        error: str | None = None,
+    ) -> None:
+        self._store.update_status(
+            job_id,
+            status=status.value if status is not None else None,
+            result=result,
+            error=error,
+        )
+
+    def list_jobs(self) -> list[Job]:
+        results = self._store.list_jobs()
+        return [
+            Job(
+                job_id=r["job_id"],
+                filename=r.get("filename", ""),
+                size=r.get("file_size", 0),
+                status=r.get("status", "pending"),
+            )
+            for r in results
+        ]
+
+
+def _create_job_store():
+    """Try PersistentJobStore (database-backed), fall back to in-memory."""
+    try:
+        from opensight.infra.job_store import PersistentJobStore
+
+        persistent = PersistentJobStore()
+        # Smoke-test: verify DB connection works
+        persistent.list_jobs(limit=1)
+        logger.info("Using persistent job store (database-backed)")
+        return _PersistentJobStoreAdapter(persistent)
+    except Exception as exc:
+        logger.warning("Persistent job store unavailable (%s), using in-memory fallback", exc)
+        return JobStore()
+
+
+job_store = _create_job_store()
 sharecode_cache = SharecodeCache(maxsize=1000)
 
 # =============================================================================

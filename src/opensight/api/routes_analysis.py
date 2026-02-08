@@ -12,7 +12,7 @@ Endpoints:
 """
 
 import logging
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -35,6 +35,9 @@ from opensight.api.shared import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["analysis"])
+
+# Limit concurrent demo analyses to prevent resource exhaustion on HF Spaces
+_analysis_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="analysis")
 
 
 @router.post("/analyze", status_code=202)
@@ -105,30 +108,32 @@ async def analyze_demo(request: Request, file: UploadFile = File(...)):
                     timeline = result.get("round_timeline", [])
                     logger.debug(f"Analysis complete: {len(timeline)} rounds in timeline")
 
-                    j = job_store.get_job(jid)
-                    if j:
-                        j.result = result
-                        job_store.set_status(jid, JobStatus.COMPLETED)
+                    job_store.update_job(jid, result=result, status=JobStatus.COMPLETED)
                 except Exception as ex:
                     logger.exception("Job processing failed")
-                    j = job_store.get_job(jid)
-                    if j:
-                        error_type = type(ex).__name__
-                        if "parse" in str(ex).lower() or "demo" in str(ex).lower():
-                            safe_error = "Demo file could not be parsed. The file may be corrupted or in an unsupported format."
-                        elif "memory" in str(ex).lower():
-                            safe_error = "Analysis failed due to resource constraints. Try a smaller demo file."
-                        else:
-                            safe_error = f"Analysis failed ({error_type}). Please try again or contact support."
-                        j.result = {"error": safe_error}
-                        job_store.set_status(jid, JobStatus.FAILED)
+                    error_type = type(ex).__name__
+                    if "parse" in str(ex).lower() or "demo" in str(ex).lower():
+                        safe_error = "Demo file could not be parsed. The file may be corrupted or in an unsupported format."
+                    elif "memory" in str(ex).lower():
+                        safe_error = (
+                            "Analysis failed due to resource constraints. Try a smaller demo file."
+                        )
+                    else:
+                        safe_error = (
+                            f"Analysis failed ({error_type}). Please try again or contact support."
+                        )
+                    job_store.update_job(
+                        jid,
+                        result={"error": safe_error},
+                        status=JobStatus.FAILED,
+                    )
                 finally:
                     try:
                         demo_path.unlink(missing_ok=True)
                     except Exception:
                         logger.warning("Failed to clean up temp demo file: %s", demo_path)
 
-            threading.Thread(target=_process_job, args=(job.job_id, demo_path), daemon=True).start()
+            _analysis_executor.submit(_process_job, job.job_id, demo_path)
         except Exception:
             logger.exception("Failed to start analysis thread for job %s", job.job_id)
             job_store.set_status(job.job_id, JobStatus.FAILED)
