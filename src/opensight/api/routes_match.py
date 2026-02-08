@@ -916,9 +916,7 @@ async def generate_game_plan(
     for job_id in your_team_job_ids:
         job = job_store.get_job(job_id)
         if job is None:
-            raise HTTPException(
-                status_code=404, detail=f"Job {job_id} not found or expired"
-            )
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found or expired")
         if job.status != JobStatus.COMPLETED.value:
             raise HTTPException(
                 status_code=400,
@@ -1014,9 +1012,7 @@ async def analyze_veto(
     for job_id in your_job_ids:
         job = job_store.get_job(job_id)
         if job is None:
-            raise HTTPException(
-                status_code=404, detail=f"Job {job_id} not found or expired"
-            )
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found or expired")
         if job.status != JobStatus.COMPLETED.value:
             raise HTTPException(
                 status_code=400,
@@ -1092,18 +1088,14 @@ async def natural_language_query(
     job_store = _get_job_store()
     job = job_store.get_job(job_id)
     if job is None:
-        raise HTTPException(
-            status_code=404, detail=f"Job {job_id} not found or expired"
-        )
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found or expired")
     if job.status != JobStatus.COMPLETED.value:
         raise HTTPException(
             status_code=400,
             detail=f"Job {job_id} is not completed (status: {job.status})",
         )
     if not job.result:
-        raise HTTPException(
-            status_code=400, detail="Job has no result data"
-        )
+        raise HTTPException(status_code=400, detail="Job has no result data")
 
     try:
         qi = get_query_interface()

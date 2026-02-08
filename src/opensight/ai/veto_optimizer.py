@@ -98,9 +98,7 @@ class VetoAnalysis:
         return {
             "your_map_pool": [ms.to_dict() for ms in self.your_map_pool],
             "opponent_map_pool": [ms.to_dict() for ms in self.opponent_map_pool],
-            "recommended_veto_sequence": [
-                vr.to_dict() for vr in self.recommended_veto_sequence
-            ],
+            "recommended_veto_sequence": [vr.to_dict() for vr in self.recommended_veto_sequence],
             "best_map_for_you": self.best_map_for_you,
             "worst_map_for_you": self.worst_map_for_you,
             "predicted_decider_map": self.predicted_decider_map,
@@ -328,9 +326,7 @@ class VetoOptimizer:
                 strengths.append(MapStrength(map_name=map_name))
         return strengths
 
-    def _recency_weight(
-        self, demos: list[dict], half_life: int = 5
-    ) -> float:
+    def _recency_weight(self, demos: list[dict], half_life: int = 5) -> float:
         """
         Apply exponential decay weighting — recent matches matter more.
 
@@ -479,50 +475,70 @@ class VetoOptimizer:
         # Step 1: Our ban — ban opponent's best map
         target = self._pick_ban_target(remaining, your_lookup, opp_lookup, "ours")
         if target:
-            self._add_step(sequence, "ban", target, your_lookup, opp_lookup,
-                           "Ban opponent's strongest map")
+            self._add_step(
+                sequence, "ban", target, your_lookup, opp_lookup, "Ban opponent's strongest map"
+            )
             remaining.discard(target)
 
         # Step 2: Opponent ban — they ban our best map
         target = self._pick_ban_target(remaining, your_lookup, opp_lookup, "theirs")
         if target:
-            self._add_step(sequence, "ban", target, your_lookup, opp_lookup,
-                           "Opponent bans your strongest map")
+            self._add_step(
+                sequence, "ban", target, your_lookup, opp_lookup, "Opponent bans your strongest map"
+            )
             remaining.discard(target)
 
         # Step 3: Our pick — pick our best remaining map
         target = self._pick_best_map(remaining, your_lookup, opp_lookup, "ours")
         if target:
-            self._add_step(sequence, "pick", target, your_lookup, opp_lookup,
-                           "Pick your strongest remaining map")
+            self._add_step(
+                sequence,
+                "pick",
+                target,
+                your_lookup,
+                opp_lookup,
+                "Pick your strongest remaining map",
+            )
             remaining.discard(target)
 
         # Step 4: Opponent pick — they pick their best remaining map
         target = self._pick_best_map(remaining, your_lookup, opp_lookup, "theirs")
         if target:
-            self._add_step(sequence, "pick", target, your_lookup, opp_lookup,
-                           "Opponent picks their strongest remaining map")
+            self._add_step(
+                sequence,
+                "pick",
+                target,
+                your_lookup,
+                opp_lookup,
+                "Opponent picks their strongest remaining map",
+            )
             remaining.discard(target)
 
         # Step 5: Our ban
         target = self._pick_ban_target(remaining, your_lookup, opp_lookup, "ours")
         if target:
-            self._add_step(sequence, "ban", target, your_lookup, opp_lookup,
-                           "Ban opponent's best remaining")
+            self._add_step(
+                sequence, "ban", target, your_lookup, opp_lookup, "Ban opponent's best remaining"
+            )
             remaining.discard(target)
 
         # Step 6: Opponent ban
         target = self._pick_ban_target(remaining, your_lookup, opp_lookup, "theirs")
         if target:
-            self._add_step(sequence, "ban", target, your_lookup, opp_lookup,
-                           "Opponent bans your best remaining")
+            self._add_step(
+                sequence,
+                "ban",
+                target,
+                your_lookup,
+                opp_lookup,
+                "Opponent bans your best remaining",
+            )
             remaining.discard(target)
 
         # Step 7: Remaining map is decider
         if remaining:
             decider = remaining.pop()
-            self._add_step(sequence, "pick", decider, your_lookup, opp_lookup,
-                           "Decider map")
+            self._add_step(sequence, "pick", decider, your_lookup, opp_lookup, "Decider map")
 
         return sequence
 
@@ -670,13 +686,9 @@ class VetoOptimizer:
             if not remaining:
                 break
             if action == "ban":
-                target = self._pick_ban_target(
-                    remaining, your_lookup, opp_lookup, perspective
-                )
+                target = self._pick_ban_target(remaining, your_lookup, opp_lookup, perspective)
             else:
-                target = self._pick_best_map(
-                    remaining, your_lookup, opp_lookup, perspective
-                )
+                target = self._pick_best_map(remaining, your_lookup, opp_lookup, perspective)
             if target:
                 remaining.discard(target)
 

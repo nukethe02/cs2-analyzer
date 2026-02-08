@@ -361,9 +361,7 @@ class TestClassifyQueryLLM:
         qi.llm.api_key = "test-key"
         mock_response = MagicMock()
         mock_response.content = [
-            MagicMock(
-                text='{"type": "player_stats", "player": "kix", "confidence": "high"}'
-            )
+            MagicMock(text='{"type": "player_stats", "player": "kix", "confidence": "high"}')
         ]
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_response
@@ -425,7 +423,9 @@ class TestQueryPlayerStats:
     def test_map_filter_mismatch(self, qi, demo_data):
         classification = {"player": "kix", "map": "de_mirage", "metric": None}
         result = qi._query_player_stats(classification, demo_data)
-        assert "de_inferno" in result.get("message", "") or result.get("available_map") == "de_inferno"
+        assert (
+            "de_inferno" in result.get("message", "") or result.get("available_map") == "de_inferno"
+        )
 
     def test_map_filter_match(self, qi, demo_data):
         classification = {"player": "kix", "map": "de_inferno", "metric": None}
@@ -851,7 +851,15 @@ class TestFormatAnswerLLM:
         mock_client = MagicMock()
         mock_client.messages.create.side_effect = RuntimeError("API error")
 
-        data = {"name": "kix", "kills": 25, "deaths": 16, "adr": 82.3, "hltv_rating": 1.28, "kast_pct": 75, "map": "de_inferno"}
+        data = {
+            "name": "kix",
+            "kills": 25,
+            "deaths": 16,
+            "adr": 82.3,
+            "hltv_rating": 1.28,
+            "kast_pct": 75,
+            "map": "de_inferno",
+        }
         with patch.object(qi.llm, "_get_client", return_value=mock_client):
             answer = qi._format_answer("What is kix's stats?", data)
 
@@ -991,9 +999,7 @@ class TestQueryAPI:
             result=fake_result,
         )
 
-        with mock_patch(
-            "opensight.api.routes_match._get_job_store"
-        ) as mock_store:
+        with mock_patch("opensight.api.routes_match._get_job_store") as mock_store:
             mock_store.return_value.get_job.return_value = mock_job
             resp = client.post(
                 "/api/query",

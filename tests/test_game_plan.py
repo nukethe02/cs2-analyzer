@@ -100,13 +100,16 @@ def _make_orchestrator_result(players: dict | None = None) -> dict:
     if players is None:
         players = {
             STEAM_ID_1: _make_player("foe", kills=22, deaths=14, rating=1.20, adr=85.0),
-            STEAM_ID_2: _make_player("kix", kills=25, deaths=12, rating=1.30, adr=90.0,
-                                     opening_kills=5, opening_deaths=2),
+            STEAM_ID_2: _make_player(
+                "kix", kills=25, deaths=12, rating=1.30, adr=90.0, opening_kills=5, opening_deaths=2
+            ),
             STEAM_ID_3: _make_player("ace", kills=18, deaths=16, rating=1.05, adr=72.0),
-            STEAM_ID_4: _make_player("nova", kills=15, deaths=18, rating=0.90, adr=65.0,
-                                     flash_assists=6),
-            STEAM_ID_5: _make_player("zen", kills=12, deaths=17, rating=0.85, adr=58.0,
-                                     clutch_wins=3, clutch_attempts=5),
+            STEAM_ID_4: _make_player(
+                "nova", kills=15, deaths=18, rating=0.90, adr=65.0, flash_assists=6
+            ),
+            STEAM_ID_5: _make_player(
+                "zen", kills=12, deaths=17, rating=0.85, adr=58.0, clutch_wins=3, clutch_attempts=5
+            ),
         }
     return {
         "demo_info": {
@@ -398,9 +401,7 @@ class TestGamePlan:
     def test_economy_plan_in_dict(self):
         from opensight.ai.game_plan import EconomyPlan, GamePlan
 
-        plan = GamePlan(
-            economy_plan=EconomyPlan(force_buy_threshold=2800)
-        )
+        plan = GamePlan(economy_plan=EconomyPlan(force_buy_threshold=2800))
         d = plan.to_dict()
         assert d["economy_plan"]["force_buy_threshold"] == 2800
 
@@ -436,9 +437,11 @@ class TestComputeTeamAverages:
     def test_single_player(self):
         from opensight.ai.game_plan import _compute_team_averages
 
-        result = _make_orchestrator_result({
-            STEAM_ID_1: _make_player("solo", kills=30, deaths=10, rating=1.50, adr=100.0),
-        })
+        result = _make_orchestrator_result(
+            {
+                STEAM_ID_1: _make_player("solo", kills=30, deaths=10, rating=1.50, adr=100.0),
+            }
+        )
         avgs = _compute_team_averages([result])
         assert avgs["avg_kills"] == 30
         assert avgs["avg_rating"] == 1.50
@@ -710,16 +713,18 @@ class TestParseStratCall:
         from opensight.ai.game_plan import GamePlanGenerator
 
         gen = GamePlanGenerator(api_key=None)
-        sc = gen._parse_strat_call({
-            "name": "B Rush",
-            "description": "Fast B take",
-            "utility_sequence": ["flash B main", "smoke CT"],
-            "player_assignments": {"kix": "entry", "foe": "support"},
-            "when_to_call": "After eco win",
-            "confidence": 0.85,
-            "evidence": "Opponent rotates slow",
-            "expected_success_rate": "~70%",
-        })
+        sc = gen._parse_strat_call(
+            {
+                "name": "B Rush",
+                "description": "Fast B take",
+                "utility_sequence": ["flash B main", "smoke CT"],
+                "player_assignments": {"kix": "entry", "foe": "support"},
+                "when_to_call": "After eco win",
+                "confidence": 0.85,
+                "evidence": "Opponent rotates slow",
+                "expected_success_rate": "~70%",
+            }
+        )
         assert sc.name == "B Rush"
         assert sc.confidence == 0.85
         assert len(sc.utility_sequence) == 2
@@ -743,57 +748,59 @@ class TestPopulatePlanFromLLM:
     def _make_llm_response(self) -> str:
         import json
 
-        return json.dumps({
-            "executive_summary": "Strong plan for de_ancient",
-            "key_advantage": "Entry fragger dominance",
-            "key_risk": "AWPer controls mid",
-            "ct_default": {
-                "name": "2-1-2 Default",
-                "description": "Standard CT hold",
-                "confidence": 0.85,
-                "evidence": "Opponent splits A 60% of rounds",
-            },
-            "ct_adjustments": [
-                {
-                    "name": "B Stack",
-                    "description": "3 B when they rush",
-                    "when_to_call": "After 2 B rushes",
-                    "confidence": 0.70,
+        return json.dumps(
+            {
+                "executive_summary": "Strong plan for de_ancient",
+                "key_advantage": "Entry fragger dominance",
+                "key_risk": "AWPer controls mid",
+                "ct_default": {
+                    "name": "2-1-2 Default",
+                    "description": "Standard CT hold",
+                    "confidence": 0.85,
+                    "evidence": "Opponent splits A 60% of rounds",
                 },
-            ],
-            "ct_retake_priorities": {"A": "Rotate 2 from B", "B": "3 from A retake"},
-            "t_default": {
-                "name": "Mid Control",
-                "description": "Take mid first",
-                "confidence": 0.80,
-            },
-            "t_executes": [
-                {
-                    "name": "A Split",
-                    "description": "Split through A main + short",
-                    "confidence": 0.75,
-                    "utility_sequence": ["smoke CT", "flash main"],
+                "ct_adjustments": [
+                    {
+                        "name": "B Stack",
+                        "description": "3 B when they rush",
+                        "when_to_call": "After 2 B rushes",
+                        "confidence": 0.70,
+                    },
+                ],
+                "ct_retake_priorities": {"A": "Rotate 2 from B", "B": "3 from A retake"},
+                "t_default": {
+                    "name": "Mid Control",
+                    "description": "Take mid first",
+                    "confidence": 0.80,
                 },
-                {
-                    "name": "B Rush",
-                    "description": "Fast B with utility",
-                    "confidence": 0.65,
-                },
-            ],
-            "t_read_based": [
-                {
-                    "name": "Late B",
-                    "description": "If A is smoked, rotate B late",
-                    "confidence": 0.60,
-                },
-            ],
-            "player_roles": {"foe": "IGL/anchor B", "kix": "entry A"},
-            "player_matchups": ["Put kix vs their weakest player on A"],
-            "if_losing": ["Down 0-3: switch to aggressive T pushes"],
-            "if_winning": ["Up 5-0: play standard, don't force"],
-            "timeout_triggers": ["After 3-round losing streak"],
-            "opponent_exploits": ["Slow CT rotations — execute fast"],
-        })
+                "t_executes": [
+                    {
+                        "name": "A Split",
+                        "description": "Split through A main + short",
+                        "confidence": 0.75,
+                        "utility_sequence": ["smoke CT", "flash main"],
+                    },
+                    {
+                        "name": "B Rush",
+                        "description": "Fast B with utility",
+                        "confidence": 0.65,
+                    },
+                ],
+                "t_read_based": [
+                    {
+                        "name": "Late B",
+                        "description": "If A is smoked, rotate B late",
+                        "confidence": 0.60,
+                    },
+                ],
+                "player_roles": {"foe": "IGL/anchor B", "kix": "entry A"},
+                "player_matchups": ["Put kix vs their weakest player on A"],
+                "if_losing": ["Down 0-3: switch to aggressive T pushes"],
+                "if_winning": ["Up 5-0: play standard, don't force"],
+                "timeout_triggers": ["After 3-round losing streak"],
+                "opponent_exploits": ["Slow CT rotations — execute fast"],
+            }
+        )
 
     def test_full_parse(self):
         from opensight.ai.game_plan import GamePlan, GamePlanGenerator
@@ -840,10 +847,12 @@ class TestPopulatePlanFromLLM:
 
         gen = GamePlanGenerator(api_key=None)
         plan = GamePlan()
-        partial = json.dumps({
-            "executive_summary": "Partial plan",
-            "key_advantage": "Test",
-        })
+        partial = json.dumps(
+            {
+                "executive_summary": "Partial plan",
+                "key_advantage": "Test",
+            }
+        )
         gen._populate_plan_from_llm(plan, partial, {"foe": "igl"})
         assert plan.executive_summary == "Partial plan"
         assert plan.ct_default is None  # not provided

@@ -189,17 +189,11 @@ JSON:"""
             match = re.search(r"\bround\s+(\d+)", q)
             if match:
                 result["round_number"] = int(match.group(1))
-        elif any(
-            w in q for w in ["economy", "eco ", "force buy", "save round", "money"]
-        ):
+        elif any(w in q for w in ["economy", "eco ", "force buy", "save round", "money"]):
             result["type"] = "economy_analysis"
-        elif any(
-            w in q for w in ["strat", "execute", "setup", "default", "bombsite"]
-        ):
+        elif any(w in q for w in ["strat", "execute", "setup", "default", "bombsite"]):
             result["type"] = "tactical"
-        elif any(
-            w in q for w in ["team ", "our ", "we ", "ct side", "t side"]
-        ):
+        elif any(w in q for w in ["team ", "our ", "we ", "ct side", "t side"]):
             result["type"] = "team_performance"
         elif any(w in q for w in ["opponent", "enemy", "they ", "their "]):
             result["type"] = "opponent_scouting"
@@ -473,16 +467,12 @@ JSON:"""
                 "ct": {
                     "total": len(eco_rounds["ct"]),
                     "wins": ct_eco_wins,
-                    "win_rate": ct_eco_wins / len(eco_rounds["ct"])
-                    if eco_rounds["ct"]
-                    else 0,
+                    "win_rate": ct_eco_wins / len(eco_rounds["ct"]) if eco_rounds["ct"] else 0,
                 },
                 "t": {
                     "total": len(eco_rounds["t"]),
                     "wins": t_eco_wins,
-                    "win_rate": t_eco_wins / len(eco_rounds["t"])
-                    if eco_rounds["t"]
-                    else 0,
+                    "win_rate": t_eco_wins / len(eco_rounds["t"]) if eco_rounds["t"] else 0,
                 },
             },
             "force_buy_stats": {
@@ -496,9 +486,7 @@ JSON:"""
                 "t": {
                     "total": len(force_rounds["t"]),
                     "wins": t_force_wins,
-                    "win_rate": t_force_wins / len(force_rounds["t"])
-                    if force_rounds["t"]
-                    else 0,
+                    "win_rate": t_force_wins / len(force_rounds["t"]) if force_rounds["t"] else 0,
                 },
             },
             "avg_equipment": {
@@ -564,9 +552,7 @@ JSON:"""
             "sources": [f"{a_stats['name']} vs {b_stats['name']}"],
         }
 
-    def _query_trend(
-        self, classification: dict[str, Any], data: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _query_trend(self, classification: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         """Query trend data from player tracker."""
         tracking = data.get("tracking", {})
         if tracking:
@@ -579,9 +565,7 @@ JSON:"""
             "sources": [],
         }
 
-    def _query_round(
-        self, classification: dict[str, Any], data: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _query_round(self, classification: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         """Query specific round data from timeline."""
         timeline = data.get("round_timeline", [])
         round_num = classification.get("round_number")
@@ -674,9 +658,7 @@ JSON:"""
             "utility_summary": {
                 "total_thrown": total_utility,
                 "before_entry": utility_before_entry,
-                "entry_util_rate": utility_before_entry / total_utility
-                if total_utility > 0
-                else 0,
+                "entry_util_rate": utility_before_entry / total_utility if total_utility > 0 else 0,
             },
             "total_rounds": len(timeline),
             "sources": [current_map],
@@ -702,9 +684,7 @@ JSON:"""
                 )
                 return response.content[0].text.strip()
             except Exception as e:
-                logger.warning(
-                    "LLM answer formatting failed, using fallback: %s", e
-                )
+                logger.warning("LLM answer formatting failed, using fallback: %s", e)
 
         return _format_fallback(question, data)
 
@@ -830,19 +810,14 @@ def _format_fallback(question: str, data: dict[str, Any]) -> str:
         parts.append(f"- HLTV Rating: {data.get('hltv_rating', 0):.2f}")
         parts.append(f"- KAST: {data.get('kast_pct', 0):.0f}%")
         if data.get("requested_metric"):
-            parts.append(
-                f"\nRequested ({data['requested_metric']}): "
-                f"{data['requested_value']}"
-            )
+            parts.append(f"\nRequested ({data['requested_metric']}): {data['requested_value']}")
     elif "player_a" in data:
         # Comparison
         a = data["player_a"]
         b = data["player_b"]
         parts.append(f"**{a['name']}** vs **{b['name']}**:")
         parts.append(f"- Rating: {a['hltv_rating']:.2f} vs {b['hltv_rating']:.2f}")
-        parts.append(
-            f"- K/D: {a['kills']}/{a['deaths']} vs {b['kills']}/{b['deaths']}"
-        )
+        parts.append(f"- K/D: {a['kills']}/{a['deaths']} vs {b['kills']}/{b['deaths']}")
         parts.append(f"- ADR: {a['adr']:.1f} vs {b['adr']:.1f}")
     elif "round_num" in data:
         # Round specific
@@ -853,9 +828,7 @@ def _format_fallback(question: str, data: dict[str, Any]) -> str:
         parts.append(f"Kills: {data.get('total_kills', 0)}")
         for k in data.get("kills", []):
             hs = " (HS)" if k.get("headshot") else ""
-            parts.append(
-                f"  - {k['killer']} -> {k['victim']} [{k.get('weapon', '')}]{hs}"
-            )
+            parts.append(f"  - {k['killer']} -> {k['victim']} [{k.get('weapon', '')}]{hs}")
     elif "eco_round_stats" in data:
         # Economy
         eco = data["eco_round_stats"]
@@ -863,17 +836,13 @@ def _format_fallback(question: str, data: dict[str, Any]) -> str:
         for side in ("ct", "t"):
             s = eco[side]
             parts.append(
-                f"- {side.upper()} eco rounds: {s['wins']}/{s['total']} won"
-                f" ({s['win_rate']:.0%})"
+                f"- {side.upper()} eco rounds: {s['wins']}/{s['total']} won ({s['win_rate']:.0%})"
             )
     elif "total_rounds" in data and "score" in data:
         # Team performance
+        parts.append(f"Score: {data.get('score', '?')} on {data.get('map', '?')}")
         parts.append(
-            f"Score: {data.get('score', '?')} on {data.get('map', '?')}"
-        )
-        parts.append(
-            f"CT rounds: {data.get('ct_rounds_won', 0)}, "
-            f"T rounds: {data.get('t_rounds_won', 0)}"
+            f"CT rounds: {data.get('ct_rounds_won', 0)}, T rounds: {data.get('t_rounds_won', 0)}"
         )
     else:
         # Generic

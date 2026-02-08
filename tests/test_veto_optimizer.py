@@ -311,9 +311,7 @@ class TestComputeMapStrengths:
 
         opt = VetoOptimizer()
         one = opt._compute_map_strengths([_make_demo("de_dust2", 13, 8)])
-        five = opt._compute_map_strengths(
-            [_make_demo("de_dust2", 13, 8) for _ in range(5)]
-        )
+        five = opt._compute_map_strengths([_make_demo("de_dust2", 13, 8) for _ in range(5)])
         assert five[0].confidence > one[0].confidence
 
     def test_avg_rounds_won(self):

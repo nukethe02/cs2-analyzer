@@ -567,9 +567,7 @@ class PlayerTracker:
                 statistics.stdev(historical_values) if len(historical_values) > 1 else 0.0
             )
 
-            direction = _compute_trend_direction(
-                recent_avg, historical_avg, higher_is_better
-            )
+            direction = _compute_trend_direction(recent_avg, historical_avg, higher_is_better)
 
             change_pct = 0.0
             if historical_avg != 0:
@@ -831,7 +829,9 @@ class PlayerTracker:
                     priority="medium",
                     description="Utility effectiveness is declining",
                     current_value=util.recent_avg,
-                    target_value=targets.get("utility_rating", 50.0) if "utility_rating" in targets else 50.0,
+                    target_value=targets.get("utility_rating", 50.0)
+                    if "utility_rating" in targets
+                    else 50.0,
                     drill="Learn pop-flash lineups and HE/molotov spots for your most-played maps",
                 )
             )

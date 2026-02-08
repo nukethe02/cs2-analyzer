@@ -208,8 +208,8 @@ def _compute_team_averages(orchestrator_results: list[dict]) -> dict[str, float]
             totals["rating"] += rating.get("hltv_rating", 0.0)
             totals["hs_pct"] += stats.get("headshot_pct", 0.0)
             totals["opening_duel_wins"] += duels.get("opening_kills", 0)
-            totals["opening_duel_total"] += (
-                duels.get("opening_kills", 0) + duels.get("opening_deaths", 0)
+            totals["opening_duel_total"] += duels.get("opening_kills", 0) + duels.get(
+                "opening_deaths", 0
             )
             totals["clutch_wins"] += duels.get("clutch_wins", 0)
             totals["clutch_total"] += duels.get("clutch_attempts", 0)
@@ -329,9 +329,7 @@ def build_matchup_analysis(
             f"vs their entry success {opp_entry:.0%} ({od_advantage:.0%})"
         )
     else:
-        lines.append(
-            f"EVEN — Opening duels: Your {your_od:.0%} vs their {opp_entry:.0%}"
-        )
+        lines.append(f"EVEN — Opening duels: Your {your_od:.0%} vs their {opp_entry:.0%}")
 
     # ADR / firepower comparison
     your_adr = your_stats.get("avg_adr", 0)
@@ -392,9 +390,7 @@ def build_matchup_analysis(
 
     # Player-specific threats from opponent
     players = opponent_data.get("players") or []
-    high_threats = [
-        p for p in players if p.get("avg_kills_per_round", 0) > 0.8
-    ]
+    high_threats = [p for p in players if p.get("avg_kills_per_round", 0) > 0.8]
     if high_threats:
         lines.append("")
         lines.append("HIGH-THREAT PLAYERS:")
@@ -443,7 +439,9 @@ def _build_economy_plan(
             "SMGs + utility, hold disciplined angles, deny exit kills."
         )
     else:
-        anti_eco = "Standard anti-eco: SMGs for $600 kill reward, hold angles, use utility to slow pushes."
+        anti_eco = (
+            "Standard anti-eco: SMGs for $600 kill reward, hold angles, use utility to slow pushes."
+        )
 
     return EconomyPlan(
         pistol_round_buy="kevlar + utility (smoke + flash preferred)",
@@ -540,7 +538,7 @@ Output ONLY valid JSON with these exact keys:
 }}
 
 IMPORTANT:
-- Use the actual roster names: {', '.join(roster.keys())}
+- Use the actual roster names: {", ".join(roster.keys())}
 - Every strategy must cite evidence from the data above
 - Be specific about positions, utility, and timing for {map_name}
 - Output ONLY valid JSON, no markdown fencing
@@ -651,9 +649,7 @@ class GamePlanGenerator:
 
         # Compute data quality confidence
         demos_analyzed = opponent_scouting.get("demos_analyzed", 0)
-        confidence = self._compute_confidence(
-            len(your_team_demos), demos_analyzed
-        )
+        confidence = self._compute_confidence(len(your_team_demos), demos_analyzed)
 
         plan = GamePlan(
             plan_id=plan_id,

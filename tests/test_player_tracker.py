@@ -57,9 +57,7 @@ def _make_match(
     rounds_played: int = 25,
 ) -> dict:
     """Build a match history dict matching get_player_history_full() output."""
-    analyzed = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC) + datetime.timedelta(
-        days=idx
-    )
+    analyzed = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC) + datetime.timedelta(days=idx)
     return {
         "id": idx,
         "steam_id": STEAM_ID,
@@ -227,14 +225,29 @@ class TestExtractSnapshot:
             "demo_info": {"demo_hash": "abc123", "map_name": "de_inferno"},
             "players": {
                 STEAM_ID: {
-                    "stats": {"kills": 22, "deaths": 14, "assists": 5, "adr": 82.0,
-                              "headshot_pct": 48.0, "rounds_played": 24},
-                    "rating": {"hltv_rating": 1.18, "kast_percentage": 72.0,
-                               "aim_rating": 65.0, "utility_rating": 50.0},
+                    "stats": {
+                        "kills": 22,
+                        "deaths": 14,
+                        "assists": 5,
+                        "adr": 82.0,
+                        "headshot_pct": 48.0,
+                        "rounds_played": 24,
+                    },
+                    "rating": {
+                        "hltv_rating": 1.18,
+                        "kast_percentage": 72.0,
+                        "aim_rating": 65.0,
+                        "utility_rating": 50.0,
+                    },
                     "advanced": {"ttd_median_ms": 290.0, "cp_median_error_deg": 10.5},
-                    "duels": {"opening_kills": 3, "opening_deaths": 2,
-                              "clutch_wins": 1, "clutch_attempts": 3,
-                              "trade_kills": 4, "trade_kill_opportunities": 8},
+                    "duels": {
+                        "opening_kills": 3,
+                        "opening_deaths": 2,
+                        "clutch_wins": 1,
+                        "clutch_attempts": 3,
+                        "trade_kills": 4,
+                        "trade_kill_opportunities": 8,
+                    },
                     "utility": {"enemies_flashed": 6, "flash_assists": 3, "he_damage": 35},
                 }
             },
@@ -365,9 +378,16 @@ class TestTrendAnalysis:
         history = _make_stable_history(5)
         snapshots = _history_to_snapshots(history)
         current = MatchSnapshot(
-            steam_id=STEAM_ID, demo_hash="current", kills=50, deaths=5,
-            adr=120.0, kast=90.0, hs_pct=70.0, hltv_rating=1.8,
-            aim_rating=90.0, utility_rating=80.0,
+            steam_id=STEAM_ID,
+            demo_hash="current",
+            kills=50,
+            deaths=5,
+            adr=120.0,
+            kast=90.0,
+            hs_pct=70.0,
+            hltv_rating=1.8,
+            aim_rating=90.0,
+            utility_rating=80.0,
         )
         tracker = PlayerTracker(db=MagicMock())
         trends = tracker.analyze_trends(snapshots, current=current)
@@ -400,10 +420,15 @@ class TestTrendAnalysis:
 
     def test_to_dict(self):
         t = TrendAnalysis(
-            metric_name="kills", current_value=25.0,
-            recent_avg=22.0, historical_avg=20.0,
-            recent_std=3.5, historical_std=5.0,
-            direction="improving", change_pct=25.0, sample_count=10,
+            metric_name="kills",
+            current_value=25.0,
+            recent_avg=22.0,
+            historical_avg=20.0,
+            recent_std=3.5,
+            historical_std=5.0,
+            direction="improving",
+            change_pct=25.0,
+            sample_count=10,
         )
         d = t.to_dict()
         assert d["metric"] == "kills"
@@ -441,30 +466,22 @@ class TestLevelEstimation:
     """Test competitive level estimation."""
 
     def test_beginner(self):
-        snapshots = _history_to_snapshots(
-            [_make_match(i, hltv_rating=0.70) for i in range(5)]
-        )
+        snapshots = _history_to_snapshots([_make_match(i, hltv_rating=0.70) for i in range(5)])
         tracker = PlayerTracker(db=MagicMock())
         assert tracker.estimate_level(snapshots) == "beginner"
 
     def test_intermediate(self):
-        snapshots = _history_to_snapshots(
-            [_make_match(i, hltv_rating=0.95) for i in range(5)]
-        )
+        snapshots = _history_to_snapshots([_make_match(i, hltv_rating=0.95) for i in range(5)])
         tracker = PlayerTracker(db=MagicMock())
         assert tracker.estimate_level(snapshots) == "intermediate"
 
     def test_advanced(self):
-        snapshots = _history_to_snapshots(
-            [_make_match(i, hltv_rating=1.12) for i in range(5)]
-        )
+        snapshots = _history_to_snapshots([_make_match(i, hltv_rating=1.12) for i in range(5)])
         tracker = PlayerTracker(db=MagicMock())
         assert tracker.estimate_level(snapshots) == "advanced"
 
     def test_elite(self):
-        snapshots = _history_to_snapshots(
-            [_make_match(i, hltv_rating=1.35) for i in range(5)]
-        )
+        snapshots = _history_to_snapshots([_make_match(i, hltv_rating=1.35) for i in range(5)])
         tracker = PlayerTracker(db=MagicMock())
         assert tracker.estimate_level(snapshots) == "elite"
 
@@ -473,16 +490,12 @@ class TestLevelEstimation:
         assert tracker.estimate_level([]) == "intermediate"
 
     def test_boundary_085(self):
-        snapshots = _history_to_snapshots(
-            [_make_match(i, hltv_rating=0.85) for i in range(5)]
-        )
+        snapshots = _history_to_snapshots([_make_match(i, hltv_rating=0.85) for i in range(5)])
         tracker = PlayerTracker(db=MagicMock())
         assert tracker.estimate_level(snapshots) == "intermediate"
 
     def test_boundary_120(self):
-        snapshots = _history_to_snapshots(
-            [_make_match(i, hltv_rating=1.20) for i in range(5)]
-        )
+        snapshots = _history_to_snapshots([_make_match(i, hltv_rating=1.20) for i in range(5)])
         tracker = PlayerTracker(db=MagicMock())
         assert tracker.estimate_level(snapshots) == "elite"
 
@@ -525,9 +538,7 @@ class TestBenchmarks:
 
     def test_verdict_below(self):
         # Player with low rating (0.6) vs intermediate avg (1.0)
-        snapshots = _history_to_snapshots(
-            [_make_match(i, hltv_rating=0.6) for i in range(5)]
-        )
+        snapshots = _history_to_snapshots([_make_match(i, hltv_rating=0.6) for i in range(5)])
         tracker = PlayerTracker(db=MagicMock())
 
         benchmarks = tracker.compute_benchmarks(snapshots, level="intermediate")
@@ -536,9 +547,7 @@ class TestBenchmarks:
 
     def test_percentile_clamped(self):
         # Very high value should cap at 100
-        snapshots = _history_to_snapshots(
-            [_make_match(i, adr=200.0) for i in range(5)]
-        )
+        snapshots = _history_to_snapshots([_make_match(i, adr=200.0) for i in range(5)])
         tracker = PlayerTracker(db=MagicMock())
 
         benchmarks = tracker.compute_benchmarks(snapshots, level="beginner")
@@ -558,9 +567,14 @@ class TestBenchmarks:
 
     def test_to_dict(self):
         b = RoleBenchmark(
-            metric_name="adr", player_value=80.0, level="intermediate",
-            level_avg=75.0, level_low=60.0, level_high=85.0,
-            percentile_in_level=80.0, verdict="above",
+            metric_name="adr",
+            player_value=80.0,
+            level="intermediate",
+            level_avg=75.0,
+            level_low=60.0,
+            level_high=85.0,
+            percentile_in_level=80.0,
+            verdict="above",
         )
         d = b.to_dict()
         assert d["metric"] == "adr"
@@ -584,33 +598,39 @@ class TestPlayerAverages:
         assert avgs["adr"] == 80.0
 
     def test_entry_win_rate(self):
-        snapshots = _history_to_snapshots([
-            _make_match(0, entry_success=3, entry_attempts=5),
-            _make_match(1, entry_success=2, entry_attempts=5),
-        ])
+        snapshots = _history_to_snapshots(
+            [
+                _make_match(0, entry_success=3, entry_attempts=5),
+                _make_match(1, entry_success=2, entry_attempts=5),
+            ]
+        )
         avgs = _calculate_player_averages(snapshots)
         assert avgs["entry_win_rate"] == 50.0
 
     def test_clutch_rate(self):
-        snapshots = _history_to_snapshots([
-            _make_match(0, clutch_wins=2, clutch_situations=4),
-            _make_match(1, clutch_wins=1, clutch_situations=6),
-        ])
+        snapshots = _history_to_snapshots(
+            [
+                _make_match(0, clutch_wins=2, clutch_situations=4),
+                _make_match(1, clutch_wins=1, clutch_situations=6),
+            ]
+        )
         avgs = _calculate_player_averages(snapshots)
         assert avgs["clutch_win_rate"] == 30.0
 
     def test_trade_rate(self):
-        snapshots = _history_to_snapshots([
-            _make_match(0, trade_kill_success=4, trade_kill_attempts=8),
-            _make_match(1, trade_kill_success=3, trade_kill_attempts=7),
-        ])
+        snapshots = _history_to_snapshots(
+            [
+                _make_match(0, trade_kill_success=4, trade_kill_attempts=8),
+                _make_match(1, trade_kill_success=3, trade_kill_attempts=7),
+            ]
+        )
         avgs = _calculate_player_averages(snapshots)
         assert abs(avgs["trade_rate"] - 46.7) < 0.1
 
     def test_zero_attempts(self):
-        snapshots = _history_to_snapshots([
-            _make_match(0, entry_attempts=0, clutch_situations=0, trade_kill_attempts=0)
-        ])
+        snapshots = _history_to_snapshots(
+            [_make_match(0, entry_attempts=0, clutch_situations=0, trade_kill_attempts=0)]
+        )
         avgs = _calculate_player_averages(snapshots)
         assert "entry_win_rate" not in avgs
         assert "clutch_win_rate" not in avgs
@@ -665,11 +685,21 @@ class TestRecommendations:
         """Stable metrics with good benchmarks should produce fewer recs."""
         history = [
             _make_match(
-                i, kills=28, adr=90.0, hs_pct=55.0, hltv_rating=1.2,
-                ttd_median_ms=280.0, cp_median_deg=8.0,
-                trade_kill_success=5, flash_assists=4, he_damage=40,
-                kast=78.0, clutch_wins=2, clutch_situations=4,
-                entry_success=3, entry_attempts=5,
+                i,
+                kills=28,
+                adr=90.0,
+                hs_pct=55.0,
+                hltv_rating=1.2,
+                ttd_median_ms=280.0,
+                cp_median_deg=8.0,
+                trade_kill_success=5,
+                flash_assists=4,
+                he_damage=40,
+                kast=78.0,
+                clutch_wins=2,
+                clutch_situations=4,
+                entry_success=3,
+                entry_attempts=5,
             )
             for i in range(10)
         ]
@@ -688,8 +718,7 @@ class TestRecommendations:
             priorities = [r.priority for r in recs]
             order = {"high": 0, "medium": 1, "low": 2}
             assert all(
-                order[priorities[i]] <= order[priorities[i + 1]]
-                for i in range(len(priorities) - 1)
+                order[priorities[i]] <= order[priorities[i + 1]] for i in range(len(priorities) - 1)
             )
 
     def test_insufficient_data_returns_empty(self):
@@ -700,9 +729,12 @@ class TestRecommendations:
 
     def test_to_dict(self):
         rec = PracticeRecommendation(
-            area="aim", priority="high",
-            description="Test rec", current_value=10.0,
-            target_value=20.0, drill="Do thing",
+            area="aim",
+            priority="high",
+            description="Test rec",
+            current_value=10.0,
+            target_value=20.0,
+            drill="Do thing",
         )
         d = rec.to_dict()
         assert d["area"] == "aim"
@@ -768,10 +800,13 @@ class TestDevelopmentReport:
 
     def test_to_dict(self):
         report = DevelopmentReport(
-            steam_id=STEAM_ID, match_count=5,
+            steam_id=STEAM_ID,
+            match_count=5,
             estimated_level="intermediate",
-            strengths=["Good aim"], weaknesses=["Bad utility"],
-            improvement_velocity=0.5, summary="Test summary",
+            strengths=["Good aim"],
+            weaknesses=["Bad utility"],
+            improvement_velocity=0.5,
+            summary="Test summary",
         )
         d = report.to_dict()
         assert d["steam_id"] == STEAM_ID
@@ -806,9 +841,14 @@ class TestStrengthsWeaknesses:
     def test_above_benchmark_is_strength(self):
         benchmarks = [
             RoleBenchmark(
-                metric_name="adr", player_value=95.0, level="intermediate",
-                level_avg=75.0, level_low=60.0, level_high=85.0,
-                percentile_in_level=100.0, verdict="above",
+                metric_name="adr",
+                player_value=95.0,
+                level="intermediate",
+                level_avg=75.0,
+                level_low=60.0,
+                level_high=85.0,
+                percentile_in_level=100.0,
+                verdict="above",
             )
         ]
         strengths, weaknesses = _identify_strengths_weaknesses(benchmarks, [])
@@ -819,9 +859,14 @@ class TestStrengthsWeaknesses:
     def test_below_benchmark_is_weakness(self):
         benchmarks = [
             RoleBenchmark(
-                metric_name="kast", player_value=55.0, level="intermediate",
-                level_avg=68.0, level_low=60.0, level_high=75.0,
-                percentile_in_level=0.0, verdict="below",
+                metric_name="kast",
+                player_value=55.0,
+                level="intermediate",
+                level_avg=68.0,
+                level_low=60.0,
+                level_high=75.0,
+                percentile_in_level=0.0,
+                verdict="below",
             )
         ]
         strengths, weaknesses = _identify_strengths_weaknesses(benchmarks, [])
@@ -831,9 +876,13 @@ class TestStrengthsWeaknesses:
     def test_improving_trend_is_strength(self):
         trends = [
             TrendAnalysis(
-                metric_name="kills", current_value=30.0,
-                recent_avg=28.0, historical_avg=20.0,
-                direction="improving", change_pct=50.0, sample_count=10,
+                metric_name="kills",
+                current_value=30.0,
+                recent_avg=28.0,
+                historical_avg=20.0,
+                direction="improving",
+                change_pct=50.0,
+                sample_count=10,
             )
         ]
         strengths, _ = _identify_strengths_weaknesses([], trends)
@@ -843,9 +892,13 @@ class TestStrengthsWeaknesses:
     def test_declining_trend_is_weakness(self):
         trends = [
             TrendAnalysis(
-                metric_name="adr", current_value=60.0,
-                recent_avg=62.0, historical_avg=80.0,
-                direction="declining", change_pct=-25.0, sample_count=10,
+                metric_name="adr",
+                current_value=60.0,
+                recent_avg=62.0,
+                historical_avg=80.0,
+                direction="declining",
+                change_pct=-25.0,
+                sample_count=10,
             )
         ]
         _, weaknesses = _identify_strengths_weaknesses([], trends)
@@ -855,9 +908,13 @@ class TestStrengthsWeaknesses:
     def test_small_change_not_reported(self):
         trends = [
             TrendAnalysis(
-                metric_name="kills", current_value=20.5,
-                recent_avg=20.3, historical_avg=20.0,
-                direction="improving", change_pct=2.5, sample_count=10,
+                metric_name="kills",
+                current_value=20.5,
+                recent_avg=20.3,
+                historical_avg=20.0,
+                direction="improving",
+                change_pct=2.5,
+                sample_count=10,
             )
         ]
         strengths, weaknesses = _identify_strengths_weaknesses([], trends)
@@ -874,35 +931,70 @@ class TestImprovementVelocity:
 
     def test_all_improving(self):
         trends = [
-            TrendAnalysis(metric_name="kills", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="improving"),
-            TrendAnalysis(metric_name="adr", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="improving"),
+            TrendAnalysis(
+                metric_name="kills",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="improving",
+            ),
+            TrendAnalysis(
+                metric_name="adr",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="improving",
+            ),
         ]
         assert _calculate_improvement_velocity(trends) == 1.0
 
     def test_all_declining(self):
         trends = [
-            TrendAnalysis(metric_name="kills", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="declining"),
-            TrendAnalysis(metric_name="adr", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="declining"),
+            TrendAnalysis(
+                metric_name="kills",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="declining",
+            ),
+            TrendAnalysis(
+                metric_name="adr",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="declining",
+            ),
         ]
         assert _calculate_improvement_velocity(trends) == -1.0
 
     def test_mixed(self):
         trends = [
-            TrendAnalysis(metric_name="kills", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="improving"),
-            TrendAnalysis(metric_name="adr", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="declining"),
+            TrendAnalysis(
+                metric_name="kills",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="improving",
+            ),
+            TrendAnalysis(
+                metric_name="adr",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="declining",
+            ),
         ]
         assert _calculate_improvement_velocity(trends) == 0.0
 
     def test_all_stable(self):
         trends = [
-            TrendAnalysis(metric_name="kills", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="stable"),
+            TrendAnalysis(
+                metric_name="kills",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="stable",
+            ),
         ]
         assert _calculate_improvement_velocity(trends) == 0.0
 
@@ -920,8 +1012,13 @@ class TestBuildSummary:
 
     def test_improving_summary(self):
         trends = [
-            TrendAnalysis(metric_name="kills", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="improving"),
+            TrendAnalysis(
+                metric_name="kills",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="improving",
+            ),
         ]
         summary = _build_summary(trends, [], [], 10)
         assert "10 matches" in summary
@@ -929,16 +1026,26 @@ class TestBuildSummary:
 
     def test_declining_summary(self):
         trends = [
-            TrendAnalysis(metric_name="adr", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="declining"),
+            TrendAnalysis(
+                metric_name="adr",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="declining",
+            ),
         ]
         summary = _build_summary(trends, [], [], 5)
         assert "Declining" in summary
 
     def test_stable_summary(self):
         trends = [
-            TrendAnalysis(metric_name="kills", current_value=0, recent_avg=0,
-                          historical_avg=0, direction="stable"),
+            TrendAnalysis(
+                metric_name="kills",
+                current_value=0,
+                recent_avg=0,
+                historical_avg=0,
+                direction="stable",
+            ),
         ]
         summary = _build_summary(trends, [], [], 5)
         assert "stable" in summary
@@ -946,9 +1053,14 @@ class TestBuildSummary:
     def test_benchmark_weakness_in_summary(self):
         benchmarks = [
             RoleBenchmark(
-                metric_name="adr", player_value=50.0, level="intermediate",
-                level_avg=75.0, level_low=60.0, level_high=85.0,
-                percentile_in_level=0.0, verdict="below",
+                metric_name="adr",
+                player_value=50.0,
+                level="intermediate",
+                level_avg=75.0,
+                level_low=60.0,
+                level_high=85.0,
+                percentile_in_level=0.0,
+                verdict="below",
             )
         ]
         summary = _build_summary([], benchmarks, [], 5)
@@ -957,8 +1069,12 @@ class TestBuildSummary:
     def test_high_priority_recs_in_summary(self):
         recs = [
             PracticeRecommendation(
-                area="aim", priority="high", description="Test",
-                current_value=0, target_value=0, drill="Test",
+                area="aim",
+                priority="high",
+                description="Test",
+                current_value=0,
+                target_value=0,
+                drill="Test",
             )
         ]
         summary = _build_summary([], [], recs, 5)
@@ -975,9 +1091,16 @@ class TestPersonaRoleMapping:
 
     def test_all_personas_mapped(self):
         expected_personas = [
-            "the_cleanup", "the_lurker", "the_opener", "the_anchor",
-            "the_utility_master", "the_headhunter", "the_survivor",
-            "the_damage_dealer", "the_flash_master", "the_terminator",
+            "the_cleanup",
+            "the_lurker",
+            "the_opener",
+            "the_anchor",
+            "the_utility_master",
+            "the_headhunter",
+            "the_survivor",
+            "the_damage_dealer",
+            "the_flash_master",
+            "the_terminator",
             "the_competitor",
         ]
         for persona in expected_personas:
