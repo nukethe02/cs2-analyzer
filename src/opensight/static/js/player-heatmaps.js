@@ -59,15 +59,16 @@ class PlayerHeatmaps {
      * Load radar background image
      */
     loadRadarImage() {
+        const _RADAR = 'https://raw.githubusercontent.com/2mlml/cs2-radar-images/master';
         const radarUrls = {
-            'de_dust2': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png',
-            'de_mirage': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png',
-            'de_inferno': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png',
-            'de_nuke': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png',
-            'de_overpass': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png',
-            'de_vertigo': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png',
-            'de_ancient': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png',
-            'de_anubis': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png',
+            'de_dust2': _RADAR + '/de_dust2.png',
+            'de_mirage': _RADAR + '/de_mirage.png',
+            'de_inferno': _RADAR + '/de_inferno.png',
+            'de_nuke': _RADAR + '/de_nuke.png',
+            'de_overpass': _RADAR + '/de_overpass.png',
+            'de_vertigo': _RADAR + '/de_vertigo.png',
+            'de_ancient': _RADAR + '/de_ancient.png',
+            'de_anubis': _RADAR + '/de_anubis.png',
         };
 
         const url = radarUrls[this.mapName];

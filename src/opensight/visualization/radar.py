@@ -29,15 +29,15 @@ logger = logging.getLogger(__name__)
 # scale = units per pixel
 # ============================================================================
 
+_RADAR_BASE = "https://raw.githubusercontent.com/2mlml/cs2-radar-images/master"
+
 MAP_DATA = {
     "de_dust2": {
         "name": "Dust II",
         "pos_x": -2476,
         "pos_y": 3239,
         "scale": 4.4,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/de_dust2.png",
         "z_cutoff": None,  # No vertical split
     },
     "de_mirage": {
@@ -45,9 +45,7 @@ MAP_DATA = {
         "pos_x": -3230,
         "pos_y": 1713,
         "scale": 5.0,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/de_mirage.png",
         "z_cutoff": None,
     },
     "de_inferno": {
@@ -55,18 +53,14 @@ MAP_DATA = {
         "pos_x": -2087,
         "pos_y": 3870,
         "scale": 4.9,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/de_inferno.png",
     },
     "de_nuke": {
         "name": "Nuke",
         "pos_x": -3453,
         "pos_y": 2887,
         "scale": 7.0,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/de_nuke.png",
         "z_cutoff": -495,
     },
     "de_overpass": {
@@ -74,9 +68,7 @@ MAP_DATA = {
         "pos_x": -4831,
         "pos_y": 1781,
         "scale": 5.2,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/de_overpass.png",
         "z_cutoff": None,
     },
     "de_vertigo": {
@@ -84,9 +76,7 @@ MAP_DATA = {
         "pos_x": -3168,
         "pos_y": 1762,
         "scale": 4.0,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/de_vertigo.png",
         "z_cutoff": 11700,  # Split between floors
     },
     "de_ancient": {
@@ -94,9 +84,7 @@ MAP_DATA = {
         "pos_x": -2953,
         "pos_y": 2164,
         "scale": 5.0,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/de_ancient.png",
         "z_cutoff": None,
     },
     "de_anubis": {
@@ -104,9 +92,7 @@ MAP_DATA = {
         "pos_x": -2796,
         "pos_y": 3328,
         "scale": 5.22,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/de_anubis.png",
         "z_cutoff": None,
     },
     "cs_office": {
@@ -114,9 +100,7 @@ MAP_DATA = {
         "pos_x": -1838,
         "pos_y": 1858,
         "scale": 4.1,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/cs_office_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/cs_office.png",
         "z_cutoff": None,
     },
     "cs_italy": {
@@ -124,25 +108,13 @@ MAP_DATA = {
         "pos_x": -2647,
         "pos_y": 2592,
         "scale": 4.6,
-        "radar_url": (
-            "https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/cs_italy_radar.png"
-        ),
+        "radar_url": f"{_RADAR_BASE}/cs_italy.png",
         "z_cutoff": None,
     },
 }
 
 # Fallback radar URLs (alternative sources)
-FALLBACK_RADAR_URLS = {
-    "de_dust2": (
-        "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_dust2.png"
-    ),
-    "de_mirage": (
-        "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_mirage.png"
-    ),
-    "de_inferno": (
-        "https://raw.githubusercontent.com/akiver/CSGO-Demos-Manager/master/Manager/resources/images/maps/radar/de_inferno.png"
-    ),
-}
+FALLBACK_RADAR_URLS: dict[str, str] = {}
 # Coordinates are in game units (not radar pixels)
 # Each zone: {"bounds": [[x1,y1], [x2,y2], ...], "type": "bombsite|route|spawn|mid|choke|position"}
 # ============================================================================

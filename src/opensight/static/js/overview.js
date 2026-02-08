@@ -408,11 +408,11 @@ class OverviewTab {
                 </td>
                 <td class="${this.getAimClass(aim)}">
                     ${this.isBest('aim_rating', player) ? '<span class="best-star">&#9733;</span>' : ''}
-                    ${aim || 0}
+                    ${Math.round(aim) || 0}
                 </td>
                 <td class="${this.getUtilityClass(util)}">
                     ${this.isBest('utility_rating', player) ? '<span class="best-star">&#9733;</span>' : ''}
-                    ${util || 0}
+                    ${Math.round(util) || 0}
                 </td>
             </tr>
         `;

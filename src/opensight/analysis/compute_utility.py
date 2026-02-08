@@ -22,6 +22,88 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _build_name_to_steamid_map(analyzer: DemoAnalyzer) -> dict[str, int]:
+    """Build player_name → steam_id lookup from analyzer._players."""
+    return {player.name: sid for sid, player in analyzer._players.items() if player.name}
+
+
+def _regroup_blinds_by_name(
+    blinds: list,
+    name_to_sid: dict[str, int],
+) -> dict[int, list]:
+    """Re-group blind events using attacker NAME when steamid matching failed."""
+    blinds_by_attacker: dict[int, list] = {}
+    matched = 0
+    for blind in blinds:
+        sid = name_to_sid.get(blind.attacker_name)
+        if sid is not None:
+            blinds_by_attacker.setdefault(sid, []).append(blind)
+            matched += 1
+    logger.info(f"Name-based blind matching: {matched}/{len(blinds)} events matched")
+    return blinds_by_attacker
+
+
+def _regroup_grenades_by_name(
+    grenades: list,
+    name_to_sid: dict[str, int],
+) -> dict[int, list]:
+    """Re-group grenade events using player NAME when steamid matching failed."""
+    grenades_by_player: dict[int, list] = {}
+    matched = 0
+    for grenade in grenades:
+        sid = name_to_sid.get(grenade.player_name)
+        if sid is not None:
+            grenades_by_player.setdefault(sid, []).append(grenade)
+            matched += 1
+    logger.info(f"Name-based grenade matching: {matched}/{len(grenades)} events matched")
+    return grenades_by_player
+
+
+def _count_grenades_for_player(player_grenades: list) -> tuple[int, int, int, int]:
+    """Count grenades by type, avoiding double-counting thrown+detonate pairs.
+
+    Returns (flashes, smokes, he_count, molly_count).
+    """
+    # Prefer "thrown" events; only use "detonate" if no thrown events exist for that type
+    thrown = [g for g in player_grenades if g.event_type == "thrown"]
+    detonate = [g for g in player_grenades if g.event_type != "thrown"]
+
+    # Count from thrown events first
+    flashes, smokes, he_count, molly_count = 0, 0, 0, 0
+    has_thrown_type: set[str] = set()
+
+    for g in thrown:
+        gt = g.grenade_type.lower()
+        if "smoke" in gt:
+            smokes += 1
+            has_thrown_type.add("smoke")
+        elif "hegrenade" in gt or "he_grenade" in gt:
+            he_count += 1
+            has_thrown_type.add("he")
+        elif "molotov" in gt or "incendiary" in gt or "inferno" in gt:
+            molly_count += 1
+            has_thrown_type.add("molly")
+        elif "flash" in gt:
+            flashes += 1
+            has_thrown_type.add("flash")
+
+    # Supplement with detonate events ONLY for grenade types with no thrown events
+    for g in detonate:
+        gt = g.grenade_type.lower()
+        if "smoke" in gt and "smoke" not in has_thrown_type:
+            smokes += 1
+        elif ("hegrenade" in gt or "he_grenade" in gt) and "he" not in has_thrown_type:
+            he_count += 1
+        elif (
+            "molotov" in gt or "incendiary" in gt or "inferno" in gt
+        ) and "molly" not in has_thrown_type:
+            molly_count += 1
+        elif "flash" in gt and "flash" not in has_thrown_type:
+            flashes += 1
+
+    return flashes, smokes, he_count, molly_count
+
+
 def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
     """Calculate comprehensive utility statistics (Leetify-style) using all available data."""
 
@@ -29,15 +111,33 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
     has_blinds = hasattr(analyzer.data, "blinds") and analyzer.data.blinds
     has_grenades = hasattr(analyzer.data, "grenades") and analyzer.data.grenades
     has_damages = not analyzer.data.damages_df.empty
+    has_blinds_df = (
+        hasattr(analyzer.data, "blinds_df")
+        and analyzer.data.blinds_df is not None
+        and not analyzer.data.blinds_df.empty
+    )
+    has_grenades_df = (
+        hasattr(analyzer.data, "grenades_df")
+        and analyzer.data.grenades_df is not None
+        and not analyzer.data.grenades_df.empty
+    )
 
-    # Debug: Log utility data availability
+    # Log utility data availability
     logger.info(
         f"Utility data check: blinds={len(analyzer.data.blinds) if has_blinds else 0}, "
         f"grenades={len(analyzer.data.grenades) if has_grenades else 0}, "
-        f"has_damages={has_damages}, blinds_df={len(analyzer.data.blinds_df) if hasattr(analyzer.data, 'blinds_df') else 'N/A'}"
+        f"has_damages={has_damages}, "
+        f"blinds_df={len(analyzer.data.blinds_df) if has_blinds_df else 0}, "
+        f"grenades_df={len(analyzer.data.grenades_df) if has_grenades_df else 0}"
     )
 
-    if not has_blinds and not has_grenades and not has_damages:
+    if (
+        not has_blinds
+        and not has_grenades
+        and not has_damages
+        and not has_blinds_df
+        and not has_grenades_df
+    ):
         logger.warning("No utility data available, skipping utility stats")
         return
 
@@ -45,8 +145,8 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
     for _steam_id, player in analyzer._players.items():
         player.utility._rounds_played = player.rounds_played
 
-    # Cache player teams for teammate detection
-    {steam_id: player.team for steam_id, player in analyzer._players.items()}
+    # Build name→steamid map for fallback matching
+    name_to_sid = _build_name_to_steamid_map(analyzer)
 
     # Constants for validation
     MIN_BLIND_DURATION = 0.0
@@ -60,18 +160,29 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
     if has_blinds:
         logger.info(f"Using {len(analyzer.data.blinds)} blind events for flash stats")
 
-        # Group blinds by attacker for efficient processing
+        # Group blinds by attacker steamid
         for blind in analyzer.data.blinds:
-            # Validate blind duration
             if (
                 blind.blind_duration < MIN_BLIND_DURATION
                 or blind.blind_duration > MAX_BLIND_DURATION
             ):
                 continue
             att_id = blind.attacker_steamid
-            if att_id not in blinds_by_attacker:
-                blinds_by_attacker[att_id] = []
-            blinds_by_attacker[att_id].append(blind)
+            blinds_by_attacker.setdefault(att_id, []).append(blind)
+
+        # Check if steamid matching failed (all grouped under steamid 0 or no match)
+        matched_any = any(sid in analyzer._players for sid in blinds_by_attacker if sid != 0)
+        if not matched_any and blinds_by_attacker:
+            logger.warning(
+                "Blind steamid matching failed (all attacker_steamid=0 or no match). "
+                "Falling back to name-based matching."
+            )
+            valid_blinds = [
+                b
+                for b in analyzer.data.blinds
+                if MIN_BLIND_DURATION <= b.blind_duration <= MAX_BLIND_DURATION
+            ]
+            blinds_by_attacker = _regroup_blinds_by_name(valid_blinds, name_to_sid)
 
         for steam_id, player in analyzer._players.items():
             player_blinds = blinds_by_attacker.get(steam_id, [])
@@ -108,13 +219,12 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
                 player.utility.flashbangs_thrown = flash_count
 
             # Calculate effective_flashes: unique flashbangs with >= 1 significant enemy blind
-            # Group significant enemy blinds by tick proximity to count unique effective flashes
             sig_blind_ticks = sorted({b.tick for b in significant_enemy_blinds})
             if sig_blind_ticks:
                 effective_count = 1
                 prev_tick = sig_blind_ticks[0]
                 for tick in sig_blind_ticks[1:]:
-                    if tick - prev_tick > 10:  # Same 10-tick window for grouping
+                    if tick - prev_tick > 10:
                         effective_count += 1
                     prev_tick = tick
                 player.utility.effective_flashes = effective_count
@@ -124,19 +234,29 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
         # ===========================================
         # Victim-side blind metrics (Leetify "Avg Blind Time")
         # ===========================================
-        # Group blinds by victim for victim-side stats
         blinds_by_victim: dict[int, list] = {}
         for blind in analyzer.data.blinds:
-            # Validate blind duration
             if (
                 blind.blind_duration < MIN_BLIND_DURATION
                 or blind.blind_duration > MAX_BLIND_DURATION
             ):
                 continue
             vic_id = blind.victim_steamid
-            if vic_id not in blinds_by_victim:
-                blinds_by_victim[vic_id] = []
-            blinds_by_victim[vic_id].append(blind)
+            blinds_by_victim.setdefault(vic_id, []).append(blind)
+
+        # Check if victim steamid matching also failed
+        matched_victims = any(sid in analyzer._players for sid in blinds_by_victim if sid != 0)
+        if not matched_victims and blinds_by_victim:
+            logger.warning("Victim blind steamid matching failed, using name fallback.")
+            victim_name_map = {
+                player.name: sid for sid, player in analyzer._players.items() if player.name
+            }
+            blinds_by_victim = {}
+            for blind in analyzer.data.blinds:
+                if MIN_BLIND_DURATION <= blind.blind_duration <= MAX_BLIND_DURATION:
+                    sid = victim_name_map.get(blind.victim_name)
+                    if sid is not None:
+                        blinds_by_victim.setdefault(sid, []).append(blind)
 
         for steam_id, player in analyzer._players.items():
             victim_blinds = blinds_by_victim.get(steam_id, [])
@@ -152,49 +272,69 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
             player.utility.total_time_blinded = sum(b.blind_duration for b in enemy_blinds_received)
 
     # ===========================================
+    # BLINDS DataFrame fallback (when structured blinds list is empty)
+    # ===========================================
+    elif has_blinds_df:
+        logger.info(
+            f"Using blinds_df fallback ({len(analyzer.data.blinds_df)} rows) — "
+            "structured blinds list was empty"
+        )
+        bdf = analyzer.data.blinds_df
+        att_col = analyzer._find_col(bdf, ["attacker_steamid", "attacker_steam_id", "attacker"])
+        dur_col = analyzer._find_col(bdf, ["blind_duration", "duration"])
+
+        if att_col and dur_col:
+            for steam_id, player in analyzer._players.items():
+                player_blinds = bdf[pd.to_numeric(bdf[att_col], errors="coerce") == float(steam_id)]
+                if player_blinds.empty:
+                    continue
+                durations = pd.to_numeric(player_blinds[dur_col], errors="coerce").dropna()
+                valid = durations[
+                    (durations >= MIN_BLIND_DURATION) & (durations <= MAX_BLIND_DURATION)
+                ]
+                significant = valid[valid >= SIGNIFICANT_BLIND_THRESHOLD]
+                player.utility.enemies_flashed = len(significant)
+                player.utility.total_blind_time = float(valid.sum())
+                # Estimate flash count from unique ticks
+                if "tick" in player_blinds.columns:
+                    ticks = sorted(player_blinds["tick"].dropna().unique())
+                    if ticks:
+                        count = 1
+                        prev = ticks[0]
+                        for t in ticks[1:]:
+                            if t - prev > 10:
+                                count += 1
+                            prev = t
+                        player.utility.flashbangs_thrown = count
+
+    # ===========================================
     # Use GRENADES data for accurate grenade counts
     # ===========================================
     if has_grenades:
         logger.info(f"Using {len(analyzer.data.grenades)} grenade events")
 
-        # Group grenades by player for efficient processing
+        # Group grenades by player steamid
         grenades_by_player: dict[int, list] = {}
         for grenade in analyzer.data.grenades:
             player_id = grenade.player_steamid
-            if player_id not in grenades_by_player:
-                grenades_by_player[player_id] = []
-            grenades_by_player[player_id].append(grenade)
+            grenades_by_player.setdefault(player_id, []).append(grenade)
+
+        # Check if steamid matching failed (all grouped under steamid 0 or no match)
+        matched_any = any(sid in analyzer._players for sid in grenades_by_player if sid != 0)
+        if not matched_any and grenades_by_player:
+            logger.warning(
+                "Grenade steamid matching failed (all player_steamid=0 or no match). "
+                "Falling back to name-based matching."
+            )
+            grenades_by_player = _regroup_grenades_by_name(analyzer.data.grenades, name_to_sid)
 
         for steam_id, player in analyzer._players.items():
             player_grenades = grenades_by_player.get(steam_id, [])
             if not player_grenades:
                 continue
 
-            # Count by type using single loop
-            smokes = 0
-            he_count = 0
-            molly_count = 0
-            flash_count = 0
-
-            for g in player_grenades:
-                grenade_type = g.grenade_type.lower()
-
-                # Count smokes (both thrown and detonate events)
-                # Parser creates "smokegrenade" type from smokegrenade_detonate
-                if "smoke" in grenade_type:
-                    smokes += 1
-                elif "hegrenade" in grenade_type or "he_grenade" in grenade_type:
-                    he_count += 1
-                elif (
-                    "molotov" in grenade_type
-                    or "incendiary" in grenade_type
-                    or "inferno" in grenade_type
-                ):
-                    molly_count += 1
-                # Count flashes (both thrown and detonate events)
-                # Parser creates "flashbang" type from flashbang_detonate
-                elif "flash" in grenade_type:
-                    flash_count += 1
+            # Count by type, avoiding thrown+detonate double-counting
+            flash_count, smokes, he_count, molly_count = _count_grenades_for_player(player_grenades)
 
             player.utility.smokes_thrown = smokes
             if he_count > 0:
@@ -203,6 +343,59 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
                 player.utility.molotovs_thrown = molly_count
             if flash_count > 0 and player.utility.flashbangs_thrown == 0:
                 player.utility.flashbangs_thrown = flash_count
+
+    # ===========================================
+    # GRENADES DataFrame fallback (when structured grenades list is empty)
+    # ===========================================
+    elif has_grenades_df:
+        logger.info(
+            f"Using grenades_df fallback ({len(analyzer.data.grenades_df)} rows) — "
+            "structured grenades list was empty"
+        )
+        gdf = analyzer.data.grenades_df
+        player_col = analyzer._find_col(gdf, ["user_steamid", "player_steamid", "steamid"])
+        weapon_col = analyzer._find_col(gdf, ["weapon", "grenade_type", "grenade"])
+        event_type_col = "event_type" if "event_type" in gdf.columns else None
+
+        if player_col and weapon_col:
+            for steam_id, player in analyzer._players.items():
+                player_nades = gdf[
+                    pd.to_numeric(gdf[player_col], errors="coerce") == float(steam_id)
+                ]
+                if player_nades.empty:
+                    continue
+                # Prefer thrown events to avoid double-counting
+                if event_type_col:
+                    thrown = player_nades[player_nades[event_type_col] == "thrown"]
+                    if not thrown.empty:
+                        player_nades = thrown
+
+                weapons = player_nades[weapon_col].str.lower()
+                flashes = int(weapons.str.contains("flash", na=False).sum())
+                smokes = int(weapons.str.contains("smoke", na=False).sum())
+                hes = int(
+                    (
+                        weapons.str.contains("hegrenade", na=False)
+                        | weapons.str.contains("he_grenade", na=False)
+                    ).sum()
+                )
+                mollys = int(
+                    (
+                        weapons.str.contains("molotov", na=False)
+                        | weapons.str.contains("incendiary", na=False)
+                        | weapons.str.contains("inferno", na=False)
+                        | weapons.str.contains("incgrenade", na=False)
+                    ).sum()
+                )
+
+                if flashes > 0 and player.utility.flashbangs_thrown == 0:
+                    player.utility.flashbangs_thrown = flashes
+                if smokes > 0 and player.utility.smokes_thrown == 0:
+                    player.utility.smokes_thrown = smokes
+                if hes > 0 and player.utility.he_thrown == 0:
+                    player.utility.he_thrown = hes
+                if mollys > 0 and player.utility.molotovs_thrown == 0:
+                    player.utility.molotovs_thrown = mollys
 
     # ===========================================
     # Use DAMAGES data for HE/Molly damage (fallback and supplement)

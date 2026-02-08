@@ -543,6 +543,68 @@ def detect_entry_frags(analyzer: DemoAnalyzer) -> None:
     )
 
 
+def _parse_team_val(team_val: Any) -> str:
+    """Parse a team value from a DataFrame cell to 'CT', 'T', or 'Unknown'."""
+    if team_val is None or (isinstance(team_val, float) and pd.isna(team_val)):
+        return "Unknown"
+    if isinstance(team_val, (int, float)):
+        val = int(team_val)
+        if val == 3:
+            return "CT"
+        if val == 2:
+            return "T"
+        return "Unknown"
+    if isinstance(team_val, str):
+        upper = team_val.upper()
+        if "CT" in upper:
+            return "CT"
+        if "T" in upper and "SPEC" not in upper:
+            return "T"
+    return "Unknown"
+
+
+def _infer_teams_from_kills(kills_df: pd.DataFrame, att_col: str, vic_col: str) -> dict[int, str]:
+    """Infer player teams from kill relationships using bipartite graph coloring.
+
+    In CS2 competitive, if A kills B, they are on opposite teams. We use this
+    constraint to partition all players into two groups (CT/T labels may be
+    swapped, but same-team / different-team relationships are correct, which
+    is all that trade detection needs).
+    """
+    # Build adjacency: attacker <-> victim means different teams
+    opponents: dict[int, set[int]] = {}
+    for _, row in kills_df.iterrows():
+        att_id = safe_int(row.get(att_col))
+        vic_id = safe_int(row.get(vic_col))
+        if att_id and vic_id and att_id != vic_id:
+            opponents.setdefault(att_id, set()).add(vic_id)
+            opponents.setdefault(vic_id, set()).add(att_id)
+
+    if not opponents:
+        return {}
+
+    # BFS 2-coloring
+    color: dict[int, str] = {}
+    for start in opponents:
+        if start in color:
+            continue
+        # Assign "CT" to start node, BFS to color neighbors
+        queue = [start]
+        color[start] = "CT"
+        while queue:
+            node = queue.pop(0)
+            node_team = color[node]
+            opp_team = "T" if node_team == "CT" else "CT"
+            for neighbor in opponents.get(node, set()):
+                if neighbor not in color:
+                    color[neighbor] = opp_team
+                    queue.append(neighbor)
+                # If neighbor already colored same as node, graph isn't perfectly
+                # bipartite (team kill), but we keep going with best-effort coloring
+
+    return color
+
+
 def detect_trades(analyzer: DemoAnalyzer) -> None:
     """Detect trade kills with Leetify-style opportunity/attempt/success tracking.
 
@@ -586,7 +648,7 @@ def detect_trades(analyzer: DemoAnalyzer) -> None:
         if player.team in ("CT", "T"):
             player_teams_lookup[steam_id] = player.team
 
-    # Also extract from persistent team data if not in players
+    # Fallback 1: Extract from persistent team data for players not yet in lookup
     if analyzer._att_id_col:
         for _, row in kills_df.drop_duplicates(subset=[analyzer._att_id_col]).iterrows():
             att_id = safe_int(row.get(analyzer._att_id_col))
@@ -595,6 +657,51 @@ def detect_trades(analyzer: DemoAnalyzer) -> None:
                 display_team = analyzer.data.get_team_display_name(persistent_team)
                 if display_team in ("CT", "T"):
                     player_teams_lookup[att_id] = display_team
+
+    # Fallback 2: Read team from kills_df columns (attacker_team / user_team)
+    # This covers the case where ticks_df enrichment added team columns but
+    # player.team wasn't set (e.g. persistent team resolution failed).
+    if len(player_teams_lookup) < 2:
+        att_side_col = analyzer._find_col(kills_df, analyzer.ATT_SIDE_COLS)
+        vic_side_col = analyzer._find_col(kills_df, analyzer.VIC_SIDE_COLS)
+        if att_side_col:
+            for _, row in kills_df.drop_duplicates(subset=[analyzer._att_id_col]).iterrows():
+                att_id = safe_int(row.get(analyzer._att_id_col))
+                if att_id and att_id not in player_teams_lookup:
+                    team_val = row.get(att_side_col)
+                    team = _parse_team_val(team_val)
+                    if team in ("CT", "T"):
+                        player_teams_lookup[att_id] = team
+        if vic_side_col:
+            for _, row in kills_df.drop_duplicates(subset=[analyzer._vic_id_col]).iterrows():
+                vic_id = safe_int(row.get(analyzer._vic_id_col))
+                if vic_id and vic_id not in player_teams_lookup:
+                    team_val = row.get(vic_side_col)
+                    team = _parse_team_val(team_val)
+                    if team in ("CT", "T"):
+                        player_teams_lookup[vic_id] = team
+
+    # Fallback 3: Infer teams from kill relationships (bipartite graph).
+    # In CS2, if A kills B, they are on opposite teams. Use graph coloring
+    # to partition all players into two teams.
+    if len(player_teams_lookup) < 2:
+        player_teams_lookup = _infer_teams_from_kills(
+            kills_df, analyzer._att_id_col, analyzer._vic_id_col
+        )
+        if player_teams_lookup:
+            logger.info(
+                f"Inferred teams from kill relationships for {len(player_teams_lookup)} players"
+            )
+
+    ct_count = sum(1 for t in player_teams_lookup.values() if t == "CT")
+    t_count = sum(1 for t in player_teams_lookup.values() if t == "T")
+    logger.info(
+        f"Trade detection team lookup: {len(player_teams_lookup)} players ({ct_count} CT, {t_count} T)"
+    )
+
+    if len(player_teams_lookup) < 2 or ct_count == 0 or t_count == 0:
+        logger.warning("Cannot detect trades: insufficient team data")
+        return
 
     # Counters for logging
     total_trade_opportunities = 0
@@ -619,15 +726,13 @@ def detect_trades(analyzer: DemoAnalyzer) -> None:
         if not damages_df.empty and dmg_round_col and dmg_att_col and dmg_vic_col:
             round_damages = damages_df[damages_df[dmg_round_col] == round_num]
 
-        # Build list of all players in this round
-        all_players_in_round: set[int] = set()
-        for _, kill in round_kills.iterrows():
-            att_id = safe_int(kill.get(analyzer._att_id_col))
-            vic_id = safe_int(kill.get(analyzer._vic_id_col))
-            if att_id:
-                all_players_in_round.add(att_id)
-            if vic_id:
-                all_players_in_round.add(vic_id)
+        # Build list of all players who could participate in this round.
+        # Include ALL known players with valid team info (not just kill participants),
+        # because alive teammates who didn't get kills should still count as
+        # having trade opportunities.
+        all_players_in_round: set[int] = {
+            sid for sid in player_teams_lookup if sid in analyzer._players
+        }
 
         # Identify entry kill for entry trade tracking
         entry_kill_victim_id = 0
@@ -853,17 +958,16 @@ def detect_clutches(analyzer: DemoAnalyzer) -> None:
             if not victim_id:
                 continue
 
-            # Get victim team from the kill event (handles side swaps correctly)
-            if use_team_column:
+            # Get victim team — prefer alive-set lookup (always correct for clutch tracking),
+            # fall back to kill event team column if victim not found in alive sets
+            if victim_id in ct_alive:
+                victim_side = "CT"
+            elif victim_id in t_alive:
+                victim_side = "T"
+            elif use_team_column:
                 victim_side = analyzer._normalize_team(kill.get(analyzer._vic_side_col))
             else:
-                # Fallback: determine from current alive sets
-                if victim_id in ct_alive:
-                    victim_side = "CT"
-                elif victim_id in t_alive:
-                    victim_side = "T"
-                else:
-                    victim_side = "Unknown"
+                victim_side = "Unknown"
 
             # Remove victim from alive set
             if victim_side == "CT":

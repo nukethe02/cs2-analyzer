@@ -398,9 +398,16 @@ class DemoAnalyzer:
         Handles various formats from demo data:
         - Strings: 'CT', 'ct', 'CounterTerrorist', 'TERRORIST', etc.
         - Numbers: 2 = T, 3 = CT (CS2 team numbers)
+        - NaN/None: Returns 'Unknown'
         """
         if value is None:
             return "Unknown"
+        # Handle NaN (pandas/numpy float NaN passes isinstance check but crashes int())
+        try:
+            if pd.isna(value):
+                return "Unknown"
+        except (TypeError, ValueError):
+            pass
         if isinstance(value, str):
             upper = value.upper()
             if "CT" in upper or "COUNTER" in upper:

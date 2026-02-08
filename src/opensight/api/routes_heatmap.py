@@ -53,8 +53,9 @@ async def get_kill_heatmap(
     """Generate kill/death heatmap from a completed analysis job."""
     result = _get_completed_result(job_id)
 
-    kills = result.get("kills", [])
-    map_name = result.get("map_name", result.get("map", "de_dust2"))
+    heatmap = result.get("heatmap_data", {})
+    kills = heatmap.get("kill_positions", [])
+    map_name = heatmap.get("map_name", result.get("map", "de_dust2"))
 
     if not kills:
         return {"map_name": map_name, "points": [], "total": 0}
@@ -91,8 +92,9 @@ async def get_grenade_heatmap(
     """Generate grenade landing heatmap from a completed analysis job."""
     result = _get_completed_result(job_id)
 
-    grenades = result.get("grenades", [])
-    map_name = result.get("map_name", result.get("map", "de_dust2"))
+    heatmap = result.get("heatmap_data", {})
+    grenades = heatmap.get("grenade_positions", [])
+    map_name = heatmap.get("map_name", result.get("map", "de_dust2"))
 
     if not grenades:
         return {"map_name": map_name, "points": [], "total": 0}

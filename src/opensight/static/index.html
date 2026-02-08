@@ -3534,6 +3534,135 @@
             console.log('[OpenSight] Auto-stored match data for', playersList.length, 'players');
         }
 
+        // Build comprehensive player_stats payload matching backend field names
+        // Backend: save_match_history_entry() in database.py
+        function buildPlayerStatsPayload(player) {
+            const s = player.stats || {};
+            const r = player.rating || {};
+            const c = player.clutches || {};
+            const e = player.entry || {};
+            const t = player.trades || {};
+            const u = player.utility || {};
+            const adv = player.advanced || {};
+            return {
+                kills: s.kills || 0,
+                deaths: s.deaths || 0,
+                assists: s.assists || 0,
+                adr: s.adr || 0,
+                hltv_rating: r.hltv_rating || 0,
+                kast_percentage: r.kast_percentage || 0,
+                hs_pct: s.headshot_pct || 0,
+                aim_rating: r.aim_rating || 0,
+                utility_rating: r.utility_rating || 0,
+                opensight_rating: r.opensight_rating || 50,
+                trade_kill_opportunities: t.trade_kill_opportunities || 0,
+                trade_kill_attempts: t.trade_kill_attempts || 0,
+                kills_traded: t.trade_kills || t.trade_kill_success || 0,
+                opening_duel_attempts: e.entry_attempts || 0,
+                opening_duel_wins: e.entry_kills || 0,
+                clutch_situations: c.total_situations || 0,
+                clutch_wins: c.clutch_wins || 0,
+                clutch_kills: c.clutch_wins || 0,
+                he_damage: u.he_damage || 0,
+                enemies_flashed: u.enemies_flashed || 0,
+                flash_assists: u.flash_assists || 0,
+                ttd_median_ms: adv.ttd_median_ms || null,
+                cp_median_error_deg: adv.cp_median_error_deg || null,
+                rounds_played: s.rounds_played || player.rounds_played || 0,
+            };
+        }
+
+        // Save match for a specific player (user-triggered via Save Match button)
+        async function saveMatchForPlayer() {
+            const steamInput = document.getElementById('save-steam-id');
+            const statusSpan = document.getElementById('save-match-status');
+            const saveBtn = document.getElementById('save-match-btn');
+            const steamId = (steamInput?.value || '').trim();
+
+            if (!steamId || !/^\d{17}$/.test(steamId)) {
+                showToast('Enter a valid 17-digit Steam ID', 'error');
+                steamInput?.focus();
+                return;
+            }
+
+            if (!analysisData || !analysisData.players) {
+                showToast('No analysis data available', 'error');
+                return;
+            }
+
+            // Find the player in analysis data
+            const playersList = Array.isArray(analysisData.players) ? analysisData.players :
+                Object.values(analysisData.players || {});
+            const player = playersList.find(p => {
+                const pid = String(p.steam_id || p.steamid || p.id || '');
+                return pid === steamId;
+            });
+
+            if (!player) {
+                showToast('Steam ID not found in this match. Check the ID and try again.', 'error');
+                return;
+            }
+
+            // Determine win/loss
+            const info = analysisData.demo_info || {};
+            const score = info.score || '';
+            const parts = score.split('-').map(s => parseInt(s.trim()));
+            let result = 'unknown';
+            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                const team = (player.team || '').toUpperCase();
+                if (team === 'CT') {
+                    result = parts[0] > parts[1] ? 'win' : parts[0] < parts[1] ? 'loss' : 'tie';
+                } else if (team === 'T') {
+                    result = parts[1] > parts[0] ? 'win' : parts[1] < parts[0] ? 'loss' : 'tie';
+                }
+            }
+
+            // Disable button during save
+            saveBtn.disabled = true;
+            saveBtn.style.opacity = '0.6';
+            statusSpan.textContent = 'Saving...';
+            statusSpan.style.color = 'var(--text-muted)';
+
+            try {
+                const response = await fetch('/api/your-match/store', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        steam_id: steamId,
+                        demo_hash: currentJobId || `demo_${Date.now()}`,
+                        map_name: info.map || '',
+                        result: result,
+                        player_stats: buildPlayerStatsPayload(player),
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to save match');
+                }
+
+                if (data.status === 'duplicate') {
+                    showToast('Match already saved for this player', 'info');
+                    statusSpan.textContent = 'Already saved';
+                    statusSpan.style.color = 'var(--warning)';
+                } else {
+                    showToast('Match saved! Check the Trends tab to track your performance.', 'success');
+                    statusSpan.innerHTML = 'Saved! <a href="#" onclick="document.querySelector(\'[data-tab=trends]\').click(); return false;" style="color: var(--accent-primary); text-decoration: underline;">View Trends</a>';
+                    statusSpan.style.color = 'var(--success)';
+                    // Store Steam ID for convenience
+                    localStorage.setItem('opensight_steam_id', steamId);
+                }
+            } catch (err) {
+                showToast('Failed to save: ' + err.message, 'error');
+                statusSpan.textContent = 'Save failed';
+                statusSpan.style.color = 'var(--danger)';
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.style.opacity = '1';
+            }
+        }
+
         // Poll for async job completion
         async function pollForJobCompletion(jobId, statusUrl, downloadUrl) {
             const maxAttempts = 600; // 10 minutes max (HuggingFace free tier is slow)
@@ -3835,6 +3964,13 @@
 
             resultsDiv.innerHTML = html;
             resultsDiv.classList.add('show');
+
+            // Pre-fill Steam ID from localStorage
+            const savedSteamId = localStorage.getItem('opensight_steam_id');
+            const steamInput = document.getElementById('save-steam-id');
+            if (savedSteamId && steamInput) {
+                steamInput.value = savedSteamId;
+            }
 
             // Initialize overview podium
             setTimeout(() => {
@@ -6560,9 +6696,21 @@
                                         <input type="checkbox" id="show-zones" checked>
                                         Zones
                                     </label>
-                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; color: #e2e8f0;">
-                                        <input type="checkbox" id="show-grenades" style="accent-color: #f59e0b;">
-                                        Grenades
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; color: #e2e8f0;" title="Smoke grenades">
+                                        <input type="checkbox" id="show-smokes" style="accent-color: #94a3b8;">
+                                        &#127787;&#65039; Smokes
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; color: #e2e8f0;" title="Flashbangs">
+                                        <input type="checkbox" id="show-flashes" style="accent-color: #FFD700;">
+                                        &#9889; Flashes
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; color: #e2e8f0;" title="Molotovs &amp; Incendiaries">
+                                        <input type="checkbox" id="show-mollys" style="accent-color: #f97316;">
+                                        &#128293; Mollys
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; color: #e2e8f0;" title="HE Grenades">
+                                        <input type="checkbox" id="show-he" style="accent-color: #22c55e;">
+                                        &#128165; HE
                                     </label>
                                 </div>
                             </div>
@@ -6606,16 +6754,20 @@
                                 <span style="font-size: 0.75rem; color: #94a3b8;">Good (&gt;1.2)</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
-                                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span>
-                                <span style="font-size: 0.7rem; color: #94a3b8;">Flash</span>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 6px;">
                                 <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;"></span>
                                 <span style="font-size: 0.7rem; color: #94a3b8;">Smoke</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span>
+                                <span style="font-size: 0.7rem; color: #94a3b8;">Flash</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
                                 <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f97316;"></span>
-                                <span style="font-size: 0.7rem; color: #94a3b8;">Molly/HE</span>
+                                <span style="font-size: 0.7rem; color: #94a3b8;">Molly</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span>
+                                <span style="font-size: 0.7rem; color: #94a3b8;">HE</span>
                             </div>
                         </div>
 
@@ -7267,19 +7419,32 @@
                     }
                 }
 
-                // Draw grenade positions
-                const showGrenades = document.getElementById('show-grenades')?.checked;
-                if (showGrenades && heatmapData.grenade_positions && !dryPeekMode) {
+                // Draw grenade positions (per-type toggles)
+                const showSmokes = document.getElementById('show-smokes')?.checked;
+                const showFlashes = document.getElementById('show-flashes')?.checked;
+                const showMollys = document.getElementById('show-mollys')?.checked;
+                const showHE = document.getElementById('show-he')?.checked;
+                const anyGrenades = showSmokes || showFlashes || showMollys || showHE;
+                if (anyGrenades && heatmapData.grenade_positions && !dryPeekMode) {
                     const grenadeColors = {
                         'flashbang': '#FFD700',
                         'smokegrenade': '#94a3b8',
-                        'hegrenade': '#ef4444',
+                        'hegrenade': '#22c55e',
                         'molotov': '#f97316',
                         'incgrenade': '#f97316',
                         'decoy': '#6b7280'
                     };
-                    // Filter grenades using team instead of side
+                    // Map grenade types to toggle state
+                    const typeEnabled = (gt) => {
+                        if (gt === 'smokegrenade') return showSmokes;
+                        if (gt === 'flashbang') return showFlashes;
+                        if (gt === 'molotov' || gt === 'incgrenade') return showMollys;
+                        if (gt === 'hegrenade') return showHE;
+                        return false;
+                    };
+                    // Filter grenades by type toggle + side/economy/player filters
                     const filteredGrenades = heatmapData.grenade_positions.filter(g => {
+                        if (!typeEnabled(g.grenade_type)) return false;
                         if (filters.side !== 'all' && g.team !== filters.side) return false;
                         if (filters.round_type !== 'all') {
                             const rt = g.round_type || '';
@@ -7295,9 +7460,9 @@
                         const canvasPos = gameToCanvas(g.x, g.y);
                         const color = grenadeColors[g.grenade_type] || '#ffffff';
                         ctx.beginPath();
-                        ctx.arc(canvasPos.x, canvasPos.y, 3, 0, Math.PI * 2);
+                        ctx.arc(canvasPos.x, canvasPos.y, 4, 0, Math.PI * 2);
                         ctx.fillStyle = color;
-                        ctx.globalAlpha = 0.6;
+                        ctx.globalAlpha = 0.7;
                         ctx.fill();
                         ctx.globalAlpha = 1.0;
                     }
@@ -7501,7 +7666,10 @@
             document.getElementById('show-kills')?.addEventListener('change', draw);
             document.getElementById('show-deaths')?.addEventListener('change', draw);
             document.getElementById('show-zones')?.addEventListener('change', draw);
-            document.getElementById('show-grenades')?.addEventListener('change', draw);
+            document.getElementById('show-smokes')?.addEventListener('change', draw);
+            document.getElementById('show-flashes')?.addEventListener('change', draw);
+            document.getElementById('show-mollys')?.addEventListener('change', draw);
+            document.getElementById('show-he')?.addEventListener('change', draw);
 
             // Populate positioning player select with steam IDs from current analysis
             const posSelect = document.getElementById('positioning-player-select');

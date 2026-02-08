@@ -1606,11 +1606,11 @@ class DemoOrchestrator:
             # Find winning players based on their side for THIS round
             winning_players = []
             for pid in player_stats:
-                # First try to get side from damage events in this round (most accurate)
-                player_side = round_sides.get(pid, "")
-                # Fall back to calculated side based on starting team + halftime
-                if not player_side:
-                    player_side = demo_data.get_player_side_for_round(pid, round_num)
+                # Use halftime-aware side resolution (handles side swaps correctly)
+                player_side = demo_data.get_player_side_for_round(pid, round_num)
+                # Fall back to damage event sides if persistent teams unavailable
+                if player_side not in ["CT", "T"]:
+                    player_side = round_sides.get(pid, "")
 
                 if player_side in ["CT", "T"]:
                     player_stats[pid]["rounds_played"] += 1
@@ -2142,9 +2142,12 @@ class DemoOrchestrator:
         dry_peek_data = self._collect_dry_peek_events(demo_data, player_names)
 
         # Collect grenade landing positions for visualization
+        # Only include detonation events to avoid duplicates (thrown + detonate + expire)
         grenades = getattr(demo_data, "grenades", [])
         grenade_positions = []
         for grenade in grenades:
+            if getattr(grenade, "event_type", "") != "detonate":
+                continue
             gx = getattr(grenade, "x", None)
             gy = getattr(grenade, "y", None)
             if gx is not None and gy is not None:

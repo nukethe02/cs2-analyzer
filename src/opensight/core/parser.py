@@ -946,16 +946,31 @@ class DemoParser:
             if ticks_df is not None:
                 logger.info(f"Parsed {len(ticks_df)} tick entries (memory optimized)")
         else:
-            # Minimal tick data just for team resolution (much faster)
+            # Minimal tick data for team resolution + position enrichment
             try:
-                minimal_props = ["team_num"]  # Only what we need for team mapping
+                minimal_props = [
+                    "team_num",
+                    "X",
+                    "Y",
+                    "Z",
+                    "pitch",
+                    "yaw",
+                ]
                 ticks_df = parser.parse_ticks(minimal_props)
                 if ticks_df is not None and not ticks_df.empty:
+                    ticks_df = self._optimize_dtypes(ticks_df)
                     logger.info(
-                        f"Parsed minimal tick data for team resolution ({len(ticks_df)} entries)"
+                        f"Parsed minimal tick data for team + position ({len(ticks_df)} entries)"
                     )
             except Exception as e:
-                logger.warning(f"Failed to parse minimal ticks for team resolution: {e}")
+                logger.warning(f"Failed to parse minimal ticks: {e}")
+                # Fallback: team_num only
+                try:
+                    ticks_df = parser.parse_ticks(["team_num"])
+                    if ticks_df is not None and not ticks_df.empty:
+                        logger.info(f"Parsed team-only ticks ({len(ticks_df)} entries)")
+                except Exception as e2:
+                    logger.warning(f"Failed to parse team-only ticks: {e2}")
 
         # Optimize dtypes for memory efficiency
         kills_df = self._optimize_dtypes(kills_df)
@@ -987,6 +1002,9 @@ class DemoParser:
 
         # Enrich kills and damages with team info from ticks (demoparser2 doesn't include it)
         kills_df, damages_df = self._enrich_with_team_info(kills_df, damages_df, ticks_df)
+
+        # Enrich kills with attacker position/angle data from ticks (for CP computation)
+        kills_df = self._enrich_kill_positions(kills_df, ticks_df)
 
         # Extract player info and calculate stats
         player_names, player_teams = self._extract_players(kills_df, damages_df)
@@ -1318,6 +1336,108 @@ class DemoParser:
                 damages_df = add_team_columns(damages_df, vic_id, "user_team")
 
         return kills_df, damages_df
+
+    def _enrich_kill_positions(
+        self, kills_df: pd.DataFrame, ticks_df: pd.DataFrame | None
+    ) -> pd.DataFrame:
+        """Enrich kills_df with attacker position/angle data from ticks_df.
+
+        demoparser2's player_death event may have NaN values for attacker_X,
+        attacker_pitch, attacker_yaw. This fills them from tick-level data
+        by finding the closest tick <= kill tick for each attacker.
+        """
+        if kills_df.empty or ticks_df is None or ticks_df.empty:
+            return kills_df
+
+        # Check if ticks_df has position data
+        has_pos = all(col in ticks_df.columns for col in ["X", "Y", "Z", "pitch", "yaw"])
+        if not has_pos:
+            return kills_df
+
+        tick_steamid = self._find_column(ticks_df, ["steamid", "steam_id", "user_steamid"])
+        if not tick_steamid:
+            return kills_df
+
+        # Check how many kills need enrichment
+        att_id_col = self._find_column(kills_df, ["attacker_steamid", "attacker_steam_id"])
+        att_pitch_col = self._find_column(kills_df, ["attacker_pitch"])
+        if not att_id_col:
+            return kills_df
+
+        # Count kills missing attacker position data
+        needs_enrichment = False
+        if att_pitch_col and att_pitch_col in kills_df.columns:
+            nan_count = kills_df[att_pitch_col].isna().sum()
+            needs_enrichment = nan_count > 0
+            logger.info(
+                f"Kill position check: {nan_count}/{len(kills_df)} kills "
+                f"missing attacker_pitch — enriching from ticks"
+            )
+        else:
+            # No attacker_pitch column at all — definitely need enrichment
+            needs_enrichment = True
+            logger.info("No attacker_pitch column in kills_df — enriching from ticks")
+
+        if not needs_enrichment:
+            return kills_df
+
+        # Build lookup: for each steamid, sorted list of (tick, x, y, z, pitch, yaw)
+        # Use sorted ticks so we can binary search for nearest tick
+        ticks_df = ticks_df.copy()
+        ticks_df[tick_steamid] = pd.to_numeric(ticks_df[tick_steamid], errors="coerce")
+        ticks_df["tick"] = pd.to_numeric(ticks_df["tick"], errors="coerce")
+        valid_ticks = ticks_df.dropna(subset=[tick_steamid, "tick", "X", "Y", "pitch", "yaw"])
+
+        if valid_ticks.empty:
+            logger.warning("No valid tick data for position enrichment")
+            return kills_df
+
+        # Group by steamid, sort by tick for efficient lookup
+        pos_by_player: dict[int, pd.DataFrame] = {}
+        for sid, group in valid_ticks.groupby(tick_steamid):
+            sid_int = int(sid)
+            pos_by_player[sid_int] = group.sort_values("tick")
+
+        logger.info(f"Position enrichment: {len(pos_by_player)} players with tick data")
+
+        kills_df = kills_df.copy()
+
+        # Ensure target columns exist
+        for col in ["attacker_X", "attacker_Y", "attacker_Z", "attacker_pitch", "attacker_yaw"]:
+            if col not in kills_df.columns:
+                kills_df[col] = pd.NA
+
+        enriched = 0
+        for idx, row in kills_df.iterrows():
+            # Only enrich if attacker_pitch is missing
+            if pd.notna(row.get("attacker_pitch")):
+                continue
+
+            att_id = safe_int(row.get(att_id_col))
+            kill_tick = safe_int(row.get("tick"))
+            if not att_id or kill_tick <= 0:
+                continue
+
+            player_ticks = pos_by_player.get(att_id)
+            if player_ticks is None or player_ticks.empty:
+                continue
+
+            # Find closest tick <= kill_tick using searchsorted
+            tick_vals = player_ticks["tick"].values
+            insert_pos = tick_vals.searchsorted(kill_tick, side="right")
+            if insert_pos == 0:
+                continue  # No tick before kill
+
+            nearest_row = player_ticks.iloc[insert_pos - 1]
+            kills_df.at[idx, "attacker_X"] = nearest_row["X"]
+            kills_df.at[idx, "attacker_Y"] = nearest_row["Y"]
+            kills_df.at[idx, "attacker_Z"] = nearest_row.get("Z", 0)
+            kills_df.at[idx, "attacker_pitch"] = nearest_row["pitch"]
+            kills_df.at[idx, "attacker_yaw"] = nearest_row["yaw"]
+            enriched += 1
+
+        logger.info(f"Enriched {enriched}/{len(kills_df)} kills with attacker position from ticks")
+        return kills_df
 
     def _extract_players(
         self, kills_df: pd.DataFrame, damages_df: pd.DataFrame
@@ -1918,10 +2038,12 @@ class DemoParser:
             damages_df, ["attacker_steamid", "attacker_steam_id", "attacker"]
         )
         att_name = self._find_column(damages_df, ["attacker_name"])
-        att_team = self._find_column(damages_df, ["attacker_team_name", "attacker_side"])
+        att_team = self._find_column(
+            damages_df, ["attacker_team_name", "attacker_side", "attacker_team"]
+        )
         vic_id = self._find_column(damages_df, ["user_steamid", "victim_steamid", "userid"])
         vic_name = self._find_column(damages_df, ["user_name", "victim_name"])
-        vic_team = self._find_column(damages_df, ["user_team_name", "victim_side"])
+        vic_team = self._find_column(damages_df, ["user_team_name", "victim_side", "user_team"])
         dmg_col = self._find_column(damages_df, ["dmg_health", "damage", "dmg"])
         round_col = self._find_column(damages_df, ["total_rounds_played", "round", "round_num"])
 

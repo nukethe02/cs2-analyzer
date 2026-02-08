@@ -288,7 +288,9 @@ def compute_ttd(analyzer: "DemoAnalyzer") -> None:
 
     logger.info(f"Built damage cache with {len(damage_cache)} (attacker, victim) pairs")
 
-    # TTD validation thresholds
+    # Maximum engagement window: only look for damage within this many ticks
+    # before the kill. Prevents picking damage from a previous round.
+    max_engagement_ticks = int(5000 / analyzer.MS_PER_TICK) + 1  # ~5 seconds
 
     # Process kills using cached damage lookups
     raw_ttd_values: dict[int, list[float]] = {}  # For outlier removal later
@@ -322,11 +324,16 @@ def compute_ttd(analyzer: "DemoAnalyzer") -> None:
                     if not damage_ticks:
                         continue
 
+                    # Find first damage tick within current engagement window
+                    # (not earliest ever — that would span previous rounds)
+                    engagement_start = kill_tick - max_engagement_ticks
                     first_dmg_tick = None
                     for tick in damage_ticks:
-                        if tick <= kill_tick:
+                        if tick > kill_tick:
+                            break  # Past the kill, stop
+                        if tick >= engagement_start:
                             first_dmg_tick = tick
-                            break
+                            break  # First damage in window = engagement start
 
                     if first_dmg_tick is None:
                         continue
@@ -382,12 +389,16 @@ def compute_ttd(analyzer: "DemoAnalyzer") -> None:
                 if not damage_ticks:
                     continue
 
-                # Find first damage tick before kill using binary search
+                # Find first damage tick within current engagement window
+                # (not earliest ever — that would span previous rounds)
+                engagement_start = kill_tick - max_engagement_ticks
                 first_dmg_tick = None
                 for tick in damage_ticks:
-                    if tick <= kill_tick:
+                    if tick > kill_tick:
+                        break  # Past the kill, stop
+                    if tick >= engagement_start:
                         first_dmg_tick = tick
-                        break  # Already sorted, first match is earliest
+                        break  # First damage in window = engagement start
 
                 if first_dmg_tick is None:
                     continue
@@ -1182,24 +1193,47 @@ def calculate_accuracy_stats(analyzer: "DemoAnalyzer") -> None:
 
     damages_df = analyzer.data.damages_df
 
+    # Pre-build weapon_fires lookup by steamid for O(n) instead of O(n*m)
+    fires_by_player: dict[int, list] = {}
+    for f in analyzer.data.weapon_fires:
+        fires_by_player.setdefault(f.player_steamid, []).append(f)
+
+    # Pre-compute damage lookup columns
+    att_col = analyzer._find_col(damages_df, analyzer.ATT_ID_COLS) if not damages_df.empty else None
+    hitgroup_col = analyzer._find_col(damages_df, ["hitgroup"]) if not damages_df.empty else None
+
     for steam_id, player in analyzer._players.items():
-        # Count shots fired
-        player_shots = [f for f in analyzer.data.weapon_fires if f.player_steamid == steam_id]
+        # Count shots fired (use pre-built lookup)
+        player_shots = fires_by_player.get(steam_id, [])
+        if not player_shots:
+            # Try float comparison as fallback (handles int/float steamid mismatch)
+            player_shots = fires_by_player.get(int(float(steam_id)), [])
         player.shots_fired = len(player_shots)
 
         # Count shots that hit (from damage events)
-        if not damages_df.empty:
-            att_col = analyzer._find_col(damages_df, analyzer.ATT_ID_COLS)
-            if att_col:
-                player_hits = damages_df[damages_df[att_col] == steam_id]
+        # Deduplicate by tick to avoid overcounting (one bullet = one hit even if
+        # it causes multiple damage rows, e.g. armor + health)
+        if not damages_df.empty and att_col:
+            player_hits = analyzer._match_steamid(damages_df, att_col, steam_id)
+            if "tick" in player_hits.columns:
+                # Count unique ticks = unique hits
+                player.shots_hit = player_hits["tick"].nunique()
+            else:
                 player.shots_hit = len(player_hits)
 
-                # Count headshot hits
-                hitgroup_col = analyzer._find_col(damages_df, ["hitgroup"])
-                if hitgroup_col:
+            # Count headshot hits — hitgroup is numeric in demoparser2 (1 = head)
+            if hitgroup_col:
+                hitgroup_vals = player_hits[hitgroup_col]
+                # Handle both numeric (demoparser2: 1=head) and string formats
+                try:
+                    head_hits = player_hits[hitgroup_vals.astype(float).eq(1.0)]
+                except (ValueError, TypeError):
                     head_hits = player_hits[
-                        player_hits[hitgroup_col].str.lower().str.contains("head", na=False)
+                        hitgroup_vals.astype(str).str.lower().str.contains("head", na=False)
                     ]
+                if "tick" in head_hits.columns:
+                    player.headshot_hits = head_hits["tick"].nunique()
+                else:
                     player.headshot_hits = len(head_hits)
 
         # Calculate spray accuracy
@@ -1280,7 +1314,7 @@ def calculate_spray_accuracy_for_player(
     if not damages_df.empty and spray_shot_ticks:
         att_col = analyzer._find_col(damages_df, analyzer.ATT_ID_COLS)
         if att_col and "tick" in damages_df.columns:
-            player_damages = damages_df[damages_df[att_col] == player.steam_id]
+            player_damages = analyzer._match_steamid(damages_df, att_col, player.steam_id)
             if not player_damages.empty:
                 damage_ticks = set(player_damages["tick"].values)
                 spray_hits = 0

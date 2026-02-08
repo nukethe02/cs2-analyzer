@@ -268,6 +268,8 @@ async def generate_replay_data(
                         "armor": player.armor,
                         "is_alive": player.is_alive,
                         "weapon": player.active_weapon,
+                        "money": player.money,
+                        "equipment_value": player.equipment_value,
                     }
                 )
 
@@ -284,7 +286,34 @@ async def generate_replay_data(
                     "state": bomb_state,
                 }
 
+            if frame.events:
+                frame_data["events"] = frame.events
+
             frames.append(frame_data)
+
+        # Build kill events per round with radar coords
+        rounds_data = []
+        for r in replay.rounds:
+            round_info: dict[str, Any] = {
+                "round_num": r.round_num,
+                "start_tick": r.start_tick,
+                "end_tick": r.end_tick,
+                "winner": r.winner,
+            }
+            if r.kills:
+                round_info["kills"] = [
+                    {
+                        "tick": k.tick,
+                        "attacker": k.attacker_name,
+                        "victim": k.victim_name,
+                        "weapon": k.weapon,
+                        "headshot": k.headshot,
+                        "x": round(transformer.game_to_radar(k.x, k.y).x, 1),
+                        "y": round(transformer.game_to_radar(k.x, k.y).y, 1),
+                    }
+                    for k in r.kills
+                ]
+            rounds_data.append(round_info)
 
         return {
             "map_name": replay.map_name,
@@ -293,15 +322,7 @@ async def generate_replay_data(
             "sample_rate": sample_rate,
             "total_frames": len(all_replay_frames),
             "frames_returned": len(frames),
-            "rounds": [
-                {
-                    "round_num": r.round_num,
-                    "start_tick": r.start_tick,
-                    "end_tick": r.end_tick,
-                    "winner": r.winner,
-                }
-                for r in replay.rounds
-            ],
+            "rounds": rounds_data,
             "frames": frames,
         }
 

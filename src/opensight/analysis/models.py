@@ -1848,50 +1848,48 @@ class PlayerMatchStats:
         """Fallback aim rating using HS%, engagement duration, CP (if available), and accuracy.
 
         Used when tick-level data isn't available for true reaction time calculation.
+        Weights are redistributed proportionally across AVAILABLE metrics only,
+        so missing data doesn't drag all scores toward a neutral 50.
         """
         # Import logger here to avoid circular dependency
         import logging
 
         logger = logging.getLogger(__name__)
 
-        # Component weights (must sum to 1.0)
-        hs_weight = 0.35  # Headshot % is a strong aim indicator
-        ttk_weight = 0.25  # Time to kill (engagement duration)
-        cp_weight = 0.25  # Crosshair placement if available
-        acc_weight = 0.15  # Overall accuracy
+        # Collect (score, weight) pairs for available metrics only
+        components: list[tuple[float, float, str]] = []  # (score, weight, label)
 
-        # 1. Headshot Score (0-100)
-        # Elite: 60%+ HS = 100, Average: 35% = 50, Poor: 10% = 0
+        # 1. Headshot Score (0-100) — always available if kills > 0
         hs_pct = self.headshot_percentage
-        if hs_pct >= 60:
-            hs_score = 100
-        elif hs_pct >= 35:
-            hs_score = 50 + (hs_pct - 35) * 2  # 50-100
-        elif hs_pct >= 10:
-            hs_score = (hs_pct - 10) * 2  # 0-50
-        else:
-            hs_score = 0
+        if self.kills > 0:
+            if hs_pct >= 60:
+                hs_score = 100
+            elif hs_pct >= 35:
+                hs_score = 50 + (hs_pct - 35) * 2  # 50-100
+            elif hs_pct >= 10:
+                hs_score = (hs_pct - 10) * 2  # 0-50
+            else:
+                hs_score = 0
+            components.append((hs_score, 0.30, f"HS={hs_score:.0f} (hs%={hs_pct:.1f})"))
 
         # 2. Time to Kill Score (engagement duration - first damage to kill)
-        # Elite: <200ms = 100, Good: 400ms = 70, Average: 700ms = 40, Slow: >1000ms = 0
         ttk_ms = self.ttd_median_ms  # This is engagement duration
-        if ttk_ms is None or ttk_ms <= 0:
-            ttk_score = 50  # Neutral if no data
-        elif ttk_ms <= 200:
-            ttk_score = 100
-        elif ttk_ms <= 400:
-            ttk_score = 70 + (400 - ttk_ms) / 200 * 30  # 70-100
-        elif ttk_ms <= 700:
-            ttk_score = 40 + (700 - ttk_ms) / 300 * 30  # 40-70
-        elif ttk_ms <= 1000:
-            ttk_score = (1000 - ttk_ms) / 300 * 40  # 0-40
-        else:
-            ttk_score = 0
+        if ttk_ms is not None and ttk_ms > 0:
+            if ttk_ms <= 200:
+                ttk_score = 100
+            elif ttk_ms <= 400:
+                ttk_score = 70 + (400 - ttk_ms) / 200 * 30  # 70-100
+            elif ttk_ms <= 700:
+                ttk_score = 40 + (700 - ttk_ms) / 300 * 30  # 40-70
+            elif ttk_ms <= 1000:
+                ttk_score = (1000 - ttk_ms) / 300 * 40  # 0-40
+            else:
+                ttk_score = 0
+            components.append((ttk_score, 0.25, f"TTK={ttk_score:.0f} (ttk={ttk_ms:.0f}ms)"))
 
-        # 3. Crosshair Placement Score (if available)
+        # 3. Crosshair Placement Score
         cp_error = self.cp_median_error_deg
         if cp_error is not None and cp_error >= 0:
-            # Elite: <3° = 100, Good: 5° = 80, Average: 10° = 50, Poor: 20° = 20
             if cp_error <= 3:
                 cp_score = 100
             elif cp_error <= 5:
@@ -1902,14 +1900,11 @@ class PlayerMatchStats:
                 cp_score = 20 + (20 - cp_error) * 3  # 20-50
             else:
                 cp_score = max(0, 20 - (cp_error - 20))  # 0-20
-        else:
-            # If no CP data, redistribute weight to other components
-            cp_score = 50  # Neutral
+            components.append((cp_score, 0.25, f"CP={cp_score:.0f} (cp={cp_error:.1f}°)"))
 
         # 4. Accuracy Score (overall shots hit / shots fired)
         accuracy = self.accuracy
-        if accuracy > 0:
-            # Elite: 40%+ = 100, Good: 30% = 70, Average: 20% = 40, Poor: 10% = 10
+        if self.shots_fired > 0:
             if accuracy >= 40:
                 acc_score = 100
             elif accuracy >= 30:
@@ -1920,24 +1915,22 @@ class PlayerMatchStats:
                 acc_score = 10 + (accuracy - 10) * 3  # 10-40
             else:
                 acc_score = accuracy  # 0-10
-        else:
-            acc_score = 50  # Neutral if no data
+            components.append((acc_score, 0.20, f"Acc={acc_score:.0f} (acc={accuracy:.1f}%)"))
 
-        # Calculate weighted score
-        aim_score = (
-            hs_score * hs_weight
-            + ttk_score * ttk_weight
-            + cp_score * cp_weight
-            + acc_score * acc_weight
-        )
+        # If no metrics available at all, return 0 (not a fake 50)
+        if not components:
+            logger.debug(f"Aim (fallback) for {self.name}: no data available, score=0")
+            return 0.0
 
+        # Redistribute weights proportionally across available metrics
+        total_weight = sum(w for _, w, _ in components)
+        aim_score = sum(score * (weight / total_weight) for score, weight, _ in components)
+
+        debug_parts = ", ".join(label for _, _, label in components)
         logger.debug(
             f"Aim (fallback) for {self.name}: "
-            f"HS={hs_score:.0f} (hs%={hs_pct:.1f}), "
-            f"TTK={ttk_score:.0f} (ttk={ttk_ms}ms), "
-            f"CP={cp_score:.0f} (cp={cp_error}°), "
-            f"Acc={acc_score:.0f} (acc={accuracy:.1f}%), "
-            f"Final={aim_score:.1f}"
+            f"{debug_parts}, "
+            f"Final={aim_score:.1f} ({len(components)} metrics)"
         )
 
         return round(max(0, min(100, aim_score)), 1)
