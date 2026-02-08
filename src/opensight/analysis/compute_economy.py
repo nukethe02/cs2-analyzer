@@ -138,8 +138,26 @@ def calculate_kast(analyzer: DemoAnalyzer) -> None:
         player.rounds_survived = survived_count
 
     logger.info(
-        f"KAST calculation complete for {len(analyzer._players)} players over {len(round_nums)} rounds"
+        f"KAST calculation complete for {len(analyzer._players)} players "
+        f"over {len(round_nums)} rounds"
     )
+
+
+def _is_ct_side(series: pd.Series) -> pd.Series:
+    """Return boolean mask for CT-side rows, handling both numeric and string columns."""
+    if pd.api.types.is_numeric_dtype(series):
+        return series == 3  # CS2: 3 = CT
+    upper = series.astype(str).str.upper()
+    return upper.str.contains("CT", na=False) | upper.str.contains("COUNTER", na=False)
+
+
+def _is_t_side(series: pd.Series) -> pd.Series:
+    """Return boolean mask for T-side rows, handling both numeric and string columns."""
+    if pd.api.types.is_numeric_dtype(series):
+        return series == 2  # CS2: 2 = T
+    upper = series.astype(str).str.upper()
+    is_ct = upper.str.contains("CT", na=False) | upper.str.contains("COUNTER", na=False)
+    return upper.str.contains("T", na=False) & ~is_ct
 
 
 def calculate_side_stats(analyzer: DemoAnalyzer) -> None:
@@ -156,29 +174,13 @@ def calculate_side_stats(analyzer: DemoAnalyzer) -> None:
         if analyzer._att_side_col:
             ct_kills_df = kills_df[
                 (kills_df[analyzer._att_id_col] == steam_id)
-                & (
-                    kills_df[analyzer._att_side_col]
-                    .astype(str)
-                    .str.upper()
-                    .str.contains("CT", na=False)
-                )
+                & _is_ct_side(kills_df[analyzer._att_side_col])
             ]
             player.ct_stats.kills = len(ct_kills_df)
 
             t_kills_df = kills_df[
                 (kills_df[analyzer._att_id_col] == steam_id)
-                & (
-                    ~kills_df[analyzer._att_side_col]
-                    .astype(str)
-                    .str.upper()
-                    .str.contains("CT", na=False)
-                )
-                & (
-                    kills_df[analyzer._att_side_col]
-                    .astype(str)
-                    .str.upper()
-                    .str.contains("T", na=False)
-                )
+                & _is_t_side(kills_df[analyzer._att_side_col])
             ]
             player.t_stats.kills = len(t_kills_df)
 
@@ -186,29 +188,13 @@ def calculate_side_stats(analyzer: DemoAnalyzer) -> None:
         if analyzer._vic_id_col and analyzer._vic_side_col:
             ct_deaths_df = kills_df[
                 (kills_df[analyzer._vic_id_col] == steam_id)
-                & (
-                    kills_df[analyzer._vic_side_col]
-                    .astype(str)
-                    .str.upper()
-                    .str.contains("CT", na=False)
-                )
+                & _is_ct_side(kills_df[analyzer._vic_side_col])
             ]
             player.ct_stats.deaths = len(ct_deaths_df)
 
             t_deaths_df = kills_df[
                 (kills_df[analyzer._vic_id_col] == steam_id)
-                & (
-                    ~kills_df[analyzer._vic_side_col]
-                    .astype(str)
-                    .str.upper()
-                    .str.contains("CT", na=False)
-                )
-                & (
-                    kills_df[analyzer._vic_side_col]
-                    .astype(str)
-                    .str.upper()
-                    .str.contains("T", na=False)
-                )
+                & _is_t_side(kills_df[analyzer._vic_side_col])
             ]
             player.t_stats.deaths = len(t_deaths_df)
 
@@ -226,27 +212,14 @@ def calculate_side_stats(analyzer: DemoAnalyzer) -> None:
 
             if dmg_att_col and dmg_att_side and dmg_col:
                 ct_dmg = damages_df[
-                    (damages_df[dmg_att_col] == steam_id)
-                    & (
-                        damages_df[dmg_att_side]
-                        .astype(str)
-                        .str.upper()
-                        .str.contains("CT", na=False)
-                    )
+                    (damages_df[dmg_att_col] == steam_id) & _is_ct_side(damages_df[dmg_att_side])
                 ]
-                player.ct_stats.total_damage = int(ct_dmg[dmg_col].sum())
+                player.ct_stats.damage = int(ct_dmg[dmg_col].sum())
 
                 t_dmg = damages_df[
-                    (damages_df[dmg_att_col] == steam_id)
-                    & (
-                        ~damages_df[dmg_att_side]
-                        .astype(str)
-                        .str.upper()
-                        .str.contains("CT", na=False)
-                    )
-                    & (damages_df[dmg_att_side].astype(str).str.upper().str.contains("T", na=False))
+                    (damages_df[dmg_att_col] == steam_id) & _is_t_side(damages_df[dmg_att_side])
                 ]
-                player.t_stats.total_damage = int(t_dmg[dmg_col].sum())
+                player.t_stats.damage = int(t_dmg[dmg_col].sum())
 
     logger.info("Calculated side-based stats")
 
@@ -264,8 +237,10 @@ def calculate_economy_history(match_data: DemoData) -> list[dict]:
     Returns:
         List of dicts with round economy data:
         [
-            {"round": 1, "team_t_val": 3500, "team_ct_val": 4500, "t_buy": "pistol", "ct_buy": "pistol"},
-            {"round": 2, "team_t_val": 8000, "team_ct_val": 12000, "t_buy": "eco", "ct_buy": "full"},
+            {"round": 1, "team_t_val": 3500, "team_ct_val": 4500,
+             "t_buy": "pistol", "ct_buy": "pistol"},
+            {"round": 2, "team_t_val": 8000, "team_ct_val": 12000,
+             "t_buy": "eco", "ct_buy": "full"},
             ...
         ]
 
@@ -276,7 +251,9 @@ def calculate_economy_history(match_data: DemoData) -> list[dict]:
         >>> data = parser.parse()
         >>> economy = calculate_economy_history(data)
         >>> for round_data in economy:
-        ...     print(f"Round {round_data['round']}: T=${round_data['team_t_val']}, CT=${round_data['team_ct_val']}")
+        ...     print(f"Round {round_data['round']}: "
+        ...           f"T=${round_data['team_t_val']}, "
+        ...           f"CT=${round_data['team_ct_val']}")
     """
     try:
         from opensight.domains.economy import EconomyAnalyzer
@@ -304,8 +281,18 @@ def calculate_economy_history(match_data: DemoData) -> list[dict]:
         logger.info("No detailed economy data, generating estimates from round count")
         history = []
         for round_num in range(1, match_data.num_rounds + 1):
-            is_pistol = round_num in [1, 13, 16, 28]  # Pistol rounds (MR12/MR15)
-            is_second = round_num in [2, 14, 17, 29]  # Often eco after pistol loss
+            is_pistol = round_num in [
+                1,
+                13,
+                16,
+                28,
+            ]  # Pistol rounds (MR12/MR15)
+            is_second = round_num in [
+                2,
+                14,
+                17,
+                29,
+            ]  # Often eco after pistol loss
 
             if is_pistol:
                 t_val, ct_val = 800, 800

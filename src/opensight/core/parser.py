@@ -1112,6 +1112,9 @@ class DemoParser:
             if bomb_frames:
                 bomb_events_df = pd.concat(bomb_frames, ignore_index=True)
 
+        # Update num_rounds to match filtered round list (knife round may have been removed)
+        num_rounds = len(rounds) if rounds else num_rounds
+
         # Calculate final scores
         final_ct = 0
         final_t = 0
@@ -2202,21 +2205,19 @@ class DemoParser:
             )
             rounds.append(round_info)
 
-        # Filter out knife round if present
-        # In CS2 ESEA (MR12): max 24 rounds + potential 1 knife round at the beginning
-        # Knife round detection heuristics:
-        # 1. Total rounds = 25 (exceeds normal max of 24)
-        # 2. First round has "knife" or "side" in reason
-        # 3. First round is unrelated to bomb logic
-        if len(rounds) == 25:
+        # Filter out knife round if present (always first round)
+        # Knife rounds have: non-bomb win reasons, low/no equipment value,
+        # or explicit knife-related keywords in the reason field.
+        # Works for any match format (MR12, MR15, overtime).
+        if len(rounds) >= 2:
             first_round = rounds[0]
             first_round_reason_lower = first_round.reason.lower()
 
-            # Check for knife round indicators
+            # Check for knife round indicators in win reason
             knife_round_reasons = ["knife", "side", "determination", "pick"]
             is_knife_reason = any(r in first_round_reason_lower for r in knife_round_reasons)
 
-            # Also check if reason is not bomb-related (normal rounds have bomb events)
+            # Check if reason is a normal competitive round end
             bomb_reasons = [
                 "bomb_planted",
                 "bomb_defused",
@@ -2226,13 +2227,20 @@ class DemoParser:
             ]
             is_bomb_related = any(b in first_round_reason_lower for b in bomb_reasons)
 
-            # If it looks like a knife round, remove it
-            if is_knife_reason or (len(rounds) > 1 and not is_bomb_related):
+            # Check for no/minimal equipment (knife-only loadout, default knife ~$200)
+            low_equipment = (
+                first_round.ct_equipment_value <= 200 and first_round.t_equipment_value <= 200
+            )
+
+            # Filter if: explicit knife reason, OR (non-bomb reason AND low equipment)
+            if is_knife_reason or (not is_bomb_related and low_equipment):
                 logger.info(
-                    f"Detected and filtering out knife round (reason: {first_round.reason})"
+                    f"Detected and filtering out knife round "
+                    f"(reason: {first_round.reason}, "
+                    f"ct_equip: {first_round.ct_equipment_value}, "
+                    f"t_equip: {first_round.t_equipment_value})"
                 )
-                rounds = rounds[1:]  # Remove first round
-                # Re-number remaining rounds to start from 1
+                rounds = rounds[1:]
                 for i in range(len(rounds)):
                     rounds[i].round_num = i + 1
 
@@ -2847,6 +2855,9 @@ class DemoParser:
         kills = self._build_kills(kills_df)
         damages = self._build_damages(damages_df)
         rounds = self._build_rounds(rounds_df)
+
+        # Update num_rounds to match filtered round list (knife round may have been removed)
+        num_rounds = len(rounds) if rounds else num_rounds
 
         # Calculate scores
         final_ct = sum(1 for r in rounds if r.winner == "CT")

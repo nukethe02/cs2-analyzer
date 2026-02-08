@@ -1019,18 +1019,7 @@ def detect_clutches(analyzer: DemoAnalyzer) -> None:
 
             player = analyzer._players[clutcher_id]
 
-            # Determine outcome: WON, LOST, or SAVED
-            if round_winner == side:
-                outcome = "WON"
-                clutch_won = True
-            elif clutcher_died:
-                outcome = "LOST"
-                clutch_won = False
-            else:
-                outcome = "SAVED"
-                clutch_won = False
-
-            # Count enemies killed during clutch (by the clutcher)
+            # Count enemies killed during clutch (by the clutcher) — must happen before outcome
             enemies_killed = 0
             enemy_side = "T" if side == "CT" else "CT"
             for _, kill in round_kills.iterrows():
@@ -1048,6 +1037,23 @@ def detect_clutches(analyzer: DemoAnalyzer) -> None:
                     vic_side = analyzer._get_player_side(victim_id, round_num_int)
                 if vic_side == enemy_side:
                     enemies_killed += 1
+
+            # Determine outcome: WON requires team win AND player contribution
+            # For 1v1: allow bomb/defuse/time wins without kills (valid tactical play)
+            # For 1vN (N>=2): require at least 1 kill to count as a clutch win
+            if round_winner == side:
+                if enemies_killed >= 1 or enemies_at_start == 1:
+                    outcome = "WON"
+                    clutch_won = True
+                else:
+                    outcome = "SAVED"
+                    clutch_won = False
+            elif clutcher_died:
+                outcome = "LOST"
+                clutch_won = False
+            else:
+                outcome = "SAVED"
+                clutch_won = False
 
             # Create clutch type string
             clutch_type = f"1v{enemies_at_start}"
