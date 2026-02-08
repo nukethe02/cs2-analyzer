@@ -287,6 +287,82 @@
 
         input[type="file"] { display: none; }
 
+        /* Sharecode Decoder */
+        .sharecode-divider {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: 16px 0;
+            padding: 0 16px;
+        }
+        .sharecode-divider::before,
+        .sharecode-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+        .sharecode-divider span {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .sharecode-row {
+            display: flex;
+            gap: 8px;
+            padding: 0 16px 16px;
+        }
+        .sharecode-input {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .sharecode-input::placeholder { color: var(--text-muted); opacity: 0.6; }
+        .sharecode-input:focus { border-color: var(--accent-primary); }
+        .sharecode-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border: none;
+            border-radius: var(--radius-md);
+            color: var(--bg-primary);
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            white-space: nowrap;
+        }
+        .sharecode-btn:hover { opacity: 0.9; }
+        .sharecode-btn:active { transform: scale(0.97); }
+        .sharecode-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .sharecode-result {
+            margin: 0 16px 16px;
+            padding: 16px;
+            border-radius: var(--radius-md);
+            font-size: 0.9rem;
+            display: none;
+        }
+        .sharecode-result.success {
+            display: block;
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.25);
+            color: var(--text-primary);
+        }
+        .sharecode-result.error {
+            display: block;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            color: var(--danger);
+        }
+
         /* Loading Overlay */
         .loading-overlay {
             display: none;
@@ -2477,6 +2553,14 @@
                 </div>
                 <input type="file" id="demo-file" name="demo-file" accept=".dem,.dem.gz,application/octet-stream,application/gzip">
             </label>
+            <div class="sharecode-divider"><span>or paste a share code</span></div>
+            <div class="sharecode-row">
+                <input type="text" id="sharecode-input" class="sharecode-input"
+                       placeholder="CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
+                       maxlength="40" spellcheck="false" autocomplete="off">
+                <button type="button" id="sharecode-btn" class="sharecode-btn">Decode</button>
+            </div>
+            <div id="sharecode-result" class="sharecode-result"></div>
         </section>
 
         <!-- Scouting Section (hidden by default) -->
@@ -2552,6 +2636,7 @@
         let analysisData = null;
         let uploadedDemoFile = null;  // Store the uploaded file for replay generation
         let replayData = null;  // Store fetched replay data
+        const RADAR_BASE = 'https://raw.githubusercontent.com/2mlml/cs2-radar-images/master';
         let currentJobId = null;  // Store current job ID for AI analysis endpoints
 
         // AI Analysis state
@@ -3079,6 +3164,70 @@
             if (file) analyzeFile(file);
         });
 
+        // =====================================================
+        // Sharecode Decoder
+        // =====================================================
+        const sharecodeInput = document.getElementById('sharecode-input');
+        const sharecodeBtn = document.getElementById('sharecode-btn');
+        const sharecodeResult = document.getElementById('sharecode-result');
+
+        async function decodeSharecode() {
+            const code = sharecodeInput.value.trim();
+            if (!code) {
+                sharecodeResult.className = 'sharecode-result error';
+                sharecodeResult.textContent = 'Please enter a share code.';
+                return;
+            }
+
+            sharecodeBtn.disabled = true;
+            sharecodeBtn.textContent = 'Decoding...';
+            sharecodeResult.className = 'sharecode-result';
+            sharecodeResult.style.display = 'none';
+
+            try {
+                const resp = await fetch('/decode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    throw new Error(data.detail || 'Failed to decode share code');
+                }
+
+                sharecodeResult.className = 'sharecode-result success';
+                sharecodeResult.innerHTML = `
+                    <div style="font-weight: 600; margin-bottom: 8px; color: var(--success);">Share Code Decoded</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px;">
+                        <div style="padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">Match ID</div>
+                            <div style="font-size: 0.85rem;">${esc(String(data.match_id))}</div>
+                        </div>
+                        <div style="padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">Outcome ID</div>
+                            <div style="font-size: 0.85rem;">${esc(String(data.outcome_id))}</div>
+                        </div>
+                        <div style="padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">Token</div>
+                            <div style="font-size: 0.85rem;">${esc(String(data.token))}</div>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                sharecodeResult.className = 'sharecode-result error';
+                sharecodeResult.textContent = err.message;
+            } finally {
+                sharecodeBtn.disabled = false;
+                sharecodeBtn.textContent = 'Decode';
+            }
+        }
+
+        sharecodeBtn.addEventListener('click', decodeSharecode);
+        sharecodeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') decodeSharecode();
+        });
+
         // Escape HTML
         function esc(text) {
             if (text === null || text === undefined) return '';
@@ -3366,11 +3515,6 @@
                     }
                 }
 
-                const s = player.stats || {};
-                const r = player.rating || {};
-                const c = player.clutches || {};
-                const e = player.entry || {};
-
                 try {
                     await fetch('/api/your-match/store', {
                         method: 'POST',
@@ -3380,17 +3524,7 @@
                             demo_hash: jobId || `demo_${Date.now()}`,
                             map_name: mapName,
                             result: result,
-                            player_stats: {
-                                kills: s.kills || 0,
-                                deaths: s.deaths || 0,
-                                assists: s.assists || 0,
-                                adr: s.adr || 0,
-                                hltv_rating: r.hltv_rating || 0,
-                                kast: r.kast_percentage || 0,
-                                headshot_pct: s.headshot_pct || 0,
-                                clutches_won: c.won || c.clutch_wins || 0,
-                                entry_kills: e.entry_kills || 0,
-                            }
+                            player_stats: buildPlayerStatsPayload(player),
                         })
                     });
                 } catch (err) {
@@ -3581,6 +3715,16 @@
                             <option value="players-csv">Download Players CSV</option>
                         </select>
                     </div>
+                </div>
+
+                <div id="save-match-bar" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin-top: 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); flex-wrap: wrap;">
+                    <label for="save-steam-id" style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">Your Steam ID:</label>
+                    <input id="save-steam-id" type="text" placeholder="76561198012345678" style="padding: 8px 12px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.85rem; width: 200px; font-family: var(--font-mono, monospace);" />
+                    <button id="save-match-btn" onclick="saveMatchForPlayer()" style="padding: 8px 16px; background: var(--accent-primary); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem; font-weight: 500; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Save Match
+                    </button>
+                    <span id="save-match-status" style="font-size: 0.8rem; color: var(--text-muted);"></span>
                 </div>
 
                 ${data.ai_summary ? `
@@ -4160,7 +4304,7 @@
                                     <div class="stat-label">KAST</div>
                                 </div>
                                 <div class="stat">
-                                    <div class="stat-value ${r.aim_rating >= 60 ? 'good' : r.aim_rating < 40 ? 'bad' : ''}">${r.aim_rating || 0}</div>
+                                    <div class="stat-value ${r.aim_rating >= 60 ? 'good' : r.aim_rating < 40 ? 'bad' : ''}">${Math.round(r.aim_rating) || 0}</div>
                                     <div class="stat-label">Aim</div>
                                 </div>
                                 <div class="stat highlight">
@@ -6846,14 +6990,14 @@
             };
 
             const radarUrls = {
-                'de_dust2': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png',
-                'de_mirage': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png',
-                'de_inferno': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png',
-                'de_nuke': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png',
-                'de_overpass': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png',
-                'de_vertigo': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png',
-                'de_ancient': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png',
-                'de_anubis': 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png',
+                'de_dust2': RADAR_BASE + '/de_dust2.png',
+                'de_mirage': RADAR_BASE + '/de_mirage.png',
+                'de_inferno': RADAR_BASE + '/de_inferno.png',
+                'de_nuke': RADAR_BASE + '/de_nuke.png',
+                'de_overpass': RADAR_BASE + '/de_overpass.png',
+                'de_vertigo': RADAR_BASE + '/de_vertigo.png',
+                'de_ancient': RADAR_BASE + '/de_ancient.png',
+                'de_anubis': RADAR_BASE + '/de_anubis.png',
             };
 
             const params = mapParams[mapName] || { pos_x: -3000, pos_y: 3000, scale: 5.0 };
@@ -7386,39 +7530,76 @@
 
                 try {
                     const resp = await fetch(`/api/positioning/${currentJobId}/${steamId}`);
-                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    if (!resp.ok) {
+                        const errBody = await resp.json().catch(() => ({}));
+                        throw new Error(errBody.detail || `HTTP ${resp.status}`);
+                    }
                     const data = await resp.json();
 
                     const favZones = data.favorite_zones || [];
                     const dangerZones = data.danger_zones || [];
                     const timeDist = data.zone_time_distribution || {};
+                    const killDist = data.zone_kill_distribution || {};
+                    const deathDist = data.zone_death_distribution || {};
+
+                    // Sort zone time distribution by percentage descending
+                    const sortedZones = Object.entries(timeDist).sort((a, b) => b[1] - a[1]);
+                    const maxPct = sortedZones.length > 0 ? sortedZones[0][1] : 1;
 
                     resultDiv.innerHTML = `
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                             <div>
-                                <h5 style="color: #10b981; font-size: 0.8rem; margin-bottom: 6px;">🏠 Favorite Zones</h5>
+                                <h5 style="color: #10b981; font-size: 0.8rem; margin-bottom: 8px;">Favorite Zones</h5>
                                 ${favZones.slice(0, 5).map((z, i) => `
-                                    <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.8rem; border-bottom: 1px solid #1e293b;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 0.8rem; border-bottom: 1px solid #1e293b;">
                                         <span style="color: #e2e8f0;">${i+1}. ${esc(z)}</span>
-                                        <span style="color: #94a3b8;">${timeDist[z] ? (timeDist[z] * 100).toFixed(0) + '%' : ''}</span>
+                                        <span style="color: #10b981; font-weight: 600;">${timeDist[z] != null ? timeDist[z].toFixed(1) + '%' : ''}</span>
                                     </div>
                                 `).join('')}
                             </div>
                             <div>
-                                <h5 style="color: #ef4444; font-size: 0.8rem; margin-bottom: 6px;">💀 Danger Zones</h5>
-                                ${dangerZones.slice(0, 5).map((z, i) => `
-                                    <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.8rem; border-bottom: 1px solid #1e293b;">
+                                <h5 style="color: #ef4444; font-size: 0.8rem; margin-bottom: 8px;">Danger Zones</h5>
+                                ${dangerZones.slice(0, 5).map((z, i) => {
+                                    const deaths = deathDist[z] || 0;
+                                    const kills = killDist[z] || 0;
+                                    return `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 0.8rem; border-bottom: 1px solid #1e293b;">
                                         <span style="color: #e2e8f0;">${i+1}. ${esc(z)}</span>
-                                    </div>
-                                `).join('')}
+                                        <span style="font-size: 0.75rem;">
+                                            <span style="color: #ef4444;">${deaths}D</span>
+                                            <span style="color: #334155; margin: 0 2px;">/</span>
+                                            <span style="color: #10b981;">${kills}K</span>
+                                        </span>
+                                    </div>`;
+                                }).join('')}
                             </div>
                         </div>
-                        <div style="margin-top: 8px; font-size: 0.7rem; color: #64748b;">
-                            ${data.total_positions || 0} position samples · ${data.total_kills || 0} kills · ${data.total_deaths || 0} deaths
+
+                        <div style="margin-top: 16px;">
+                            <h5 style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 8px;">Zone Time Distribution</h5>
+                            ${sortedZones.slice(0, 8).map(([zone, pct]) => {
+                                const kills = killDist[zone] || 0;
+                                const deaths = deathDist[zone] || 0;
+                                const kd = deaths > 0 ? (kills / deaths).toFixed(1) : kills > 0 ? kills + '.0' : '-';
+                                const kdColor = deaths === 0 ? '#94a3b8' : (kills / deaths) >= 1.2 ? '#10b981' : (kills / deaths) < 0.8 ? '#ef4444' : '#eab308';
+                                return `
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 0.78rem;">
+                                    <span style="min-width: 80px; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${esc(zone)}">${esc(zone)}</span>
+                                    <div style="flex: 1; height: 14px; background: #1e293b; border-radius: 3px; overflow: hidden;">
+                                        <div style="height: 100%; width: ${(pct / maxPct * 100).toFixed(1)}%; background: linear-gradient(90deg, #3b82f6, #5c9cff); border-radius: 3px;"></div>
+                                    </div>
+                                    <span style="min-width: 38px; text-align: right; color: #94a3b8;">${pct.toFixed(1)}%</span>
+                                    <span style="min-width: 28px; text-align: right; color: ${kdColor}; font-weight: 500;" title="K/D in this zone">${kd}</span>
+                                </div>`;
+                            }).join('')}
+                        </div>
+
+                        <div style="margin-top: 10px; font-size: 0.7rem; color: #64748b;">
+                            ${data.total_positions || 0} position samples &middot; ${data.total_kills || 0} kills &middot; ${data.total_deaths || 0} deaths
                         </div>
                     `;
                 } catch (e) {
-                    resultDiv.innerHTML = `<div style="color: #ef4444; font-size: 0.8rem;">Failed: ${esc(e.message)}</div>`;
+                    resultDiv.innerHTML = `<div style="color: #ef4444; font-size: 0.8rem; padding: 8px;">Positioning analysis failed: ${esc(e.message)}</div>`;
                 }
             });
 
@@ -8359,38 +8540,38 @@
             players: []
         };
 
-        // Map radar URLs and coordinates
+        // Map radar URLs and coordinates (CS2 radar images — uses RADAR_BASE defined above)
         const MAP_RADAR_DATA = {
             'de_dust2': {
-                url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_dust2_radar.png',
+                url: RADAR_BASE + '/de_dust2.png',
                 pos_x: -2476, pos_y: 3239, scale: 4.4
             },
             'de_mirage': {
-                url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_mirage_radar.png',
+                url: RADAR_BASE + '/de_mirage.png',
                 pos_x: -3230, pos_y: 1713, scale: 5.0
             },
             'de_inferno': {
-                url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_inferno_radar.png',
+                url: RADAR_BASE + '/de_inferno.png',
                 pos_x: -2087, pos_y: 3870, scale: 4.9
             },
             'de_nuke': {
-                url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_nuke_radar.png',
+                url: RADAR_BASE + '/de_nuke.png',
                 pos_x: -3453, pos_y: 2887, scale: 7.0
             },
             'de_overpass': {
-                url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_overpass_radar.png',
+                url: RADAR_BASE + '/de_overpass.png',
                 pos_x: -4831, pos_y: 1781, scale: 5.2
             },
             'de_vertigo': {
-                url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_vertigo_radar.png',
+                url: RADAR_BASE + '/de_vertigo.png',
                 pos_x: -3168, pos_y: 1762, scale: 4.0
             },
             'de_ancient': {
-                url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_ancient_radar.png',
+                url: RADAR_BASE + '/de_ancient.png',
                 pos_x: -2953, pos_y: 2164, scale: 5.0
             },
             'de_anubis': {
-                url: 'https://raw.githubusercontent.com/pnxenopoulos/csgo/master/csgo/data/maps/de_anubis_radar.png',
+                url: RADAR_BASE + '/de_anubis.png',
                 pos_x: -2796, pos_y: 3328, scale: 5.22
             }
         };
@@ -8598,6 +8779,7 @@
             if (frameIndex >= 0) {
                 replayState.currentFrame = frameIndex;
                 replayState.currentRound = roundNum;
+                replayState.killFeed = []; // Clear killfeed on round jump
 
                 // Update round button states
                 document.querySelectorAll('.replay-round-btn').forEach(btn => {
@@ -8970,7 +9152,7 @@
 
             // Draw radar background if available
             if (replayState.radarImage) {
-                ctx.globalAlpha = 0.6;
+                ctx.globalAlpha = 0.85;
                 ctx.drawImage(replayState.radarImage, 0, 0, width, height);
                 ctx.globalAlpha = 1.0;
             } else {
@@ -9078,6 +9260,50 @@
                 ctx.font = '500 10px Inter, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText(player.name, x, y - 16);
+            }
+
+            // Draw kill markers from events on this frame
+            if (frame.events && frame.events.length > 0) {
+                for (const evt of frame.events) {
+                    if (evt.type === 'kill') {
+                        // Add to killfeed
+                        replayState.killFeed.unshift({
+                            attacker: evt.attacker,
+                            victim: evt.victim,
+                            weapon: evt.weapon,
+                            headshot: evt.headshot,
+                            time: Date.now()
+                        });
+                        // Keep only last 5 entries
+                        if (replayState.killFeed.length > 5) replayState.killFeed.length = 5;
+                    }
+                }
+            }
+
+            // Draw killfeed overlay on canvas
+            const feedAge = 5000; // Show kills for 5 seconds
+            const now = Date.now();
+            const activeKills = replayState.killFeed.filter(k => now - k.time < feedAge);
+            if (activeKills.length > 0) {
+                ctx.save();
+                ctx.font = '500 11px Inter, sans-serif';
+                for (let i = 0; i < activeKills.length; i++) {
+                    const k = activeKills[i];
+                    const fy = 20 + i * 20;
+                    const fx = width - 10;
+                    const alpha = Math.max(0.2, 1 - (now - k.time) / feedAge);
+                    ctx.globalAlpha = alpha;
+                    ctx.textAlign = 'right';
+                    const hsIcon = k.headshot ? ' HS' : '';
+                    const weapon = (k.weapon || '').replace(/^weapon_/, '');
+                    const text = k.attacker + ' [' + weapon + hsIcon + '] ' + k.victim;
+                    // Shadow for readability
+                    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                    ctx.fillText(text, fx + 1, fy + 1);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(text, fx, fy);
+                }
+                ctx.restore();
             }
 
             // Update info display
