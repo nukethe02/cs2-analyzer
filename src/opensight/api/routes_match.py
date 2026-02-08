@@ -1010,7 +1010,10 @@ async def analyze_veto(
 
     # Check cache on the first job (keyed by hash of all job IDs + format)
     all_ids = sorted(your_job_ids) + sorted(opponent_job_ids or [])
-    veto_hash = hashlib.md5(f"{','.join(all_ids)}:{format}".encode()).hexdigest()[:12]
+    veto_hash = hashlib.md5(  # noqa: S324 — not used for security
+        f"{','.join(all_ids)}:{format}".encode(),
+        usedforsecurity=False,
+    ).hexdigest()[:12]
     cache_key = f"_ai_veto_{veto_hash}"
 
     anchor_job = job_store.get_job(your_job_ids[0])
@@ -1122,7 +1125,7 @@ async def natural_language_query(
 
     # Check cache (keyed by MD5 hash of normalized question)
     q_normalized = question.strip().lower()
-    q_hash = hashlib.md5(q_normalized.encode()).hexdigest()[:12]
+    q_hash = hashlib.md5(q_normalized.encode(), usedforsecurity=False).hexdigest()[:12]
     cache_key = f"_ai_query_{q_hash}"
     if job.result is not None:
         cached = job.result.get(cache_key)
