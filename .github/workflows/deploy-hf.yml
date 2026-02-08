@@ -31,29 +31,16 @@ jobs:
             echo "::warning::HF_SPACE_NAME secret is not set. Using default 'cs2-analyzer'."
           fi
 
+      - name: Install Git Xet (required by HF for binary files)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/huggingface/xet-core/refs/heads/main/git_xet/install.sh | sh
+          git xet install
+          git xet --version
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Convert binary files to LFS for HF Spaces
-        run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-
-          git lfs install
-
-          # Track PNGs as LFS (creates .gitattributes dynamically)
-          git lfs track "*.png"
-          git add .gitattributes
-
-          # Re-add all PNG files through the LFS filter
-          find . -name "*.png" -not -path "./.git/*" -exec git add --force {} + || true
-
-          # Commit the LFS conversion (only affects the HF push, not the source repo)
-          git commit -m "chore: convert PNGs to LFS for HF deployment" --allow-empty
-
-          echo "Binary files converted to LFS pointers"
 
       - name: Push to Hugging Face Spaces
         env:
@@ -61,6 +48,9 @@ jobs:
           HF_USERNAME: ${{ secrets.HF_USERNAME || 'thenuke02' }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME || 'cs2-analyzer' }}
         run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
           # Get current branch/ref for logging
           CURRENT_REF="${GITHUB_REF#refs/heads/}"
           echo "Source branch: $CURRENT_REF"
@@ -69,7 +59,7 @@ jobs:
           # Add Hugging Face remote
           git remote add hf "https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
 
-          # Push to HF's main branch (force push since we added an LFS commit)
+          # Push to HF (git-xet handles binary file routing to Xet storage automatically)
           echo "Pushing ${CURRENT_REF} -> main on Hugging Face..."
           git push hf HEAD:main --force
 
