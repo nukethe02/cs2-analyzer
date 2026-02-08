@@ -410,23 +410,32 @@ class MapZones {
     }
 
     /**
-     * Load radar image
+     * Load radar image — prefer local /static/maps/ with CDN fallback
      */
     _loadRadarImage() {
-        const url = RADAR_URLS[this.mapName];
-        if (!url) {
-            this._draw();
-            return;
-        }
+        const localUrl = `/static/maps/${this.mapName}.png`;
+        const cdnUrl = RADAR_URLS[this.mapName];
 
-        this.radarImage = new Image();
-        this.radarImage.crossOrigin = 'anonymous';
-        this.radarImage.onload = () => this._draw();
-        this.radarImage.onerror = () => {
-            this.radarImage = null;
-            this._draw();
+        const loadWithFallback = (url, fallbackUrl) => {
+            this.radarImage = new Image();
+            this.radarImage.crossOrigin = 'anonymous';
+            this.radarImage.onload = () => this._draw();
+            this.radarImage.onerror = () => {
+                if (fallbackUrl) {
+                    loadWithFallback(fallbackUrl, null);
+                } else {
+                    this.radarImage = null;
+                    this._draw();
+                }
+            };
+            this.radarImage.src = url;
         };
-        this.radarImage.src = url;
+
+        if (this.mapName) {
+            loadWithFallback(localUrl, cdnUrl || null);
+        } else {
+            this._draw();
+        }
     }
 
     /**

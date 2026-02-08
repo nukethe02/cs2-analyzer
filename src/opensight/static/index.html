@@ -4011,7 +4011,7 @@
 
                     // Initialize heatmap when tab is shown
                     if (btn.dataset.tab === 'heatmap') {
-                        initHeatmap(data.heatmap_data || {});
+                        initHeatmap(data.heatmap_data || {}, data.map_metadata || null);
                     }
 
                     // Initialize timeline chart when tab is shown
@@ -6736,10 +6736,10 @@
                         </div>
                         ` : ''}
 
-                        <!-- Canvas Container -->
-                        <div class="heatmap-canvas-container" style="position: relative; background: #0d0d12; border-radius: 12px; overflow: hidden; border: 1px solid #334155;">
-                            <canvas id="heatmap-canvas" width="800" height="800" style="width: 100%; max-width: 800px; display: block; margin: 0 auto;"></canvas>
-                            <div id="heatmap-tooltip" style="display: none; position: absolute; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; pointer-events: none; z-index: 100; color: #e2e8f0;"></div>
+                        <!-- Canvas Container (square aspect ratio for radar alignment) -->
+                        <div class="heatmap-canvas-container" style="position: relative; background: #0d0d12; border-radius: 12px; overflow: hidden; border: 1px solid #334155; max-width: 800px; aspect-ratio: 1 / 1;">
+                            <canvas id="heatmap-canvas" width="800" height="800" style="width: 100%; height: 100%; display: block;"></canvas>
+                            <div id="heatmap-tooltip" style="display: none; position: absolute; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; pointer-events: none; z-index: 100; color: #e2e8f0; max-width: 250px;"></div>
                         </div>
 
                         <!-- Legend -->
@@ -7106,7 +7106,7 @@
         }
 
         // Initialize Heatmap Canvas with full zone support
-        function initHeatmap(heatmapData) {
+        function initHeatmap(heatmapData, mapMeta) {
             const canvas = document.getElementById('heatmap-canvas');
             if (!canvas) return;
 
@@ -7129,8 +7129,8 @@
             let selectedEntry = null;
             let hoveredEntry = null;
 
-            // Map coordinate transformation parameters
-            const mapParams = {
+            // Coordinate transform: prefer API-provided map_metadata, fallback to hardcoded
+            const mapParamsFallback = {
                 'de_dust2': { pos_x: -2476, pos_y: 3239, scale: 4.4 },
                 'de_mirage': { pos_x: -3230, pos_y: 1713, scale: 5.0 },
                 'de_inferno': { pos_x: -2087, pos_y: 3870, scale: 4.9 },
@@ -7142,28 +7142,35 @@
                 'de_train': { pos_x: -2477, pos_y: 2392, scale: 4.7 },
             };
 
-            const radarUrls = {
-                'de_dust2': RADAR_BASE + '/de_dust2.png',
-                'de_mirage': RADAR_BASE + '/de_mirage.png',
-                'de_inferno': RADAR_BASE + '/de_inferno.png',
-                'de_nuke': RADAR_BASE + '/de_nuke.png',
-                'de_overpass': RADAR_BASE + '/de_overpass.png',
-                'de_vertigo': RADAR_BASE + '/de_vertigo.png',
-                'de_ancient': RADAR_BASE + '/de_ancient.png',
-                'de_anubis': RADAR_BASE + '/de_anubis.png',
-                'de_train': RADAR_BASE + '/de_train.png',
-            };
+            // Use API map_metadata if available (pos_x, pos_y, scale)
+            const params = (mapMeta && mapMeta.pos_x != null && mapMeta.scale)
+                ? { pos_x: mapMeta.pos_x, pos_y: mapMeta.pos_y, scale: mapMeta.scale }
+                : (mapParamsFallback[mapName] || { pos_x: -3000, pos_y: 3000, scale: 5.0 });
 
-            const params = mapParams[mapName] || { pos_x: -3000, pos_y: 3000, scale: 5.0 };
+            // Radar image: prefer local /static/maps/ from API, fallback to CDN
+            const localRadarUrl = (mapMeta && mapMeta.radar_image_url) ? mapMeta.radar_image_url : null;
+            const cdnRadarUrl = RADAR_BASE + '/' + mapName + '.png';
 
-            // Load radar image
-            const radarUrl = radarUrls[mapName];
-            if (radarUrl) {
+            function loadRadarImage(url, fallbackUrl) {
                 radarImage = new Image();
                 radarImage.crossOrigin = 'anonymous';
                 radarImage.onload = () => draw();
-                radarImage.onerror = () => { radarImage = null; draw(); };
-                radarImage.src = radarUrl;
+                radarImage.onerror = () => {
+                    if (fallbackUrl) {
+                        // Local failed, try CDN fallback
+                        loadRadarImage(fallbackUrl, null);
+                    } else {
+                        radarImage = null;
+                        draw();
+                    }
+                };
+                radarImage.src = url;
+            }
+
+            if (localRadarUrl) {
+                loadRadarImage(localRadarUrl, cdnRadarUrl);
+            } else if (mapName) {
+                loadRadarImage(cdnRadarUrl, null);
             }
 
             // Convert game coordinates to canvas coordinates
@@ -8758,42 +8765,42 @@
             players: []
         };
 
-        // Map radar URLs and coordinates (CS2 radar images — uses RADAR_BASE defined above)
+        // Map radar URLs and coordinates — prefer local /static/maps/, CDN fallback
         const MAP_RADAR_DATA = {
             'de_dust2': {
-                url: RADAR_BASE + '/de_dust2.png',
+                url: '/static/maps/de_dust2.png', cdn: RADAR_BASE + '/de_dust2.png',
                 pos_x: -2476, pos_y: 3239, scale: 4.4
             },
             'de_mirage': {
-                url: RADAR_BASE + '/de_mirage.png',
+                url: '/static/maps/de_mirage.png', cdn: RADAR_BASE + '/de_mirage.png',
                 pos_x: -3230, pos_y: 1713, scale: 5.0
             },
             'de_inferno': {
-                url: RADAR_BASE + '/de_inferno.png',
+                url: '/static/maps/de_inferno.png', cdn: RADAR_BASE + '/de_inferno.png',
                 pos_x: -2087, pos_y: 3870, scale: 4.9
             },
             'de_nuke': {
-                url: RADAR_BASE + '/de_nuke.png',
+                url: '/static/maps/de_nuke.png', cdn: RADAR_BASE + '/de_nuke.png',
                 pos_x: -3453, pos_y: 2887, scale: 7.0
             },
             'de_overpass': {
-                url: RADAR_BASE + '/de_overpass.png',
+                url: '/static/maps/de_overpass.png', cdn: RADAR_BASE + '/de_overpass.png',
                 pos_x: -4831, pos_y: 1781, scale: 5.2
             },
             'de_vertigo': {
-                url: RADAR_BASE + '/de_vertigo.png',
+                url: '/static/maps/de_vertigo.png', cdn: RADAR_BASE + '/de_vertigo.png',
                 pos_x: -3168, pos_y: 1762, scale: 4.0
             },
             'de_ancient': {
-                url: RADAR_BASE + '/de_ancient.png',
+                url: '/static/maps/de_ancient.png', cdn: RADAR_BASE + '/de_ancient.png',
                 pos_x: -2953, pos_y: 2164, scale: 5.0
             },
             'de_anubis': {
-                url: RADAR_BASE + '/de_anubis.png',
+                url: '/static/maps/de_anubis.png', cdn: RADAR_BASE + '/de_anubis.png',
                 pos_x: -2796, pos_y: 3328, scale: 5.22
             },
             'de_train': {
-                url: RADAR_BASE + '/de_train.png',
+                url: '/static/maps/de_train.png', cdn: RADAR_BASE + '/de_train.png',
                 pos_x: -2477, pos_y: 2392, scale: 4.7
             }
         };
@@ -8953,7 +8960,7 @@
             }
         }
 
-        // Load radar image for map
+        // Load radar image for map — try local first, CDN fallback
         async function loadRadarImage(mapName) {
             const mapKey = mapName?.toLowerCase() || '';
             const mapData = MAP_RADAR_DATA[mapKey];
@@ -8963,19 +8970,27 @@
                 return;
             }
 
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                img.onload = () => {
-                    replayState.radarImage = img;
-                    resolve();
-                };
-                img.onerror = () => {
+            function tryLoad(url) {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                        replayState.radarImage = img;
+                        resolve(true);
+                    };
+                    img.onerror = () => resolve(false);
+                    img.src = url;
+                });
+            }
+
+            // Try local first, then CDN fallback
+            const loaded = await tryLoad(mapData.url);
+            if (!loaded && mapData.cdn) {
+                const cdnLoaded = await tryLoad(mapData.cdn);
+                if (!cdnLoaded) {
                     console.warn('Failed to load radar image for:', mapName);
-                    resolve();
-                };
-                img.src = mapData.url;
-            });
+                }
+            }
         }
 
         // Build round selector buttons

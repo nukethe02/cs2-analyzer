@@ -56,29 +56,30 @@ class PlayerHeatmaps {
     }
 
     /**
-     * Load radar background image
+     * Load radar background image — prefer local /static/maps/ with CDN fallback
      */
     loadRadarImage() {
         const _RADAR = 'https://raw.githubusercontent.com/2mlml/cs2-radar-images/master';
-        const radarUrls = {
-            'de_dust2': _RADAR + '/de_dust2.png',
-            'de_mirage': _RADAR + '/de_mirage.png',
-            'de_inferno': _RADAR + '/de_inferno.png',
-            'de_nuke': _RADAR + '/de_nuke.png',
-            'de_overpass': _RADAR + '/de_overpass.png',
-            'de_vertigo': _RADAR + '/de_vertigo.png',
-            'de_ancient': _RADAR + '/de_ancient.png',
-            'de_anubis': _RADAR + '/de_anubis.png',
-            'de_train': _RADAR + '/de_train.png',
-        };
+        const localUrl = `/static/maps/${this.mapName}.png`;
+        const cdnUrl = _RADAR + '/' + this.mapName + '.png';
 
-        const url = radarUrls[this.mapName];
-        if (url) {
+        const loadWithFallback = (url, fallbackUrl) => {
             this.radarImage = new Image();
             this.radarImage.crossOrigin = 'anonymous';
             this.radarImage.onload = () => this.drawHeatmap();
-            this.radarImage.onerror = () => { this.radarImage = null; this.drawHeatmap(); };
+            this.radarImage.onerror = () => {
+                if (fallbackUrl) {
+                    loadWithFallback(fallbackUrl, null);
+                } else {
+                    this.radarImage = null;
+                    this.drawHeatmap();
+                }
+            };
             this.radarImage.src = url;
+        };
+
+        if (this.mapName) {
+            loadWithFallback(localUrl, cdnUrl);
         }
     }
 
