@@ -3924,43 +3924,20 @@
             renderedSubTabs.add(subtabId);
         }
 
-        // Render sub-tab Timeline content
+        // Render sub-tab Timeline content — delegates to renderRoundEvents()
+        // which shows kill feed, bomb events, economy grades, and round outcomes.
         function renderSubTabTimeline(data) {
             const roundTimeline = data.round_timeline || [];
             if (roundTimeline.length === 0) {
                 return '<p style="color: var(--text-muted); padding: 20px;">No timeline data available.</p>';
             }
 
-            let html = `
+            return `
                 <div class="timeline-subtab-wrapper" style="max-height: 600px; overflow-y: auto;">
-                    <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; text-transform: uppercase;">Round-by-Round Timeline</h4>
-                    <div class="timeline-rounds" style="display: flex; flex-direction: column; gap: 8px;">
-            `;
-
-            roundTimeline.forEach((round, idx) => {
-                const roundNum = round.round_num || round.round || idx + 1;
-                const winner = round.winner || 'Unknown';
-                const winType = round.win_reason || round.win_type || '';
-                const ctScore = round.ct_kills || round.ct_score || 0;
-                const tScore = round.t_kills || round.t_score || 0;
-                const winColor = winner === 'CT' ? 'var(--ct-color)' : 'var(--t-color)';
-
-                html += `
-                    <div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--bg-elevated); border-radius: 6px;">
-                        <span style="font-weight: 600; min-width: 60px; color: var(--text-muted);">R${roundNum}</span>
-                        <span style="color: ${winColor}; font-weight: 600; min-width: 30px;">${winner}</span>
-                        <span style="color: var(--text-muted); font-size: 0.85rem; flex: 1;">${winType}</span>
-                        <span style="font-family: 'JetBrains Mono', monospace; color: var(--text-secondary);">${ctScore} - ${tScore}</span>
-                    </div>
-                `;
-            });
-
-            html += `
-                    </div>
+                    <h4 style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; text-transform: uppercase;">Round-by-Round Timeline (${roundTimeline.length} rounds)</h4>
+                    ${renderRoundEvents(roundTimeline)}
                 </div>
             `;
-
-            return html;
         }
 
         // Render Overview Tab
