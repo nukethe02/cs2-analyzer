@@ -17,6 +17,8 @@ Endpoints:
 - POST /api/scouting/session/{session_id}/report — generate scouting report
 - GET /api/scouting/session/{session_id} — get scouting session state
 - DELETE /api/scouting/session/{session_id} — delete scouting session
+- POST /api/antistrat/{session_id}/generate — generate AI anti-strat report
+- GET /api/antistrat/{session_id}/report — retrieve cached anti-strat report
 """
 
 import logging
@@ -677,3 +679,85 @@ async def delete_scouting_session(request: Request, session_id: str) -> dict[str
             return {"success": True, "deleted": session_id}
         else:
             raise HTTPException(status_code=404, detail="Scouting session not found")
+
+
+# =============================================================================
+# AI Anti-Strat Report Endpoints
+# =============================================================================
+
+# In-memory cache for generated anti-strat reports (session_id -> report dict)
+_antistrat_reports: dict[str, dict] = {}
+
+
+@router.post("/api/antistrat/{session_id}/generate")
+@rate_limit(RATE_LIMIT_API)
+async def generate_antistrat_report(
+    request: Request,
+    session_id: str,
+    body: ScoutingReportRequest,
+) -> dict[str, Any]:
+    """
+    Generate an AI-powered anti-strat report for a scouting session.
+
+    Requires a scouting session with at least one demo added and opponent
+    players specified. Uses ModelTier.DEEP (Sonnet 4.5) for tactical reasoning.
+    """
+    with _scouting_sessions_lock:
+        session = _scouting_sessions.get(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Scouting session not found")
+        engine = session["engine"]
+
+    if not body.opponent_steamids:
+        raise HTTPException(status_code=400, detail="No opponent players specified")
+
+    try:
+        # Generate scouting report first (data-grounded)
+        engine.set_opponent_team(body.opponent_steamids, body.team_name)
+        scout_report = engine.generate_report()
+        scout_dict = scout_report.to_dict()
+
+        # Generate AI anti-strat report
+        from opensight.ai.antistrat_report import generate_antistrat_report as gen_report
+
+        antistrat = gen_report(scout_dict)
+        report_dict = antistrat.to_dict()
+
+        # Cache the report
+        _antistrat_reports[session_id] = report_dict
+
+        logger.info(
+            "Generated anti-strat report for session %s: %d threats, %d map counters",
+            session_id,
+            len(antistrat.player_threats),
+            len(antistrat.map_counters),
+        )
+
+        return {"success": True, "report": report_dict}
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("Failed to generate anti-strat report")
+        raise HTTPException(
+            status_code=500,
+            detail="Anti-strat report generation failed. Check server logs.",
+        ) from e
+
+
+@router.get("/api/antistrat/{session_id}/report")
+@rate_limit(RATE_LIMIT_API)
+async def get_antistrat_report(request: Request, session_id: str) -> dict[str, Any]:
+    """
+    Retrieve a previously generated anti-strat report.
+
+    Returns the cached report if available, or 404 if not yet generated.
+    """
+    report = _antistrat_reports.get(session_id)
+    if not report:
+        raise HTTPException(
+            status_code=404,
+            detail="No anti-strat report found. Generate one first via POST /api/antistrat/{session_id}/generate",
+        )
+
+    return {"success": True, "report": report}

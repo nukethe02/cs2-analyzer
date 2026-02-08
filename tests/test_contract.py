@@ -1160,9 +1160,9 @@ class TestKeyNameConsistency:
         """
         import inspect
 
-        from opensight.ai import llm_client, self_review, strat_engine
+        from opensight.ai import data_prep, llm_client, self_review, strat_engine
 
-        for module in [self_review, strat_engine, llm_client]:
+        for module in [self_review, strat_engine, llm_client, data_prep]:
             source = inspect.getsource(module)
             # Check that nobody does match_data["match_info"] or match_data.get("match_info")
             # The pattern .get("demo_info" should be present; .get("match_info" should NOT
@@ -1172,12 +1172,16 @@ class TestKeyNameConsistency:
             )
 
     def test_ai_modules_use_demo_info_key(self):
-        """Confirm AI modules DO access 'demo_info' key."""
+        """Confirm AI modules that read orchestrator output access 'demo_info' key.
+
+        Note: llm_client delegates to data_prep for orchestrator access,
+        so only modules that directly read match_data dicts are checked.
+        """
         import inspect
 
-        from opensight.ai import llm_client, self_review, strat_engine
+        from opensight.ai import data_prep, self_review, strat_engine
 
-        for module in [self_review, strat_engine, llm_client]:
+        for module in [self_review, strat_engine, data_prep]:
             source = inspect.getsource(module)
             assert '"demo_info"' in source, (
                 f"{module.__name__} does not reference 'demo_info' — "

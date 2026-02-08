@@ -9,6 +9,8 @@ Endpoints:
 - POST /api/strat-steal/{job_id} — strat-stealing report
 - POST /api/self-review/{job_id} — team self-review report
 - GET /jobs — list all jobs
+- GET /api/economy/{job_id}/analysis — economy analysis report
+- GET /api/economy/{job_id}/predict — round-by-round economy prediction
 """
 
 import logging
@@ -471,3 +473,117 @@ async def list_jobs() -> dict[str, Any]:
     return {
         "jobs": [{"job_id": j.job_id, "status": j.status, "filename": j.filename} for j in jobs]
     }
+
+
+# =============================================================================
+# Economy Analysis Endpoints
+# =============================================================================
+
+
+@router.get("/api/economy/{job_id}/analysis")
+@rate_limit(RATE_LIMIT_API)
+async def economy_analysis(job_id: str, request: Request) -> dict[str, Any]:
+    """
+    Get full economy analysis for a completed demo.
+
+    Query params:
+        team: "ct" or "t" — which starting side to analyze (default: "ct")
+    """
+    validate_job_id(job_id)
+    job_store = _get_job_store()
+
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != JobStatus.COMPLETED.value:
+        raise HTTPException(status_code=400, detail="Job not completed")
+    if not job.result:
+        raise HTTPException(status_code=400, detail="No analysis result available")
+
+    team_side = request.query_params.get("team", "ct").lower()
+    if team_side not in ("ct", "t"):
+        raise HTTPException(status_code=400, detail="team must be 'ct' or 't'")
+
+    try:
+        from opensight.ai.economy_engine import EconomyEngine
+
+        engine = EconomyEngine()
+        report = engine.analyze_match(job.result, team_side)
+
+        return {"success": True, "report": report.to_dict()}
+
+    except Exception as e:
+        logger.exception(f"Economy analysis failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Economy analysis failed. Check server logs.",
+        ) from e
+
+
+@router.get("/api/economy/{job_id}/predict")
+@rate_limit(RATE_LIMIT_API)
+async def economy_predict(job_id: str, request: Request) -> dict[str, Any]:
+    """
+    Get economy prediction and buy recommendation for a specific round.
+
+    Query params:
+        round: Round number (required)
+        team: "ct" or "t" — which starting side (default: "ct")
+    """
+    validate_job_id(job_id)
+    job_store = _get_job_store()
+
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != JobStatus.COMPLETED.value:
+        raise HTTPException(status_code=400, detail="Job not completed")
+    if not job.result:
+        raise HTTPException(status_code=400, detail="No analysis result available")
+
+    round_str = request.query_params.get("round")
+    if not round_str:
+        raise HTTPException(status_code=400, detail="round parameter is required")
+
+    try:
+        round_num = int(round_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="round must be an integer")
+
+    if round_num < 1:
+        raise HTTPException(status_code=400, detail="round must be >= 1")
+
+    team_side = request.query_params.get("team", "ct").lower()
+    if team_side not in ("ct", "t"):
+        raise HTTPException(status_code=400, detail="team must be 'ct' or 't'")
+
+    try:
+        from opensight.ai.economy_engine import EconomyEngine
+
+        engine = EconomyEngine()
+        state = engine.get_round_prediction(job.result, round_num, team_side)
+
+        if state is None:
+            raise HTTPException(status_code=404, detail=f"Round {round_num} not found in analysis")
+
+        return {
+            "success": True,
+            "round": round_num,
+            "team": team_side,
+            "prediction": {
+                "predicted_money": state.predicted_money,
+                "loss_streak": state.loss_streak,
+                "recommendation": state.buy_recommendation,
+                "confidence": round(state.confidence, 2),
+                "reasoning": state.reasoning,
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Economy prediction failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Economy prediction failed. Check server logs.",
+        ) from e

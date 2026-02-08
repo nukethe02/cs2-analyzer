@@ -40,9 +40,7 @@ def get_map_metadata(map_name: str) -> dict | None:
     return MAP_METADATA.get(map_name)
 
 
-def game_to_pixel(
-    game_x: float, game_y: float, map_name: str
-) -> tuple[float, float] | None:
+def game_to_pixel(game_x: float, game_y: float, map_name: str) -> tuple[float, float] | None:
     """Convert game world coordinates to radar pixel coordinates.
 
     Args:

@@ -13,6 +13,10 @@ Endpoints:
 - GET /api/positioning/{job_id}/compare/{steam_id_a}/{steam_id_b} — compare positioning
 - GET /api/positioning/{job_id}/all — all player positioning
 - GET /api/trade-chains/{job_id} — trade chain analysis
+- POST /api/game-plan/generate — generate game plan from demos + scouting
+- GET /api/game-plan/{plan_id} — retrieve cached game plan
+- POST /api/veto/analyze — map veto analysis and recommendations
+- POST /api/query — natural language query interface
 """
 
 import logging
@@ -731,4 +735,384 @@ async def get_trade_chains(
         logger.exception("Trade chain analysis failed for job %s", job_id)
         raise HTTPException(
             status_code=500, detail="Trade chain analysis failed. Check server logs."
+        ) from e
+
+
+# =============================================================================
+# Player Development Tracking
+# =============================================================================
+
+
+@router.get("/api/player-tracking/{steam_id}/report")
+async def get_player_development_report(
+    steam_id: str,
+    limit: int = Query(default=30, le=100, description="Max matches to analyze"),
+) -> dict[str, Any]:
+    """Get comprehensive player development report with trends, benchmarks, and recommendations."""
+    validate_steam_id(steam_id)
+
+    try:
+        from opensight.ai.player_tracker import get_player_tracker
+
+        tracker = get_player_tracker()
+        report = tracker.generate_report(steam_id, limit=limit)
+        return report.to_dict()
+
+    except Exception as e:
+        logger.exception("Failed to generate development report for %s", steam_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate development report. Check server logs.",
+        ) from e
+
+
+@router.get("/api/player-tracking/{steam_id}/trends")
+async def get_player_development_trends(
+    steam_id: str,
+) -> dict[str, Any]:
+    """Get metric trend analysis for a player across their match history."""
+    validate_steam_id(steam_id)
+
+    try:
+        from opensight.ai.player_tracker import get_player_tracker
+
+        tracker = get_player_tracker()
+        trends = tracker.analyze_trends_from_db(steam_id)
+
+        return {
+            "steam_id": steam_id,
+            "trends": [t.to_dict() for t in trends],
+            "count": len(trends),
+        }
+
+    except Exception as e:
+        logger.exception("Failed to get development trends for %s", steam_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get development trends. Check server logs.",
+        ) from e
+
+
+@router.post("/api/player-tracking/{steam_id}/add-match")
+async def add_match_to_tracking(
+    steam_id: str,
+    job_id: str = Query(..., description="Job ID of completed analysis"),
+) -> dict[str, Any]:
+    """Extract a match snapshot from a completed analysis and store it for tracking."""
+    validate_steam_id(steam_id)
+    validate_demo_id(job_id)
+
+    job_store = _get_job_store()
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "completed" or not job.result:
+        raise HTTPException(status_code=400, detail="Job not completed or has no results")
+
+    try:
+        from opensight.ai.player_tracker import get_player_tracker
+
+        tracker = get_player_tracker()
+        snapshot = tracker.extract_snapshot(job.result, steam_id)
+
+        if not snapshot:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Player {steam_id} not found in analysis results",
+            )
+
+        # Store via existing DB infrastructure
+        from opensight.infra.database import get_db
+
+        db = get_db()
+        entry = db.save_match_history_entry(
+            steam_id=steam_id,
+            demo_hash=snapshot.demo_hash,
+            player_stats={
+                "kills": snapshot.kills,
+                "deaths": snapshot.deaths,
+                "assists": snapshot.assists,
+                "adr": snapshot.adr,
+                "kast_percentage": snapshot.kast,
+                "headshot_percentage": snapshot.hs_pct,
+                "hltv_rating": snapshot.hltv_rating,
+                "aim_rating": snapshot.aim_rating,
+                "utility_rating": snapshot.utility_rating,
+                "ttd_median_ms": snapshot.ttd_median_ms,
+                "cp_median_error_deg": snapshot.cp_median_deg,
+                "opening_duel_attempts": snapshot.entry_attempts,
+                "opening_duel_wins": snapshot.entry_success,
+                "clutch_situations": snapshot.clutch_situations,
+                "clutch_wins": snapshot.clutch_wins,
+                "kills_traded": snapshot.trade_kill_success,
+                "enemies_flashed": snapshot.enemies_flashed,
+                "flash_assists": snapshot.flash_assists,
+                "he_damage": snapshot.he_damage,
+                "rounds_played": snapshot.rounds_played,
+            },
+            map_name=snapshot.map_name,
+            result=snapshot.result,
+        )
+
+        if entry is None:
+            return {"status": "duplicate", "message": "Match already tracked"}
+
+        # Update baselines
+        db.update_player_baselines(steam_id)
+
+        return {
+            "status": "ok",
+            "match_id": entry.id,
+            "snapshot": snapshot.to_dict(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to add match to tracking for %s", steam_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to add match to tracking. Check server logs.",
+        ) from e
+
+
+# =============================================================================
+# Game Plan Generation
+# =============================================================================
+
+
+@router.post("/api/game-plan/generate")
+async def generate_game_plan(
+    your_team_job_ids: list[str] = Body(..., embed=True),
+    opponent_scouting: dict[str, Any] = Body(..., embed=True),
+    map_name: str = Body(..., embed=True, alias="map"),
+    roster: dict[str, str] = Body(..., embed=True),
+) -> dict[str, Any]:
+    """
+    Generate a complete game plan from your team's demos + opponent scouting data.
+
+    Body:
+        your_team_job_ids: List of completed job IDs for your recent matches
+        opponent_scouting: Opponent scouting data (TeamScoutReport.to_dict() format)
+        map: Map name (e.g., "de_ancient")
+        roster: Player name → role mapping (e.g., {"foe": "igl", "kix": "entry"})
+    """
+    from opensight.ai.game_plan import cache_plan, get_game_plan_generator
+    from opensight.api.shared import JobStatus
+
+    if not your_team_job_ids:
+        raise HTTPException(status_code=400, detail="At least one job ID is required")
+
+    if not roster:
+        raise HTTPException(status_code=400, detail="Roster cannot be empty")
+
+    if not map_name:
+        raise HTTPException(status_code=400, detail="Map name is required")
+
+    # Collect orchestrator results from completed jobs
+    job_store = _get_job_store()
+    your_demos: list[dict] = []
+
+    for job_id in your_team_job_ids:
+        job = job_store.get_job(job_id)
+        if job is None:
+            raise HTTPException(
+                status_code=404, detail=f"Job {job_id} not found or expired"
+            )
+        if job.status != JobStatus.COMPLETED.value:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job {job_id} is not completed (status: {job.status})",
+            )
+        if job.result:
+            your_demos.append(job.result)
+
+    if not your_demos:
+        raise HTTPException(
+            status_code=400,
+            detail="No completed job results found for the provided job IDs",
+        )
+
+    try:
+        generator = get_game_plan_generator()
+        plan = generator.generate(
+            your_team_demos=your_demos,
+            opponent_scouting=opponent_scouting,
+            map_name=map_name,
+            roster=roster,
+        )
+
+        # Cache the plan for retrieval
+        cache_plan(plan)
+
+        return plan.to_dict()
+
+    except Exception as e:
+        logger.exception("Failed to generate game plan")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Game plan generation failed: {type(e).__name__}",
+        ) from e
+
+
+@router.get("/api/game-plan/{plan_id}")
+async def get_game_plan(plan_id: str) -> dict[str, Any]:
+    """Retrieve a cached game plan by ID."""
+    from opensight.ai.game_plan import get_cached_plan
+
+    plan = get_cached_plan(plan_id)
+    if plan is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Game plan {plan_id} not found or expired",
+        )
+    return plan.to_dict()
+
+
+# =============================================================================
+# Veto Analysis
+# =============================================================================
+
+
+@router.post("/api/veto/analyze")
+async def analyze_veto(
+    your_job_ids: list[str] = Body(..., embed=True),
+    opponent_job_ids: list[str] | None = Body(None, embed=True),
+    opponent_scouting: dict[str, Any] | None = Body(None, embed=True),
+    format: str = Body("bo1", embed=True),
+) -> dict[str, Any]:
+    """
+    Analyze map veto options for an upcoming match.
+
+    Provide your team's job IDs and either opponent job IDs or scouting data.
+
+    Body:
+        your_job_ids: List of completed job IDs for your recent matches
+        opponent_job_ids: Optional list of completed job IDs for opponent matches
+        opponent_scouting: Optional opponent scouting data (TeamScoutReport.to_dict())
+        format: "bo1" or "bo3"
+    """
+    from opensight.ai.veto_optimizer import get_veto_optimizer
+    from opensight.api.shared import JobStatus
+
+    if not your_job_ids:
+        raise HTTPException(status_code=400, detail="At least one job ID is required")
+
+    if format not in ("bo1", "bo3"):
+        raise HTTPException(status_code=400, detail="Format must be 'bo1' or 'bo3'")
+
+    if not opponent_job_ids and not opponent_scouting:
+        raise HTTPException(
+            status_code=400,
+            detail="Either opponent_job_ids or opponent_scouting is required",
+        )
+
+    job_store = _get_job_store()
+
+    # Collect your demos
+    your_demos: list[dict] = []
+    for job_id in your_job_ids:
+        job = job_store.get_job(job_id)
+        if job is None:
+            raise HTTPException(
+                status_code=404, detail=f"Job {job_id} not found or expired"
+            )
+        if job.status != JobStatus.COMPLETED.value:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job {job_id} is not completed (status: {job.status})",
+            )
+        if job.result:
+            your_demos.append(job.result)
+
+    # Collect opponent data
+    opponent_data: list[dict] | dict
+    if opponent_job_ids:
+        opp_demos: list[dict] = []
+        for job_id in opponent_job_ids:
+            job = job_store.get_job(job_id)
+            if job is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Opponent job {job_id} not found or expired",
+                )
+            if job.status != JobStatus.COMPLETED.value:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Opponent job {job_id} is not completed (status: {job.status})",
+                )
+            if job.result:
+                opp_demos.append(job.result)
+        opponent_data = opp_demos
+    else:
+        opponent_data = opponent_scouting  # type: ignore[assignment]
+
+    try:
+        optimizer = get_veto_optimizer()
+        analysis = optimizer.analyze(
+            your_demos=your_demos,
+            opponent_data=opponent_data,
+            format=format,
+        )
+        return analysis.to_dict()
+
+    except Exception as e:
+        logger.exception("Failed to generate veto analysis")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Veto analysis failed: {type(e).__name__}",
+        ) from e
+
+
+# =============================================================================
+# Natural Language Query Interface
+# =============================================================================
+
+
+@router.post("/api/query")
+async def natural_language_query(
+    question: str = Body(..., embed=True),
+    job_id: str = Body(..., embed=True),
+) -> dict[str, Any]:
+    """
+    Answer a natural language question about a completed demo analysis.
+
+    Body:
+        question: Natural language question (e.g., "How often does kix win opening duels?")
+        job_id: Job ID of a completed analysis
+    """
+    from opensight.ai.query_interface import get_query_interface
+    from opensight.api.shared import JobStatus
+
+    if not question or not question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    validate_demo_id(job_id)
+
+    job_store = _get_job_store()
+    job = job_store.get_job(job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=404, detail=f"Job {job_id} not found or expired"
+        )
+    if job.status != JobStatus.COMPLETED.value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job {job_id} is not completed (status: {job.status})",
+        )
+    if not job.result:
+        raise HTTPException(
+            status_code=400, detail="Job has no result data"
+        )
+
+    try:
+        qi = get_query_interface()
+        result = qi.query(question=question.strip(), available_data=job.result)
+        return result.to_dict()
+
+    except Exception as e:
+        logger.exception("Natural language query failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Query failed: {type(e).__name__}",
         ) from e

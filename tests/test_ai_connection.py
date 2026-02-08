@@ -36,11 +36,37 @@ class TestLLMClientModule:
 
     def test_client_initialization(self):
         """Test LLMClient can be initialized without API key."""
-        from opensight.ai.llm_client import LLMClient
+        from opensight.ai.llm_client import LLMClient, ModelTier
 
         client = LLMClient(api_key="test-key")
         assert client.api_key == "test-key"
-        assert client.model == "claude-sonnet-4-20250514"
+        assert client.default_tier == ModelTier.STANDARD
+        assert client.model == ModelTier.STANDARD.value
+
+    def test_model_tier_enum(self):
+        """Test ModelTier enum has correct model strings."""
+        from opensight.ai.llm_client import ModelTier
+
+        assert ModelTier.STANDARD.value == "claude-haiku-4-5-20251001"
+        assert ModelTier.DEEP.value == "claude-sonnet-4-5-20250929"
+
+    def test_deep_tier_override(self):
+        """Test LLMClient can be initialized with DEEP tier."""
+        from opensight.ai.llm_client import LLMClient, ModelTier
+
+        client = LLMClient(api_key="test-key", tier=ModelTier.DEEP)
+        assert client.default_tier == ModelTier.DEEP
+        assert client.model == ModelTier.DEEP.value
+
+    def test_system_prompt_meets_cache_minimum(self):
+        """System prompt must be >=4096 tokens (~16384 chars) for prompt caching."""
+        from opensight.ai.llm_client import CS2_COACHING_SYSTEM_PROMPT
+
+        # Rough token estimate: ~4 chars per token
+        est_tokens = len(CS2_COACHING_SYSTEM_PROMPT) / 4
+        assert est_tokens >= 4096, (
+            f"System prompt is ~{est_tokens:.0f} tokens, need >=4096 for caching"
+        )
 
 
 class TestGenerateSummaryWithMockedLLM:
@@ -86,8 +112,15 @@ class TestGenerateSummaryWithMockedLLM:
 ### Practice Focus
 Focus on crosshair placement drills (current: 8.5 error)"""
 
+        mock_usage = Mock()
+        mock_usage.input_tokens = 500
+        mock_usage.output_tokens = 200
+        mock_usage.cache_read_input_tokens = 0
+        mock_usage.cache_creation_input_tokens = 400
+
         mock_message = Mock()
         mock_message.content = [mock_content]
+        mock_message.usage = mock_usage
 
         # Patch where Anthropic is imported (inside _get_client method)
         with patch.dict("sys.modules", {"anthropic": Mock()}):
