@@ -184,6 +184,9 @@ class MapZones {
         this.showSupportRadius = true;
         this.dryPeekFilter = 'all'; // 'all', 'dry', 'supported'
 
+        // Marker hit-testing for hover tooltips
+        this.renderedMarkers = [];
+
         // Canvas refs
         this.canvas = null;
         this.ctx = null;
@@ -513,7 +516,7 @@ class MapZones {
     }
 
     /**
-     * Handle canvas hover for tooltips
+     * Handle canvas hover for tooltips — checks markers first, then zones
      */
     _handleCanvasHover(e) {
         const tooltip = document.getElementById('map-zones-tooltip');
@@ -525,18 +528,53 @@ class MapZones {
         const canvasX = (e.clientX - rect.left) * scaleX;
         const canvasY = (e.clientY - rect.top) * scaleY;
 
+        // Check kill/death markers first (search reverse so top-drawn kills found first)
+        if (!this.dryPeekMode && this.renderedMarkers.length > 0) {
+            for (let i = this.renderedMarkers.length - 1; i >= 0; i--) {
+                const m = this.renderedMarkers[i];
+                const dx = canvasX - m.cx;
+                const dy = canvasY - m.cy;
+                if (dx * dx + dy * dy <= (m.r + 4) * (m.r + 4)) {
+                    const d = m.data;
+                    const isKill = m.type === 'kill';
+                    const color = isKill ? '#10b981' : '#ef4444';
+                    const label = isKill ? 'Kill' : 'Death';
+                    const hsTag = isKill && d.headshot ? ' <span style="color: #fbbf24;">HS</span>' : '';
+                    const weaponLine = d.weapon ? `<div style="color: #94a3b8;">${this._escapeHtml(d.weapon)}${hsTag}</div>` : '';
+                    const sideBadge = d.side ? `<span style="color: ${d.side === 'CT' ? '#5c9cff' : '#ffb347'}; font-size: 0.7rem; margin-left: 4px;">${this._escapeHtml(d.side)}</span>` : '';
+                    tooltip.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${color};"></span>
+                            <strong>${this._escapeHtml(d.player_name || 'Unknown')}</strong>
+                            <span style="color: ${color}; font-size: 0.75rem;">${label}</span>${sideBadge}
+                        </div>
+                        ${weaponLine}
+                        <div style="color: #64748b; font-size: 0.75rem;">Round ${d.round_num || '?'} &middot; ${this._escapeHtml(d.zone || 'Unknown')}</div>
+                        <div style="color: #475569; font-size: 0.65rem; margin-top: 2px;">(${Math.round(d.x)}, ${Math.round(d.y)})</div>
+                    `;
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
+                    tooltip.style.top = (e.clientY - rect.top + 15) + 'px';
+                    this.canvas.style.cursor = 'pointer';
+                    return;
+                }
+            }
+        }
+
+        this.canvas.style.cursor = 'crosshair';
+
+        // Fall back to zone tooltips
         const params = MAP_PARAMS[this.mapName] || { pos_x: -3000, pos_y: 3000, scale: 5.0 };
         const gameX = canvasX / (this.canvas.width / 1024) * params.scale + params.pos_x;
         const gameY = params.pos_y - canvasY / (this.canvas.height / 1024) * params.scale;
 
-        // Find hovered zone
         for (const [zoneName, zoneDef] of Object.entries(this.zoneDefs)) {
             if (zoneDef.bounds && this._pointInPolygon(gameX, gameY, zoneDef.bounds)) {
                 const stats = this._getFilteredZoneStats();
                 const zs = stats[zoneName];
                 if (zs) {
                     tooltip.innerHTML = `
-                        <strong>${zoneName}</strong><br>
+                        <strong>${this._escapeHtml(zoneName)}</strong><br>
                         K/D: ${zs.kd_ratio.toFixed(2)}<br>
                         ${zs.kills}K / ${zs.deaths}D<br>
                         ${zs.kill_pct}% of kills
@@ -560,6 +598,9 @@ class MapZones {
 
         const ctx = this.ctx;
         const canvas = this.canvas;
+
+        // Reset marker hit-test list each frame
+        this.renderedMarkers = [];
 
         // Clear canvas
         ctx.fillStyle = '#0d0d12';
@@ -716,6 +757,9 @@ class MapZones {
             ctx.arc(x, y, 6, 0, Math.PI * 2);
             ctx.stroke();
         }
+
+        // Store for hover hit-testing
+        this.renderedMarkers.push({ cx: x, cy: y, r: radius, type, data });
     }
 
     /**

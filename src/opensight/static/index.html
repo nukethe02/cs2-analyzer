@@ -7881,14 +7881,17 @@
                     const label = isKill ? 'Kill' : 'Death';
                     const hsTag = isKill && d.headshot ? ' <span style="color: #fbbf24;">HS</span>' : '';
                     const weaponLine = d.weapon ? `<div style="color: #94a3b8;">${esc(d.weapon)}${hsTag}</div>` : '';
+                    const sideBadge = d.side ? `<span style="color: ${d.side === 'CT' ? '#5c9cff' : '#ffb347'}; font-size: 0.7rem; margin-left: 4px;">${esc(d.side)}</span>` : '';
+                    const coordLine = (d.x != null && d.y != null) ? `<div style="color: #475569; font-size: 0.65rem; margin-top: 2px;">(${Math.round(d.x)}, ${Math.round(d.y)})</div>` : '';
                     tooltip.innerHTML = `
                         <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
                             <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${color};"></span>
                             <strong>${esc(d.player_name || 'Unknown')}</strong>
-                            <span style="color: ${color}; font-size: 0.75rem;">${label}</span>
+                            <span style="color: ${color}; font-size: 0.75rem;">${label}</span>${sideBadge}
                         </div>
                         ${weaponLine}
                         <div style="color: #64748b; font-size: 0.75rem;">Round ${d.round_num || '?'} &middot; ${esc(d.zone || 'Unknown')}</div>
+                        ${coordLine}
                     `;
                     tooltip.style.display = 'block';
                     tooltip.style.left = `${e.clientX - rect.left + 15}px`;
