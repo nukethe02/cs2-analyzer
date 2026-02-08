@@ -2742,6 +2742,9 @@ class DemoOrchestrator:
         """
         Generate AI-powered match summaries for each player using LLM.
 
+        Uses a single batched LLM call for all players (1 call instead of 10).
+        Falls back to per-player calls if batching fails.
+
         Modifies players dict in-place, adding "ai_summary" field to each player.
 
         Args:
@@ -2749,7 +2752,7 @@ class DemoOrchestrator:
             analysis: MatchAnalysis object with match metadata
         """
         try:
-            from opensight.ai.llm_client import generate_match_summary
+            from opensight.ai.llm_client import generate_batch_summaries, generate_match_summary
 
             logger.info("Generating AI-powered coaching summaries with LLM")
 
@@ -2761,53 +2764,44 @@ class DemoOrchestrator:
                 "team2_score": getattr(analysis, "team2_score", 0),
             }
 
-            # Generate summary for each player
+            # Build stats list for all players
+            all_stats = []
+            steam_id_to_name = {}
             for steam_id, player_data in players.items():
-                try:
-                    # Flatten player stats for LLM
-                    player_stats = {
-                        # Core stats
-                        "name": player_data.get("name", "Unknown"),
-                        "kills": player_data["stats"]["kills"],
-                        "deaths": player_data["stats"]["deaths"],
-                        "assists": player_data["stats"]["assists"],
-                        "adr": player_data["stats"]["adr"],
-                        "headshot_pct": player_data["stats"]["headshot_pct"],
-                        # Ratings
-                        "hltv_rating": player_data["rating"]["hltv_rating"],
-                        "kast_percentage": player_data["rating"]["kast_percentage"],
-                        "aim_rating": player_data["rating"]["aim_rating"],
-                        "utility_rating": player_data["rating"]["utility_rating"],
-                        # Advanced metrics
-                        "ttd_median_ms": player_data["advanced"]["ttd_median_ms"],
-                        "cp_median_error_deg": player_data["advanced"]["cp_median_error_deg"],
-                        # Entry/Trade/Clutch
-                        "entry_kills": player_data["entry"].get("entry_kills", 0),
-                        "entry_deaths": player_data["entry"].get("entry_deaths", 0),
-                        "trade_kill_success": player_data["trades"].get("trade_kills", 0),
-                        "trade_kill_opportunities": 0,
-                        "clutch_wins": player_data["clutches"].get("clutch_wins", 0),
-                        "clutch_attempts": player_data["clutches"].get("clutch_wins", 0)
-                        + player_data["clutches"].get("clutch_losses", 0),
-                    }
+                player_stats = self._extract_player_stats_for_llm(player_data)
+                all_stats.append(player_stats)
+                steam_id_to_name[steam_id] = player_stats["name"]
 
-                    # Generate AI summary
-                    ai_summary = generate_match_summary(player_stats, match_context)
+            # Try batched call first (1 call instead of 10)
+            batch_results = {}
+            try:
+                batch_results = generate_batch_summaries(all_stats, match_context)
+            except Exception as e:
+                logger.warning(
+                    f"Batched summary generation failed, falling back to per-player: {e}"
+                )
 
-                    # Add to player data
-                    player_data["ai_summary"] = ai_summary
+            # Distribute batch results and fill gaps with per-player calls
+            for steam_id, player_data in players.items():
+                name = steam_id_to_name.get(steam_id, "Unknown")
+                summary = batch_results.get(name)
 
-                    logger.debug(
-                        f"Generated AI summary for {player_stats['name']} ({len(ai_summary)} chars)"
-                    )
-
-                except Exception as e:
-                    logger.warning(f"AI summary generation failed for player {steam_id}: {e}")
-                    player_data["ai_summary"] = (
-                        "**AI Summary Unavailable**\n\n"
-                        "Unable to generate personalized insights at this time. "
-                        "Check your ANTHROPIC_API_KEY configuration."
-                    )
+                if summary:
+                    player_data["ai_summary"] = summary
+                    logger.debug(f"Batch summary for {name} ({len(summary)} chars)")
+                else:
+                    # Fallback: individual call for this player
+                    try:
+                        ps = self._extract_player_stats_for_llm(player_data)
+                        player_data["ai_summary"] = generate_match_summary(ps, match_context)
+                        logger.debug(f"Individual summary fallback for {name}")
+                    except Exception as e:
+                        logger.warning(f"AI summary generation failed for player {steam_id}: {e}")
+                        player_data["ai_summary"] = (
+                            "**AI Summary Unavailable**\n\n"
+                            "Unable to generate personalized insights at this time. "
+                            "Check your ANTHROPIC_API_KEY configuration."
+                        )
 
             logger.info(f"Generated AI summaries for {len(players)} players")
 
@@ -2830,6 +2824,43 @@ class DemoOrchestrator:
                     f"An error occurred: {type(e).__name__}\n\n"
                     "Please check logs for details."
                 )
+
+    @staticmethod
+    def _extract_player_stats_for_llm(player_data: dict) -> dict:
+        """Extract a compact subset of player stats for LLM consumption.
+
+        Reduces a full ~150-field player dict to ~20 key metrics that the LLM
+        needs for generating coaching summaries.
+        """
+        stats = player_data.get("stats", {})
+        rating = player_data.get("rating", {})
+        advanced = player_data.get("advanced", {})
+        entry = player_data.get("entry", {})
+        trades = player_data.get("trades", {})
+        duels = player_data.get("duels", {})
+        return {
+            "name": player_data.get("name", "Unknown"),
+            "team": player_data.get("team", ""),
+            "kills": stats.get("kills", 0),
+            "deaths": stats.get("deaths", 0),
+            "assists": stats.get("assists", 0),
+            "adr": stats.get("adr", 0),
+            "headshot_pct": stats.get("headshot_pct", 0),
+            "hltv_rating": rating.get("hltv_rating", 0),
+            "kast_percentage": rating.get("kast_percentage", 0),
+            "aim_rating": rating.get("aim_rating", 0),
+            "utility_rating": rating.get("utility_rating", 0),
+            "impact_rating": rating.get("impact_rating", 0),
+            "ttd_median_ms": advanced.get("ttd_median_ms", 0),
+            "cp_median_error_deg": advanced.get("cp_median_error_deg", 0),
+            "entry_kills": entry.get("entry_kills", 0),
+            "entry_deaths": entry.get("entry_deaths", 0),
+            "entry_success_pct": entry.get("entry_success_pct", 0),
+            "trade_kill_success": trades.get("trade_kill_success", 0),
+            "trade_kill_opportunities": trades.get("trade_kill_opportunities", 0),
+            "clutch_wins": duels.get("clutch_wins", 0),
+            "clutch_attempts": duels.get("clutch_attempts", 0),
+        }
 
     def _calculate_match_averages(self, players: dict) -> dict:
         """Calculate match-wide statistics for comparison benchmarks."""

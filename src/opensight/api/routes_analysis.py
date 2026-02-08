@@ -269,6 +269,7 @@ async def tactical_analysis(job_id: str, request: Request) -> dict[str, Any]:
 
     analysis_type = body.get("type", "overview")
     focus = body.get("focus", None)
+    force = body.get("force", False)
 
     valid_types = ["overview", "strat-steal", "self-review", "scout", "quick"]
     if analysis_type not in valid_types:
@@ -276,6 +277,14 @@ async def tactical_analysis(job_id: str, request: Request) -> dict[str, Any]:
             status_code=400,
             detail=f"Invalid analysis type. Must be one of: {valid_types}",
         )
+
+    # Check cache first (keyed by analysis_type + focus)
+    cache_key = f"_ai_tactical_{analysis_type}_{focus or ''}"
+    if not force and job.result is not None:
+        cached = job.result.get(cache_key)
+        if cached is not None:
+            logger.info(f"Tactical analysis cache hit for job {job_id}: {cache_key}")
+            return cached
 
     try:
         from opensight.ai.llm_client import get_tactical_ai_client
@@ -287,7 +296,13 @@ async def tactical_analysis(job_id: str, request: Request) -> dict[str, Any]:
             focus=focus,
         )
         logger.info(f"Tactical analysis generated for job {job_id}: type={analysis_type}")
-        return {"analysis": analysis, "type": analysis_type}
+        result_payload = {"analysis": analysis, "type": analysis_type}
+
+        # Cache in job result for subsequent requests
+        if job.result is not None:
+            job.result[cache_key] = result_payload
+
+        return result_payload
 
     except ValueError as e:
         logger.warning(f"Tactical analysis unavailable: {e}")
@@ -332,12 +347,21 @@ async def steal_strats(job_id: str, request: Request) -> dict[str, Any]:
 
     team_focus = body.get("team", None)
     side_focus = body.get("side", None)
+    force = body.get("force", False)
 
     if side_focus and side_focus not in ["T", "CT"]:
         raise HTTPException(
             status_code=400,
             detail="Invalid side. Must be 'T', 'CT', or omitted for both.",
         )
+
+    # Check cache first
+    cache_key = f"_ai_strat_steal_{team_focus or ''}_{side_focus or ''}"
+    if not force and job.result is not None:
+        cached = job.result.get(cache_key)
+        if cached is not None:
+            logger.info(f"Strat-steal cache hit for job {job_id}: {cache_key}")
+            return cached
 
     try:
         from opensight.ai.strat_engine import get_strat_engine
@@ -360,12 +384,18 @@ async def steal_strats(job_id: str, request: Request) -> dict[str, Any]:
         logger.info(
             f"Strat report generated for job {job_id}: team={team_focus}, side={side_focus}"
         )
-        return {
+        result_payload = {
             "report": report,
             "patterns": patterns_summary,
             "team": analysis.team_name,
             "map": analysis.map_name,
         }
+
+        # Cache in job result
+        if job.result is not None:
+            job.result[cache_key] = result_payload
+
+        return result_payload
 
     except ValueError as e:
         logger.warning(f"Strat stealing unavailable: {e}")
@@ -427,11 +457,21 @@ async def self_review_analysis(
 
     try:
         our_team: str | None = None
+        force = False
         try:
             body = await request.json()
             our_team = body.get("our_team")
+            force = body.get("force", False)
         except Exception:
             logger.debug("No JSON body provided for self-review, using defaults")
+
+        # Check cache first
+        cache_key = f"_ai_self_review_{our_team or ''}"
+        if not force and job.result is not None:
+            cached = job.result.get(cache_key)
+            if cached is not None:
+                logger.info(f"Self-review cache hit for job {job_id}: {cache_key}")
+                return cached
 
         from opensight.ai.self_review import get_self_review_engine
 
@@ -439,12 +479,18 @@ async def self_review_analysis(
         report = engine.generate_review_report(job.result, our_team=our_team)
 
         logger.info(f"Generated self-review report for job {job_id}")
-        return {
+        result_payload = {
             "job_id": job_id,
             "report": report,
             "our_team": our_team or "auto-detected",
             "status": "success",
         }
+
+        # Cache in job result
+        if job.result is not None:
+            job.result[cache_key] = result_payload
+
+        return result_payload
 
     except ValueError as e:
         logger.warning(f"Self-review unavailable: {e}")

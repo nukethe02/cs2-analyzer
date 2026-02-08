@@ -425,6 +425,33 @@ def _build_cached_system(prompt_text: str) -> list[dict[str, Any]]:
 
 
 # =============================================================================
+# Batch summary prompt — trimmed essentials only, no map callouts/weapon meta
+# =============================================================================
+
+_BATCH_SYSTEM_PROMPT = """You are a Tier 1 CS2 Coach. Analyze each player's statistics with brutal honesty but constructive feedback. Focus on actionable improvements backed by specific metrics. Never hallucinate stats.
+
+## Benchmarks
+HLTV Rating: Elite 1.30+, Advanced 1.10-1.29, Average 0.90-1.09, Below 0.70-0.89, Struggling <0.70
+ADR: Elite 90+, Good 75-89, Average 60-74, Low <60
+KAST%: Elite 80+, Good 70-79, Average 60-69, Low <60
+Trade Kill Rate: Elite 70%+, Good 50-69%, Average 30-49%, Poor <30%
+TTD (engagement speed): Elite <200ms, Good 200-350ms, Average 350-500ms, Slow >500ms
+CP (crosshair error): Elite <5 deg, Good 5-15, Average 15-25, Poor >25
+
+## Roles
+Entry: Opening duel win rate >55% is good. Support: KAST >70%, trade kills, flash assists.
+AWPer: Impact picks, don't die with AWP. Lurker: Clutch wins, rotation punishes.
+
+## Output Rules
+For EACH player, write 3-5 sentences:
+1. Lead with the most important finding (best or worst stat)
+2. Cite 2-3 specific numbers
+3. End with ONE concrete action item
+Be harsh on bad performances. A 0.65 rating is terrible — say so.
+Format each as markdown. Bold key stats."""
+
+
+# =============================================================================
 # LLMClient — simple single-call coaching summaries
 # =============================================================================
 
@@ -629,6 +656,120 @@ Unable to generate personalized insights (Error: {type(e).__name__}).
 
 Please check your ANTHROPIC_API_KEY configuration or try again later."""
 
+    def generate_batch_summaries(
+        self,
+        all_player_stats: list[dict[str, Any]],
+        match_context: dict[str, Any] | None = None,
+        tier: ModelTier | None = None,
+    ) -> dict[str, str]:
+        """
+        Generate coaching summaries for ALL players in a single LLM call.
+
+        Args:
+            all_player_stats: List of player stat dicts (same format as generate_match_summary)
+            match_context: Optional match context (map, rounds, scores)
+            tier: Override model tier
+
+        Returns:
+            Dict mapping player name to markdown summary string
+        """
+        if not self.api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY not configured. Set environment variable or pass api_key to constructor."
+            )
+
+        if not all_player_stats:
+            return {}
+
+        use_tier = tier or self.default_tier
+
+        # Build context header
+        context_str = ""
+        if match_context:
+            map_name = match_context.get("map_name", "")
+            rounds = match_context.get("total_rounds", 0)
+            t1 = match_context.get("team1_score", 0)
+            t2 = match_context.get("team2_score", 0)
+            context_str = f"Match: {map_name}, Score: {t1}-{t2}, Rounds: {rounds}\n\n"
+
+        # Build all players into one prompt
+        players_text = ""
+        player_names = []
+        for ps in all_player_stats:
+            name = ps.get("name", "Unknown")
+            player_names.append(name)
+            kills = ps.get("kills", 0)
+            deaths = ps.get("deaths", 0)
+            assists = ps.get("assists", 0)
+            rating = ps.get("hltv_rating", 0.0)
+            adr = ps.get("adr", 0.0)
+            hs_pct = ps.get("headshot_pct", 0.0)
+            kast = ps.get("kast_percentage", 0.0)
+            ttd = ps.get("ttd_median_ms", 0)
+            cp = ps.get("cp_median_error_deg", 0.0)
+            entry_k = ps.get("entry_kills", 0)
+            entry_d = ps.get("entry_deaths", 0)
+            trade_s = ps.get("trade_kill_success", 0)
+            trade_o = ps.get("trade_kill_opportunities", 0)
+            clutch_w = ps.get("clutch_wins", 0)
+            clutch_a = ps.get("clutch_attempts", 0)
+
+            players_text += f"### {name}\n"
+            players_text += (
+                f"K/D/A: {kills}/{deaths}/{assists} | "
+                f"Rating: {rating:.2f} | ADR: {adr:.1f} | "
+                f"HS: {hs_pct:.0f}% | KAST: {kast:.0f}%\n"
+            )
+            players_text += (
+                f"TTD: {ttd:.0f}ms | CP: {cp:.1f}deg | "
+                f"Entry: {entry_k}K/{entry_d}D | "
+                f"Trades: {trade_s}/{trade_o} | "
+                f"Clutches: {clutch_w}/{clutch_a}\n\n"
+            )
+
+        user_prompt = f"""{context_str}Analyze each player below. Respond with a JSON object where keys are EXACT player names and values are the markdown coaching summary string.
+
+{players_text}
+Respond ONLY with valid JSON. Example format:
+{{"PlayerName": "**1.23 rating** with ...", "Player2": "..."}}"""
+
+        try:
+            client = self._get_client()
+
+            logger.info(
+                "Generating batched LLM summaries: tier=%s, players=%d",
+                use_tier.value,
+                len(all_player_stats),
+            )
+
+            message = client.messages.create(
+                model=use_tier.value,
+                max_tokens=2500,
+                system=_build_cached_system(_BATCH_SYSTEM_PROMPT),
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+
+            _log_usage(use_tier, message.usage)
+
+            raw = message.content[0].text.strip()
+            # Strip markdown code fences if present
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+                if raw.endswith("```"):
+                    raw = raw[:-3].strip()
+
+            import json
+
+            summaries = json.loads(raw)
+
+            logger.info(f"Batched summaries generated for {len(summaries)} players")
+            return summaries
+
+        except Exception as e:
+            logger.error(f"Batched LLM generation failed: {e}")
+            # Return empty — caller will use per-player fallback
+            return {}
+
 
 # Singleton instance for reuse
 _llm_client_instance: LLMClient | None = None
@@ -646,7 +787,7 @@ def generate_match_summary(
     player_stats: dict[str, Any], match_context: dict[str, Any] | None = None
 ) -> str:
     """
-    Convenience function to generate match summary.
+    Convenience function to generate match summary for a single player.
 
     Args:
         player_stats: Player statistics dictionary
@@ -657,6 +798,20 @@ def generate_match_summary(
     """
     client = get_llm_client()
     return client.generate_match_summary(player_stats, match_context)
+
+
+def generate_batch_summaries(
+    all_player_stats: list[dict[str, Any]],
+    match_context: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """
+    Convenience function to generate summaries for all players in one call.
+
+    Returns:
+        Dict mapping player name to summary string. Empty dict on failure.
+    """
+    client = get_llm_client()
+    return client.generate_batch_summaries(all_player_stats, match_context)
 
 
 # =============================================================================
@@ -780,7 +935,11 @@ class TacticalAIClient:
         return self._client
 
     def _execute_tool(self, tool_name: str, tool_input: dict, match_data: dict) -> str:
-        """Execute a tool call with real match data."""
+        """Execute a tool call with real match data.
+
+        Returns compressed summaries instead of raw dicts to reduce token usage.
+        Full player dicts can be 4-8K tokens; compressed versions are ~300-500 tokens.
+        """
         import json
 
         if tool_name == "get_round_data":
@@ -788,7 +947,7 @@ class TacticalAIClient:
             timeline = match_data.get("round_timeline", [])
             for r in timeline:
                 if r.get("round_num") == round_num:
-                    return json.dumps(r, indent=2, default=str)
+                    return json.dumps(self._compress_round(r), default=str)
             return json.dumps({"error": f"Round {round_num} not found"})
 
         elif tool_name == "get_player_stats":
@@ -796,7 +955,7 @@ class TacticalAIClient:
             players = match_data.get("players", {})
             for _sid, player in players.items():
                 if player.get("name", "").lower() == name:
-                    return json.dumps(player, indent=2, default=str)
+                    return json.dumps(self._compress_player(player), default=str)
             return json.dumps({"error": f"Player '{name}' not found"})
 
         elif tool_name == "get_economy_timeline":
@@ -817,7 +976,7 @@ class TacticalAIClient:
                         "decision_grade": team_econ.get("decision_grade", ""),
                     }
                 )
-            return json.dumps(economy, indent=2, default=str)
+            return json.dumps(economy, default=str)
 
         elif tool_name == "get_kills_by_round":
             round_num = tool_input.get("round_number", 1)
@@ -825,28 +984,147 @@ class TacticalAIClient:
             for r in timeline:
                 if r.get("round_num") == round_num:
                     kills = r.get("kills", [])
-                    return json.dumps(kills, indent=2, default=str)
+                    return json.dumps([self._compress_kill(k) for k in kills], default=str)
             return json.dumps({"error": f"Round {round_num} not found"})
 
         elif tool_name == "get_utility_usage":
-            # Extract utility from round timeline
             round_num = tool_input.get("round_number")
             timeline = match_data.get("round_timeline", [])
             if round_num:
                 for r in timeline:
                     if r.get("round_num") == round_num:
-                        return json.dumps(r.get("utility", []), indent=2, default=str)
+                        utils = r.get("utility", [])
+                        return json.dumps([self._compress_utility(u) for u in utils], default=str)
                 return json.dumps({"error": f"Round {round_num} not found"})
-            # Return all utility across all rounds
-            all_utility = {}
+            # Summary per round instead of dumping every event
+            summary = {}
             for r in timeline:
                 rn = r.get("round_num", 0)
-                util = r.get("utility", [])
-                if util:
-                    all_utility[f"round_{rn}"] = util
-            return json.dumps(all_utility, indent=2, default=str)
+                utils = r.get("utility", [])
+                if utils:
+                    by_type: dict[str, int] = {}
+                    for u in utils:
+                        t = u.get("type", "unknown")
+                        by_type[t] = by_type.get(t, 0) + 1
+                    summary[f"R{rn}"] = by_type
+            return json.dumps(summary, default=str)
 
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+    @staticmethod
+    def _compress_player(player: dict) -> dict:
+        """Compress a full player dict (~4-8K tokens) to essentials (~300 tokens)."""
+        stats = player.get("stats", {})
+        rating = player.get("rating", {})
+        adv = player.get("advanced", {})
+        entry = player.get("entry", {})
+        trades = player.get("trades", {})
+        clutches = player.get("clutches", {})
+        util = player.get("utility", {})
+        duels = player.get("duels", {})
+
+        return {
+            "name": player.get("name"),
+            "team": player.get("team"),
+            "kills": stats.get("kills", 0),
+            "deaths": stats.get("deaths", 0),
+            "assists": stats.get("assists", 0),
+            "adr": stats.get("adr", 0),
+            "hs_pct": stats.get("headshot_pct", 0),
+            "hltv_rating": rating.get("hltv_rating", 0),
+            "kast": rating.get("kast_percentage", 0),
+            "aim_rating": rating.get("aim_rating", 0),
+            "utility_rating": rating.get("utility_rating", 0),
+            "impact_rating": rating.get("impact_rating", 0),
+            "ttd_ms": adv.get("ttd_median_ms"),
+            "cp_deg": adv.get("cp_median_error_deg"),
+            "entry_kills": entry.get("entry_kills", 0),
+            "entry_deaths": entry.get("entry_deaths", 0),
+            "entry_success_pct": entry.get("entry_success_pct", 0),
+            "trade_kill_success": trades.get("trade_kill_success", 0),
+            "trade_kill_opps": trades.get("trade_kill_opportunities", 0),
+            "trade_kill_pct": trades.get("trade_kill_success_pct", 0),
+            "untraded_deaths": trades.get("untraded_deaths", 0),
+            "clutch_wins": clutches.get("clutch_wins", 0),
+            "clutch_total": clutches.get("total_situations", 0),
+            "opening_kills": duels.get("opening_kills", 0),
+            "opening_deaths": duels.get("opening_deaths", 0),
+            "flash_assists": util.get("flash_assists", 0),
+            "enemies_flashed": util.get("enemies_flashed", 0),
+            "he_damage": util.get("he_damage", 0),
+            "molotov_damage": util.get("molotov_damage", 0),
+            "util_thrown": (
+                util.get("flashbangs_thrown", 0)
+                + util.get("smokes_thrown", 0)
+                + util.get("he_thrown", 0)
+                + util.get("molotovs_thrown", 0)
+            ),
+            "multi_kills": {
+                "2k": stats.get("2k", 0),
+                "3k": stats.get("3k", 0),
+                "4k": stats.get("4k", 0),
+                "5k": stats.get("5k", 0),
+            },
+        }
+
+    @staticmethod
+    def _compress_round(r: dict) -> dict:
+        """Compress a full round dict to essentials. Drops coordinates/positions."""
+        kills = r.get("kills", [])
+        compressed_kills = [
+            {
+                "killer": k.get("killer"),
+                "victim": k.get("victim"),
+                "weapon": k.get("weapon"),
+                "headshot": k.get("headshot"),
+                "killer_team": k.get("killer_team"),
+            }
+            for k in kills
+        ]
+        econ = r.get("economy") or {}
+        ct_econ = econ.get("ct") or {}
+        t_econ = econ.get("t") or {}
+
+        return {
+            "round_num": r.get("round_num"),
+            "winner": r.get("winner"),
+            "win_reason": r.get("win_reason"),
+            "round_type": r.get("round_type"),
+            "first_kill": r.get("first_kill"),
+            "first_death": r.get("first_death"),
+            "ct_kills": r.get("ct_kills", 0),
+            "t_kills": r.get("t_kills", 0),
+            "kills": compressed_kills,
+            "economy": {
+                "ct_buy": ct_econ.get("buy_type", "unknown"),
+                "ct_equip": ct_econ.get("equipment", 0),
+                "t_buy": t_econ.get("buy_type", "unknown"),
+                "t_equip": t_econ.get("equipment", 0),
+            },
+            "clutches": r.get("clutches", []),
+        }
+
+    @staticmethod
+    def _compress_kill(k: dict) -> dict:
+        """Compress a kill event — drop coordinates, keep tactical info."""
+        return {
+            "killer": k.get("killer"),
+            "victim": k.get("victim"),
+            "weapon": k.get("weapon"),
+            "headshot": k.get("headshot"),
+            "killer_team": k.get("killer_team"),
+            "is_trade": k.get("is_trade"),
+            "is_first_kill": k.get("is_first_kill"),
+        }
+
+    @staticmethod
+    def _compress_utility(u: dict) -> dict:
+        """Compress a utility event — drop coordinates, keep type and player."""
+        return {
+            "type": u.get("type"),
+            "player": u.get("player"),
+            "team": u.get("team"),
+        }
 
     def analyze(
         self,
