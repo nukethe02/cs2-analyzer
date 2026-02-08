@@ -31,8 +31,9 @@ jobs:
             echo "::warning::HF_SPACE_NAME secret is not set. Using default 'cs2-analyzer'."
           fi
 
-      - name: Install Git Xet (required by HF for binary files)
+      - name: Install Git LFS and Git Xet
         run: |
+          git lfs install
           curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/huggingface/xet-core/refs/heads/main/git_xet/install.sh | sh
           git xet install
           git xet --version
@@ -40,7 +41,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Push to Hugging Face Spaces
         env:
@@ -51,17 +52,27 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
 
-          # Get current branch/ref for logging
-          CURRENT_REF="${GITHUB_REF#refs/heads/}"
-          echo "Source branch: $CURRENT_REF"
           echo "Deploying to: https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
 
-          # Add Hugging Face remote
-          git remote add hf "https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
+          # Track binary files with Xet so they become pointer files
+          git xet track "*.png"
+          echo "=== .gitattributes after tracking ==="
+          cat .gitattributes
 
-          # Push to HF (git-xet handles binary file routing to Xet storage automatically)
-          echo "Pushing ${CURRENT_REF} -> main on Hugging Face..."
-          git push hf HEAD:main --force
+          # Create orphan branch — single commit with no history containing raw blobs
+          git checkout --orphan hf-deploy
+
+          # Re-add all files (PNGs now go through xet filter → pointer files)
+          git add -A
+          git commit -m "Deploy to HF Spaces"
+
+          # Verify PNGs are pointer files, not raw binaries
+          echo "=== Checking PNG files in commit ==="
+          git show HEAD:src/opensight/static/maps/de_dust2.png | head -c 200 || true
+
+          # Add Hugging Face remote and push
+          git remote add hf "https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
+          git push hf hf-deploy:main --force
 
           echo "Deployment complete!"
           echo "View your Space at: https://huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
