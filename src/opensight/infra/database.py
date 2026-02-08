@@ -1280,6 +1280,40 @@ class DatabaseManager:
         finally:
             session.close()
 
+    def get_player_history_full(self, steam_id: str, limit: int = 30) -> list[dict]:
+        """Get a player's full match history with ALL columns.
+
+        Unlike get_player_history() which returns a subset via to_dict(),
+        this returns every column for trend analysis and development tracking.
+        """
+        session = self.get_session()
+        try:
+            entries = (
+                session.query(MatchHistory)
+                .filter(MatchHistory.steam_id == steam_id)
+                .order_by(MatchHistory.analyzed_at.desc())
+                .limit(limit)
+                .all()
+            )
+            result = []
+            for e in entries:
+                d = e.to_dict()
+                # Add columns not included in the default to_dict()
+                d["trade_kill_attempts"] = e.trade_kill_attempts or 0
+                d["trade_kill_success"] = e.trade_kill_success or 0
+                d["clutch_situations"] = e.clutch_situations or 0
+                d["clutch_wins"] = e.clutch_wins or 0
+                d["he_damage"] = e.he_damage or 0
+                d["enemies_flashed"] = e.enemies_flashed or 0
+                d["flash_assists"] = e.flash_assists or 0
+                d["ttd_median_ms"] = e.ttd_median_ms
+                d["cp_median_deg"] = e.cp_median_deg
+                d["rounds_played"] = e.rounds_played or 0
+                result.append(d)
+            return result
+        finally:
+            session.close()
+
     def get_player_baselines(self, steam_id: str) -> dict[str, dict]:
         """Get all baselines for a player."""
         session = self.get_session()
