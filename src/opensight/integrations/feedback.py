@@ -12,7 +12,6 @@ Uses the main SQLAlchemy database via DatabaseManager.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -34,23 +33,26 @@ class FeedbackEntry:
 
     id: int | None
     demo_hash: str
-    user_id: str
+    metric_name: str
+    feedback_type: str
     rating: int
     category: str
     comment: str
-    analysis_version: str
     created_at: datetime
+    user_agent: str = ""
+    context: dict = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "demo_hash": self.demo_hash,
-            "user_id": self.user_id,
+            "metric_name": self.metric_name,
+            "feedback_type": self.feedback_type,
             "rating": self.rating,
             "category": self.category,
             "comment": self.comment,
-            "analysis_version": self.analysis_version,
+            "user_agent": self.user_agent,
             "created_at": self.created_at.isoformat(),
             "metadata": self.metadata,
         }
@@ -146,11 +148,13 @@ class FeedbackDatabase:
         try:
             record = FeedbackRecord(
                 demo_hash=feedback.demo_hash,
-                user_id=feedback.user_id,
+                metric_name=feedback.metric_name,
+                feedback_type=feedback.feedback_type,
                 rating=max(1, min(5, feedback.rating)),
                 category=feedback.category,
                 comment=feedback.comment,
-                analysis_version=feedback.analysis_version,
+                user_agent=feedback.user_agent,
+                context_json=json.dumps(feedback.context) if feedback.context else None,
                 metadata_json=json.dumps(feedback.metadata) if feedback.metadata else None,
             )
             session.add(record)
@@ -248,9 +252,11 @@ class FeedbackDatabase:
                 category_counts[cat] = cnt
 
             # Coaching helpful rate
+            from sqlalchemy import Integer
+
             coaching_row = session.query(
                 func.count(CoachingFeedbackRecord.id),
-                func.sum(func.cast(CoachingFeedbackRecord.was_helpful, type_=None)),
+                func.sum(func.cast(CoachingFeedbackRecord.was_helpful, Integer)),
             ).first()
             coaching_total = coaching_row[0] or 0
             coaching_helpful = coaching_row[1] or 0
@@ -279,18 +285,19 @@ def submit_feedback(
     rating: int,
     category: str = "overall",
     comment: str = "",
+    metric_name: str = "overall",
+    feedback_type: str = "rating",
 ) -> int:
     """Submit feedback for an analysis."""
-    user_id = hashlib.md5(str(datetime.now()).encode(), usedforsecurity=False).hexdigest()[:12]
     db = FeedbackDatabase()
     feedback = FeedbackEntry(
         id=None,
         demo_hash=demo_hash,
-        user_id=user_id,
+        metric_name=metric_name,
+        feedback_type=feedback_type,
         rating=max(1, min(5, rating)),
         category=category,
         comment=comment,
-        analysis_version="0.5.0",
         created_at=datetime.now(),
     )
     return db.add_feedback(feedback)

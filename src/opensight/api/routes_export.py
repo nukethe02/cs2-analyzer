@@ -53,7 +53,7 @@ async def export_match_json(job_id: str) -> Response:
         logger.exception(f"JSON export failed for job {job_id}")
         raise HTTPException(
             status_code=500,
-            detail=f"Export failed: {type(e).__name__}",
+            detail="Export failed. Check server logs.",
         ) from e
 
     return Response(
@@ -83,7 +83,7 @@ async def export_players_csv(job_id: str) -> Response:
         logger.exception(f"Player CSV export failed for job {job_id}")
         raise HTTPException(
             status_code=500,
-            detail=f"Export failed: {type(e).__name__}",
+            detail="Export failed. Check server logs.",
         ) from e
 
     return Response(
@@ -110,7 +110,7 @@ async def export_rounds_csv(job_id: str) -> Response:
         logger.exception(f"Rounds CSV export failed for job {job_id}")
         raise HTTPException(
             status_code=500,
-            detail=f"Export failed: {type(e).__name__}",
+            detail="Export failed. Check server logs.",
         ) from e
 
     return Response(

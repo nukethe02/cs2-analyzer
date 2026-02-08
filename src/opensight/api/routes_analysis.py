@@ -152,7 +152,9 @@ async def analyze_demo(request: Request, file: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.exception("Failed to queue analysis job")
-        raise HTTPException(status_code=500, detail=f"Failed to queue job: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Failed to queue job. Check server logs."
+        ) from e
 
 
 @router.get("/analyze/{job_id}")
@@ -301,7 +303,7 @@ async def tactical_analysis(job_id: str, request: Request) -> dict[str, Any]:
         logger.exception(f"Tactical analysis failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Tactical analysis failed: {type(e).__name__}",
+            detail="Tactical analysis failed. Check server logs.",
         ) from e
 
 
@@ -379,7 +381,7 @@ async def steal_strats(job_id: str, request: Request) -> dict[str, Any]:
         logger.exception(f"Strat stealing failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Strat analysis failed: {type(e).__name__}",
+            detail="Strat analysis failed. Check server logs.",
         ) from e
 
 
@@ -442,11 +444,23 @@ async def self_review_analysis(
             "status": "success",
         }
 
+    except ValueError as e:
+        logger.warning(f"Self-review unavailable: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Self-review AI not configured. Set ANTHROPIC_API_KEY environment variable.",
+        ) from e
+    except ImportError as e:
+        logger.warning(f"Self-review library not available: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Required library not installed. Check installation.",
+        ) from e
     except Exception as e:
         logger.exception(f"Self-review analysis failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Self-review analysis failed: {type(e).__name__}: {str(e)}",
+            detail="Self-review analysis failed. Check server logs.",
         ) from e
 
 

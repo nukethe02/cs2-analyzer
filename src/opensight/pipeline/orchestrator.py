@@ -28,18 +28,48 @@ class DemoOrchestrator:
     - Analysis execution
     - Result aggregation and serialization
     - Tactical insights generation
+    - Automatic cache integration (hash file → check cache → short-circuit or analyze)
     """
 
-    def analyze(self, demo_path: Path) -> dict:
+    def __init__(self, *, use_cache: bool = True):
+        self._use_cache = use_cache
+        self._cache = None  # Lazy-init to avoid circular import
+
+    def _get_cache(self):
+        """Lazy-import and create DemoCache to avoid circular import."""
+        if self._cache is None:
+            from opensight.infra.cache import DemoCache
+
+            self._cache = DemoCache()
+        return self._cache
+
+    def analyze(self, demo_path: Path, *, force: bool = False) -> dict:
         """
         Execute complete analysis pipeline for a demo file.
 
+        Checks the file-hash cache first; returns cached result in ~2s
+        instead of re-parsing (~80s) when the demo has been seen before.
+
         Args:
             demo_path: Path to demo file (.dem or .dem.gz)
+            force: Skip cache and re-analyze even if cached
 
         Returns:
             Comprehensive analysis result dict including tactical data
         """
+        cache_key = None
+
+        # --- Cache short-circuit (before ANY expensive work) ---
+        if self._use_cache and not force and demo_path.exists():
+            try:
+                cache = self._get_cache()
+                cache_key = cache.get_cache_key(demo_path)  # ~1.5s SHA256
+                cached = cache.get(demo_path, cache_key=cache_key)
+                if cached is not None:
+                    logger.info(f"Cache hit for {demo_path.name}, skipping analysis")
+                    return cached
+            except Exception as e:
+                logger.warning(f"Cache lookup failed, proceeding with analysis: {e}")
 
         # Execute analysis pipeline
         logger.info(f"Analyzing {demo_path.name}")
@@ -72,6 +102,7 @@ class DemoOrchestrator:
                 # Top-level convenience fields for frontend flat-access fallbacks
                 "rounds_played": p.rounds_played,
                 "total_damage": p.total_damage,
+                "weapon_kills": p.weapon_kills or {},
                 "stats": {
                     "kills": p.kills,
                     "deaths": p.deaths,
@@ -321,6 +352,16 @@ class DemoOrchestrator:
             "analyzed_at": datetime.now().isoformat(),
         }
 
+        # --- Store in cache for next time ---
+        if self._use_cache and demo_path.exists():
+            try:
+                cache = self._get_cache()
+                if cache_key is None:
+                    cache_key = cache.get_cache_key(demo_path)
+                cache.put(demo_path, result, cache_key=cache_key)
+            except Exception as e:
+                logger.warning(f"Failed to cache result: {e}")
+
         return result
 
     def _get_entry_stats(self, player) -> dict:
@@ -565,6 +606,15 @@ class DemoOrchestrator:
         grenades = getattr(demo_data, "grenades", [])
         blinds = getattr(demo_data, "blinds", [])
         map_name = getattr(demo_data, "map_name", "")
+        # Persistent team IDs for teammate matching (handles halftime side swaps).
+        # NOTE: kill events may use different steamids than player_names / grenades
+        # (demoparser2 quirk), so we build a name→team lookup for reliable matching.
+        player_persistent_teams = getattr(demo_data, "player_persistent_teams", {})
+        name_to_team: dict[str, str] = {}
+        for sid, team in player_persistent_teams.items():
+            pname = player_names.get(sid, "")
+            if pname:
+                name_to_team[pname] = team
 
         # Import zone lookup for kill event enrichment
         try:
@@ -830,31 +880,58 @@ class DemoOrchestrator:
                 }
             )
 
-        # Enrich kill events with was_dry_peek detection
-        # A dry peek = player dies without any teammate utility support within ~3 seconds prior
-        dry_peek_window_ticks = 192  # ~3 seconds at 64 tick rate
-        for round_num, events in round_events.items():
-            round_utility = utility_by_round.get(round_num, [])
+        # Enrich kill events with was_dry_peek detection.
+        # A dry peek = player dies without any teammate utility within ~10s.
+        #
+        # Uses RAW TICK proximity instead of round-based matching because
+        # round_boundaries can be unreliable (negative spans, overlapping starts).
+        # Teams matched by name→persistent_team (kill steamids may differ from
+        # grenade steamids — demoparser2 quirk).
+        #
+        # Window: 1280 ticks ≈ 10s @128tick, 20s @64tick.  Produces ~35-40%
+        # dry peeks in a typical match (validated against golden_master.dem).
+        import bisect
+
+        DRY_PEEK_WINDOW_TICKS = 1280
+        # Pre-build sorted grenade tick lists per team for O(log n) lookup
+        _dp_team_ticks: dict[str, list[int]] = {}
+        _dp_team_names: dict[str, list[str]] = {}
+        for grenade in grenades:
+            g_name = getattr(grenade, "player_name", "")
+            g_team = name_to_team.get(g_name, "")
+            g_tick = getattr(grenade, "tick", 0)
+            if g_team and g_tick:
+                _dp_team_ticks.setdefault(g_team, []).append(g_tick)
+                _dp_team_names.setdefault(g_team, []).append(g_name)
+        # Sort parallel lists by tick
+        for t in _dp_team_ticks:
+            pairs = sorted(zip(_dp_team_ticks[t], _dp_team_names[t], strict=True))
+            _dp_team_ticks[t] = [p[0] for p in pairs]
+            _dp_team_names[t] = [p[1] for p in pairs]
+
+        for _round_num, events in round_events.items():
             for event in events:
                 if event.get("type") != "kill":
                     continue
-                victim_tick = event.get("tick", 0)
-                victim_team = event.get("victim_team", "")
-                if not victim_tick or not victim_team:
+                kill_tick = event.get("tick", 0)
+                victim_name = event.get("victim", "")
+                victim_team_id = name_to_team.get(victim_name, "")
+                if not kill_tick or not victim_team_id:
                     event["was_dry_peek"] = False
                     continue
-                # Check if any teammate threw utility within the window before the death
+                # Binary-search for nearest teammate utility within window
+                ticks = _dp_team_ticks.get(victim_team_id, [])
+                names = _dp_team_names.get(victim_team_id, [])
+                idx = bisect.bisect_right(ticks, kill_tick) - 1
                 had_support = False
-                for util in round_utility:
-                    util_tick = util.get("tick", 0)
-                    util_team = util.get("player_team", "")
-                    # Utility must be from the victim's team (teammate support)
-                    if util_team != victim_team:
-                        continue
-                    # Utility must have been thrown within the window before (or at) the death
-                    if 0 <= (victim_tick - util_tick) <= dry_peek_window_ticks:
+                while idx >= 0:
+                    delta = kill_tick - ticks[idx]
+                    if delta > DRY_PEEK_WINDOW_TICKS:
+                        break
+                    if names[idx] != victim_name:  # exclude self utility
                         had_support = True
                         break
+                    idx -= 1
                 event["was_dry_peek"] = not had_support
 
         # Use actual round data if available, otherwise use analysis total_rounds
@@ -1608,10 +1685,20 @@ class DemoOrchestrator:
 
         kills = getattr(demo_data, "kills", [])
         grenades = getattr(demo_data, "grenades", [])
+        player_persistent_teams = getattr(demo_data, "player_persistent_teams", {})
+        pnames = getattr(demo_data, "player_names", {})
+        # Name→team lookup (kill steamids may differ from grenade steamids)
+        name_to_team: dict[str, str] = {}
+        for sid, team in player_persistent_teams.items():
+            n = pnames.get(sid, "")
+            if n:
+                name_to_team[n] = team
 
-        # Constants matching analytics.py _is_utility_supported()
+        # Temporal window: 20 * TICK_RATE ticks.  time_seconds = tick/64 so this
+        # equals 20 time_seconds — same window as the inline was_dry_peek check.
+        # Covers 10-20 real seconds depending on whether the demo is 128 or 64 tick.
         TICK_RATE = 64
-        SUPPORT_WINDOW_TICKS = int(3.0 * TICK_RATE)  # 192 ticks = 3 seconds
+        SUPPORT_WINDOW_TICKS = int(20.0 * TICK_RATE)  # 1280 ticks
         SUPPORT_DISTANCE = 2000.0  # Game units
 
         # Group kills by round to find first kills
@@ -1689,15 +1776,19 @@ class DemoOrchestrator:
                 pos_y: float | None,
                 pos_z: float,
                 team: str,
+                player_name_arg: str = "",
             ) -> list[dict]:
                 """Find flashes/smokes that supported this engagement."""
                 if pos_x is None or pos_y is None:
                     return []
 
-                support = []
-                round_grenades = grenade_by_round.get(round_num, [])
+                # Resolve persistent team via name (steamids may differ)
+                persistent_team = name_to_team.get(player_name_arg, "")
 
-                for grenade in round_grenades:
+                support = []
+                # Search ALL grenades by raw tick proximity (round_num-based
+                # lookup is unreliable — round assignments can mismatch).
+                for grenade in grenades:
                     # Only count flashes and smokes as support
                     g_type = getattr(grenade, "grenade_type", "").lower()
                     if "flash" not in g_type and "smoke" not in g_type:
@@ -1707,11 +1798,17 @@ class DemoOrchestrator:
                     if getattr(grenade, "event_type", "") != "detonate":
                         continue
 
-                    # Same team (teammate utility)
-                    g_side = getattr(grenade, "player_side", "") or ""
-                    g_team = "CT" if "CT" in g_side.upper() else "T"
-                    if g_team != team:
-                        continue
+                    # Teammate check via name→persistent team (halftime-safe)
+                    thrower_name = getattr(grenade, "player_name", "")
+                    if persistent_team:
+                        if name_to_team.get(thrower_name, "") != persistent_team:
+                            continue
+                    else:
+                        # Fallback: CT/T side match (works when sides are known)
+                        g_side = getattr(grenade, "player_side", "") or ""
+                        g_team = "CT" if "CT" in g_side.upper() else "T"
+                        if g_team != team:
+                            continue
 
                     # Need position
                     g_x = getattr(grenade, "x", None)
@@ -1755,7 +1852,7 @@ class DemoOrchestrator:
 
             # Check support for attacker (entry fragger)
             attacker_support = find_support_utilities(
-                attacker_x, attacker_y, attacker_z, attacker_team
+                attacker_x, attacker_y, attacker_z, attacker_team, attacker_name
             )
             attacker_is_supported = len(attacker_support) > 0
 
@@ -1792,7 +1889,9 @@ class DemoOrchestrator:
                     summary_by_player[attacker_id]["unsupported"] += 1
 
             # Check support for victim (entry death)
-            victim_support = find_support_utilities(victim_x, victim_y, victim_z, victim_team)
+            victim_support = find_support_utilities(
+                victim_x, victim_y, victim_z, victim_team, victim_name
+            )
             victim_is_supported = len(victim_support) > 0
 
             # Record entry death event (victim perspective)
@@ -1857,7 +1956,7 @@ class DemoOrchestrator:
             },
             "constants": {
                 "support_radius_units": int(SUPPORT_DISTANCE),
-                "support_window_seconds": 3.0,
+                "support_window_seconds": 20.0,
             },
         }
 
@@ -3278,15 +3377,18 @@ class DemoOrchestrator:
 
 
 # Convenience function
-def analyze_demo(demo_path: Path) -> dict:
+def analyze_demo(demo_path: Path, *, force: bool = False) -> dict:
     """
     Convenience function to analyze a demo file.
 
+    Uses cache by default; pass force=True to re-analyze.
+
     Args:
         demo_path: Path to demo file
+        force: Skip cache and re-analyze
 
     Returns:
         Complete analysis results dict
     """
     orchestrator = DemoOrchestrator()
-    return orchestrator.analyze(demo_path)
+    return orchestrator.analyze(demo_path, force=force)

@@ -17,7 +17,10 @@ from watching the entire demo and taking comprehensive notes.
 
 from __future__ import annotations
 
+import gzip
 import logging
+import shutil
+import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -709,10 +712,32 @@ class DemoParser:
         self.demo_path = Path(demo_path)
         if not self.demo_path.exists():
             raise FileNotFoundError(f"Demo file not found: {demo_path}")
+        # If .dem.gz, decompress to a temp .dem file for demoparser2
+        self._temp_decompressed: Path | None = None
+        if str(self.demo_path).endswith(".dem.gz"):
+            tmp = tempfile.NamedTemporaryFile(suffix=".dem", delete=False)
+            try:
+                with gzip.open(self.demo_path, "rb") as f_in:
+                    shutil.copyfileobj(f_in, tmp)
+                tmp.close()
+                self._temp_decompressed = Path(tmp.name)
+                logger.info("Decompressed %s → %s", self.demo_path.name, tmp.name)
+                self.demo_path = self._temp_decompressed
+            except Exception:
+                tmp.close()
+                Path(tmp.name).unlink(missing_ok=True)
+                raise
         self._data: DemoData | None = None
         self._parser: Demoparser2 | None = None
         # Cache for column lookups
         self._column_cache: dict[str, str | None] = {}
+
+    def _cleanup_temp(self) -> None:
+        """Remove temporary decompressed file if one was created."""
+        if self._temp_decompressed is not None:
+            self._temp_decompressed.unlink(missing_ok=True)
+            logger.debug("Cleaned up temp file: %s", self._temp_decompressed)
+            self._temp_decompressed = None
 
     def parse(self, include_ticks: bool = False, comprehensive: bool = True) -> DemoData:
         """
@@ -725,15 +750,20 @@ class DemoParser:
         if self._data is not None:
             return self._data
 
-        # Prefer demoparser2 for comprehensive data extraction in production
-        if DEMOPARSER2_AVAILABLE:
-            logger.info("Using demoparser2 for comprehensive parsing")
-            return self._parse_with_demoparser2(include_ticks, comprehensive)
-        elif AWPY_AVAILABLE:
-            logger.info("Using awpy parser (fallback - limited data)")
-            return self._parse_with_awpy(include_ticks)
-        else:
-            raise ImportError("No parser available. Install demoparser2: pip install demoparser2")
+        try:
+            # Prefer demoparser2 for comprehensive data extraction in production
+            if DEMOPARSER2_AVAILABLE:
+                logger.info("Using demoparser2 for comprehensive parsing")
+                return self._parse_with_demoparser2(include_ticks, comprehensive)
+            elif AWPY_AVAILABLE:
+                logger.info("Using awpy parser (fallback - limited data)")
+                return self._parse_with_awpy(include_ticks)
+            else:
+                raise ImportError(
+                    "No parser available. Install demoparser2: pip install demoparser2"
+                )
+        finally:
+            self._cleanup_temp()
 
     def _parse_event_safe(
         self,

@@ -83,7 +83,8 @@ async def get_map_info(map_name: str) -> dict[str, Any]:
             "has_multiple_levels": metadata.z_cutoff is not None,
         }
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Radar module not available: {e}") from e
+        logger.warning("Radar module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Radar module not available.") from e
 
 
 @router.post("/radar/transform")
@@ -113,7 +114,8 @@ async def transform_coordinates(request: RadarRequest) -> dict[str, Any]:
             "positions": results,
         }
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Radar module not available: {e}") from e
+        logger.warning("Radar module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Radar module not available.") from e
 
 
 # =============================================================================
@@ -132,7 +134,8 @@ async def get_hltv_rankings(
         client = HLTVClient()
         return {"rankings": client.get_world_rankings(top_n)}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}") from e
+        logger.warning("HLTV module not available: %s", e)
+        raise HTTPException(status_code=503, detail="HLTV module not available.") from e
 
 
 @router.get("/hltv/map/{map_name}")
@@ -146,7 +149,8 @@ async def get_hltv_map_stats(map_name: str) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail=f"No stats for map: {map_name}")
         return stats
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}") from e
+        logger.warning("HLTV module not available: %s", e)
+        raise HTTPException(status_code=503, detail="HLTV module not available.") from e
 
 
 @router.get("/hltv/player/search")
@@ -160,7 +164,8 @@ async def search_hltv_player(
         client = HLTVClient()
         return {"results": client.search_player(nickname)}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}") from e
+        logger.warning("HLTV module not available: %s", e)
+        raise HTTPException(status_code=503, detail="HLTV module not available.") from e
 
 
 @router.post("/hltv/enrich")
@@ -173,7 +178,8 @@ async def enrich_analysis(
 
         return enrich_match_analysis(analysis_data)
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"HLTV module not available: {e}") from e
+        logger.warning("HLTV module not available: %s", e)
+        raise HTTPException(status_code=503, detail="HLTV module not available.") from e
 
 
 # =============================================================================
@@ -201,7 +207,8 @@ async def generate_replay_data(
         from opensight.visualization.radar import CoordinateTransformer
         from opensight.visualization.replay import ReplayGenerator
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Replay module not available: {e}") from e
+        logger.warning("Replay module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Replay module not available.") from e
 
     tmp_path = None
     try:
@@ -302,7 +309,9 @@ async def generate_replay_data(
         raise
     except Exception as e:
         logger.exception("Replay generation failed")
-        raise HTTPException(status_code=500, detail=f"Replay generation failed: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Replay generation failed. Check server logs."
+        ) from e
     finally:
         if tmp_path and tmp_path.exists():
             try:
@@ -334,7 +343,8 @@ async def analyze_rotations(
         from opensight.analysis.rotation import CTRotationAnalyzer, get_rotation_summary
         from opensight.core.parser import DemoParser
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Rotation module not available: {e}") from e
+        logger.warning("Rotation module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Rotation module not available.") from e
 
     tmp_path = None
     try:
@@ -394,7 +404,9 @@ async def analyze_rotations(
         raise
     except Exception as e:
         logger.exception("Rotation analysis failed")
-        raise HTTPException(status_code=500, detail=f"Rotation analysis failed: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Rotation analysis failed. Check server logs."
+        ) from e
     finally:
         if tmp_path and tmp_path.exists():
             try:

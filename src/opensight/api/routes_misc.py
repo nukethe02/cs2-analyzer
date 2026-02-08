@@ -294,7 +294,8 @@ async def decode_share_code(request: ShareCodeRequest) -> dict[str, int]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Module not available: {e!s}") from e
+        logger.warning("Sharecode module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Sharecode module not available.") from e
 
 
 # =============================================================================
@@ -321,7 +322,8 @@ async def get_cache_stats() -> dict[str, Any]:
 
         return stats_wrapped
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}") from e
+        logger.warning("Cache module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Cache module not available.") from e
 
 
 @router.post("/cache/clear")
@@ -341,7 +343,8 @@ async def clear_cache() -> dict[str, str]:
 
         return {"status": "ok", "message": "Cache cleared"}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Cache module not available: {e}") from e
+        logger.warning("Cache module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Cache module not available.") from e
 
 
 # =============================================================================
@@ -364,18 +367,19 @@ async def submit_feedback(request: FeedbackRequest) -> dict[str, Any]:
         feedback = FeedbackEntry(
             id=None,
             demo_hash=request.demo_hash,
-            user_id=request.player_steam_id,
+            metric_name=request.metric_name,
+            feedback_type="metric_rating",
             rating=request.rating,
             category=request.metric_name,
             comment=request.comment or "",
-            analysis_version=__version__,
             created_at=datetime.now(),
             metadata=metadata,
         )
         entry_id = db.add_feedback(feedback)
         return {"status": "ok", "feedback_id": entry_id}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}") from e
+        logger.warning("Feedback module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Feedback module not available.") from e
 
 
 @router.post("/feedback/coaching")
@@ -402,7 +406,8 @@ async def submit_coaching_feedback(
         entry_id = db.add_coaching_feedback(feedback)
         return {"status": "ok", "feedback_id": entry_id}
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}") from e
+        logger.warning("Feedback module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Feedback module not available.") from e
 
 
 @router.get("/feedback/stats")
@@ -414,7 +419,8 @@ async def get_feedback_stats() -> Any:
         db = FeedbackDatabase()
         return db.get_stats()
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Feedback module not available: {e}") from e
+        logger.warning("Feedback module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Feedback module not available.") from e
 
 
 # =============================================================================
@@ -636,7 +642,9 @@ async def generate_scouting_report(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.exception("Failed to generate scouting report")
-        raise HTTPException(status_code=500, detail=f"Report generation failed: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Report generation failed. Check server logs."
+        ) from e
 
 
 @router.get("/api/scouting/session/{session_id}")

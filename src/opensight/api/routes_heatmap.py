@@ -77,7 +77,7 @@ async def get_kill_heatmap(
         logger.exception(f"Heatmap generation failed for job {job_id}")
         raise HTTPException(
             status_code=500,
-            detail=f"Heatmap generation failed: {type(e).__name__}",
+            detail="Heatmap generation failed. Check server logs.",
         ) from e
 
 
@@ -105,5 +105,5 @@ async def get_grenade_heatmap(
         logger.exception(f"Grenade heatmap generation failed for job {job_id}")
         raise HTTPException(
             status_code=500,
-            detail=f"Grenade heatmap generation failed: {type(e).__name__}",
+            detail="Grenade heatmap generation failed. Check server logs.",
         ) from e

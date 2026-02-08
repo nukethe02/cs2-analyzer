@@ -95,6 +95,7 @@ Thumbs.db
 
 # Demo files (can be large)
 *.dem
+*.dem.gz
 
 # Output files
 *.json

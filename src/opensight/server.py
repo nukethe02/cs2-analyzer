@@ -11,7 +11,10 @@ Usage:
 """
 
 import argparse
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
@@ -61,11 +64,11 @@ Examples:
     try:
         import uvicorn
     except ImportError:
-        print("Error: uvicorn not installed. Install with: pip install 'uvicorn[standard]'")
+        logger.error("uvicorn not installed. Install with: pip install 'uvicorn[standard]'")
         sys.exit(1)
 
-    print(f"Starting OpenSight web server on http://{args.host}:{args.port}")
-    print("Press Ctrl+C to stop\n")
+    logger.info("Starting OpenSight web server on http://%s:%s", args.host, args.port)
+    logger.info("Press Ctrl+C to stop")
 
     uvicorn.run(
         "opensight.api:app",

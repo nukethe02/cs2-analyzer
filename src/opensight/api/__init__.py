@@ -10,6 +10,7 @@ This package exposes:
 """
 
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -60,9 +61,18 @@ app = FastAPI(
 # CORS Configuration
 # =============================================================================
 
+_CORS_ORIGINS = (
+    os.getenv("CORS_ORIGINS", "").split(",")
+    if os.getenv("CORS_ORIGINS")
+    else [
+        "https://huggingface.co",
+        "https://*.hf.space",
+    ]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

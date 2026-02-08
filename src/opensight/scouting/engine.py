@@ -26,6 +26,14 @@ from opensight.scouting.models import (
 logger = logging.getLogger(__name__)
 
 
+def _find_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    """Return the first column name from *candidates* that exists in *df*."""
+    for col in candidates:
+        if col in df.columns:
+            return col
+    return None
+
+
 class ScoutingEngine:
     """
     Multi-demo aggregation engine for scouting opponent teams.
@@ -394,15 +402,30 @@ class ScoutingEngine:
 
             kills_df = demo.kills_df
 
+            # Resolve column names (demoparser2 uses attacker_team / total_rounds_played,
+            # awpy uses attacker_side / round_num)
+            side_col = _find_column(
+                kills_df, ["attacker_side", "attacker_team", "attacker_team_name"]
+            )
+            round_col = _find_column(kills_df, ["round_num", "total_rounds_played", "round"])
+            if side_col is None or round_col is None:
+                continue
+
             # Filter to opponent team kills on T side
+            # demoparser2 uses numeric teams (2=T, 3=CT), awpy uses "T"/"CT" strings
+            side_series = kills_df[side_col]
+            if side_series.dtype in ("int64", "float64", "int32", "float32"):
+                t_mask = side_series == 2  # demoparser2: T=2
+            else:
+                t_mask = side_series.str.contains("T", case=False, na=False)
+
             opponent_kills = kills_df[
-                (kills_df["attacker_steamid"].isin(self._opponent_steamids))
-                & (kills_df["attacker_side"].str.contains("T", case=False, na=False))
+                (kills_df["attacker_steamid"].isin(self._opponent_steamids)) & t_mask
             ]
 
             if not opponent_kills.empty and "tick" in opponent_kills.columns:
                 # Group by round and get first kill tick
-                round_first_kills = opponent_kills.groupby("round")["tick"].min()
+                round_first_kills = opponent_kills.groupby(round_col)["tick"].min()
                 # Convert ticks to seconds (approximate)
                 tick_rate = demo.tick_rate if demo.tick_rate > 0 else 64
                 for tick in round_first_kills:

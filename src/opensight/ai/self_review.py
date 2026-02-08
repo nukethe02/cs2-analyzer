@@ -12,7 +12,7 @@ Generates brutally honest player report cards and practice priorities.
 """
 
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -170,19 +170,41 @@ class SelfReviewEngine:
 
         for round_data in round_timeline:
             round_num = round_data.get("round_num", 0)
+            if round_num == 0:
+                continue
             kills = round_data.get("kills") or []
 
-            # Track teammate deaths and check if traded
+            # Track our team's deaths as we iterate through kills in order
+            team_dead_so_far: set[str] = set()
+            first_team_death_seen = False
+
             for i, kill in enumerate(kills):
                 victim = kill.get("victim", "")
-                if victim not in our_names:
-                    continue
-
                 attacker = kill.get("killer", "")
                 kill_time = kill.get("tick", 0)
 
+                # Track our team deaths before any checks (order matters)
+                is_our_death = victim in our_names
+                if is_our_death:
+                    team_dead_so_far.add(victim)
+
+                # Only care about our team's deaths
+                if not is_our_death:
+                    continue
+
+                # Skip suicides and world kills (no attacker to trade)
+                if not attacker or attacker == victim:
+                    continue
+
+                # Skip the first death on our team each round (entry frag —
+                # dying on the opening duel is part of the role, not a
+                # failed trade)
+                if not first_team_death_seen:
+                    first_team_death_seen = True
+                    continue
+
                 # Check if attacker was killed within 5 seconds (320 ticks at 64 tick)
-                trade_window = 320  # 5 seconds
+                trade_window = 320
                 was_traded = False
 
                 for subsequent_kill in kills[i + 1 :]:
@@ -191,20 +213,28 @@ class SelfReviewEngine:
                             was_traded = True
                             break
 
-                if not was_traded and round_num > 0:
-                    # Find nearby teammates who could have traded
-                    nearby = self._find_nearby_teammates(round_data, victim, our_names)
+                if was_traded:
+                    continue
 
-                    mistakes.append(
-                        Mistake(
-                            round_number=round_num,
-                            mistake_type="failed_trade",
-                            description=f"{victim} died to {attacker} and wasn't traded",
-                            players_involved=nearby,
-                            fix_suggestion=f"Players {', '.join(nearby) if nearby else 'nearby'} should have traded within 5 seconds",
-                            severity="high",
-                        )
+                # Find teammates who were alive when victim died
+                alive_teammates = [p for p in our_names if p not in team_dead_so_far]
+
+                # Skip if no teammates alive to trade (last-alive / clutch situation)
+                if not alive_teammates:
+                    continue
+
+                nearby = alive_teammates[:2]
+
+                mistakes.append(
+                    Mistake(
+                        round_number=round_num,
+                        mistake_type="failed_trade",
+                        description=f"{victim} died to {attacker} and wasn't traded",
+                        players_involved=nearby,
+                        fix_suggestion=f"Players {', '.join(nearby)} should have traded within 5 seconds",
+                        severity="high",
                     )
+                )
 
         return mistakes
 
@@ -309,24 +339,40 @@ class SelfReviewEngine:
         event.  If the field is absent we silently skip dry-peek
         detection rather than crashing.
         """
-        mistakes = []
         our_names = {p.get("name", "") for p in our_players.values()}
 
+        # Pre-check: if was_dry_peek is True on >80% of kills, the field
+        # is unreliable (upstream detection broken) — skip entirely.
+        all_kills = [k for r in round_timeline for k in (r.get("kills") or [])]
+        dry_peek_count = sum(1 for k in all_kills if k.get("was_dry_peek") is True)
+        if len(all_kills) > 10 and dry_peek_count / len(all_kills) > 0.8:
+            logger.warning(
+                "was_dry_peek=True on %d/%d kills (>80%%) — field unreliable, "
+                "skipping positioning errors",
+                dry_peek_count,
+                len(all_kills),
+            )
+            return []
+
+        mistakes = []
         for round_data in round_timeline:
             round_num = round_data.get("round_num", 0)
             kills = round_data.get("kills") or []
+            round_positioning = 0
 
             for kill in kills:
                 victim = kill.get("victim", "")
                 if victim not in our_names:
                     continue
 
-                # Check for dry peek (death without utility support)
-                # was_dry_peek may not be present in orchestrator output
                 dry_peek = kill.get("was_dry_peek")
                 if dry_peek is None:
-                    continue  # Dry peek detection not available for this event
+                    continue
                 if dry_peek:
+                    # Cap at 2 per round — more than that is repetitive
+                    round_positioning += 1
+                    if round_positioning > 2:
+                        continue
                     mistakes.append(
                         Mistake(
                             round_number=round_num,
@@ -347,7 +393,7 @@ class SelfReviewEngine:
         report_cards = []
 
         # Count mistakes per player
-        player_mistakes = defaultdict(list)
+        player_mistakes: dict[str, list[Mistake]] = defaultdict(list)
         for mistake in mistakes:
             for player in mistake.players_involved:
                 player_mistakes[player].append(mistake)
@@ -361,37 +407,76 @@ class SelfReviewEngine:
             deaths = stats.get("deaths", 0)
             adr = stats.get("adr", 0)
             rating = rating_data.get("hltv_rating", 1.0)
+            rounds_played = stats.get("rounds_played", 1) or 1
 
-            # Calculate grade
-            grade = self._calculate_grade(rating, adr, len(player_mistakes[name]))
+            my_mistakes = player_mistakes[name]
+            grade = self._calculate_grade(rating, adr, len(my_mistakes), rounds_played)
 
-            # Identify strengths and weaknesses
-            strengths = []
-            weaknesses = []
-
-            if rating > 1.2:
+            # --- Strengths (stat-based) ---
+            strengths: list[str] = []
+            if rating > 1.3:
+                strengths.append("Star player (elite rating)")
+            elif rating > 1.1:
                 strengths.append("High impact (good rating)")
-            if adr > 85:
+            if adr > 100:
+                strengths.append("Dominant damage output")
+            elif adr > 85:
                 strengths.append("Consistent damage output")
             if kills > deaths * 1.5:
                 strengths.append("Strong K/D ratio")
+            kast = rating_data.get("kast_percentage", 0)
+            if kast > 75:
+                strengths.append(f"High KAST ({kast:.0f}%)")
 
-            if rating < 0.9:
+            # --- Weaknesses (stat + mistake-based) ---
+            weaknesses: list[str] = []
+            if rating < 0.8:
                 weaknesses.append("Low impact (poor rating)")
-            if adr < 60:
+            elif rating < 0.9:
+                weaknesses.append("Below average impact")
+            if adr < 50:
+                weaknesses.append("Very low damage output")
+            elif adr < 65:
                 weaknesses.append("Low damage output")
-            if len(player_mistakes[name]) > 3:
-                weaknesses.append(f"Multiple mistakes ({len(player_mistakes[name])} detected)")
+            if deaths > kills * 1.5:
+                weaknesses.append("Dying too often")
 
-            # Determine focus area
-            focus = "General improvement"
-            mistake_types = [m.mistake_type for m in player_mistakes[name]]
-            if "failed_trade" in mistake_types:
-                focus = "Trade timing and positioning"
-            elif "wasted_utility" in mistake_types:
-                focus = "Utility effectiveness"
-            elif "positioning" in mistake_types:
-                focus = "Peek discipline"
+            # Add per-type weakness labels for frequent mistakes
+            type_counts = Counter(m.mistake_type for m in my_mistakes)
+            for mtype, count in type_counts.most_common(2):
+                if count >= 2:
+                    type_labels = {
+                        "failed_trade": f"Failed to trade {count} times",
+                        "wasted_utility": f"Wasted utility {count} times",
+                        "economy": f"Economy errors ({count})",
+                        "positioning": f"Positioning mistakes ({count})",
+                    }
+                    weaknesses.append(type_labels.get(mtype, f"{mtype} ({count})"))
+
+            # --- Focus area: player's MOST COMMON mistake type ---
+            # Sub-differentiate within failed_trade using player stats so
+            # not everyone gets the same generic focus.
+            focus_map = {
+                "wasted_utility": "Utility effectiveness",
+                "economy": "Economy decision-making",
+                "positioning": "Peek discipline and angles",
+            }
+            if type_counts:
+                most_common_type = type_counts.most_common(1)[0][0]
+                if most_common_type == "failed_trade":
+                    if rating > 1.2:
+                        # Star player survives but teammates die untraded
+                        focus = "Trade execution — position closer for refrags"
+                    elif deaths > kills * 1.2:
+                        focus = "Peek discipline — take fewer isolated fights"
+                    else:
+                        focus = "Trade timing and positioning"
+                else:
+                    focus = focus_map.get(most_common_type, "General improvement")
+            elif rating < 0.9:
+                focus = "Impact and damage output"
+            else:
+                focus = "Maintain current form"
 
             role = self.team_roster.get(name, "Unknown")
 
@@ -414,8 +499,14 @@ class SelfReviewEngine:
         report_cards.sort(key=lambda x: x.rating, reverse=True)
         return report_cards
 
-    def _calculate_grade(self, rating: float, adr: float, mistake_count: int) -> str:
-        """Calculate a letter grade for a player."""
+    def _calculate_grade(
+        self, rating: float, adr: float, mistake_count: int, rounds_played: int
+    ) -> str:
+        """Calculate a letter grade for a player.
+
+        Normalizes mistake penalty by rounds played so a handful of
+        mistakes across a long match doesn't tank an otherwise good grade.
+        """
         score = 0
 
         # Rating contribution (0-40 points)
@@ -436,20 +527,20 @@ class SelfReviewEngine:
         elif adr >= 60:
             score += 10
 
-        # Mistake penalty (-10 each)
-        score -= mistake_count * 10
+        # Mistake penalty: normalize by rounds, cap at -30
+        mistakes_per_round = mistake_count / max(1, rounds_played)
+        penalty = min(30, int(mistakes_per_round * 40))
+        score -= penalty
 
-        # Cap at 0
         score = max(0, score)
 
-        # Convert to grade
-        if score >= 70:
+        if score >= 60:
             return "A"
-        elif score >= 55:
+        elif score >= 45:
             return "B"
-        elif score >= 40:
+        elif score >= 30:
             return "C"
-        elif score >= 25:
+        elif score >= 15:
             return "D"
         else:
             return "F"

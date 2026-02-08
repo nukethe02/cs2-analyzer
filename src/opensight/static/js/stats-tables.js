@@ -332,7 +332,10 @@ class StatsTable {
 }
 
 /**
- * Create stats table from analysis data
+ * DEPRECATED: Not called anywhere. Uses stale field names that don't match backend:
+ * - Reads p.kills/p.deaths flat (backend nests under stats.*)
+ * - Reads p.multi_kills?.['2k'] (backend sends stats['2k'])
+ * - Reads p.hltv_rating flat (backend nests under rating.*)
  * @param {string} containerId - Container element ID
  * @param {Object} analysisData - Full analysis response from API
  * @param {Array} myTeamSteamIds - Steam IDs for user's team
@@ -403,7 +406,9 @@ function calculatePersonalPerformance(p) {
 }
 
 /**
- * Render the Clutches tab with team summaries and player clutch cards
+ * DEPRECATED: Not called anywhere. Uses stale field names that don't match backend:
+ * - Reads clutches.details array (backend sends only aggregates, no details array)
+ * - Would show "No clutch situations" for every player
  * @param {Array} players - All players from analysis
  * @param {Array} myTeam - Players on user's team
  * @param {Array} enemyTeam - Players on enemy team

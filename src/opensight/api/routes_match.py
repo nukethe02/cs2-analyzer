@@ -72,7 +72,9 @@ async def store_match_for_player(
 
     except Exception as e:
         logger.exception("Failed to store match")
-        raise HTTPException(status_code=500, detail=f"Failed to store match: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Failed to store match. Check server logs."
+        ) from e
 
 
 @router.get("/api/your-match/baselines/{steam_id}")
@@ -94,7 +96,9 @@ async def get_player_baselines_endpoint(steam_id: str) -> dict[str, Any]:
 
     except Exception as e:
         logger.exception("Failed to get baselines")
-        raise HTTPException(status_code=500, detail=f"Failed to get baselines: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Failed to get baselines. Check server logs."
+        ) from e
 
 
 @router.get("/api/your-match/history/{steam_id}")
@@ -118,7 +122,9 @@ async def get_player_match_history_endpoint(
 
     except Exception as e:
         logger.exception("Failed to get match history")
-        raise HTTPException(status_code=500, detail=f"Failed to get match history: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Failed to get match history. Check server logs."
+        ) from e
 
 
 @router.get("/api/your-match/persona/{steam_id}")
@@ -193,7 +199,9 @@ async def get_player_persona_endpoint(steam_id: str) -> dict[str, Any]:
 
     except Exception as e:
         logger.exception("Failed to get persona")
-        raise HTTPException(status_code=500, detail=f"Failed to get persona: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Failed to get persona. Check server logs."
+        ) from e
 
 
 @router.get("/api/your-match/trends/{steam_id}")
@@ -227,7 +235,9 @@ async def get_player_trends_endpoint(steam_id: str, days: int = 30) -> dict[str,
 
     except Exception as e:
         logger.exception("Failed to get player trends")
-        raise HTTPException(status_code=500, detail=f"Failed to get trends: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Failed to get trends. Check server logs."
+        ) from e
 
 
 # Parameterized route MUST come AFTER static routes
@@ -295,7 +305,7 @@ async def get_your_match(demo_id: str, steam_id: str) -> dict[str, Any]:
     except Exception as e:
         logger.exception("Your Match data retrieval failed")
         raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve Your Match data: {e!s}"
+            status_code=500, detail="Failed to retrieve Your Match data. Check server logs."
         ) from e
 
 
@@ -446,97 +456,18 @@ async def get_player_metrics(steam_id: str, demo_id: str = Query(None, max_lengt
         raise
     except Exception as e:
         logger.exception("Failed to retrieve player metrics")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve metrics: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve metrics. Check server logs."
+        ) from e
 
 
 # =============================================================================
 # Per-Player Positioning Heatmaps
 # =============================================================================
 
-
-@router.get("/api/positioning/{job_id}/{steam_id}")
-async def get_player_positioning(job_id: str, steam_id: str) -> dict[str, object]:
-    """Get per-player positioning heatmap data for a completed analysis."""
-    validate_demo_id(job_id)
-    validate_steam_id(steam_id)
-
-    job_store = _get_job_store()
-    job = job_store.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job.status != "completed":
-        raise HTTPException(status_code=400, detail=f"Job not completed: {job.status}")
-
-    try:
-        from opensight.analysis.positioning import PositioningAnalyzer
-        from opensight.core.parser import DemoParser
-
-        # NOTE: This endpoint requires raw tick-level position data not stored in orchestrator output.
-        # Re-parsing is intentional here. PositioningAnalyzer needs DemoData with per-tick coordinates.
-        demo_path = job.result.get("demo_path") if job.result else None
-        if not demo_path or not Path(demo_path).exists():
-            raise HTTPException(status_code=404, detail="Demo file no longer available")
-
-        parser = DemoParser(Path(demo_path))
-        data = parser.parse()
-        analyzer = PositioningAnalyzer(data)
-        result = analyzer.analyze_player(int(steam_id))
-
-        return result.to_dict()
-
-    except HTTPException:
-        raise
-    except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Positioning module not available: {e}") from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid steam_id: {e}") from e
-    except Exception as e:
-        logger.exception("Positioning analysis failed for job %s, player %s", job_id, steam_id)
-        raise HTTPException(status_code=500, detail=f"Positioning analysis failed: {e!s}") from e
-
-
-@router.get("/api/positioning/{job_id}/compare/{steam_id_a}/{steam_id_b}")
-async def compare_player_positioning(
-    job_id: str, steam_id_a: str, steam_id_b: str
-) -> dict[str, object]:
-    """Compare positioning of two players from a completed analysis."""
-    validate_demo_id(job_id)
-    validate_steam_id(steam_id_a)
-    validate_steam_id(steam_id_b)
-
-    job_store = _get_job_store()
-    job = job_store.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job.status != "completed":
-        raise HTTPException(status_code=400, detail=f"Job not completed: {job.status}")
-
-    try:
-        from opensight.analysis.positioning import PositioningAnalyzer
-        from opensight.core.parser import DemoParser
-
-        # NOTE: This endpoint requires raw tick-level position data not stored in orchestrator output.
-        # Re-parsing is intentional here. PositioningAnalyzer needs DemoData with per-tick coordinates.
-        demo_path = job.result.get("demo_path") if job.result else None
-        if not demo_path or not Path(demo_path).exists():
-            raise HTTPException(status_code=404, detail="Demo file no longer available")
-
-        parser = DemoParser(Path(demo_path))
-        data = parser.parse()
-        analyzer = PositioningAnalyzer(data)
-        result = analyzer.compare_players(int(steam_id_a), int(steam_id_b))
-
-        return result.to_dict()
-
-    except HTTPException:
-        raise
-    except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Positioning module not available: {e}") from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid steam_id: {e}") from e
-    except Exception as e:
-        logger.exception("Positioning comparison failed for job %s", job_id)
-        raise HTTPException(status_code=500, detail=f"Positioning comparison failed: {e!s}") from e
+# IMPORTANT: Static/literal path segments (/all, /compare) must come BEFORE
+# parameterized segments (/{steam_id}) to prevent FastAPI from capturing
+# "all" or "compare" as a steam_id value.
 
 
 @router.get("/api/positioning/{job_id}/all")
@@ -575,10 +506,104 @@ async def get_all_player_positioning(job_id: str) -> dict[str, object]:
     except HTTPException:
         raise
     except ImportError as e:
-        raise HTTPException(status_code=503, detail=f"Positioning module not available: {e}") from e
+        logger.warning("Positioning module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Positioning module not available.") from e
     except Exception as e:
         logger.exception("All players positioning analysis failed for job %s", job_id)
-        raise HTTPException(status_code=500, detail=f"Positioning analysis failed: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Positioning analysis failed. Check server logs."
+        ) from e
+
+
+@router.get("/api/positioning/{job_id}/compare/{steam_id_a}/{steam_id_b}")
+async def compare_player_positioning(
+    job_id: str, steam_id_a: str, steam_id_b: str
+) -> dict[str, object]:
+    """Compare positioning of two players from a completed analysis."""
+    validate_demo_id(job_id)
+    validate_steam_id(steam_id_a)
+    validate_steam_id(steam_id_b)
+
+    job_store = _get_job_store()
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job.status}")
+
+    try:
+        from opensight.analysis.positioning import PositioningAnalyzer
+        from opensight.core.parser import DemoParser
+
+        # NOTE: This endpoint requires raw tick-level position data not stored in orchestrator output.
+        # Re-parsing is intentional here. PositioningAnalyzer needs DemoData with per-tick coordinates.
+        demo_path = job.result.get("demo_path") if job.result else None
+        if not demo_path or not Path(demo_path).exists():
+            raise HTTPException(status_code=404, detail="Demo file no longer available")
+
+        parser = DemoParser(Path(demo_path))
+        data = parser.parse()
+        analyzer = PositioningAnalyzer(data)
+        result = analyzer.compare_players(int(steam_id_a), int(steam_id_b))
+
+        return result.to_dict()
+
+    except HTTPException:
+        raise
+    except ImportError as e:
+        logger.warning("Positioning module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Positioning module not available.") from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid steam_id format.") from e
+    except Exception as e:
+        logger.exception("Positioning comparison failed for job %s", job_id)
+        raise HTTPException(
+            status_code=500, detail="Positioning comparison failed. Check server logs."
+        ) from e
+
+
+@router.get("/api/positioning/{job_id}/{steam_id}")
+async def get_player_positioning(job_id: str, steam_id: str) -> dict[str, object]:
+    """Get per-player positioning heatmap data for a completed analysis."""
+    validate_demo_id(job_id)
+    validate_steam_id(steam_id)
+
+    job_store = _get_job_store()
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Job not completed: {job.status}")
+
+    try:
+        from opensight.analysis.positioning import PositioningAnalyzer
+        from opensight.core.parser import DemoParser
+
+        # NOTE: This endpoint requires raw tick-level position data not stored in orchestrator output.
+        # Re-parsing is intentional here. PositioningAnalyzer needs DemoData with per-tick coordinates.
+        demo_path = job.result.get("demo_path") if job.result else None
+        if not demo_path or not Path(demo_path).exists():
+            raise HTTPException(status_code=404, detail="Demo file no longer available")
+
+        parser = DemoParser(Path(demo_path))
+        data = parser.parse()
+        analyzer = PositioningAnalyzer(data)
+        result = analyzer.analyze_player(int(steam_id))
+
+        return result.to_dict()
+
+    except HTTPException:
+        raise
+    except ImportError as e:
+        logger.warning("Positioning module not available: %s", e)
+        raise HTTPException(status_code=503, detail="Positioning module not available.") from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid steam_id format.") from e
+    except Exception as e:
+        logger.exception("Positioning analysis failed for job %s, player %s", job_id, steam_id)
+        raise HTTPException(
+            status_code=500, detail="Positioning analysis failed. Check server logs."
+        ) from e
 
 
 # =============================================================================
@@ -602,22 +627,82 @@ async def get_trade_chains(
     if job.status != "completed":
         raise HTTPException(status_code=400, detail=f"Job not completed: {job.status}")
 
+    if not job.result:
+        raise HTTPException(status_code=400, detail="Job has no result data")
+
     try:
-        from opensight.core.parser import DemoParser
+        import pandas as pd
+
+        from opensight.core.parser import DemoData
         from opensight.domains.combat import CombatAnalyzer
 
-        # NOTE: This endpoint requires raw tick-level kill sequence data not stored in orchestrator output.
-        # Re-parsing is intentional here. CombatAnalyzer needs DemoData with kills_df for chain detection.
-        demo_path = job.result.get("demo_path") if job.result else None
-        if not demo_path or not Path(demo_path).exists():
-            raise HTTPException(status_code=404, detail="Demo file no longer available")
+        # Build kills DataFrame from cached round_timeline instead of re-parsing
+        # the full demo. CombatAnalyzer only needs kills_df, player_names,
+        # player_teams, and tick_rate — all available in job.result.
+        kills_rows: list[dict] = []
+        for rd in job.result.get("round_timeline", []):
+            rn = rd.get("round_num", 0)
+            for k in rd.get("kills", []):
+                kills_rows.append(
+                    {
+                        "attacker_steamid": int(k.get("killer_steamid", 0)),
+                        "attacker_name": k.get("killer", "Unknown"),
+                        "victim_steamid": int(k.get("victim_steamid", 0)),
+                        "victim_name": k.get("victim", "Unknown"),
+                        "round_num": rn,
+                        "tick": k.get("tick", 0),
+                        "weapon": k.get("weapon", ""),
+                        "headshot": k.get("headshot", False),
+                        "attacker_x": k.get("killer_x"),
+                        "attacker_y": k.get("killer_y"),
+                        "victim_x": k.get("victim_x"),
+                        "victim_y": k.get("victim_y"),
+                    }
+                )
 
-        parser = DemoParser(Path(demo_path))
-        data = parser.parse()
-        analyzer = CombatAnalyzer(data)
-        result = analyzer.analyze()
+        kills_df = pd.DataFrame(kills_rows) if kills_rows else pd.DataFrame()
 
-        chains = result.trade_chains
+        # Build name→team mapping from players dict (authoritative initial teams).
+        # Kill-event steamids may differ from players-dict keys, so we bridge
+        # via player name to get correct team assignments.
+        name_to_team: dict[str, str] = {}
+        for pdata in job.result.get("players", {}).values():
+            name_to_team[pdata.get("name", "")] = pdata.get("team", "Unknown")
+
+        # Build steamid→name and steamid→team from kill events so steamids
+        # are consistent with kills_df. Use name bridge for team lookup.
+        player_names: dict[int, str] = {}
+        player_teams: dict[int, str] = {}
+        for rd in job.result.get("round_timeline", []):
+            for k in rd.get("kills", []):
+                for sid_key, name_key in [
+                    ("killer_steamid", "killer"),
+                    ("victim_steamid", "victim"),
+                ]:
+                    sid = int(k.get(sid_key, 0))
+                    name = k.get(name_key, "Unknown")
+                    if sid and sid not in player_names:
+                        player_names[sid] = name
+                        player_teams[sid] = name_to_team.get(name, "Unknown")
+
+        demo_info = job.result.get("demo_info", {})
+
+        # Construct minimal DemoData from cached results (no demo re-parse)
+        demo_data = DemoData(
+            file_path=Path(job.result.get("demo_path", "")),
+            map_name=demo_info.get("map", "unknown"),
+            duration_seconds=0.0,
+            tick_rate=64,
+            num_rounds=demo_info.get("rounds", 0),
+            player_names=player_names,
+            player_teams=player_teams,
+            kills_df=kills_df,
+        )
+
+        analyzer = CombatAnalyzer(demo_data)
+        combat_result = analyzer.analyze()
+
+        chains = combat_result.trade_chains
 
         if round_num is not None:
             chains = [c for c in chains if c.round_num == round_num]
@@ -628,10 +713,12 @@ async def get_trade_chains(
 
         return {
             "job_id": job_id,
-            "map_name": data.map_name,
-            "total_rounds": data.num_rounds,
+            "map_name": demo_data.map_name,
+            "total_rounds": demo_data.num_rounds,
             "chains": chains_data,
-            "stats": result.trade_chain_stats.to_dict() if result.trade_chain_stats else None,
+            "stats": combat_result.trade_chain_stats.to_dict()
+            if combat_result.trade_chain_stats
+            else None,
             "filter_applied": {
                 "round_num": round_num,
                 "min_chain_length": min_chain_length,
@@ -642,4 +729,6 @@ async def get_trade_chains(
         raise
     except Exception as e:
         logger.exception("Trade chain analysis failed for job %s", job_id)
-        raise HTTPException(status_code=500, detail=f"Trade chain analysis failed: {e!s}") from e
+        raise HTTPException(
+            status_code=500, detail="Trade chain analysis failed. Check server logs."
+        ) from e

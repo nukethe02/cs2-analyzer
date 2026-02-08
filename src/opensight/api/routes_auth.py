@@ -47,8 +47,15 @@ async def register(body: RegisterRequest) -> dict[str, Any]:
     """Register a new user and return a JWT."""
     global _next_id
 
-    from opensight.auth.jwt import create_access_token
-    from opensight.auth.passwords import hash_password
+    try:
+        from opensight.auth.jwt import create_access_token
+        from opensight.auth.passwords import hash_password
+    except ImportError as e:
+        logger.warning("Auth module not available: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Auth not available. Required dependencies not installed.",
+        ) from e
 
     email = body.email.lower().strip()
 
@@ -65,7 +72,14 @@ async def register(body: RegisterRequest) -> dict[str, Any]:
             "tier": "free",
         }
 
-    token = create_access_token(user_id, email)
+    try:
+        token = create_access_token(user_id, email)
+    except RuntimeError as e:
+        logger.warning("Auth not configured: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Auth not configured. Check server configuration.",
+        ) from e
     logger.info(f"User registered: {email} (id={user_id})")
     return {"token": token, "user_id": user_id, "email": email, "tier": "free"}
 
@@ -73,8 +87,15 @@ async def register(body: RegisterRequest) -> dict[str, Any]:
 @router.post("/auth/login")
 async def login(body: LoginRequest) -> dict[str, Any]:
     """Authenticate with email/password and return a JWT."""
-    from opensight.auth.jwt import create_access_token
-    from opensight.auth.passwords import verify_password
+    try:
+        from opensight.auth.jwt import create_access_token
+        from opensight.auth.passwords import verify_password
+    except ImportError as e:
+        logger.warning("Auth module not available: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Auth not available. Required dependencies not installed.",
+        ) from e
 
     email = body.email.lower().strip()
 
@@ -84,14 +105,28 @@ async def login(body: LoginRequest) -> dict[str, Any]:
     if not user or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = create_access_token(user["id"], email)
+    try:
+        token = create_access_token(user["id"], email)
+    except RuntimeError as e:
+        logger.warning("Auth not configured: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Auth not configured. Check server configuration.",
+        ) from e
     return {"token": token, "user_id": user["id"], "email": email, "tier": user["tier"]}
 
 
 @router.get("/auth/me")
 async def get_me(request: Request) -> dict[str, Any]:
     """Return the current user's profile from their JWT."""
-    from opensight.auth.middleware import get_current_user
+    try:
+        from opensight.auth.middleware import get_current_user
+    except ImportError as e:
+        logger.warning("Auth module not available: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Auth not available. Required dependencies not installed.",
+        ) from e
 
     user = await get_current_user(request)
 

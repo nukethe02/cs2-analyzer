@@ -136,22 +136,48 @@ class CacheStats:
         }
 
 
-def compute_file_hash(file_path: Path, chunk_size: int = 65536) -> str:
+# Module-level hash cache: (resolved_path, mtime_ns, size) → SHA256 hex digest.
+# Avoids re-hashing a 500 MB demo file (~1.5 s) on every cache lookup when the
+# file hasn't changed.  Bounded to 64 entries to avoid unbounded memory growth.
+_HASH_CACHE_MAX = 64
+_hash_cache: dict[tuple[str, int, int], str] = {}
+
+
+def compute_file_hash(file_path: Path, chunk_size: int = 1 << 20) -> str:
     """
-    Compute SHA256 hash of a file.
+    Compute SHA256 hash of a file, with mtime/size memoization.
+
+    On first call the full file is read in 1 MB chunks and hashed.
+    Subsequent calls for the same (path, mtime_ns, size) triple return
+    the cached digest in < 1 ms.
 
     Args:
         file_path: Path to file
-        chunk_size: Read chunk size in bytes
+        chunk_size: Read chunk size in bytes (default 1 MB)
 
     Returns:
         Hex digest of file hash
     """
+    stat = file_path.stat()
+    cache_key = (str(file_path.resolve()), stat.st_mtime_ns, stat.st_size)
+
+    cached = _hash_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     hasher = hashlib.sha256()
     with open(file_path, "rb") as f:
         while chunk := f.read(chunk_size):
             hasher.update(chunk)
-    return hasher.hexdigest()
+    digest = hasher.hexdigest()
+
+    # Evict oldest entries when cache is full
+    if len(_hash_cache) >= _HASH_CACHE_MAX:
+        # Remove the first (oldest-inserted) entry
+        _hash_cache.pop(next(iter(_hash_cache)))
+
+    _hash_cache[cache_key] = digest
+    return digest
 
 
 def compute_content_hash(content: str) -> str:
@@ -475,53 +501,20 @@ class DemoCache:
 
 class CachedAnalyzer:
     """
-    Analyzer wrapper that uses caching.
+    Thin compatibility wrapper — DemoOrchestrator now handles caching directly.
 
-    Automatically checks cache before analyzing and stores results.
-    Delegates actual analysis to pipeline.orchestrator.DemoOrchestrator.
+    Kept for backward compatibility with existing callers.
     """
 
     def __init__(self, cache: DemoCache | None = None):
-        """
-        Initialize the cached analyzer.
-
-        Args:
-            cache: Cache instance (creates default if None)
-        """
         self.cache = cache or DemoCache()
 
     def analyze(self, demo_path: Path, force: bool = False) -> dict:
-        """
-        Analyze a demo with caching.
-
-        Args:
-            demo_path: Path to demo file
-            force: Force re-analysis even if cached
-
-        Returns:
-            Comprehensive analysis result dict including tactical data
-        """
-        # Compute cache key once to avoid re-hashing the file in both get() and put()
-        cache_key = self.cache.get_cache_key(demo_path)
-
-        # Check cache first
-        if not force:
-            cached = self.cache.get(demo_path, cache_key=cache_key)
-            if cached:
-                logger.info(f"Using cached analysis for {demo_path.name}")
-                return cached
-
-        # Run analysis via orchestrator
-        logger.info(f"Analyzing {demo_path.name}")
+        """Delegate to DemoOrchestrator which handles caching internally."""
         from opensight.pipeline.orchestrator import DemoOrchestrator
 
         orchestrator = DemoOrchestrator()
-        result = orchestrator.analyze(demo_path)
-
-        # Cache result (pass pre-computed key to avoid re-hashing)
-        self.cache.put(demo_path, result, cache_key=cache_key)
-
-        return result
+        return orchestrator.analyze(demo_path, force=force)
 
 
 # Convenience functions

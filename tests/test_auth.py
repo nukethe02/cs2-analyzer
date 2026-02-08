@@ -8,6 +8,10 @@ import pytest
 class TestPasswordHashing:
     """Test password hashing and verification with bcrypt."""
 
+    @pytest.fixture(autouse=True)
+    def _require_bcrypt(self):
+        pytest.importorskip("bcrypt", reason="bcrypt not installed")
+
     def test_hash_password_returns_string(self):
         """hash_password returns a string hash."""
         from opensight.auth.passwords import hash_password
@@ -55,6 +59,7 @@ class TestJWT:
     @pytest.fixture(autouse=True)
     def _set_jwt_secret(self, monkeypatch):
         """Set JWT_SECRET for the duration of each test."""
+        pytest.importorskip("jose", reason="python-jose not installed")
         monkeypatch.setenv("JWT_SECRET", "test-secret-key-for-unit-tests")
         # Force module to re-read the env var by reloading
         import importlib

@@ -635,18 +635,17 @@ class FeedbackRecord(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     demo_hash = Column(String(64), nullable=False, index=True)
-    user_id = Column(String(100), nullable=False)
+    metric_name = Column(String(100))
+    feedback_type = Column(String(50))
     rating = Column(Integer, nullable=False)
     category = Column(String(100))
     comment = Column(Text)
-    analysis_version = Column(String(20))
+    user_agent = Column(String(500))
+    context_json = Column(Text)
     metadata_json = Column(Text)
     created_at = Column(DateTime, default=_utc_now)
 
-    __table_args__ = (
-        Index("idx_feedback_demo", "demo_hash"),
-        Index("idx_feedback_user", "user_id"),
-    )
+    __table_args__ = (Index("idx_feedback_demo", "demo_hash"),)
 
 
 class CoachingFeedbackRecord(Base):
@@ -744,7 +743,44 @@ class DatabaseManager:
         # Create tables if they don't exist
         Base.metadata.create_all(self.engine)
 
+        # Migrate schema: add columns that may be missing from older DB versions
+        self._migrate_schema()
+
         logger.info(f"Database initialized at: {self.db_path}")
+
+    def _migrate_schema(self) -> None:
+        """Add missing columns to existing tables (lightweight schema migration)."""
+        import sqlite3
+
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            cursor = conn.cursor()
+            # Build a map of table -> existing columns
+            tables = cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            existing: dict[str, set[str]] = {}
+            for (tbl,) in tables:
+                cols = cursor.execute(f"PRAGMA table_info({tbl})").fetchall()  # noqa: S608
+                existing[tbl] = {row[1] for row in cols}
+
+            # Define expected columns per table (column_name, sql_type, default)
+            migrations: list[tuple[str, str, str, str]] = [
+                ("feedback", "category", "VARCHAR(100)", "NULL"),
+                ("feedback", "metadata_json", "TEXT", "NULL"),
+                ("coaching_feedback", "player_steam_id", "VARCHAR(20)", "NULL"),
+                ("coaching_feedback", "user_correction", "TEXT", "NULL"),
+            ]
+
+            for table, column, col_type, default in migrations:
+                if table in existing and column not in existing[table]:
+                    sql = f"ALTER TABLE {table} ADD COLUMN {column} {col_type} DEFAULT {default}"  # noqa: S608
+                    cursor.execute(sql)
+                    logger.info(f"Schema migration: added {table}.{column}")
+
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Schema migration check failed (non-fatal): {e}")
+        finally:
+            conn.close()
 
     def get_session(self) -> Session:
         """Get a database session."""
