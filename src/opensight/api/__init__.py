@@ -285,6 +285,8 @@ if (STATIC_DIR / "css").exists():
     app.mount("/static/css", StaticFiles(directory=STATIC_DIR / "css"), name="css")
 if (STATIC_DIR / "js").exists():
     app.mount("/static/js", StaticFiles(directory=STATIC_DIR / "js"), name="js")
+if (STATIC_DIR / "maps").exists():
+    app.mount("/static/maps", StaticFiles(directory=STATIC_DIR / "maps"), name="maps")
 
 
 @app.get("/", response_class=HTMLResponse)

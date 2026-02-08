@@ -326,11 +326,25 @@ class DemoOrchestrator:
             players.values(), key=lambda p: p["rating"]["hltv_rating"], reverse=True
         )
 
+        # Build map metadata for frontend coordinate transformation
+        from opensight.map_data import RADAR_IMAGE_SIZE, get_map_metadata
+
+        map_name = analysis.map_name
+        map_meta = get_map_metadata(map_name)
+        map_metadata = {
+            "map_name": map_name,
+            "pos_x": map_meta["pos_x"] if map_meta else None,
+            "pos_y": map_meta["pos_y"] if map_meta else None,
+            "scale": map_meta["scale"] if map_meta else None,
+            "radar_image_size": RADAR_IMAGE_SIZE,
+            "radar_image_url": f"/static/maps/{map_name}.png" if map_meta else None,
+        }
+
         # Convert to dict for caching
         result = {
             "demo_path": str(demo_path),
             "demo_info": {
-                "map": analysis.map_name,
+                "map": map_name,
                 "rounds": analysis.total_rounds,
                 "duration_minutes": getattr(analysis, "duration_minutes", 30),
                 "score": f"{analysis.team1_score} - {analysis.team2_score}",
@@ -340,6 +354,7 @@ class DemoOrchestrator:
                 "team1_name": getattr(analysis, "team1_name", "Counter-Terrorists"),
                 "team2_name": getattr(analysis, "team2_name", "Terrorists"),
             },
+            "map_metadata": map_metadata,
             "players": {p["steam_id"]: p for p in players_sorted},
             "mvp": mvp,
             "round_timeline": round_timeline,
