@@ -509,3 +509,319 @@ Cleaned up as of 2026-02-01:
 - ~~`cache.py:686-695` - Round timeline debug logging~~ Converted to logger.debug()
 
 Use `/techdebt` to scan for new technical debt.
+
+---
+
+## Pipeline Wiring Checklist
+
+**CRITICAL:** Every time you add a new metric, field, or feature, complete this checklist BEFORE considering the task done:
+
+- [ ] **1. MODEL**: Field added to appropriate dataclass in `analysis/models.py`
+- [ ] **2. COMPUTE**: Computation implemented in appropriate `compute_*.py` module
+- [ ] **3. COMPUTE → MODEL**: Computation result stored on the model instance
+- [ ] **4. ORCHESTRATOR**: Field serialized in the player output dict in `pipeline/orchestrator.py`
+  - Use `None` (not `0`) for missing/unavailable data
+  - Verify the key name matches what the frontend expects
+  - Check `docs/SERIALIZATION_CONTRACT.md` for key naming conventions
+- [ ] **5. FRONTEND**: JavaScript reads the correct key and handles null properly
+  - Use explicit null check: `value != null` (NOT `value ? ...`)
+  - Display "N/A" for null values, not "-" or "0"
+- [ ] **6. CONTRACT**: Entry added to `docs/SERIALIZATION_CONTRACT.md`
+- [ ] **7. TEST**: `tests/test_e2e_pipeline.py` passes (or updated if needed)
+- [ ] **8. SMOKE TEST**: `python scripts/pipeline_smoke_test.py <demo>` shows ✅ for new field
+
+**If ANY step is skipped, the feature is NOT done.** A computed metric that isn't serialized is the same as an unimplemented metric from the user's perspective.
+
+---
+
+## Serialization Rules
+
+### Rule 1: Never use 0 as a sentinel for missing data
+
+**BAD:**
+```python
+"ttd_median_ms": round(val, 1) if val is not None else 0
+```
+
+**GOOD:**
+```python
+"ttd_median_ms": round(val, 1) if val is not None else None
+```
+
+**Why:** The frontend JavaScript treats `0` as falsy in conditionals (`if (value)`), making it indistinguishable from missing data. Use `None` for missing data and let the frontend display "N/A".
+
+### Rule 2: Every output field must have model backing
+
+- Do not add ad-hoc fields to the output dict without a corresponding model field or explicit computation
+- If a field is computed (not stored on model), document it in the orchestrator as a comment
+
+### Rule 3: Consult the serialization contract
+
+Before adding a new field to orchestrator output:
+1. Check `docs/SERIALIZATION_CONTRACT.md` for existing similar fields
+2. Follow the established key naming convention (e.g., `stats.kills`, `advanced.ttd_median_ms`)
+3. Add your new field to the contract after implementing it
+
+### Rule 4: Nested vs flat structure
+
+Follow existing patterns:
+- **Basic stats**: `"stats": { "kills": ..., "deaths": ... }`
+- **Ratings**: `"rating": { "hltv_rating": ..., "aim_rating": ... }`
+- **Advanced metrics**: `"advanced": { "ttd_median_ms": ..., "cp_median_error_deg": ... }`
+- **Utility**: `"utility": { "flashbangs_thrown": ..., "flash_assists": ... }`
+- **Combat**: `"duels": { "trade_kills": ..., "clutch_wins": ... }`
+
+Do NOT create new top-level keys unless there's a strong architectural reason.
+
+---
+
+## Name Resolution Rules
+
+### Background
+
+demoparser2 provides player names, but they can be invalid (empty, special characters, or raw SteamIDs). The parser generates fallback names like `Player_0810` for invalid names. However, other code paths (kill events, utility events) may use raw names without this validation.
+
+### Rules
+
+1. **ALWAYS validate player names** with `is_valid_player_name()` before displaying them
+2. **Use fallback generation** if validation fails: `make_fallback_player_name(steamid)`
+3. **NEVER use event names directly** in display output:
+   - `kill.attacker_name` may contain raw SteamIDs
+   - `kill.victim_name` may contain raw SteamIDs
+   - `blind_event.attacker_name` may be invalid
+4. **Canonical names are in `player_names` dict** (steamid → name)
+   - Always try `player_names.get(steamid)` first
+   - Only fall back to event names if player_names lookup fails
+   - Then validate the fallback before display
+
+### Example
+
+**BAD:**
+```python
+killer_name = kill["attacker_name"]  # May be "76561197960287930" (raw SteamID)
+```
+
+**GOOD:**
+```python
+# Lookup canonical name first
+killer_name = player_names.get(kill["attacker_steamid"])
+if not killer_name:
+    # Fallback to event name, but validate
+    killer_name = kill.get("attacker_name", "Unknown")
+    if not is_valid_player_name(killer_name):
+        killer_name = make_fallback_player_name(kill["attacker_steamid"])
+```
+
+---
+
+## SteamID Handling Rules
+
+### Background
+
+demoparser2 returns steamids in **different formats** depending on event context:
+- **Player info events**: Steam64 format (17 digits, starts with `7656...`)
+- **Kill events**: May use account ID (shorter format)
+- **Grenade/blind events**: May use yet another format
+
+This means `kill.attacker_steamid` and `player_info.steamid` for the same player **may not match directly**.
+
+### Rules
+
+1. **NEVER assume steamid formats match** across event types
+2. **Prefer NAME-based matching** over steamid matching when correlating events:
+   - Flash assist detection: Match by player name, not steamid
+   - Trade detection: Match by player name, not steamid
+   - Opening duel correlation: Match by player name, not steamid
+3. **If steamid matching is required**, build a normalization function:
+   ```python
+   def normalize_steamid(steamid: int | str) -> str:
+       """Convert various steamid formats to canonical Steam64 string."""
+       # Implementation depends on observed formats in your data
+       pass
+   ```
+4. **For cross-event correlation**, use RAW TICK proximity instead of steamid matching when possible
+
+### Known Issue
+
+In the golden demo:
+- 1/10 kill event steamids matched `player_persistent_teams` (10% success rate)
+- 10/10 grenade event steamids matched `player_names` (100% success rate)
+
+**Lesson:** Grenade events have reliable steamids. Kill events do NOT. Always use name-based matching for kill event correlation.
+
+---
+
+## Deprecated Field Migration
+
+### Current Deprecations
+
+- **`player_teams`** (parser.py:531) is DEPRECATED → use **`player_persistent_teams`** instead
+  - `player_teams` can change mid-match if players switch
+  - `player_persistent_teams` uses the side they played more (stable)
+
+### Migration Process
+
+When you deprecate a field:
+
+1. **Add a comment** at the field definition:
+   ```python
+   # DEPRECATED: use player_persistent_teams instead
+   player_teams: dict = {}
+   ```
+
+2. **Search for ALL usages**:
+   ```bash
+   grep -rn "player_teams" src/
+   ```
+
+3. **Migrate ALL usages in the same commit**
+   - Do NOT leave some code paths on the old field
+   - Do NOT split migration across multiple commits (creates inconsistency window)
+
+4. **Add a test** that verifies old field is no longer used:
+   ```python
+   def test_no_deprecated_field_usage():
+       """Ensure deprecated player_teams is not used."""
+       # Grep source code for player_teams (excluding the deprecation comment)
+       pass
+   ```
+
+### When You Find Deprecated Field Usage
+
+If you encounter code using a deprecated field:
+1. **Check the comment** for the replacement field
+2. **Migrate that usage immediately** (don't defer)
+3. **Verify the new field has the same semantics** (or adapt logic if different)
+4. **Test the migration** with a demo file
+
+---
+
+## Testing Requirements
+
+### After ANY Code Change
+
+**Run these tests BEFORE committing:**
+
+```bash
+# 1. E2E pipeline integrity test
+PYTHONPATH=src pytest tests/test_e2e_pipeline.py -v
+
+# 2. Module-specific tests (if you modified that module)
+PYTHONPATH=src pytest tests/test_analytics.py -v  # Analytics changes
+PYTHONPATH=src pytest tests/test_api.py -v        # API changes
+PYTHONPATH=src pytest tests/test_metrics.py -v    # Metric changes
+```
+
+### After Adding a New Metric
+
+**Run the smoke test on a real demo:**
+
+```bash
+PYTHONPATH=src python scripts/pipeline_smoke_test.py tests/fixtures/golden_master.dem
+```
+
+**Look for:**
+- ✅ **PASS** on your new field (means data exists and is non-null)
+- ⚠️ **PARTIAL** (some players have data, some don't — may be expected)
+- ❌ **FAIL** (field is null/zero for all players — serialization gap)
+
+**The smoke test takes <30 seconds** and gives immediate visual feedback on field coverage. A metric is NOT done until the smoke test shows ✅.
+
+### Golden Demo Tests
+
+The E2E pipeline test uses `tests/fixtures/golden_master.dem` to verify:
+1. **Serialization completeness**: All model fields appear in output or are documented as skipped
+2. **Frontend alignment**: Frontend only reads keys that exist in backend output
+3. **No raw SteamIDs**: Player names and kill matrix contain valid names, not steamids
+4. **Timeline integrity**: Both CT and T teams have data
+
+If `test_e2e_pipeline.py` fails, it means you broke the data pipeline. Fix it before committing.
+
+---
+
+## Known demoparser2 Quirks
+
+### 1. Team Numbers
+
+Teams are **numeric, not strings**:
+- `2` = Terrorist (T)
+- `3` = CounterTerrorist (CT)
+
+**Do NOT compare strings**: `if team == "T"` will always fail.
+
+**Correct:**
+```python
+if team_number == 2:
+    team_name = "T"
+elif team_number == 3:
+    team_name = "CT"
+```
+
+### 2. SteamID Format Variability
+
+See "SteamID Handling Rules" section above. TL;DR: Prefer name-based matching over steamid matching.
+
+### 3. Position Data Availability
+
+Position data (`attacker_x`, `attacker_y`, `attacker_z`, `pitch`, `yaw`) may be **NaN for many kills**.
+
+**Impact:**
+- TTD (Time to Damage) computations may return `None` for ~29% of kills (unavoidable parser limitation)
+- CP (Crosshair Placement) computations may return `None` for ~29% of kills
+
+**This is EXPECTED, not a bug.** Display "N/A" for unavailable data, not "-" or "0".
+
+**Coverage stats from Wave B findings:**
+- ~71% of kills have position data (can compute TTD/CP)
+- ~29% of kills lack position data (return `None`)
+
+### 4. Flash Assist Detection
+
+The `flash_assist` and `assister_steamid` columns **may not exist** in `kills_df` from demoparser2.
+
+**Fallback strategy:**
+1. First try reading `kills_df["flash_assist"]` column
+2. If column doesn't exist, fall back to blind-event correlation:
+   - Find blind events within 3 seconds before kill
+   - Match by victim steamid
+   - Use **NAME-based matching** for attacker (see SteamID Handling Rules)
+
+### 5. Round Boundary Unreliability
+
+`round_boundaries` from `build_round_boundaries()` can be unreliable:
+- Negative time spans (end_tick < start_tick)
+- Overlapping round starts
+- Missing rounds in overtime
+
+**Recommendation:** Use **RAW TICK proximity** instead of round-based matching when correlating cross-event data (e.g., "find grenades thrown near this kill").
+
+### 6. Player Count Validation
+
+Always validate player counts:
+```python
+if len(players) != 10:
+    logger.warning(f"Expected 10 players, found {len(players)}")
+```
+
+Demos can have:
+- Bots (may or may not have steamids)
+- Spectators (may appear in some event types)
+- Players who disconnected mid-match
+
+Do NOT assume `len(players) == 10` without checking.
+
+---
+
+## Summary: How These Rules Prevent Bugs
+
+| Bug Pattern | Prevented By | Example |
+|-------------|--------------|---------|
+| **Serialization gaps** | Pipeline Wiring Checklist step 4 + 7 | TTD computed but not in orchestrator output |
+| **Name resolution failures** | Name Resolution Rules | Raw SteamIDs in kill matrix |
+| **None→0→falsy display** | Serialization Rule 1 | Frontend shows "-" for 0 ADR vs missing ADR |
+| **Deprecated field usage** | Deprecated Field Migration process | Code reads `player_teams` instead of `player_persistent_teams` |
+| **Orphaned code** | Pipeline Wiring Checklist step 4 | `highlights.py` never imported in orchestrator |
+| **SteamID format mismatch** | SteamID Handling Rules | Kill steamids don't match player info steamids |
+| **Partial test coverage** | Testing Requirements | New metric breaks pipeline but no test catches it |
+
+**The checklist is mandatory.** If you skip steps 4-7, you WILL create a serialization gap. If you skip step 8, you won't know until a user reports it.
