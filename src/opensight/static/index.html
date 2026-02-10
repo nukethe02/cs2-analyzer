@@ -4448,11 +4448,11 @@
                                     <div class="stat-label">RWS</div>
                                 </div>
                                 <div class="stat">
-                                    <div class="stat-value">${adv.ttd_median_ms ? Math.round(adv.ttd_median_ms) + 'ms' : '-'}</div>
+                                    <div class="stat-value">${adv.ttd_median_ms != null ? Math.round(adv.ttd_median_ms) + 'ms' : 'N/A'}</div>
                                     <div class="stat-label">TTD</div>
                                 </div>
                                 <div class="stat">
-                                    <div class="stat-value">${adv.cp_median_error_deg ? adv.cp_median_error_deg.toFixed(1) + '°' : '-'}</div>
+                                    <div class="stat-value">${adv.cp_median_error_deg != null ? adv.cp_median_error_deg.toFixed(1) + '°' : 'N/A'}</div>
                                     <div class="stat-label">CP</div>
                                 </div>
                                 <div class="stat">

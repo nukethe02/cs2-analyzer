@@ -143,20 +143,22 @@ class DemoOrchestrator:
                 "advanced": {
                     # TTD - Time to Damage (engagement duration)
                     "ttd_median_ms": (
-                        round(p.ttd_median_ms, 1) if p.ttd_median_ms is not None else 0
+                        round(p.ttd_median_ms, 1) if p.ttd_median_ms is not None else None
                     ),
-                    "ttd_mean_ms": (round(p.ttd_mean_ms, 1) if p.ttd_mean_ms is not None else 0),
+                    "ttd_mean_ms": (round(p.ttd_mean_ms, 1) if p.ttd_mean_ms is not None else None),
                     "ttd_95th_ms": (
                         round(float(np.percentile(p.engagement_duration_values, 95)), 1)
                         if p.engagement_duration_values
-                        else 0
+                        else None
                     ),
                     # CP - Crosshair Placement
                     "cp_median_error_deg": (
-                        round(p.cp_median_error_deg, 1) if p.cp_median_error_deg is not None else 0
+                        round(p.cp_median_error_deg, 1)
+                        if p.cp_median_error_deg is not None
+                        else None
                     ),
                     "cp_mean_error_deg": (
-                        round(p.cp_mean_error_deg, 1) if p.cp_mean_error_deg is not None else 0
+                        round(p.cp_mean_error_deg, 1) if p.cp_mean_error_deg is not None else None
                     ),
                     # Other advanced stats — read from actual dataclass attributes
                     "prefire_kills": p.prefire_count,
@@ -1282,9 +1284,14 @@ class DemoOrchestrator:
         }
 
     def _calculate_multikills(self, demo_data) -> dict[int, dict]:
-        """Calculate multi-kill counts (2K, 3K, 4K, 5K) per player per round."""
+        """Calculate multi-kill counts (2K, 3K, 4K, 5K) per player per round.
+
+        Uses NAME-based matching to avoid demoparser2 steamid quirk where kill event
+        steamids may differ from player_names steamids.
+        """
         kills = getattr(demo_data, "kills", [])
         rounds = getattr(demo_data, "rounds", [])
+        player_names = getattr(demo_data, "player_names", {})
 
         # Build round boundaries using shared utility
         round_boundaries = build_round_boundaries(rounds)
@@ -1292,14 +1299,14 @@ class DemoOrchestrator:
         # Check if kills have valid round data
         has_round_data = any(getattr(k, "round_num", 0) > 0 for k in kills[:10])
 
-        # Count kills per player per round
-        player_round_kills: dict[int, dict[int, int]] = {}  # steam_id -> {round_num -> kill_count}
+        # Count kills per player per round using NAME-based matching
+        player_round_kills: dict[str, dict[int, int]] = {}  # name -> {round_num -> kill_count}
 
         for kill in kills:
-            attacker_id = getattr(kill, "attacker_steamid", 0)
+            attacker_name = getattr(kill, "attacker_name", "")
             round_num = getattr(kill, "round_num", 0)
 
-            if not attacker_id:
+            if not attacker_name:
                 continue
 
             # Infer round if missing (CRITICAL FIX for multikill detection)
@@ -1310,15 +1317,15 @@ class DemoOrchestrator:
                 else:
                     round_num = 1  # Fallback to round 1 if no boundary data
 
-            if attacker_id not in player_round_kills:
-                player_round_kills[attacker_id] = {}
-            if round_num not in player_round_kills[attacker_id]:
-                player_round_kills[attacker_id][round_num] = 0
-            player_round_kills[attacker_id][round_num] += 1
+            if attacker_name not in player_round_kills:
+                player_round_kills[attacker_name] = {}
+            if round_num not in player_round_kills[attacker_name]:
+                player_round_kills[attacker_name][round_num] = 0
+            player_round_kills[attacker_name][round_num] += 1
 
         # Count 2K, 3K, 4K, 5K for each player
-        result: dict[int, dict] = {}
-        for steam_id, round_kills in player_round_kills.items():
+        name_counts: dict[str, dict] = {}
+        for player_name, round_kills in player_round_kills.items():
             counts = {"2k": 0, "3k": 0, "4k": 0, "5k": 0}
             for _, kill_count in round_kills.items():
                 if kill_count == 2:
@@ -1329,7 +1336,15 @@ class DemoOrchestrator:
                     counts["4k"] += 1
                 elif kill_count >= 5:
                     counts["5k"] += 1
-            result[steam_id] = counts
+            name_counts[player_name] = counts
+
+        # Map back to steamids using player_names dict
+        result: dict[int, dict] = {}
+        for steam_id, name in player_names.items():
+            if name in name_counts:
+                result[steam_id] = name_counts[name]
+            else:
+                result[steam_id] = {"2k": 0, "3k": 0, "4k": 0, "5k": 0}
 
         return result
 
@@ -1344,7 +1359,20 @@ class DemoOrchestrator:
         damages = getattr(demo_data, "damages", [])
         blinds = getattr(demo_data, "blinds", [])
         player_names = getattr(demo_data, "player_names", {})
+
+        # Prefer player_persistent_teams (handles halftime correctly) over deprecated player_teams
+        player_persistent_teams = getattr(demo_data, "player_persistent_teams", {})
+        team_starting_sides = getattr(demo_data, "team_starting_sides", {})
         player_teams = getattr(demo_data, "player_teams", {})
+
+        # Build team mapping: steamid -> starting side (CT/T)
+        # This ensures players stay in the same group throughout the match
+        player_starting_sides = {}
+        if player_persistent_teams and team_starting_sides:
+            for steamid, persistent_team in player_persistent_teams.items():
+                starting_side = team_starting_sides.get(persistent_team, "Unknown")
+                player_starting_sides[steamid] = starting_side
+
         rounds = getattr(demo_data, "rounds", [])
 
         # Build round boundaries using shared utility
@@ -1458,8 +1486,8 @@ class DemoOrchestrator:
             # Use last 4 digits for readability instead of raw Steam ID
             suffix = str(steam_id)[-4:] if steam_id else "0000"
             player_name = player_names.get(steam_id, f"Player_{suffix}")
-            # Get team - prefer from player_teams dict, fallback to inferring from kills
-            team = player_teams.get(steam_id, "Unknown")
+            # Get team - prefer player_starting_sides (persistent teams), fallback to player_teams, then kill inference
+            team = player_starting_sides.get(steam_id, player_teams.get(steam_id, "Unknown"))
             if team == "Unknown":
                 # Try to infer from kills
                 for kill in kills:
@@ -2357,8 +2385,8 @@ class DemoOrchestrator:
             # ==========================================
 
             # Time to Damage (TTD) - reaction time analysis
-            ttd = advanced.get("ttd_median_ms", 0)
-            if ttd > 0:
+            ttd = advanced.get("ttd_median_ms")
+            if ttd is not None and ttd > 0:
                 ttd_rating = self._get_ttd_rating(ttd)
                 avg_ttd = match_stats.get("avg_ttd", 350)
                 diff = ttd - avg_ttd
@@ -2387,8 +2415,8 @@ class DemoOrchestrator:
                     )
 
             # Crosshair Placement (CP) - angle accuracy
-            cp = advanced.get("cp_median_error_deg", 0)
-            if cp > 0:
+            cp = advanced.get("cp_median_error_deg")
+            if cp is not None and cp > 0:
                 cp_rating = self._get_cp_rating(cp)
                 avg_cp = match_stats.get("avg_cp", 8)
                 diff = cp - avg_cp
@@ -2836,8 +2864,16 @@ class DemoOrchestrator:
                         "adr": round(adr, 0),
                         "kast": round(kast, 0),
                         "kd": round(kd_ratio, 2),
-                        "ttd_ms": round(advanced.get("ttd_median_ms", 0), 0),
-                        "cp_deg": round(advanced.get("cp_median_error_deg", 0), 1),
+                        "ttd_ms": (
+                            round(advanced.get("ttd_median_ms"), 0)
+                            if advanced.get("ttd_median_ms") is not None
+                            else None
+                        ),
+                        "cp_deg": (
+                            round(advanced.get("cp_median_error_deg"), 1)
+                            if advanced.get("cp_median_error_deg") is not None
+                            else None
+                        ),
                         "entry_success": round(entry_success, 0),
                         "trade_rate": round(trade_rate, 0),
                         "clutch_pct": round(clutches.get("clutch_success_pct", 0), 0),
@@ -2987,12 +3023,12 @@ class DemoOrchestrator:
         util_per_round_values = []
 
         for p in players.values():
-            ttd = p.get("advanced", {}).get("ttd_median_ms", 0)
-            if ttd > 0:
+            ttd = p.get("advanced", {}).get("ttd_median_ms")
+            if ttd is not None and ttd > 0:
                 ttd_values.append(ttd)
 
-            cp = p.get("advanced", {}).get("cp_median_error_deg", 0)
-            if cp > 0:
+            cp = p.get("advanced", {}).get("cp_median_error_deg")
+            if cp is not None and cp > 0:
                 cp_values.append(cp)
 
             adr = p.get("stats", {}).get("adr", 0)
@@ -3087,8 +3123,8 @@ class DemoOrchestrator:
         # Best aim (lowest CP error)
         best_cp = 999
         for sid, p in players.items():
-            cp = p.get("advanced", {}).get("cp_median_error_deg", 0)
-            if 0 < cp < best_cp:
+            cp = p.get("advanced", {}).get("cp_median_error_deg")
+            if cp is not None and 0 < cp < best_cp:
                 best_cp = cp
                 top["aim"] = {"steam_id": sid, "name": p["name"], "value": cp}
 
@@ -3390,13 +3426,13 @@ class DemoOrchestrator:
             notable_stats.append(("consistent", kast, f"{kast:.0f}% KAST"))
 
         # TTD (lower is better)
-        ttd = advanced.get("ttd_median_ms", 0)
-        if 0 < ttd < 250:
+        ttd = advanced.get("ttd_median_ms")
+        if ttd is not None and 0 < ttd < 250:
             notable_stats.append(("fast_reactions", 1000 - ttd, f"{ttd:.0f}ms TTD"))
 
         # CP (lower is better)
-        cp = advanced.get("cp_median_error_deg", 0)
-        if 0 < cp < 5:
+        cp = advanced.get("cp_median_error_deg")
+        if cp is not None and 0 < cp < 5:
             notable_stats.append(("precise_aim", 100 - cp, f"{cp:.1f}Â° CP"))
 
         # Sort by value (highest first) and pick top identity
