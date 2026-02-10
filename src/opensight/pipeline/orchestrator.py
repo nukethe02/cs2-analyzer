@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from opensight.core.parser import is_valid_player_name, make_fallback_player_name
 from opensight.core.utils import build_round_boundaries, infer_round_from_tick
 
 logger = logging.getLogger(__name__)
@@ -307,6 +308,60 @@ class DemoOrchestrator:
         # Get tactical summary
         tactical = self._get_tactical_summary(demo_data, analysis)
 
+        # Detect match highlights
+        try:
+            from opensight.analysis.highlights import detect_highlights
+
+            # Prepare kills data for highlights detection
+            kills_for_highlights = []
+            for kill in getattr(demo_data, "kills", []):
+                kill_dict = {
+                    "attacker_steamid": str(getattr(kill, "attacker_steamid", 0)),
+                    "attacker_name": getattr(kill, "attacker_name", "Unknown"),
+                    "weapon": getattr(kill, "weapon", ""),
+                    "round": getattr(kill, "round_num", 0),
+                    "round_num": getattr(kill, "round_num", 0),
+                    "tick": getattr(kill, "tick", 0),
+                    "is_headshot": getattr(kill, "is_headshot", False),
+                    "is_noscope": getattr(kill, "is_noscope", False),
+                    "is_wallbang": getattr(kill, "wallbang", False),
+                    "penetrated_objects": getattr(kill, "penetrated_objects", 0),
+                    "is_through_smoke": getattr(kill, "thru_smoke", False),
+                }
+                kills_for_highlights.append(kill_dict)
+
+            # Prepare rounds data for clutch detection
+            rounds_for_highlights = []
+            for round_data in getattr(analysis, "rounds", []):
+                if hasattr(round_data, "clutch_player") and round_data.clutch_player:
+                    round_dict = {
+                        "round": round_data.round_num,
+                        "clutch_player_steamid": str(round_data.clutch_player),
+                        "clutch_enemies": getattr(round_data, "clutch_enemies", 0),
+                        "clutch_won": getattr(round_data, "clutch_won", False),
+                    }
+                    rounds_for_highlights.append(round_dict)
+
+            highlights = detect_highlights(kills_for_highlights, rounds_for_highlights)
+            # Convert Highlight dataclass objects to dicts for JSON serialization
+            highlights_dicts = [
+                {
+                    "round_number": h.round_number,
+                    "player_steam_id": h.player_steam_id,
+                    "player_name": h.player_name,
+                    "highlight_type": h.highlight_type,
+                    "start_tick": h.start_tick,
+                    "end_tick": h.end_tick,
+                    "impact_score": h.impact_score,
+                    "description": h.description,
+                    "weapons_used": h.weapons_used,
+                }
+                for h in highlights
+            ]
+        except Exception as e:
+            logger.warning(f"Highlight detection failed: {e}")
+            highlights_dicts = []
+
         # Analyze team synergy (NOT in Leetify - our differentiator)
         try:
             from opensight.domains.synergy import analyze_synergy
@@ -376,6 +431,7 @@ class DemoOrchestrator:
             "tactical": tactical,
             "synergy": synergy,
             "timeline_graph": timeline_graph,
+            "highlights": highlights_dicts,
             "analyzed_at": datetime.now().isoformat(),
         }
 
@@ -1690,13 +1746,40 @@ class DemoOrchestrator:
         for kill in kills:
             attacker_id = getattr(kill, "attacker_steamid", 0)
             victim_id = getattr(kill, "victim_steamid", 0)
-            attacker_name = player_names.get(attacker_id, getattr(kill, "attacker_name", "Unknown"))
-            victim_name = player_names.get(victim_id, getattr(kill, "victim_name", "Unknown"))
 
-            key = (attacker_name, victim_name)
+            # Resolve attacker name with validation
+            attacker_name = player_names.get(attacker_id)
+            if attacker_name is None:
+                raw_name = getattr(kill, "attacker_name", "")
+                if raw_name and is_valid_player_name(raw_name):
+                    attacker_name = raw_name
+                else:
+                    attacker_name = (
+                        make_fallback_player_name(attacker_id) if attacker_id else "Unknown"
+                    )
+
+            # Resolve victim name with validation
+            victim_name = player_names.get(victim_id)
+            if victim_name is None:
+                raw_name = getattr(kill, "victim_name", "")
+                if raw_name and is_valid_player_name(raw_name):
+                    victim_name = raw_name
+                else:
+                    victim_name = make_fallback_player_name(victim_id) if victim_id else "Unknown"
+
+            key = (attacker_id, attacker_name, victim_id, victim_name)
             matrix[key] = matrix.get(key, 0) + 1
 
-        return [{"attacker": k[0], "victim": k[1], "count": v} for k, v in matrix.items()]
+        return [
+            {
+                "attacker": k[1],
+                "attacker_steamid": k[0],
+                "victim": k[3],
+                "victim_steamid": k[2],
+                "count": v,
+            }
+            for k, v in matrix.items()
+        ]
 
     def _collect_dry_peek_events(self, demo_data, player_names: dict) -> dict:
         """Collect dry peek events with utility support data for visualization.
@@ -1763,13 +1846,14 @@ class DemoOrchestrator:
             attacker_id = getattr(first_kill, "attacker_steamid", 0)
             attacker_name = player_names.get(attacker_id)
             if not attacker_name:
-                # Try fallback to kill event's attacker_name attribute
-                attacker_name = getattr(first_kill, "attacker_name", None)
-            if not attacker_name and attacker_id:
-                # Use friendly format instead of "Unknown"
-                attacker_name = f"Player_{str(attacker_id)[-4:]}"
-            elif not attacker_name:
-                attacker_name = "Unknown"
+                # Try fallback to kill event's attacker_name attribute with validation
+                raw_name = getattr(first_kill, "attacker_name", "")
+                if raw_name and is_valid_player_name(raw_name):
+                    attacker_name = raw_name
+                elif attacker_id:
+                    attacker_name = make_fallback_player_name(attacker_id)
+                else:
+                    attacker_name = "Unknown"
             attacker_side = getattr(first_kill, "attacker_side", "") or ""
             attacker_team = "CT" if "CT" in attacker_side.upper() else "T"
 
@@ -1777,13 +1861,14 @@ class DemoOrchestrator:
             victim_id = getattr(first_kill, "victim_steamid", 0)
             victim_name = player_names.get(victim_id)
             if not victim_name:
-                # Try fallback to kill event's victim_name attribute
-                victim_name = getattr(first_kill, "victim_name", None)
-            if not victim_name and victim_id:
-                # Use friendly format instead of "Unknown"
-                victim_name = f"Player_{str(victim_id)[-4:]}"
-            elif not victim_name:
-                victim_name = "Unknown"
+                # Try fallback to kill event's victim_name attribute with validation
+                raw_name = getattr(first_kill, "victim_name", "")
+                if raw_name and is_valid_player_name(raw_name):
+                    victim_name = raw_name
+                elif victim_id:
+                    victim_name = make_fallback_player_name(victim_id)
+                else:
+                    victim_name = "Unknown"
             victim_side = getattr(first_kill, "victim_side", "") or ""
             victim_team = "CT" if "CT" in victim_side.upper() else "T"
 
@@ -2415,9 +2500,6 @@ class DemoOrchestrator:
             trade_rate = (deaths_traded / max(1, total_deaths)) * 100 if total_deaths > 0 else 0
             avg_trade_rate = match_stats.get("avg_trade_rate", 40)
 
-            # Find best trader on team for comparison
-            best_trader = top_performers.get("trade_kills", {})
-
             if trade_kills >= 5:
                 insights.append(
                     {
@@ -2430,7 +2512,24 @@ class DemoOrchestrator:
                 )
 
             if total_deaths >= 8 and trade_rate < 30:
-                best_trader_name = best_trader.get("name", "teammate")
+                # Find best trader among THIS player's teammates (not including themselves)
+                player_team = player.get("team", "")
+                teammates = [
+                    p
+                    for sid, p in players.items()
+                    if p.get("team") == player_team
+                    and sid != steam_id
+                    and p.get("trades", {}).get("trade_kills", 0) > 0
+                ]
+
+                if teammates:
+                    best_teammate_trader = max(
+                        teammates, key=lambda p: p.get("trades", {}).get("trade_kills", 0)
+                    )
+                    best_trader_name = best_teammate_trader.get("name", "teammate")
+                else:
+                    best_trader_name = "teammates"
+
                 insights.append(
                     {
                         "type": "warning",

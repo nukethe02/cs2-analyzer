@@ -3868,8 +3868,8 @@
                 ` : ''}
 
                 <div id="highlights-section" style="margin: 20px 0; padding: 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md);">
-                    <h3 style="margin: 0 0 8px 0; color: var(--text-primary); font-size: 1.1rem;">🎯 Match Highlights</h3>
-                    <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Coming soon: Key moments, clutches, multi-kills, and standout plays.</p>
+                    <h3 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 1.1rem;">🎯 Match Highlights</h3>
+                    ${renderHighlights(data.highlights || [])}
                 </div>
 
                 <div class="tabs">
@@ -8061,6 +8061,122 @@
         }
 
         // Render Coaching Tab
+        function renderHighlights(highlights) {
+            if (!highlights || !highlights.length) {
+                return `<p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">No highlights detected in this match.</p>`;
+            }
+
+            // Group highlights by type
+            const typeEmojis = {
+                'ace': '👑',
+                '4k': '🔥',
+                '3k': '⚡',
+                'clutch_1v5': '💎',
+                'clutch_1v4': '💪',
+                'clutch_1v3': '🎯',
+                'clutch_1v2': '⚔️',
+                'clutch_1v1': '🤺',
+                'noscope': '🎯',
+                'wallbang': '🧱',
+                'through_smoke': '💨'
+            };
+
+            const typeColors = {
+                'ace': 'var(--accent-tertiary)',
+                '4k': 'var(--danger)',
+                '3k': 'var(--warning)',
+                'clutch_1v5': 'var(--accent-tertiary)',
+                'clutch_1v4': 'var(--accent-secondary)',
+                'clutch_1v3': 'var(--accent-primary)',
+                'clutch_1v2': 'var(--success)',
+                'clutch_1v1': 'var(--text-muted)',
+                'noscope': 'var(--accent-secondary)',
+                'wallbang': 'var(--warning)',
+                'through_smoke': 'var(--text-muted)'
+            };
+
+            // Sort by impact score descending
+            const sortedHighlights = [...highlights].sort((a, b) => b.impact_score - a.impact_score);
+
+            // Take top 10 highlights
+            const topHighlights = sortedHighlights.slice(0, 10);
+
+            let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">';
+
+            for (const h of topHighlights) {
+                const emoji = typeEmojis[h.highlight_type] || '⭐';
+                const color = typeColors[h.highlight_type] || 'var(--accent-primary)';
+                const impactBar = Math.round((h.impact_score / 100) * 100);
+
+                html += `
+                    <div style="
+                        padding: 12px;
+                        background: var(--bg-tertiary);
+                        border: 1px solid var(--border);
+                        border-left: 3px solid ${color};
+                        border-radius: var(--radius-sm);
+                        transition: all 0.2s ease;
+                        cursor: pointer;
+                    " onmouseover="this.style.background='var(--bg-secondary)'; this.style.borderColor='${color}'" onmouseout="this.style.background='var(--bg-tertiary)'; this.style.borderColor='var(--border)'">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="font-size: 1.2rem;">${emoji}</span>
+                                <span style="font-weight: 600; color: var(--text-primary); font-size: 0.9rem;">${esc(h.player_name)}</span>
+                            </div>
+                            <span style="
+                                background: ${color};
+                                color: white;
+                                padding: 2px 8px;
+                                border-radius: 12px;
+                                font-size: 0.75rem;
+                                font-weight: 600;
+                            ">Round ${h.round_number}</span>
+                        </div>
+                        <p style="margin: 0 0 8px 0; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4;">${esc(h.description)}</p>
+                        ${h.weapons_used && h.weapons_used.length ? `
+                            <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px;">
+                                ${h.weapons_used.map(w => `
+                                    <span style="
+                                        background: var(--bg-secondary);
+                                        color: var(--text-muted);
+                                        padding: 2px 6px;
+                                        border-radius: 4px;
+                                        font-size: 0.7rem;
+                                        text-transform: uppercase;
+                                    ">${esc(w)}</span>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                        <div style="
+                            width: 100%;
+                            height: 4px;
+                            background: var(--bg-secondary);
+                            border-radius: 2px;
+                            overflow: hidden;
+                        ">
+                            <div style="
+                                width: ${impactBar}%;
+                                height: 100%;
+                                background: ${color};
+                                transition: width 0.3s ease;
+                            "></div>
+                        </div>
+                        <div style="margin-top: 4px; text-align: right;">
+                            <span style="color: var(--text-muted); font-size: 0.7rem;">Impact: ${Math.round(h.impact_score)}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+
+            if (highlights.length > 10) {
+                html += `<p style="margin: 12px 0 0 0; color: var(--text-muted); font-size: 0.8rem; text-align: center;">Showing top 10 of ${highlights.length} highlights</p>`;
+            }
+
+            return html;
+        }
+
         function renderCoaching(coaching) {
             if (!coaching.length) {
                 return `
