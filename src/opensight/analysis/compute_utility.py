@@ -495,38 +495,40 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
 
     # Fallback: calculate from blind events and kills correlation
     elif has_blinds and not kills_df.empty and "tick" in kills_df.columns:
-        logger.info("Calculating flash assists from blind/kill correlation")
-        att_col = analyzer._find_col(kills_df, analyzer.ATT_ID_COLS)
-        vic_col = analyzer._vic_id_col or analyzer._find_col(kills_df, analyzer.VIC_ID_COLS)
+        logger.info("Calculating flash assists from blind/kill correlation (name-based matching)")
+        # Use name columns instead of steamid to avoid demoparser2 steamid quirk
+        att_name_col = analyzer._find_col(kills_df, ["attacker_name"])
+        vic_name_col = analyzer._find_col(kills_df, ["victim_name", "user_name"])
 
-        if att_col and vic_col:
+        if att_name_col and vic_name_col:
             for steam_id, player in analyzer._players.items():
                 player_blinds = blinds_by_attacker.get(steam_id, [])
                 if not player_blinds:
                     continue
 
                 flash_assist_count = 0
+                player_name = player.name  # Get the thrower's name
 
                 # For each enemy blind, check if a teammate got a kill on that enemy
                 for blind in player_blinds:
                     if blind.is_teammate:
                         continue
 
-                    victim_id = blind.victim_steamid
+                    victim_name = blind.victim_name  # Use name instead of steamid
                     blind_tick = blind.tick
                     blind_end_tick = blind_tick + int(blind.blind_duration * 64)
 
                     # Check if any teammate killed this blinded enemy within window
                     victim_kills = kills_df[
-                        (kills_df[vic_col] == victim_id)
+                        (kills_df[vic_name_col] == victim_name)
                         & (kills_df["tick"] >= blind_tick)
                         & (kills_df["tick"] <= blind_end_tick + FLASH_ASSIST_WINDOW_TICKS)
                     ]
 
                     # Count kills by teammates (not by the flash thrower)
                     for _, kill in victim_kills.iterrows():
-                        killer_id = kill.get(att_col)
-                        if killer_id != steam_id:
+                        killer_name = kill.get(att_name_col)
+                        if killer_name and killer_name != player_name:
                             flash_assist_count += 1
                             break  # Only count once per blind
 
