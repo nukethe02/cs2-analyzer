@@ -92,6 +92,14 @@ class DemoOrchestrator:
         # Build timeline graph data
         timeline_graph = self._build_timeline_graph_data(demo_data)
 
+        # Extract positional coordinate data (OpenSight differentiator)
+        try:
+            from opensight.analysis.positioning_data import extract_positions, serialize_position_analysis, serialize_player_positions
+            position_analysis = extract_positions(analyzer)
+        except Exception as e:
+            logger.warning(f"Position extraction failed: {e}")
+            position_analysis = None
+
         # Build comprehensive player data
         players = {}
         for sid, p in analysis.players.items():
@@ -319,6 +327,7 @@ class DemoOrchestrator:
                     "discipline_rating": round(p.discipline_rating, 1),
                     "greedy_repeeks": p.greedy_repeeks,
                 },
+                "positions": serialize_player_positions(position_analysis.player_stats.get(str(sid))) if position_analysis else None,
             }
 
         # Build round timeline
@@ -464,6 +473,7 @@ class DemoOrchestrator:
             "synergy": synergy,
             "timeline_graph": timeline_graph,
             "highlights": highlights_dicts,
+            "position_analysis": serialize_position_analysis(position_analysis) if position_analysis else None,
             "analyzed_at": datetime.now().isoformat(),
         }
 
