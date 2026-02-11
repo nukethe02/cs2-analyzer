@@ -496,10 +496,6 @@ class TestPipelineDataFlow:
         not GOLDEN_DEMO_PATH.exists(),
         reason=f"Golden demo not found at {GOLDEN_DEMO_PATH}",
     )
-    @pytest.mark.xfail(
-        reason="Known issue: TTD has 0/10 players with data (Wave B pipeline gap)",
-        strict=False,
-    )
     def test_pipeline_produces_valid_output(self):
         """
         Parse golden master demo through full pipeline.
@@ -632,10 +628,6 @@ class TestPipelineDataFlow:
     @pytest.mark.skipif(
         not GOLDEN_DEMO_PATH.exists(),
         reason=f"Golden demo not found at {GOLDEN_DEMO_PATH}",
-    )
-    @pytest.mark.xfail(
-        reason="Known issue: Timeline kill counts are 0 in round_scores structure",
-        strict=False,
     )
     def test_timeline_has_both_teams(self):
         """Verify timeline has both CT and T data."""
