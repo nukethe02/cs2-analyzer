@@ -185,10 +185,15 @@ PLAYER_CONTRACT: dict = {
         "clutch_success_pct": (int, float),
         "total_situations": int,
         "v1_wins": int,
+        "v1_attempts": int,
         "v2_wins": int,
+        "v2_attempts": int,
         "v3_wins": int,
+        "v3_attempts": int,
         "v4_wins": int,
+        "v4_attempts": int,
         "v5_wins": int,
+        "v5_attempts": int,
     },
     # ── rws: round win shares ──
     "rws": {
@@ -213,6 +218,40 @@ PLAYER_CONTRACT: dict = {
         "discipline_rating": (int, float),
         "greedy_repeeks": int,
     },
+    # ── side_stats: CT/T side performance breakdown ──
+    "side_stats": {
+        "ct": {
+            "kills": int,
+            "deaths": int,
+            "assists": int,
+            "damage": int,
+            "rounds_played": int,
+            "rounds_won": int,
+        },
+        "t": {
+            "kills": int,
+            "deaths": int,
+            "assists": int,
+            "damage": int,
+            "rounds_played": int,
+            "rounds_won": int,
+        },
+    },
+    # ── mistakes: team damage, team kills, flashes ──
+    "mistakes": {
+        "team_damage": int,
+        "team_kills": int,
+        "teammates_flashed": int,
+        "self_flashes": int,
+    },
+    # ── lurk: lurk behavior analysis ──
+    "lurk": {
+        "lurk_rounds": int,
+        "lurk_kills": int,
+        "lurk_deaths": int,
+        "lurk_success_rate": (int, float, type(None)),
+    },
+
 }
 
 
