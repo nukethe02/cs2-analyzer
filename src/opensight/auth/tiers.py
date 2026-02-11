@@ -19,8 +19,8 @@ TIER_LIMITS: dict[str, dict] = {
     },
     "pro": {
         "demos_per_day": 20,
-        "ai_enabled": False,
-        "scouting_enabled": False,
+        "ai_enabled": True,
+        "scouting_enabled": True,
         "export_enabled": True,
     },
     "team": {
