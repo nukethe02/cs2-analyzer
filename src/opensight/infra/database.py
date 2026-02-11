@@ -32,6 +32,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
+from sqlalchemy.exc import IntegrityError
 
 
 def _utc_now() -> datetime:
@@ -710,8 +711,143 @@ class Job(Base):
     )
 
 
-# =============================================================================
+# ======================================
+
+class User(Base):
+    """Persistent user storage — replaces in-memory auth dict."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    username = Column(String(100), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    tier = Column(String(20), default="free", nullable=False)
+    steam_id = Column(String(20), unique=True, nullable=True, index=True)
+    created_at = Column(DateTime, default=_utc_now, nullable=False)
+    last_login = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_user_email_tier", "email", "tier"),
+    )
+
+    def to_dict(self) -> dict:
+        """Convert User to dict for JSON serialization (excludes password_hash)."""
+        return {
+            "id": self.id,
+            "email": self.email,
+            "username": self.username,
+            "tier": self.tier,
+            "steam_id": self.steam_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_login": self.last_login.isoformat() if self.last_login else None,
+        }
+
+    def __repr__(self) -> str:
+        return f"<User(id={self.id}, username={self.username}, email={self.email})>"
+
+=======================================
 # Database Manager
+
+# =============================================================================
+# User Helper Functions
+# =============================================================================
+
+def get_user_by_email(db: Session, email: str):
+    """Retrieve a user by email address."""
+    try:
+        return db.query(User).filter(User.email == email.lower()).first()
+    except Exception as e:
+        logger.error(f"Error querying user by email: {e}")
+        return None
+
+
+def get_user_by_id(db: Session, user_id: int):
+    """Retrieve a user by ID."""
+    try:
+        return db.query(User).filter(User.id == user_id).first()
+    except Exception as e:
+        logger.error(f"Error querying user by ID: {e}")
+        return None
+
+
+def get_user_by_steam_id(db: Session, steam_id: str):
+    """Retrieve a user by Steam ID."""
+    try:
+        return db.query(User).filter(User.steam_id == steam_id).first()
+    except Exception as e:
+        logger.error(f"Error querying user by Steam ID: {e}")
+        return None
+
+
+def get_user_by_username(db: Session, username: str):
+    """Retrieve a user by username."""
+    try:
+        return db.query(User).filter(User.username == username).first()
+    except Exception as e:
+        logger.error(f"Error querying user by username: {e}")
+        return None
+
+
+def create_user(
+    db: Session,
+    email: str,
+    username: str,
+    password_hash: str,
+    tier: str = "free",
+    steam_id: str | None = None,
+):
+    """Create a new user in the database."""
+    try:
+        user = User(
+            email=email.lower(),
+            username=username,
+            password_hash=password_hash,
+            tier=tier,
+            steam_id=steam_id,
+            created_at=_utc_now(),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+    except IntegrityError as e:
+        db.rollback()
+        logger.error(f"Integrity error creating user: {e}")
+        return None
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating user: {e}")
+        return None
+
+
+def update_user_last_login(db: Session, user_id: int) -> bool:
+    """Update the last_login timestamp for a user."""
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            user.last_login = _utc_now()
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating user last login: {e}")
+        return False
+
+
+def user_exists(db: Session, email: str = None, username: str = None) -> bool:
+    """Check if a user exists by email or username."""
+    try:
+        if email:
+            return db.query(User).filter(User.email == email.lower()).first() is not None
+        if username:
+            return db.query(User).filter(User.username == username).first() is not None
+        return False
+    except Exception as e:
+        logger.error(f"Error checking user existence: {e}")
+        return False
+
+
 # =============================================================================
 
 
@@ -1912,3 +2048,13 @@ def get_db() -> DatabaseManager:
     if _db_manager is None:
         _db_manager = DatabaseManager()
     return _db_manager
+
+
+def get_session():
+    """FastAPI dependency: yield a database session, auto-close after request."""
+    db = get_db()
+    session = db.get_session()
+    try:
+        yield session
+    finally:
+        session.close()
