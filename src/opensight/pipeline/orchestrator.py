@@ -265,6 +265,36 @@ class DemoOrchestrator:
                 },
                 "entry": self._get_entry_stats(p),
                 "trades": self._get_trade_stats(p),
+                "side_stats": {
+                    "ct": {
+                        "kills": p.ct_stats.kills if p.ct_stats else 0,
+                        "deaths": p.ct_stats.deaths if p.ct_stats else 0,
+                        "assists": p.ct_stats.assists if p.ct_stats else 0,
+                        "damage": p.ct_stats.damage if p.ct_stats else 0,
+                        "rounds_played": p.ct_stats.rounds_played if p.ct_stats else 0,
+                        "rounds_won": p.ct_stats.rounds_won if p.ct_stats else 0,
+                    },
+                    "t": {
+                        "kills": p.t_stats.kills if p.t_stats else 0,
+                        "deaths": p.t_stats.deaths if p.t_stats else 0,
+                        "assists": p.t_stats.assists if p.t_stats else 0,
+                        "damage": p.t_stats.damage if p.t_stats else 0,
+                        "rounds_played": p.t_stats.rounds_played if p.t_stats else 0,
+                        "rounds_won": p.t_stats.rounds_won if p.t_stats else 0,
+                    },
+                },
+                "mistakes": {
+                    "team_damage": p.mistakes.team_damage if p.mistakes else 0,
+                    "team_kills": p.mistakes.team_kills if p.mistakes else 0,
+                    "teammates_flashed": p.mistakes.teammates_flashed if p.mistakes else 0,
+                    "self_flashes": p.mistakes.self_flashes if p.mistakes else 0,
+                } if p.mistakes else None,
+                "lurk": {
+                    "lurk_rounds": p.lurk.lurk_rounds if p.lurk else 0,
+                    "lurk_kills": p.lurk.lurk_kills if p.lurk else 0,
+                    "lurk_deaths": p.lurk.lurk_deaths if p.lurk else 0,
+                    "lurk_success_rate": p.lurk.lurk_success_rate if p.lurk else None,
+                } if p.lurk else None,
                 "clutches": self._get_clutch_stats(p),
                 "rws": rws_data.get(
                     sid,
@@ -538,10 +568,15 @@ class DemoOrchestrator:
                 "clutch_success_pct": round(wins / total * 100, 0) if total > 0 else 0,
                 "total_situations": total,
                 "v1_wins": clutches.v1_wins,
+                "v1_attempts": clutches.v1_attempts,
                 "v2_wins": clutches.v2_wins,
+                "v2_attempts": clutches.v2_attempts,
                 "v3_wins": clutches.v3_wins,
+                "v3_attempts": clutches.v3_attempts,
                 "v4_wins": clutches.v4_wins,
+                "v4_attempts": clutches.v4_attempts,
                 "v5_wins": clutches.v5_wins,
+                "v5_attempts": clutches.v5_attempts,
             }
         return {
             "clutch_wins": 0,
@@ -549,10 +584,15 @@ class DemoOrchestrator:
             "clutch_success_pct": 0,
             "total_situations": 0,
             "v1_wins": 0,
+            "v1_attempts": 0,
             "v2_wins": 0,
+            "v2_attempts": 0,
             "v3_wins": 0,
+            "v3_attempts": 0,
             "v4_wins": 0,
+            "v4_attempts": 0,
             "v5_wins": 0,
+            "v5_attempts": 0,
         }
 
     def _get_rws_for_player(self, steam_id: int, rws_data: dict) -> dict:
