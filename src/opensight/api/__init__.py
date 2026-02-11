@@ -291,7 +291,15 @@ if (STATIC_DIR / "maps").exists():
 
 @app.get("/", response_class=HTMLResponse)
 async def root() -> HTMLResponse:
-    """Serve the main web interface."""
+    """Serve the landing page."""
+    html_file = STATIC_DIR / "landing.html"
+    if html_file.exists():
+        return HTMLResponse(
+            content=html_file.read_text(encoding="utf-8"),
+            status_code=200,
+            headers={"cache-control": "no-cache, no-store, must-revalidate"},
+        )
+    # Fallback to index.html if no landing page
     html_file = STATIC_DIR / "index.html"
     if html_file.exists():
         return HTMLResponse(
@@ -301,6 +309,23 @@ async def root() -> HTMLResponse:
         )
     return HTMLResponse(
         content="<h1>OpenSight</h1><p>Web interface not found.</p>",
+        status_code=200,
+        headers={"cache-control": "no-cache"},
+    )
+
+
+@app.get("/analyze", response_class=HTMLResponse)
+async def analyze_page() -> HTMLResponse:
+    """Serve the CS2 demo analyzer interface."""
+    html_file = STATIC_DIR / "index.html"
+    if html_file.exists():
+        return HTMLResponse(
+            content=html_file.read_text(encoding="utf-8"),
+            status_code=200,
+            headers={"cache-control": "no-cache, no-store, must-revalidate"},
+        )
+    return HTMLResponse(
+        content="<h1>OpenSight Analyzer</h1><p>Upload interface not found.</p>",
         status_code=200,
         headers={"cache-control": "no-cache"},
     )
