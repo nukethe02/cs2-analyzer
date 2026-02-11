@@ -14,7 +14,7 @@ Uses map_zones.py for zone classification (e.g., "Banana", "A Site").
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from opensight.core.map_zones import get_callout
 from opensight.core.parser import safe_float
@@ -128,9 +128,7 @@ def extract_positions(analyzer: "DemoAnalyzer") -> PositionAnalysis:
     return result
 
 
-def _extract_death_positions(
-    analyzer: "DemoAnalyzer", map_name: str
-) -> list[PositionEvent]:
+def _extract_death_positions(analyzer: "DemoAnalyzer", map_name: str) -> list[PositionEvent]:
     """Extract death positions from kill events."""
     events = []
     kills = getattr(analyzer.data, "kills", [])
@@ -174,9 +172,7 @@ def _extract_death_positions(
     return events
 
 
-def _extract_engagement_positions(
-    analyzer: "DemoAnalyzer", map_name: str
-) -> list[PositionEvent]:
+def _extract_engagement_positions(analyzer: "DemoAnalyzer", map_name: str) -> list[PositionEvent]:
     """Extract attacker positions at time of kill."""
     events = []
     kills = getattr(analyzer.data, "kills", [])
@@ -221,9 +217,7 @@ def _extract_engagement_positions(
     return events
 
 
-def _extract_defensive_setups(
-    analyzer: "DemoAnalyzer", map_name: str
-) -> list[PositionEvent]:
+def _extract_defensive_setups(analyzer: "DemoAnalyzer", map_name: str) -> list[PositionEvent]:
     """Extract CT positions at freeze-time end for defensive setup analysis.
 
     Uses tick data (ticks_df) to find player positions at round start.
@@ -238,8 +232,6 @@ def _extract_defensive_setups(
         return events
 
     try:
-        import pandas as pd
-
         for rnd in rounds:
             freeze_end_tick = getattr(rnd, "freeze_end_tick", None)
             round_num = getattr(rnd, "round_num", 0)
@@ -258,9 +250,7 @@ def _extract_defensive_setups(
 
             # Group by steamid, take closest to freeze_end_tick
             for steam_id, group in freeze_positions.groupby("steamid"):
-                closest = group.iloc[
-                    (group["tick"] - freeze_end_tick).abs().argsort()[:1]
-                ]
+                closest = group.iloc[(group["tick"] - freeze_end_tick).abs().argsort()[:1]]
                 if closest.empty:
                     continue
 
@@ -301,9 +291,7 @@ def _extract_defensive_setups(
     return events
 
 
-def _extract_grenade_positions(
-    analyzer: "DemoAnalyzer", map_name: str
-) -> list[PositionEvent]:
+def _extract_grenade_positions(analyzer: "DemoAnalyzer", map_name: str) -> list[PositionEvent]:
     """Extract grenade landing/detonation positions."""
     events = []
     grenades = getattr(analyzer.data, "grenades", [])
@@ -344,9 +332,7 @@ def _extract_grenade_positions(
     return events
 
 
-def _extract_firing_velocity(
-    analyzer: "DemoAnalyzer", map_name: str
-) -> list[PositionEvent]:
+def _extract_firing_velocity(analyzer: "DemoAnalyzer", map_name: str) -> list[PositionEvent]:
     """Extract player velocity at time of shots/kills for counter-strafe analysis."""
     events = []
     kills = getattr(analyzer.data, "kills", [])
@@ -471,9 +457,7 @@ def _build_player_position_stats(
             stationary = [e for e in player_shots if e.metadata.get("is_stationary")]
             ps.avg_firing_velocity = round(sum(speeds) / len(speeds), 1) if speeds else None
             ps.shots_stationary_pct = (
-                round(len(stationary) / len(player_shots) * 100, 1)
-                if player_shots
-                else None
+                round(len(stationary) / len(player_shots) * 100, 1) if player_shots else None
             )
 
         ps.total_positions_extracted = (
@@ -525,18 +509,18 @@ def serialize_position_analysis(analysis: PositionAnalysis) -> dict:
     }
 
 
-def serialize_player_positions(stats: PlayerPositionStats) -> dict:
+def serialize_player_positions(stats: PlayerPositionStats | None) -> dict | None:
     """Serialize a single player's position stats for JSON output."""
+    if stats is None:
+        return None
     return {
         "top_death_zone": stats.top_death_zone,
         "top_kill_zone": stats.top_kill_zone,
         "death_zones": [
-            {"zone": z.zone, "count": z.count, "pct": z.percentage}
-            for z in stats.death_zones[:5]
+            {"zone": z.zone, "count": z.count, "pct": z.percentage} for z in stats.death_zones[:5]
         ],
         "kill_zones": [
-            {"zone": z.zone, "count": z.count, "pct": z.percentage}
-            for z in stats.kill_zones[:5]
+            {"zone": z.zone, "count": z.count, "pct": z.percentage} for z in stats.kill_zones[:5]
         ],
         "ct_setup_zones": stats.ct_setup_zones,
         "avg_firing_velocity": stats.avg_firing_velocity,

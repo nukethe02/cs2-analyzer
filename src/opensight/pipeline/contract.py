@@ -226,7 +226,8 @@ PLAYER_CONTRACT: dict = {
             "assists": int,
             "damage": int,
             "rounds_played": int,
-            "rounds_won": int,
+            "kd_ratio": (int, float),
+            "adr": (int, float),
         },
         "t": {
             "kills": int,
@@ -234,7 +235,8 @@ PLAYER_CONTRACT: dict = {
             "assists": int,
             "damage": int,
             "rounds_played": int,
-            "rounds_won": int,
+            "kd_ratio": (int, float),
+            "adr": (int, float),
         },
     },
     # ── mistakes: team damage, team kills, flashes ──
@@ -242,16 +244,15 @@ PLAYER_CONTRACT: dict = {
         "team_damage": int,
         "team_kills": int,
         "teammates_flashed": int,
-        "self_flashes": int,
+        "suicides": int,
+        "total_mistakes": int,
     },
     # ── lurk: lurk behavior analysis ──
     "lurk": {
-        "lurk_rounds": int,
-        "lurk_kills": int,
-        "lurk_deaths": int,
-        "lurk_success_rate": (int, float, type(None)),
+        "kills": int,
+        "deaths": int,
+        "rounds_lurking": int,
     },
-
 }
 
 

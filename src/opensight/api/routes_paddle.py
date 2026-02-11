@@ -1,9 +1,9 @@
 """Paddle webhook endpoint for subscription management."""
+
 import hashlib
 import hmac
 import json
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from sqlalchemy import select
@@ -16,10 +16,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/paddle", tags=["paddle"])
 
 # Set this via environment variable PADDLE_WEBHOOK_SECRET
-PADDLE_WEBHOOK_SECRET: Optional[str] = None
+PADDLE_WEBHOOK_SECRET: str | None = None
 
 try:
     import os
+
     PADDLE_WEBHOOK_SECRET = os.environ.get("PADDLE_WEBHOOK_SECRET")
 except Exception:
     pass
@@ -52,8 +53,8 @@ def verify_paddle_signature(raw_body: bytes, signature: str) -> bool:
 
 
 PLAN_TO_TIER = {
-    "pri_PLACEHOLDER_PLUS": Tier.PLUS,
     "pri_PLACEHOLDER_PRO": Tier.PRO,
+    "pri_PLACEHOLDER_TEAM": Tier.TEAM,
     # Replace with real Paddle price IDs when ready
 }
 
@@ -66,7 +67,7 @@ def _resolve_tier(price_id: str) -> Tier:
 @router.post("/webhook")
 async def paddle_webhook(
     request: Request,
-    paddle_signature: Optional[str] = Header(None, alias="Paddle-Signature"),
+    paddle_signature: str | None = Header(None, alias="Paddle-Signature"),
 ):
     """
     Handle Paddle subscription lifecycle events.
@@ -114,7 +115,7 @@ async def paddle_webhook(
         return {"status": "ok", "detail": "no steam_id"}
 
     # Determine new tier based on event
-    new_tier: Optional[Tier] = None
+    new_tier: Tier | None = None
 
     if event_type in ("subscription.created", "subscription.updated", "subscription.resumed"):
         items = data.get("items", [])
@@ -122,7 +123,7 @@ async def paddle_webhook(
             price_id = items[0].get("price", {}).get("id", "")
             new_tier = _resolve_tier(price_id)
         else:
-            new_tier = Tier.PLUS  # Default upgrade
+            new_tier = Tier.PRO  # Default upgrade
 
     elif event_type in ("subscription.canceled", "subscription.paused"):
         new_tier = Tier.FREE
@@ -146,7 +147,9 @@ async def paddle_webhook(
             session.commit()
             logger.info(
                 "Updated user %s tier: %s -> %s",
-                steam_id, old_tier, new_tier.value,
+                steam_id,
+                old_tier,
+                new_tier.value,
             )
     except Exception as e:
         logger.error("Database error updating tier: %s", e)

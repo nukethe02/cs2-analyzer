@@ -94,7 +94,12 @@ class DemoOrchestrator:
 
         # Extract positional coordinate data (OpenSight differentiator)
         try:
-            from opensight.analysis.positioning_data import extract_positions, serialize_position_analysis, serialize_player_positions
+            from opensight.analysis.positioning_data import (
+                extract_positions,
+                serialize_player_positions,
+                serialize_position_analysis,
+            )
+
             position_analysis = extract_positions(analyzer)
         except Exception as e:
             logger.warning(f"Position extraction failed: {e}")
@@ -274,35 +279,25 @@ class DemoOrchestrator:
                 "entry": self._get_entry_stats(p),
                 "trades": self._get_trade_stats(p),
                 "side_stats": {
-                    "ct": {
-                        "kills": p.ct_stats.kills if p.ct_stats else 0,
-                        "deaths": p.ct_stats.deaths if p.ct_stats else 0,
-                        "assists": p.ct_stats.assists if p.ct_stats else 0,
-                        "damage": p.ct_stats.damage if p.ct_stats else 0,
-                        "rounds_played": p.ct_stats.rounds_played if p.ct_stats else 0,
-                        "rounds_won": p.ct_stats.rounds_won if p.ct_stats else 0,
-                    },
-                    "t": {
-                        "kills": p.t_stats.kills if p.t_stats else 0,
-                        "deaths": p.t_stats.deaths if p.t_stats else 0,
-                        "assists": p.t_stats.assists if p.t_stats else 0,
-                        "damage": p.t_stats.damage if p.t_stats else 0,
-                        "rounds_played": p.t_stats.rounds_played if p.t_stats else 0,
-                        "rounds_won": p.t_stats.rounds_won if p.t_stats else 0,
-                    },
+                    "ct": p.ct_stats.to_dict() if p.ct_stats else None,
+                    "t": p.t_stats.to_dict() if p.t_stats else None,
                 },
                 "mistakes": {
-                    "team_damage": p.mistakes.team_damage if p.mistakes else 0,
-                    "team_kills": p.mistakes.team_kills if p.mistakes else 0,
-                    "teammates_flashed": p.mistakes.teammates_flashed if p.mistakes else 0,
-                    "self_flashes": p.mistakes.self_flashes if p.mistakes else 0,
-                } if p.mistakes else None,
+                    "team_damage": p.mistakes.team_damage,
+                    "team_kills": p.mistakes.team_kills,
+                    "teammates_flashed": p.mistakes.teammates_flashed,
+                    "suicides": p.mistakes.suicides,
+                    "total_mistakes": p.mistakes.total_mistakes,
+                }
+                if p.mistakes
+                else None,
                 "lurk": {
-                    "lurk_rounds": p.lurk.lurk_rounds if p.lurk else 0,
-                    "lurk_kills": p.lurk.lurk_kills if p.lurk else 0,
-                    "lurk_deaths": p.lurk.lurk_deaths if p.lurk else 0,
-                    "lurk_success_rate": p.lurk.lurk_success_rate if p.lurk else None,
-                } if p.lurk else None,
+                    "kills": p.lurk.kills,
+                    "deaths": p.lurk.deaths,
+                    "rounds_lurking": p.lurk.rounds_lurking,
+                }
+                if p.lurk
+                else None,
                 "clutches": self._get_clutch_stats(p),
                 "rws": rws_data.get(
                     sid,
@@ -327,7 +322,11 @@ class DemoOrchestrator:
                     "discipline_rating": round(p.discipline_rating, 1),
                     "greedy_repeeks": p.greedy_repeeks,
                 },
-                "positions": serialize_player_positions(position_analysis.player_stats.get(str(sid))) if position_analysis else None,
+                "positions": serialize_player_positions(
+                    position_analysis.player_stats.get(str(sid))
+                )
+                if position_analysis
+                else None,
             }
 
         # Build round timeline
@@ -473,7 +472,9 @@ class DemoOrchestrator:
             "synergy": synergy,
             "timeline_graph": timeline_graph,
             "highlights": highlights_dicts,
-            "position_analysis": serialize_position_analysis(position_analysis) if position_analysis else None,
+            "position_analysis": serialize_position_analysis(position_analysis)
+            if position_analysis
+            else None,
             "analyzed_at": datetime.now().isoformat(),
         }
 
@@ -1726,7 +1727,11 @@ class DemoOrchestrator:
             victim_side = self._normalize_side(getattr(dmg, "victim_side", ""))
 
             # Only count damage to enemies
-            is_enemy_damage = attacker_side != victim_side and attacker_side != "Unknown" and victim_side != "Unknown"
+            is_enemy_damage = (
+                attacker_side != victim_side
+                and attacker_side != "Unknown"
+                and victim_side != "Unknown"
+            )
 
             if attacker_id and round_num and is_enemy_damage:
                 if round_num not in round_damages:

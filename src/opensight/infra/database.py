@@ -31,8 +31,8 @@ from sqlalchemy import (
     create_engine,
     func,
 )
-from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 
 def _utc_now() -> datetime:
@@ -713,8 +713,10 @@ class Job(Base):
 
 # ======================================
 
+
 class User(Base):
     """Persistent user storage — replaces in-memory auth dict."""
+
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -726,9 +728,7 @@ class User(Base):
     created_at = Column(DateTime, default=_utc_now, nullable=False)
     last_login = Column(DateTime, nullable=True)
 
-    __table_args__ = (
-        Index("idx_user_email_tier", "email", "tier"),
-    )
+    __table_args__ = (Index("idx_user_email_tier", "email", "tier"),)
 
     def to_dict(self) -> dict:
         """Convert User to dict for JSON serialization (excludes password_hash)."""
@@ -745,12 +745,11 @@ class User(Base):
     def __repr__(self) -> str:
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
 
-=======================================
-# Database Manager
 
 # =============================================================================
 # User Helper Functions
 # =============================================================================
+
 
 def get_user_by_email(db: Session, email: str):
     """Retrieve a user by email address."""
@@ -2058,3 +2057,20 @@ def get_session():
         yield session
     finally:
         session.close()
+
+
+class SessionLocal:
+    """Module-level session factory compatible with `with SessionLocal() as session:` pattern.
+
+    Delegates to the global DatabaseManager's session maker.
+    """
+
+    def __enter__(self):
+        self._session = get_db().get_session()
+        return self._session
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self._session.rollback()
+        self._session.close()
+        return False

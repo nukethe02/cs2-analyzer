@@ -306,6 +306,42 @@ class TestContractValidation:
                     "discipline_rating": round(p.discipline_rating, 1),
                     "greedy_repeeks": p.greedy_repeeks,
                 },
+                "side_stats": {
+                    "ct": p.ct_stats.to_dict()
+                    if p.ct_stats
+                    else {
+                        "kills": 0,
+                        "deaths": 0,
+                        "assists": 0,
+                        "damage": 0,
+                        "rounds_played": 0,
+                        "kd_ratio": 0.0,
+                        "adr": 0.0,
+                    },
+                    "t": p.t_stats.to_dict()
+                    if p.t_stats
+                    else {
+                        "kills": 0,
+                        "deaths": 0,
+                        "assists": 0,
+                        "damage": 0,
+                        "rounds_played": 0,
+                        "kd_ratio": 0.0,
+                        "adr": 0.0,
+                    },
+                },
+                "mistakes": {
+                    "team_damage": p.mistakes.team_damage if p.mistakes else 0,
+                    "team_kills": p.mistakes.team_kills if p.mistakes else 0,
+                    "teammates_flashed": p.mistakes.teammates_flashed if p.mistakes else 0,
+                    "suicides": p.mistakes.suicides if p.mistakes else 0,
+                    "total_mistakes": p.mistakes.total_mistakes if p.mistakes else 0,
+                },
+                "lurk": {
+                    "kills": p.lurk.kills if p.lurk else 0,
+                    "deaths": p.lurk.deaths if p.lurk else 0,
+                    "rounds_lurking": p.lurk.rounds_lurking if p.lurk else 0,
+                },
             }
             players[str(sid)] = player_dict
 
@@ -387,10 +423,15 @@ class TestContractValidation:
             "clutch_success_pct",
             "total_situations",
             "v1_wins",
+            "v1_attempts",
             "v2_wins",
+            "v2_attempts",
             "v3_wins",
+            "v3_attempts",
             "v4_wins",
+            "v4_attempts",
             "v5_wins",
+            "v5_attempts",
         }
         assert set(clutches.keys()) == expected_keys
         assert clutches["total_situations"] == 5
@@ -590,6 +631,38 @@ class TestContractValidation:
             "discipline": {
                 "discipline_rating": 100.0,
                 "greedy_repeeks": 0,
+            },
+            "side_stats": {
+                "ct": {
+                    "kills": 0,
+                    "deaths": 0,
+                    "assists": 0,
+                    "damage": 0,
+                    "rounds_played": 0,
+                    "kd_ratio": 0.0,
+                    "adr": 0.0,
+                },
+                "t": {
+                    "kills": 0,
+                    "deaths": 0,
+                    "assists": 0,
+                    "damage": 0,
+                    "rounds_played": 0,
+                    "kd_ratio": 0.0,
+                    "adr": 0.0,
+                },
+            },
+            "mistakes": {
+                "team_damage": 0,
+                "team_kills": 0,
+                "teammates_flashed": 0,
+                "suicides": 0,
+                "total_mistakes": 0,
+            },
+            "lurk": {
+                "kills": 0,
+                "deaths": 0,
+                "rounds_lurking": 0,
             },
         }
 
