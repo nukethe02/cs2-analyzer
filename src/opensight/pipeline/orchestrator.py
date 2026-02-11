@@ -20,6 +20,44 @@ from opensight.core.utils import build_round_boundaries, infer_round_from_tick
 logger = logging.getLogger(__name__)
 
 
+# Knife weapon identifiers from demoparser2 - used to detect and exclude knife rounds
+KNIFE_WEAPONS = frozenset({
+    "knife", "knife_t", "knife_ct", "bayonet",
+    "knife_butterfly", "knife_tactical", "knife_flip", "knife_push",
+    "knife_karambit", "knife_m9_bayonet", "knife_gut",
+    "knife_survival_bowie", "knife_falchion", "knife_stiletto",
+    "knife_ursus", "knife_widowmaker", "knife_skeleton",
+    "knife_css", "knife_cord", "knife_canis", "knife_outdoor",
+    "knife_ghost", "knife_nomad", "knife_kukri",
+})
+
+
+def is_knife_round(kills_in_round: list, round_num: int = 0) -> bool:
+    """Detect if a round is a knife round.
+
+    A knife round is identified when:
+    - All kill weapons in the round are knives, OR
+    - It is round 1 and majority of kills use knife weapons.
+    """
+    if not kills_in_round:
+        return False
+    weapons = []
+    for k in kills_in_round:
+        if isinstance(k, dict):
+            w = k.get("weapon", "").lower()
+        else:
+            w = getattr(k, "weapon", "").lower()
+        weapons.append(w)
+    knife_kills = sum(1 for w in weapons if w in KNIFE_WEAPONS or w.startswith("knife"))
+    if knife_kills == 0:
+        return False
+    # All kills are knife kills -> knife round
+    if knife_kills == len(weapons):
+        return True
+    # Round 1 with majority knife kills -> knife round
+    if round_num == 1 and knife_kills > len(weapons) / 2:
+        return True
+    return False
 class DemoOrchestrator:
     """
     Orchestrates the complete demo analysis pipeline.
@@ -352,9 +390,19 @@ class DemoOrchestrator:
         try:
             from opensight.analysis.highlights import detect_highlights
 
+            # Detect knife round (typically round 1 with knife weapons)
+            all_kills = getattr(demo_data, "kills", [])
+            knife_round_num = None
+            round_1_kills = [k for k in all_kills if getattr(k, "round_num", 0) == 1]
+            if round_1_kills and is_knife_round(round_1_kills, round_num=1):
+                knife_round_num = 1
+                logger.info("Knife round detected (round 1) - excluding from analysis")
+
             # Prepare kills data for highlights detection
             kills_for_highlights = []
             for kill in getattr(demo_data, "kills", []):
+                if knife_round_num is not None and getattr(kill, "round_num", 0) == knife_round_num:
+                    continue
                 kill_dict = {
                     "attacker_steamid": str(getattr(kill, "attacker_steamid", 0)),
                     "attacker_name": getattr(kill, "attacker_name", "Unknown"),
@@ -452,7 +500,7 @@ class DemoOrchestrator:
             "demo_path": str(demo_path),
             "demo_info": {
                 "map": map_name,
-                "rounds": analysis.total_rounds,
+                "rounds": analysis.total_rounds - (1 if knife_round_num is not None else 0),
                 "duration_minutes": getattr(analysis, "duration_minutes", 30),
                 "score": f"{analysis.team1_score} - {analysis.team2_score}",
                 "score_ct": analysis.team1_score,  # Numeric CT score for AI modules
@@ -1062,13 +1110,25 @@ class DemoOrchestrator:
                     idx -= 1
                 event["was_dry_peek"] = not had_support
 
+
+        # Detect knife round in this method scope
+        _all_kills = getattr(demo_data, "kills", [])
+        _round1_kills = [k for k in _all_kills if getattr(k, "round_num", 0) == 1]
+        knife_round_num = 1 if _round1_kills and is_knife_round(_round1_kills, round_num=1) else None
+
         # Use actual round data if available, otherwise use analysis total_rounds
         total_rounds = (
             getattr(analysis, "total_rounds", 0) or len(round_boundaries) or len(round_events) or 30
         )
 
+        # Adjust for knife round if detected
+        start_round = 1
+        if knife_round_num is not None:
+            total_rounds -= 1  # Knife round not a real round
+            start_round = knife_round_num + 1  # Skip knife round
+
         # Build timeline entries for all rounds
-        for round_num in range(1, total_rounds + 1):
+        for round_num in range(start_round, total_rounds + start_round):
             events = round_events.get(round_num, [])
             stats = round_stats.get(round_num, {"ct_kills": 0, "t_kills": 0})
 
@@ -2956,7 +3016,7 @@ class DemoOrchestrator:
             # Build match context
             match_context = {
                 "map_name": getattr(analysis, "map_name", ""),
-                "total_rounds": getattr(analysis, "total_rounds", 0),
+                "total_rounds": max(getattr(analysis, "total_rounds", 0) - 1, 0)  # Subtract knife round,
                 "team1_score": getattr(analysis, "team1_score", 0),
                 "team2_score": getattr(analysis, "team2_score", 0),
             }
