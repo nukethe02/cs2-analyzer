@@ -238,6 +238,9 @@ def compute_ttd(analyzer: "DemoAnalyzer") -> None:
         # Transfer results to player stats (engagement duration from vectorized computation)
         for steam_id, player in analyzer._players.items():
             player.engagement_duration_values = analyzer._metrics_computer.get_ttd_values(steam_id)
+            if player.engagement_duration_values:
+                player.ttd_median_ms = float(np.median(player.engagement_duration_values))
+                player.ttd_mean_ms = float(np.mean(player.engagement_duration_values))
             # Note: prefire_count will be updated by _compute_true_ttd if tick data available
 
         ttd_metrics = analyzer._metrics_computer.ttd_metrics
@@ -447,6 +450,8 @@ def compute_ttd(analyzer: "DemoAnalyzer") -> None:
     for att_id, values in raw_ttd_values.items():
         if att_id in analyzer._players and values:
             analyzer._players[att_id].engagement_duration_values = values
+            analyzer._players[att_id].ttd_median_ms = float(np.median(values))
+            analyzer._players[att_id].ttd_mean_ms = float(np.mean(values))
 
     # Summary of engagement results per player
     players_with_data = sum(1 for p in analyzer._players.values() if p.engagement_duration_values)
