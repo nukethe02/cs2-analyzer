@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenSight â Your AI CS2 Coach</title>
+    <meta name="description" content="Upload a demo. Get better in 60 seconds. AI-powered CS2 analysis with position intelligence, coaching insights, and scouting reports.">
+    <style>
+        /* ===== Reset & Base ===== */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg-primary: #0A0A0A;
+            --bg-secondary: #111111;
+            --bg-card: #161616;
+            --bg-card-hover: #1a1a1a;
+            --gold: #D5C08B;
+            --gold-dim: #B8A472;
+            --gold-glow: rgba(213, 192, 139, 0.15);
+            --text-primary: #FFFFFF;
+            --text-secondary: #999999;
+            --text-muted: #666666;
+            --border: #222222;
+            --success: #4ADE80;
+            --danger: #F87171;
+            --radius: 12px;
+            --radius-lg: 20px;
+        }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        a { color: var(--gold); text-decoration: none; }
+        a:hover { color: var(--text-primary); }
+
+        /* ===== Navigation ===== */
+        .nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(10, 10, 10, 0.85);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            padding: 0 2rem;
+        }
+        .nav-inner {
+            max-width: 1200px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between;
+            height: 64px;
+        }
+        .nav-logo {
+            font-size: 1.25rem; font-weight: 700; color: var(--text-primary);
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .nav-logo span { color: var(--gold); }
+        .nav-links { display: flex; gap: 2rem; align-items: center; }
+        .nav-links a { color: var(--text-secondary); font-size: 0.9rem; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text-primary); }
+        .nav-cta {
+            background: var(--gold); color: #000; padding: 0.5rem 1.25rem;
+            border-radius: 8px; font-weight: 600; font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        .nav-cta:hover { background: var(--text-primary); color: #000; }
+
+        /* ===== Hero ===== */
+        .hero {
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            padding: 6rem 2rem 4rem; text-align: center;
+            background: radial-gradient(ellipse at 50% 0%, rgba(213, 192, 139, 0.08) 0%, transparent 60%);
+            position: relative;
+        }
+        .hero-content { max-width: 800px; }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            background: rgba(213, 192, 139, 0.1); border: 1px solid rgba(213, 192, 139, 0.2);
+            padding: 0.4rem 1rem; border-radius: 100px;
+            font-size: 0.8rem; color: var(--gold); margin-bottom: 1.5rem;
+        }
+        .hero-badge::before { content: ''; width: 6px; height: 6px; background: var(--gold); border-radius: 50%; }
+        .hero h1 {
+            font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800;
+            line-height: 1.1; margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #FFFFFF 0%, #D5C08B 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero p {
+            font-size: 1.2rem; color: var(--text-secondary); max-width: 600px;
+            margin: 0 auto 2.5rem; line-height: 1.7;
+        }
+        .hero-buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+        .btn-primary {
+            background: var(--gold); color: #000; padding: 0.85rem 2rem;
+            border-radius: 10px; font-weight: 700; font-size: 1rem;
+            border: none; cursor: pointer; transition: all 0.2s;
+            display: inline-flex; align-items: center; gap: 0.5rem;
+        }
+        .btn-primary:hover { background: var(--text-primary); transform: translateY(-1px); box-shadow: 0 8px 30px var(--gold-glow); }
+        .btn-secondary {
+            background: transparent; color: var(--text-primary); padding: 0.85rem 2rem;
+            border-radius: 10px; font-weight: 600; font-size: 1rem;
+            border: 1px solid var(--border); cursor: pointer; transition: all 0.2s;
+        }
+        .btn-secondary:hover { border-color: var(--gold); color: var(--gold); }
+        .hero-stats {
+            display: flex; gap: 3rem; justify-content: center; margin-top: 4rem;
+            padding-top: 2rem; border-top: 1px solid var(--border);
+        }
+        .hero-stat { text-align: center; }
+        .hero-stat-value { font-size: 2rem; font-weight: 800; color: var(--gold); }
+        .hero-stat-label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+        /* ===== Features ===== */
+        .features {
+            padding: 6rem 2rem;
+            background: var(--bg-secondary);
+        }
+        .section-header {
+            text-align: center; max-width: 600px; margin: 0 auto 4rem;
+        }
+        .section-label {
+            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px;
+            color: var(--gold); margin-bottom: 0.75rem;
+        }
+        .section-header h2 {
+            font-size: 2.5rem; font-weight: 800; margin-bottom: 1rem;
+        }
+        .section-header p { color: var(--text-secondary); font-size: 1.1rem; }
+        .features-grid {
+            max-width: 1200px; margin: 0 auto;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        .feature-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius-lg); padding: 2rem;
+            transition: all 0.3s;
+        }
+        .feature-card:hover {
+            border-color: rgba(213, 192, 139, 0.3);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+        }
+        .feature-icon {
+            width: 48px; height: 48px; border-radius: 12px;
+            background: var(--gold-glow);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; margin-bottom: 1.25rem;
+        }
+        .feature-card h3 { font-size: 1.15rem; margin-bottom: 0.75rem; font-weight: 700; }
+        .feature-card p { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.6; }
+        .feature-tag {
+            display: inline-block; background: rgba(74, 222, 128, 0.1);
+            color: var(--success); font-size: 0.7rem; padding: 0.2rem 0.6rem;
+            border-radius: 4px; margin-top: 1rem; font-weight: 600;
+        }
+
+        /* ===== Pricing ===== */
+        .pricing {
+            padding: 6rem 2rem;
+        }
+        .pricing-grid {
+            max-width: 1100px; margin: 0 auto;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem; align-items: start;
+        }
+        .price-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius-lg); padding: 2.5rem;
+            position: relative; transition: all 0.3s;
+        }
+        .price-card.featured {
+            border-color: var(--gold);
+            background: linear-gradient(180deg, rgba(213, 192, 139, 0.05) 0%, var(--bg-card) 40%);
+        }
+        .price-card.featured::before {
+            content: 'MOST POPULAR';
+            position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+            background: var(--gold); color: #000; font-size: 0.7rem; font-weight: 800;
+            padding: 0.3rem 1rem; border-radius: 100px; letter-spacing: 1px;
+        }
+        .price-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.3); }
+        .price-tier { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; }
+        .price-amount { display: flex; align-items: baseline; gap: 0.25rem; margin-bottom: 0.5rem; }
+        .price-amount .currency { font-size: 1.5rem; color: var(--text-secondary); font-weight: 600; }
+        .price-amount .value { font-size: 3.5rem; font-weight: 800; line-height: 1; }
+        .price-amount .period { color: var(--text-muted); font-size: 0.9rem; }
+        .price-desc { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 2rem; }
+        .price-features { list-style: none; margin-bottom: 2rem; }
+        .price-features li {
+            padding: 0.6rem 0; font-size: 0.9rem; color: var(--text-secondary);
+            display: flex; align-items: center; gap: 0.75rem;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .price-features li::before { content: 'â'; color: var(--gold); font-weight: 700; font-size: 0.85rem; }
+        .price-features li.locked { opacity: 0.4; }
+        .price-features li.locked::before { content: 'â'; color: var(--danger); }
+        .price-btn {
+            width: 100%; padding: 0.85rem; border-radius: 10px;
+            font-weight: 700; font-size: 0.95rem; cursor: pointer;
+            border: none; transition: all 0.2s; text-align: center; display: block;
+        }
+        .price-btn-primary { background: var(--gold); color: #000; }
+        .price-btn-primary:hover { background: var(--text-primary); }
+        .price-btn-outline { background: transparent; color: var(--text-primary); border: 1px solid var(--border); }
+        .price-btn-outline:hover { border-color: var(--gold); color: var(--gold); }
+
+        /* ===== Comparison ===== */
+        .comparison {
+            padding: 6rem 2rem;
+            background: var(--bg-secondary);
+        }
+        .comparison-table {
+            max-width: 900px; margin: 0 auto;
+            border: 1px solid var(--border); border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+        .comparison-table table { width: 100%; border-collapse: collapse; }
+        .comparison-table th, .comparison-table td {
+            padding: 1rem 1.5rem; text-align: left; font-size: 0.9rem;
+        }
+        .comparison-table th {
+            background: var(--bg-card); font-weight: 700; color: var(--text-primary);
+            border-bottom: 1px solid var(--border);
+        }
+        .comparison-table td { border-bottom: 1px solid rgba(255,255,255,0.03); color: var(--text-secondary); }
+        .comparison-table td:first-child { font-weight: 500; color: var(--text-primary); }
+        .comparison-table .check { color: var(--gold); font-weight: 700; }
+        .comparison-table .cross { color: var(--text-muted); }
+        .comparison-table .highlight { color: var(--gold); font-weight: 600; }
+
+        /* ===== CTA ===== */
+        .cta {
+            padding: 6rem 2rem; text-align: center;
+            background: radial-gradient(ellipse at 50% 100%, rgba(213, 192, 139, 0.08) 0%, transparent 60%);
+        }
+        .cta h2 { font-size: 2.5rem; font-weight: 800; margin-bottom: 1rem; }
+        .cta p { color: var(--text-secondary); font-size: 1.1rem; max-width: 500px; margin: 0 auto 2rem; }
+
+        /* ===== Footer ===== */
+        .footer {
+            padding: 3rem 2rem; border-top: 1px solid var(--border);
+        }
+        .footer-inner {
+            max-width: 1200px; margin: 0 auto;
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 1rem;
+        }
+        .footer-brand { color: var(--text-muted); font-size: 0.85rem; }
+        .footer-links { display: flex; gap: 1.5rem; }
+        .footer-links a { color: var(--text-muted); font-size: 0.85rem; }
+
+        /* ===== Steam Login Button ===== */
+        .steam-btn {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            background: #171A21; color: #ffffff; padding: 0.6rem 1.25rem;
+            border-radius: 8px; font-weight: 600; font-size: 0.85rem;
+            border: 1px solid #2A475E; transition: all 0.2s;
+        }
+        .steam-btn:hover { background: #1B2838; border-color: #66C0F4; color: #66C0F4; }
+        .steam-btn svg { width: 20px; height: 20px; }
+
+        /* ===== Mobile ===== */
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hero h1 { font-size: 2.25rem; }
+            .hero p { font-size: 1rem; }
+            .hero-stats { flex-direction: column; gap: 1.5rem; }
+            .pricing-grid { grid-template-columns: 1fr; }
+            .comparison-table { overflow-x: auto; }
+            .footer-inner { flex-direction: column; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-inner">
+            <a href="/" class="nav-logo">Open<span>Sight</span></a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#pricing">Pricing</a>
+                <a href="/auth/steam/login" class="steam-btn">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3l-.5 3H13v6.95c5.05-.5 9-4.76 9-9.95 0-5.52-4.48-10-10-10z"/></svg>
+                    Sign in with Steam
+                </a>
+                <a href="/analyze" class="nav-cta">Upload Demo</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero" id="hero">
+        <div class="hero-content">
+            <div class="hero-badge">Now powered by Claude AI</div>
+            <h1>Upload a Demo. Get Better in 60 Seconds.</h1>
+            <p>AI-powered CS2 analysis that tells you exactly what to fix. Position intelligence, coaching insights, and scouting reports â for free.</p>
+            <div class="hero-buttons">
+                <a href="/analyze" class="btn-primary">Upload Your First Demo â Free</a>
+                <a href="#features" class="btn-secondary">See How It Works</a>
+            </div>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <div class="hero-stat-value" id="stat-demos">12,847</div>
+                    <div class="hero-stat-label">Demos Analyzed</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="hero-stat-value">24</div>
+                    <div class="hero-stat-label">Stats Per Player</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="hero-stat-value">&lt;60s</div>
+                    <div class="hero-stat-label">Analysis Time</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="section-header">
+            <div class="section-label">Features</div>
+            <h2>Everything Leetify Does, Plus More</h2>
+            <p>Professional-grade analytics with AI coaching that competitors can't match.</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">â¡</div>
+                <h3>Instant Analysis</h3>
+                <p>Upload a .dem file and get Leetify-quality stats in under 60 seconds. HLTV rating, ADR, utility damage, trade efficiency, and 20+ more metrics.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">ð¤</div>
+                <h3>AI Coaching</h3>
+                <p>Round-by-round coaching powered by Claude AI. Get specific advice: "Stop dry-peeking Banana" or "Your counter-strafing needs work (42% stationary)."</p>
+                <span class="feature-tag">EXCLUSIVE</span>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">ð</div>
+                <h3>Position Intelligence</h3>
+                <p>See exactly where you die, where you should play, and your defensive setup patterns. Zone-by-zone breakdown across all CS2 maps.</p>
+                <span class="feature-tag">EXCLUSIVE</span>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">ð</div>
+                <h3>Scouting Reports</h3>
+                <p>Know your opponents before the match. See their tendencies, favorite positions, weapon preferences, and weaknesses.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">ð</div>
+                <h3>Side Performance</h3>
+                <p>CT vs T breakdown with kills, deaths, damage per side. Identify if you're a T-sided player or struggling on CT retakes.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">ð¯</div>
+                <h3>Mistake Tracking</h3>
+                <p>Team damage, team kills, teammate flashes, self-flashes â see exactly how many mistakes cost your team rounds.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="pricing" id="pricing">
+        <div class="section-header">
+            <div class="section-label">Pricing</div>
+            <h2>Start Free, Upgrade When Ready</h2>
+            <p>No credit card required. Upload your first demo right now.</p>
+        </div>
+        <div class="pricing-grid">
+            <!-- Free Tier -->
+            <div class="price-card">
+                <div class="price-tier">Free</div>
+                <div class="price-amount">
+                    <span class="currency">$</span>
+                    <span class="value">0</span>
+                </div>
+                <p class="price-desc">Perfect for trying OpenSight</p>
+                <ul class="price-features">
+                    <li>3 demos per day</li>
+                    <li>Basic stats (K/D, ADR, HLTV rating)</li>
+                    <li>Kill matrix &amp; round timeline</li>
+                    <li>Round progression graph</li>
+                    <li class="locked">AI coaching insights</li>
+                    <li class="locked">Position intelligence</li>
+                    <li class="locked">CSV/JSON export</li>
+                </ul>
+                <a href="/analyze" class="price-btn price-btn-outline">Get Started Free</a>
+            </div>
+
+            <!-- Plus Tier -->
+            <div class="price-card featured">
+                <div class="price-tier">Plus</div>
+                <div class="price-amount">
+                    <span class="currency">$</span>
+                    <span class="value">4.99</span>
+                    <span class="period">/mo</span>
+                </div>
+                <p class="price-desc">For players serious about improving</p>
+                <ul class="price-features">
+                    <li>20 demos per day</li>
+                    <li>All Free features</li>
+                    <li>AI coaching insights</li>
+                    <li>Scouting reports</li>
+                    <li>Position analysis</li>
+                    <li>CSV/JSON export</li>
+                    <li class="locked">Priority AI (Sonnet 4.5)</li>
+                </ul>
+                <a href="#" class="price-btn price-btn-primary" data-plan="plus" onclick="handleSubscribe('plus')">Subscribe â $4.99/mo</a>
+            </div>
+
+            <!-- Pro Tier -->
+            <div class="price-card">
+                <div class="price-tier">Pro</div>
+                <div class="price-amount">
+                    <span class="currency">$</span>
+                    <span class="value">9.99</span>
+                    <span class="period">/mo</span>
+                </div>
+                <p class="price-desc">For teams and content creators</p>
+                <ul class="price-features">
+                    <li>Unlimited demos</li>
+                    <li>All Plus features</li>
+                    <li>Priority AI analysis (Sonnet 4.5 deep)</li>
+                    <li>Team management</li>
+                    <li>API access</li>
+                    <li>Custom branding</li>
+                    <li>Priority support</li>
+                </ul>
+                <a href="#" class="price-btn price-btn-outline" data-plan="pro" onclick="handleSubscribe('pro')">Subscribe â $9.99/mo</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Comparison Section -->
+    <section class="comparison" id="comparison">
+        <div class="section-header">
+            <div class="section-label">Why OpenSight?</div>
+            <h2>The Competition, Compared</h2>
+            <p>See how we stack up against other CS2 analytics platforms.</p>
+        </div>
+        <div class="comparison-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Feature</th>
+                        <th>OpenSight</th>
+                        <th>Leetify</th>
+                        <th>Scope.gg</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Free tier</td>
+                        <td class="check">â 3 demos/day</td>
+                        <td class="check">â Limited</td>
+                        <td class="check">â Limited</td>
+                    </tr>
+                    <tr>
+                        <td>AI coaching</td>
+                        <td class="highlight">â Claude AI</td>
+                        <td class="cross">â</td>
+                        <td class="cross">â</td>
+                    </tr>
+                    <tr>
+                        <td>Position intelligence</td>
+                        <td class="highlight">â Zone-level</td>
+                        <td class="cross">â Heatmaps only</td>
+                        <td class="cross">â</td>
+                    </tr>
+                    <tr>
+                        <td>Side stats (CT/T)</td>
+                        <td class="check">â</td>
+                        <td class="check">â</td>
+                        <td class="check">â</td>
+                    </tr>
+                    <tr>
+                        <td>Mistake tracking</td>
+                        <td class="highlight">â Detailed</td>
+                        <td class="cross">â</td>
+                        <td class="cross">â</td>
+                    </tr>
+                    <tr>
+                        <td>Open source</td>
+                        <td class="highlight">â MIT</td>
+                        <td class="cross">â</td>
+                        <td class="cross">â</td>
+                    </tr>
+                    <tr>
+                        <td>Self-hostable</td>
+                        <td class="highlight">â</td>
+                        <td class="cross">â</td>
+                        <td class="cross">â</td>
+                    </tr>
+                    <tr>
+                        <td>Price (full features)</td>
+                        <td class="highlight">$4.99/mo</td>
+                        <td>$4.99/mo</td>
+                        <td>$5.99/mo</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta">
+        <h2>Ready to Get Better?</h2>
+        <p>Upload your first demo for free. No signup required. See your stats in 60 seconds.</p>
+        <div class="hero-buttons">
+            <a href="/analyze" class="btn-primary">Upload Demo Now</a>
+            <a href="/auth/steam/login" class="steam-btn">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="width:20px;height:20px"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3l-.5 3H13v6.95c5.05-.5 9-4.76 9-9.95 0-5.52-4.48-10-10-10z"/></svg>
+                Sign in with Steam
+            </a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-inner">
+            <div class="footer-brand">OpenSight &copy; 2026 â Built with Claude AI</div>
+            <div class="footer-links">
+                <a href="https://github.com/nukethe02/cs2-analyzer">GitHub</a>
+                <a href="#pricing">Pricing</a>
+                <a href="mailto:nukethe02@gmail.com">Contact</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Paddle.js (payment processing) -->
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <script>
+        // Initialize Paddle (replace with real vendor ID when ready)
+        if (typeof Paddle !== 'undefined') {
+            // Paddle.Environment.set('sandbox'); // Remove for production
+            // Paddle.Setup({ vendor: YOUR_VENDOR_ID });
+        }
+
+        // Handle subscription clicks
+        function handleSubscribe(plan) {
+            const priceIds = {
+                plus: 'pri_PLACEHOLDER_PLUS',   // Replace with Paddle price ID
+                pro: 'pri_PLACEHOLDER_PRO',     // Replace with Paddle price ID
+            };
+
+            if (typeof Paddle !== 'undefined' && priceIds[plan] && !priceIds[plan].includes('PLACEHOLDER')) {
+                Paddle.Checkout.open({
+                    items: [{ priceId: priceIds[plan], quantity: 1 }],
+                });
+            } else {
+                // Paddle not configured yet â show message
+                alert('Payments coming soon! For now, enjoy the free tier. Contact nukethe02@gmail.com for early access to Plus/Pro.');
+            }
+        }
+
+        // Handle Steam auth callback (token in URL params)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('auth_success') === '1') {
+            const token = urlParams.get('token');
+            const steamId = urlParams.get('steam_id');
+            const username = urlParams.get('username');
+            const avatar = urlParams.get('avatar');
+
+            if (token) {
+                localStorage.setItem('opensight_token', token);
+                localStorage.setItem('opensight_steam_id', steamId || '');
+                localStorage.setItem('opensight_username', username || '');
+                localStorage.setItem('opensight_avatar', avatar || '');
+
+                // Clean URL and redirect to analyzer
+                window.history.replaceState({}, document.title, '/');
+                window.location.href = '/analyze';
+            }
+        }
+
+        if (urlParams.get('auth_error')) {
+            console.error('Steam auth error:', urlParams.get('auth_error'));
+        }
+
+        // Animate demo count (simple counter animation)
+        function animateCounter(el, target, duration) {
+            let start = 0;
+            const step = target / (duration / 16);
+            function tick() {
+                start += step;
+                if (start >= target) {
+                    el.textContent = target.toLocaleString();
+                    return;
+                }
+                el.textContent = Math.floor(start).toLocaleString();
+                requestAnimationFrame(tick);
+            }
+            tick();
+        }
+
+        // Trigger counter animation when visible
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const el = document.getElementById('stat-demos');
+                    if (el && !el.dataset.animated) {
+                        el.dataset.animated = 'true';
+                        animateCounter(el, 12847, 2000);
+                    }
+                }
+            });
+        });
+        observer.observe(document.querySelector('.hero-stats'));
+    </script>
+</body>
+</html>
