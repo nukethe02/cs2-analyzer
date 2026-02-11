@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from urllib.parse import urlencode, parse_qs, urlparse
+from urllib.parse import urlencode, urlparse
 
 import httpx
 
@@ -26,9 +26,7 @@ logger = logging.getLogger(__name__)
 # Steam OpenID 2.0 constants
 STEAM_OPENID_URL = "https://steamcommunity.com/openid/login"
 STEAM_OPENID_NS = "http://specs.openid.net/auth/2.0"
-STEAM_CLAIMED_ID_PATTERN = re.compile(
-    r"^https://steamcommunity\.com/openid/id/(\d{17})$"
-)
+STEAM_CLAIMED_ID_PATTERN = re.compile(r"^https://steamcommunity\.com/openid/id/(\d{17})$")
 
 # Steam Web API (optional, for profile data)
 STEAM_API_BASE = "https://api.steampowered.com"

@@ -13,18 +13,17 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from opensight.auth.jwt import create_access_token, decode_token
 from opensight.auth.passwords import hash_password, verify_password
 from opensight.infra.database import (
     User,
+    create_user,
     get_session,
     get_user_by_email,
     get_user_by_id,
-    get_user_by_username,
-    create_user,
     update_user_last_login,
     user_exists,
 )
@@ -37,6 +36,7 @@ router = APIRouter(tags=["auth"])
 # ---------------------------------------------------------------------------
 # Request / Response models
 # ---------------------------------------------------------------------------
+
 
 class RegisterRequest(BaseModel):
     email: str = Field(..., description="Email address")
@@ -62,6 +62,7 @@ class UserResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
+
 
 def get_current_user(
     request: Request,
@@ -104,6 +105,7 @@ def get_current_user(
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
 async def register(

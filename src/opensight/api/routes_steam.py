@@ -12,11 +12,11 @@ import logging
 import os
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Request, status
 from fastapi.responses import RedirectResponse
 
-from opensight.auth.steam import build_auth_url, validate_response, get_player_summary
 from opensight.auth.jwt import create_access_token
+from opensight.auth.steam import build_auth_url, get_player_summary, validate_response
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +82,20 @@ async def steam_callback(request: Request):
 
     # Try to fetch Steam profile for display name and avatar
     profile = await get_player_summary(steam_id)
-    display_name = profile.get("display_name", f"Player_{steam_id[-4:]}") if profile else f"Player_{steam_id[-4:]}"
+    display_name = (
+        profile.get("display_name", f"Player_{steam_id[-4:]}")
+        if profile
+        else f"Player_{steam_id[-4:]}"
+    )
     avatar_url = profile.get("avatar_url", "") if profile else ""
 
     # Create or update user in database
     try:
-        from opensight.infra.database import get_session_context, get_user_by_steam_id, create_user, User
-        from sqlalchemy import update
+        from opensight.infra.database import (
+            create_user,
+            get_session_context,
+            get_user_by_steam_id,
+        )
 
         with get_session_context() as db:
             user = get_user_by_steam_id(db, steam_id)
@@ -124,15 +131,18 @@ async def steam_callback(request: Request):
             else:
                 # Existing user — update last login
                 from opensight.infra.database import update_user_last_login
+
                 update_user_last_login(db, user.id)
                 logger.info(f"Existing user {user.id} logged in via Steam")
 
             # Generate JWT token
-            token = create_access_token({
-                "user_id": user.id,
-                "email": user.email,
-                "steam_id": steam_id,
-            })
+            token = create_access_token(
+                {
+                    "user_id": user.id,
+                    "email": user.email,
+                    "steam_id": steam_id,
+                }
+            )
 
     except Exception as e:
         logger.error(f"Database error during Steam auth: {e}")
@@ -144,12 +154,14 @@ async def steam_callback(request: Request):
     # Redirect to frontend with JWT token
     # The frontend JavaScript will extract the token from the URL fragment
     # and store it in localStorage
-    redirect_params = urlencode({
-        "token": token,
-        "steam_id": steam_id,
-        "username": display_name,
-        "avatar": avatar_url,
-    })
+    redirect_params = urlencode(
+        {
+            "token": token,
+            "steam_id": steam_id,
+            "username": display_name,
+            "avatar": avatar_url,
+        }
+    )
 
     return RedirectResponse(
         url=f"/?auth_success=1&{redirect_params}",
