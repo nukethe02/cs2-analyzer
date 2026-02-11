@@ -809,14 +809,8 @@ class DemoOrchestrator:
                 victim_name = f"Player_{str(victim_id)[-4:]}"
             elif not victim_name:
                 victim_name = "Unknown"
-            attacker_side = str(getattr(kill, "attacker_side", "")).upper()
-            victim_side = str(getattr(kill, "victim_side", "")).upper()
-
-            # TODO(DRY): extract team side normalization to shared utility — this
-            # '"CT" if "CT" in side else "T"' pattern repeats 9+ times across
-            # orchestrator.py and parser.py. Consider normalize_team_side(side_str).
-            attacker_team = "CT" if "CT" in attacker_side else "T"
-            victim_team = "CT" if "CT" in victim_side else "T"
+            attacker_team = self._normalize_side(getattr(kill, "attacker_side", ""))
+            victim_team = self._normalize_side(getattr(kill, "victim_side", ""))
 
             # Track kill counts
             if attacker_team == "CT":
@@ -939,8 +933,7 @@ class DemoOrchestrator:
             player_name = getattr(grenade, "player_name", "") or player_names.get(
                 getattr(grenade, "player_steamid", 0), "Unknown"
             )
-            player_side = str(getattr(grenade, "player_side", "Unknown")).upper()
-            player_team = "CT" if "CT" in player_side else "T"
+            player_team = self._normalize_side(getattr(grenade, "player_side", "Unknown"))
 
             # Determine zone from grenade coordinates (needed by strat engine)
             grenade_x = getattr(grenade, "x", None)
@@ -989,8 +982,7 @@ class DemoOrchestrator:
             attacker_name = getattr(blind, "attacker_name", "") or player_names.get(
                 getattr(blind, "attacker_steamid", 0), "Unknown"
             )
-            attacker_side = str(getattr(blind, "attacker_side", "Unknown")).upper()
-            player_team = "CT" if "CT" in attacker_side else "T"
+            player_team = self._normalize_side(getattr(blind, "attacker_side", "Unknown"))
 
             blinds_by_round[round_num].append(
                 {
@@ -1388,6 +1380,26 @@ class DemoOrchestrator:
 
         return result
 
+    @staticmethod
+    def _normalize_side(side) -> str:
+        """Normalize team side to 'CT' or 'T' from int or string.
+
+        demoparser2 returns integer team IDs: 2=T, 3=CT.
+        Some fields may have string values like 'CT', 'TERRORIST', etc.
+        """
+        if isinstance(side, int):
+            if side == 3:
+                return "CT"
+            elif side == 2:
+                return "T"
+            return "Unknown"
+        side_str = str(side).upper()
+        if "CT" in side_str or "COUNTER" in side_str:
+            return "CT"
+        if "T" in side_str or "TERRORIST" in side_str:
+            return "T"
+        return "Unknown"
+
     def _build_timeline_graph_data(self, demo_data) -> dict:
         """Build round-by-round data for Leetify-style timeline graphs.
 
@@ -1532,18 +1544,14 @@ class DemoOrchestrator:
                 # Try to infer from kills
                 for kill in kills:
                     if getattr(kill, "attacker_steamid", 0) == steam_id:
-                        side = str(getattr(kill, "attacker_side", "")).upper()
-                        if "CT" in side:
-                            team = "CT"
-                        elif "T" in side:
-                            team = "T"
+                        inferred = self._normalize_side(getattr(kill, "attacker_side", ""))
+                        if inferred != "Unknown":
+                            team = inferred
                         break
                     if getattr(kill, "victim_steamid", 0) == steam_id:
-                        side = str(getattr(kill, "victim_side", "")).upper()
-                        if "CT" in side:
-                            team = "CT"
-                        elif "T" in side:
-                            team = "T"
+                        inferred = self._normalize_side(getattr(kill, "victim_side", ""))
+                        if inferred != "Unknown":
+                            team = inferred
                         break
 
             # Build cumulative stats per round
@@ -1611,26 +1619,28 @@ class DemoOrchestrator:
                     round_info = rd
                     break
 
+            # Always compute kill counts for this round
+            ct_kills = sum(
+                1
+                for k in kills
+                if getattr(k, "round_num", 0) == r
+                and self._normalize_side(getattr(k, "attacker_side", "")) == "CT"
+            )
+            t_kills = sum(
+                1
+                for k in kills
+                if getattr(k, "round_num", 0) == r
+                and self._normalize_side(getattr(k, "attacker_side", "")) == "T"
+            )
+
             if round_info:
-                winner = str(getattr(round_info, "winner", "")).upper()
-                if "CT" in winner:
+                winner = self._normalize_side(getattr(round_info, "winner", ""))
+                if winner == "CT":
                     ct_score += 1
-                elif "T" in winner:
+                elif winner == "T":
                     t_score += 1
                 else:
-                    # Infer from kill differential if no winner
-                    ct_kills = sum(
-                        1
-                        for k in kills
-                        if getattr(k, "round_num", 0) == r
-                        and "CT" in str(getattr(k, "attacker_side", "")).upper()
-                    )
-                    t_kills = sum(
-                        1
-                        for k in kills
-                        if getattr(k, "round_num", 0) == r
-                        and "T" in str(getattr(k, "attacker_side", "")).upper()
-                    )
+                    # Infer from kill differential if no winner field
                     if ct_kills > t_kills:
                         ct_score += 1
                     elif t_kills > ct_kills:
@@ -1642,6 +1652,8 @@ class DemoOrchestrator:
                     "ct_score": ct_score,
                     "t_score": t_score,
                     "diff": ct_score - t_score,  # Positive = CT leading
+                    "ct_kills": ct_kills,
+                    "t_kills": t_kills,
                 }
             )
 
@@ -1671,39 +1683,27 @@ class DemoOrchestrator:
                 continue
 
             att_id = getattr(kill, "attacker_steamid", 0)
-            att_side = str(getattr(kill, "attacker_side", "")).upper()
+            att_team = self._normalize_side(getattr(kill, "attacker_side", ""))
             vic_id = getattr(kill, "victim_steamid", 0)
-            vic_side = str(getattr(kill, "victim_side", "")).upper()
+            vic_team = self._normalize_side(getattr(kill, "victim_side", ""))
 
-            if att_id and att_id not in player_starting_teams:
-                if "CT" in att_side:
-                    player_starting_teams[att_id] = "CT"
-                elif "T" in att_side:
-                    player_starting_teams[att_id] = "T"
-            if vic_id and vic_id not in player_starting_teams:
-                if "CT" in vic_side:
-                    player_starting_teams[vic_id] = "CT"
-                elif "T" in vic_side:
-                    player_starting_teams[vic_id] = "T"
+            if att_id and att_id not in player_starting_teams and att_team != "Unknown":
+                player_starting_teams[att_id] = att_team
+            if vic_id and vic_id not in player_starting_teams and vic_team != "Unknown":
+                player_starting_teams[vic_id] = vic_team
 
         # If no first-half kills found, fall back to any kill data
         if not player_starting_teams:
             for kill in kills:
                 att_id = getattr(kill, "attacker_steamid", 0)
-                att_side = str(getattr(kill, "attacker_side", "")).upper()
+                att_team = self._normalize_side(getattr(kill, "attacker_side", ""))
                 vic_id = getattr(kill, "victim_steamid", 0)
-                vic_side = str(getattr(kill, "victim_side", "")).upper()
+                vic_team = self._normalize_side(getattr(kill, "victim_side", ""))
 
-                if att_id and att_id not in player_starting_teams:
-                    if "CT" in att_side:
-                        player_starting_teams[att_id] = "CT"
-                    elif "T" in att_side:
-                        player_starting_teams[att_id] = "T"
-                if vic_id and vic_id not in player_starting_teams:
-                    if "CT" in vic_side:
-                        player_starting_teams[vic_id] = "CT"
-                    elif "T" in vic_side:
-                        player_starting_teams[vic_id] = "T"
+                if att_id and att_id not in player_starting_teams and att_team != "Unknown":
+                    player_starting_teams[att_id] = att_team
+                if vic_id and vic_id not in player_starting_teams and vic_team != "Unknown":
+                    player_starting_teams[vic_id] = vic_team
 
         # Group damage by round with attacker's side for that specific event
         round_damages: dict[int, dict[int, int]] = {}  # round_num -> {steam_id -> damage}
@@ -1712,13 +1712,11 @@ class DemoOrchestrator:
             round_num = getattr(dmg, "round_num", 0)
             attacker_id = getattr(dmg, "attacker_steamid", 0)
             damage_val = getattr(dmg, "damage", 0)
-            attacker_side = str(getattr(dmg, "attacker_side", "")).upper()
-            victim_side = str(getattr(dmg, "victim_side", "")).upper()
+            attacker_side = self._normalize_side(getattr(dmg, "attacker_side", ""))
+            victim_side = self._normalize_side(getattr(dmg, "victim_side", ""))
 
             # Only count damage to enemies
-            is_enemy_damage = (
-                "CT" in attacker_side and "T" in victim_side and "CT" not in victim_side
-            ) or ("T" in attacker_side and "CT" not in attacker_side and "CT" in victim_side)
+            is_enemy_damage = attacker_side != victim_side and attacker_side != "Unknown" and victim_side != "Unknown"
 
             if attacker_id and round_num and is_enemy_damage:
                 if round_num not in round_damages:
@@ -1728,10 +1726,8 @@ class DemoOrchestrator:
                     round_damages[round_num][attacker_id] = 0
                 round_damages[round_num][attacker_id] += damage_val
                 # Track the side for this player in this round
-                if "CT" in attacker_side:
-                    round_player_sides[round_num][attacker_id] = "CT"
-                elif "T" in attacker_side:
-                    round_player_sides[round_num][attacker_id] = "T"
+                if attacker_side != "Unknown":
+                    round_player_sides[round_num][attacker_id] = attacker_side
 
         # Initialize player stats
         player_stats: dict[int, dict] = {}
@@ -2341,8 +2337,7 @@ class DemoOrchestrator:
                 # Get player info
                 player_steamid = getattr(grenade, "player_steamid", 0)
                 player_name = player_names.get(player_steamid, "Unknown")
-                player_side = str(getattr(grenade, "player_side", "")).upper()
-                team = "CT" if "CT" in player_side else "T"
+                team = self._normalize_side(getattr(grenade, "player_side", ""))
 
                 # Get zone
                 zone = get_zone_for_position(map_name, gx, gy, gz)
