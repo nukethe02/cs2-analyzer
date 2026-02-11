@@ -319,6 +319,7 @@ from opensight.api.routes_match import router as match_router  # noqa: E402
 from opensight.api.routes_misc import router as misc_router  # noqa: E402
 from opensight.api.routes_tracking import router as tracking_router  # noqa: E402
 from opensight.api.routes_steam import router as steam_router  # noqa: E402
+from opensight.api.routes_paddle import router as paddle_router  # noqa: E402
 
 app.include_router(analysis_router)
 app.include_router(auth_router)
@@ -329,3 +330,4 @@ app.include_router(maps_router)
 app.include_router(misc_router)
 app.include_router(tracking_router)
 app.include_router(steam_router)
+app.include_router(paddle_router)
