@@ -21,6 +21,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# CS2 grenade costs for unused utility calculation (BUG-14)
+GRENADE_COSTS = {
+    "weapon_flashbang": 200,
+    "weapon_smokegrenade": 300,
+    "weapon_hegrenade": 300,
+    "weapon_molotov": 400,
+    "weapon_incgrenade": 600,
+    "weapon_decoy": 50,
+    "flashbang": 200,
+    "smokegrenade": 300,
+    "hegrenade": 300,
+    "molotov": 400,
+    "incgrenade": 600,
+    "decoy": 50,
+}
+
 
 def _build_name_to_steamid_map(analyzer: DemoAnalyzer) -> dict[str, int]:
     """Build player_name → steam_id lookup from analyzer._players."""
@@ -597,6 +613,42 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
                     player.utility.he_thrown = he_count
                 if molly_count > 0 and player.utility.molotovs_thrown == 0:
                     player.utility.molotovs_thrown = molly_count
+
+    # ---- BUG-14: Compute unused utility value ----
+    # For each player, check kills where they were the victim.
+    # If victim had grenades in inventory at death, sum their costs.
+    all_kills = getattr(analyzer.data, "kills", [])
+    for steam_id, player in analyzer._players.items():
+        unused_value = 0
+        for kill in all_kills:
+            victim_id = getattr(kill, "victim_steamid", None)
+            if victim_id is None:
+                continue
+            if str(victim_id) != str(steam_id):
+                continue
+            # Skip knife round
+            r_num = getattr(kill, "round_num", 0)
+            if hasattr(analyzer, "_knife_round_num") and analyzer._knife_round_num is not None:
+                if r_num == analyzer._knife_round_num:
+                    continue
+            # Check for victim equipment/inventory at death
+            victim_equipment = (
+                getattr(kill, "victim_equipment", None)
+                or getattr(kill, "victim_inventory", None)
+                or getattr(kill, "inventory", None)
+            )
+            if victim_equipment:
+                if isinstance(victim_equipment, str):
+                    items = victim_equipment.split(",")
+                elif isinstance(victim_equipment, list):
+                    items = victim_equipment
+                else:
+                    continue
+                for item in items:
+                    item_clean = item.strip().lower()
+                    cost = GRENADE_COSTS.get(item_clean, 0)
+                    unused_value += cost
+        player.utility.unused_utility_value = unused_value
 
     # Log final utility stats summary
     total_flashes = sum(p.utility.flashbangs_thrown for p in analyzer._players.values())
