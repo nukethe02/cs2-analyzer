@@ -33,6 +33,22 @@ TRADE_WINDOW_MS = 5000
 FLASH_ASSIST_WINDOW_MS = 2500
 
 
+def _normalize_side(side) -> str:
+    """Normalize team side to 'CT' or 'T' from int or string."""
+    if isinstance(side, int):
+        if side == 3:
+            return "CT"
+        elif side == 2:
+            return "T"
+        return "Unknown"
+    side_str = str(side).upper()
+    if "CT" in side_str or "COUNTER" in side_str:
+        return "CT"
+    if side_str == "T" or "TERRORIST" in side_str:
+        return "T"
+    return "Unknown"
+
+
 @dataclass
 class PlayerPairSynergy:
     """Synergy metrics between two specific players."""
@@ -139,11 +155,11 @@ class SynergyAnalyzer:
         # Use persistent teams for better accuracy
         self._player_teams: dict[int, str] = {}
         for sid, team in demo_data.player_persistent_teams.items():
-            self._player_teams[sid] = team
+            self._player_teams[sid] = _normalize_side(team)
         # Fallback to regular teams if persistent not available
         if not self._player_teams:
             for sid, team in demo_data.player_teams.items():
-                self._player_teams[sid] = str(team)
+                self._player_teams[sid] = _normalize_side(team)
 
         # Player names lookup
         self._player_names: dict[int, str] = dict(demo_data.player_names)
@@ -444,7 +460,7 @@ class SynergyAnalyzer:
                     rnum = safe_int(row.get(round_num_col, 0))
                     winner = safe_str(row.get(winner_col, ""))
                     if rnum > 0:
-                        round_winners[rnum] = winner
+                        round_winners[rnum] = _normalize_side(winner)
 
         # Group kills by round
         kills_by_round: dict[int, pd.DataFrame] = {
@@ -490,12 +506,12 @@ class SynergyAnalyzer:
                 if team and round_winner:
                     # Check if team matches winner
                     # Round winner is usually "CT" or "T" or team name
-                    starting_side = self.data.team_starting_sides.get(team, "")
+                    starting_side = _normalize_side(self.data.team_starting_sides.get(team, ""))
                     current_side = starting_side
                     if rnum >= self.data.halftime_round:
                         current_side = "T" if starting_side == "CT" else "CT"
 
-                    if current_side.upper() == round_winner.upper() or team == round_winner:
+                    if current_side == round_winner:
                         pair.duo_rounds_won += 1
 
     def _find_best_duo(self) -> PlayerPairSynergy | None:
