@@ -3021,6 +3021,17 @@ class DemoOrchestrator:
         """
         try:
             from opensight.ai.llm_client import generate_batch_summaries, generate_match_summary
+            # Early check: skip gracefully if API key not configured (BUG-17)
+            import os as _os
+            if not _os.getenv("ANTHROPIC_API_KEY"):
+                logger.info("ANTHROPIC_API_KEY not set - AI coaching unavailable")
+                for player_data in players.values():
+                    player_data["ai_summary"] = (
+                        "**AI Coaching Unavailable**\n\n"
+                        "AI-powered coaching insights require an Anthropic API key. "
+                        "Set the `ANTHROPIC_API_KEY` environment variable to enable this feature."
+                    )
+                return
 
             logger.info("Generating AI-powered coaching summaries with LLM")
 
