@@ -678,7 +678,7 @@ class DemoAnalyzer:
         # Find damage columns
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
         dmg_col = (
-            self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+            self._find_col(damages_df, ["dmg_health_real", "dmg_health", "damage", "dmg"])
             if not damages_df.empty
             else None
         )
@@ -716,9 +716,18 @@ class DemoAnalyzer:
                     kills_df[kills_df["assister_steamid"].astype(float) == float(steam_id)]
                 )
 
-            # Damage - use dynamic column finding
+            # Damage - use dynamic column finding (filter self/team damage for accurate ADR)
             if dmg_att_col and dmg_col:
                 player_dmg = damages_df[damages_df[dmg_att_col].astype(float) == float(steam_id)]
+                # Filter out self-damage
+                dmg_vic_col = self._find_col(damages_df, self.VIC_ID_COLS)
+                if dmg_vic_col and dmg_vic_col in damages_df.columns:
+                    player_dmg = player_dmg[player_dmg[dmg_vic_col].astype(float) != float(steam_id)]
+                # Filter out team damage (attacker_team == victim_team)
+                dmg_att_team_col = self._find_col(damages_df, self.ATT_SIDE_COLS)
+                dmg_vic_team_col = self._find_col(damages_df, self.VIC_SIDE_COLS)
+                if dmg_att_team_col and dmg_vic_team_col:
+                    player_dmg = player_dmg[player_dmg[dmg_att_team_col] != player_dmg[dmg_vic_team_col]]
                 player.total_damage = int(player_dmg[dmg_col].sum())
 
             # Flash assists (handle demoparser2 column name variants)
@@ -767,7 +776,7 @@ class DemoAnalyzer:
 
         # Find damage and round columns
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS)
-        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
+        dmg_col = self._find_col(damages_df, ["dmg_health_real", "dmg_health", "damage", "dmg"])
         round_col = self._find_col(damages_df, ["round_num", "round"])
 
         if not dmg_att_col or not dmg_col or not round_col:
