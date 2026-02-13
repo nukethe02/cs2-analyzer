@@ -1867,9 +1867,9 @@ class DemoOrchestrator:
         # Calculate RWS for each round
         for round_info in rounds:
             round_num = getattr(round_info, "round_num", 0)
-            winner = str(getattr(round_info, "winner", "")).upper()
+            winner = self._normalize_side(getattr(round_info, "winner", ""))
 
-            if not winner or winner == "UNKNOWN":
+            if not winner or winner == "Unknown":
                 continue
 
             round_dmg = round_damages.get(round_num, {})
