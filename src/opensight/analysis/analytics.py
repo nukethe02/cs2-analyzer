@@ -721,15 +721,16 @@ class DemoAnalyzer:
                 player_dmg = damages_df[damages_df[dmg_att_col].astype(float) == float(steam_id)]
                 player.total_damage = int(player_dmg[dmg_col].sum())
 
-            # Flash assists
+            # Flash assists (handle demoparser2 column name variants)
+            fa_col = self._find_col(kills_df, ["flash_assist", "assistedflash", "is_flash_assist"])
             if (
                 not kills_df.empty
-                and "flash_assist" in kills_df.columns
+                and fa_col
                 and "assister_steamid" in kills_df.columns
             ):
                 flash_assists = kills_df[
                     (kills_df["assister_steamid"].astype(float) == float(steam_id))
-                    & (kills_df["flash_assist"])
+                    & (kills_df[fa_col])
                 ]
                 player.utility.flash_assists = len(flash_assists)
 
