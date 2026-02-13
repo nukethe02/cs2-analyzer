@@ -53,16 +53,25 @@ class PlayerFrame:
         return {
             "sid": self.steam_id,
             "n": self.name,
+            "name": self.name,
             "t": self.team,
+            "team": self.team,
             "x": round(self.x, 1),
             "y": round(self.y, 1),
             "z": round(self.z, 1),
             "yaw": round(self.yaw, 1),
             "hp": self.health,
+            "health": self.health,
+            "armor": self.armor,
+            "armor_value": self.armor,
             "alive": self.is_alive,
+            "is_alive": self.is_alive,
             "scoped": self.is_scoped,
             "crouch": self.is_crouching,
             "weapon": self.active_weapon,
+            "active_weapon": self.active_weapon,
+            "money": self.money,
+            "equipment_value": self.equipment_value,
         }
 
 
