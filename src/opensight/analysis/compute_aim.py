@@ -238,9 +238,8 @@ def compute_ttd(analyzer: "DemoAnalyzer") -> None:
         # Transfer results to player stats (engagement duration from vectorized computation)
         for steam_id, player in analyzer._players.items():
             player.engagement_duration_values = analyzer._metrics_computer.get_ttd_values(steam_id)
-            if player.engagement_duration_values:
-                player.ttd_median_ms = float(np.median(player.engagement_duration_values))
-                player.ttd_mean_ms = float(np.mean(player.engagement_duration_values))
+            # ttd_median_ms and ttd_mean_ms are read-only @property on PlayerMatchStats
+            # that auto-compute from engagement_duration_values - no explicit set needed
             # Note: prefire_count will be updated by _compute_true_ttd if tick data available
 
         ttd_metrics = analyzer._metrics_computer.ttd_metrics
