@@ -82,6 +82,44 @@ class DemoOrchestrator:
             self._cache = DemoCache()
         return self._cache
 
+    def _get_knife_round_num(self, demo_data) -> int | None:
+        """Detect knife round. Cached after first call."""
+        if hasattr(self, "_knife_round_num_cache"):
+            return self._knife_round_num_cache
+        all_kills = getattr(demo_data, "kills", [])
+        round_1_kills = [k for k in all_kills if getattr(k, "round_num", 0) == 1]
+        if round_1_kills and is_knife_round(round_1_kills, round_num=1):
+            self._knife_round_num_cache = 1
+        else:
+            self._knife_round_num_cache = None
+        return self._knife_round_num_cache
+
+    def _compute_real_score(self, demo_data) -> tuple[int, int, int]:
+        """Recompute score from rounds, excluding knife round.
+
+        Returns (ct_score, t_score, real_round_count).
+        """
+        rounds = getattr(demo_data, "rounds", [])
+        knife_round_num = self._get_knife_round_num(demo_data)
+        ct_score = 0
+        t_score = 0
+        real_rounds = 0
+        for r in rounds:
+            r_num = getattr(r, "round_num", 0)
+            if knife_round_num is not None and r_num == knife_round_num:
+                continue
+            real_rounds += 1
+            winner = self._normalize_side(getattr(r, "winner", ""))
+            if winner == "CT":
+                ct_score += 1
+            elif winner == "T":
+                t_score += 1
+        return ct_score, t_score, real_rounds
+
+    def _format_score(self, demo_data) -> str:
+        ct_score, t_score, _ = self._compute_real_score(demo_data)
+        return f"{ct_score} - {t_score}"
+
     def analyze(self, demo_path: Path, *, force: bool = False) -> dict:
         """
         Execute complete analysis pipeline for a demo file.
@@ -117,6 +155,7 @@ class DemoOrchestrator:
 
         parser = DemoParser(demo_path)
         demo_data = parser.parse()
+        self._demo_data = demo_data
 
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()
@@ -391,12 +430,7 @@ class DemoOrchestrator:
             from opensight.analysis.highlights import detect_highlights
 
             # Detect knife round (typically round 1 with knife weapons)
-            all_kills = getattr(demo_data, "kills", [])
-            knife_round_num = None
-            round_1_kills = [k for k in all_kills if getattr(k, "round_num", 0) == 1]
-            if round_1_kills and is_knife_round(round_1_kills, round_num=1):
-                knife_round_num = 1
-                logger.info("Knife round detected (round 1) - excluding from analysis")
+            knife_round_num = self._get_knife_round_num(demo_data)
 
             # Prepare kills data for highlights detection
             kills_for_highlights = []
@@ -500,9 +534,9 @@ class DemoOrchestrator:
             "demo_path": str(demo_path),
             "demo_info": {
                 "map": map_name,
-                "rounds": analysis.total_rounds - (1 if knife_round_num is not None else 0),
+                "rounds": self._compute_real_score(demo_data)[2],
                 "duration_minutes": getattr(analysis, "duration_minutes", 30),
-                "score": f"{analysis.team1_score} - {analysis.team2_score}",
+                "score": self._format_score(demo_data),
                 "score_ct": analysis.team1_score,  # Numeric CT score for AI modules
                 "score_t": analysis.team2_score,  # Numeric T score for AI modules
                 "total_kills": sum(p["stats"]["kills"] for p in players.values()),
@@ -1111,10 +1145,7 @@ class DemoOrchestrator:
                 event["was_dry_peek"] = not had_support
 
 
-        # Detect knife round in this method scope
-        _all_kills = getattr(demo_data, "kills", [])
-        _round1_kills = [k for k in _all_kills if getattr(k, "round_num", 0) == 1]
-        knife_round_num = 1 if _round1_kills and is_knife_round(_round1_kills, round_num=1) else None
+        knife_round_num = self._get_knife_round_num(demo_data)
 
         # Use actual round data if available, otherwise use analysis total_rounds
         total_rounds = (
@@ -1220,7 +1251,7 @@ class DemoOrchestrator:
 
             timeline.append(
                 {
-                    "round_num": round_num,
+                    "round_num": round_num - start_round + 1,
                     "round_type": round_type,
                     "winner": winner,
                     "win_reason": win_reason,
@@ -1683,7 +1714,13 @@ class DemoOrchestrator:
         round_scores = []
         ct_score = 0
         t_score = 0
+        knife_round_num = self._get_knife_round_num(demo_data)
+        display_round = 0
         for r in range(1, max_round + 1):
+            # Skip knife round
+            if knife_round_num is not None and r == knife_round_num:
+                continue
+            display_round += 1
             round_info = None
             for rd in rounds:
                 if getattr(rd, "round_num", 0) == r:
@@ -1711,7 +1748,6 @@ class DemoOrchestrator:
                 elif winner == "T":
                     t_score += 1
                 else:
-                    # Infer from kill differential if no winner field
                     if ct_kills > t_kills:
                         ct_score += 1
                     elif t_kills > ct_kills:
@@ -1719,7 +1755,7 @@ class DemoOrchestrator:
 
             round_scores.append(
                 {
-                    "round": r,
+                    "round": display_round,
                     "ct_score": ct_score,
                     "t_score": t_score,
                     "diff": ct_score - t_score,  # Positive = CT leading
@@ -1728,8 +1764,9 @@ class DemoOrchestrator:
                 }
             )
 
+        real_max_rounds = max_round - (1 if knife_round_num is not None else 0)
         return {
-            "max_rounds": max_round,
+            "max_rounds": real_max_rounds,
             "players": players_timeline,
             "round_scores": round_scores,
         }
@@ -3016,7 +3053,7 @@ class DemoOrchestrator:
             # Build match context
             match_context = {
                 "map_name": getattr(analysis, "map_name", ""),
-                "total_rounds": max(getattr(analysis, "total_rounds", 0) - 1, 0)  # Subtract knife round,
+                "total_rounds": self._compute_real_score(self._demo_data)[2]  # Subtract knife round,
                 "team1_score": getattr(analysis, "team1_score", 0),
                 "team2_score": getattr(analysis, "team2_score", 0),
             }
