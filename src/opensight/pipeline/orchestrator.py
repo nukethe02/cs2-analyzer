@@ -19,6 +19,10 @@ from opensight.core.utils import build_round_boundaries, infer_round_from_tick
 
 logger = logging.getLogger(__name__)
 
+# Team ID mapping constants - demoparser2 returns integers
+TEAM_ID_MAP = {2: "T", 3: "CT"}
+TEAM_NAME_MAP = {2: "Terrorists", 3: "Counter-Terrorists"}
+
 
 # Knife weapon identifiers from demoparser2 - used to detect and exclude knife rounds
 KNIFE_WEAPONS = frozenset({
@@ -853,7 +857,7 @@ class DemoOrchestrator:
         for sid, team in player_persistent_teams.items():
             pname = self._resolve_player_name(sid)
             if pname and pname != "Unknown":
-                name_to_team[pname] = team
+                name_to_team[pname] = self._normalize_side(team)
 
         # Import zone lookup for kill event enrichment
         try:
@@ -1533,7 +1537,7 @@ class DemoOrchestrator:
         player_starting_sides = {}
         if player_persistent_teams and team_starting_sides:
             for steamid, persistent_team in player_persistent_teams.items():
-                starting_side = team_starting_sides.get(persistent_team, "Unknown")
+                starting_side = self._normalize_side(team_starting_sides.get(persistent_team, "Unknown"))
                 player_starting_sides[steamid] = starting_side
 
         rounds = getattr(demo_data, "rounds", [])
@@ -1650,7 +1654,7 @@ class DemoOrchestrator:
             suffix = str(steam_id)[-4:] if steam_id else "0000"
             player_name = self._resolve_player_name(steam_id)
             # Get team - prefer player_starting_sides (persistent teams), fallback to player_teams, then kill inference
-            team = player_starting_sides.get(steam_id, player_teams.get(steam_id, "Unknown"))
+            team = player_starting_sides.get(steam_id) or self._normalize_side(player_teams.get(steam_id, "Unknown"))
             if team == "Unknown":
                 # Try to infer from kills
                 for kill in kills:
@@ -1973,7 +1977,7 @@ class DemoOrchestrator:
         for sid, team in player_persistent_teams.items():
             n = pnames.get(sid, "")
             if n:
-                name_to_team[n] = team
+                name_to_team[n] = self._normalize_side(team)
 
         # Temporal window: 20 * TICK_RATE ticks.  time_seconds = tick/64 so this
         # equals 20 time_seconds — same window as the inline was_dry_peek check.
