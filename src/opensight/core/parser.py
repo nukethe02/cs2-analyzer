@@ -1978,6 +1978,12 @@ class DemoParser:
         df["_att_name"] = df.get(att_name, "").fillna("") if att_name else ""
         df["_vic_id"] = steamid_series_to_int(df[vic_id]) if vic_id else 0
         df["_vic_name"] = df.get(vic_name, "").fillna("") if vic_name else ""
+        # Also overwrite original columns so downstream code (analytics.py, compute_*.py)
+        # gets correct int64 values without needing .astype(float) conversion.
+        if att_id:
+            df[att_id] = df["_att_id"]
+        if vic_id:
+            df[vic_id] = df["_vic_id"]
         df["_weapon"] = df["weapon"].fillna("") if "weapon" in df.columns else ""
         df["_headshot"] = (
             df["headshot"].fillna(False).astype(bool) if "headshot" in df.columns else False
@@ -2006,6 +2012,8 @@ class DemoParser:
         df["_assister_id"] = steamid_series_to_int(
             df.get("assister_steamid", pd.Series(0, index=df.index))
         )
+        if "assister_steamid" in df.columns:
+            df["assister_steamid"] = df["_assister_id"]
         df["_assister_name"] = df.get("assister_name", pd.NA)
 
         # VECTORIZED: Convert to list of dicts (C-speed iteration)
@@ -2103,6 +2111,11 @@ class DemoParser:
         df["_att_name"] = df.get(att_name, "").fillna("") if att_name else ""
         df["_vic_id"] = steamid_series_to_int(df[vic_id]) if vic_id else 0
         df["_vic_name"] = df.get(vic_name, "").fillna("") if vic_name else ""
+        # Also overwrite original columns so downstream code gets correct int64 values.
+        if att_id:
+            df[att_id] = df["_att_id"]
+        if vic_id:
+            df[vic_id] = df["_vic_id"]
         df["_damage"] = (
             pd.to_numeric(df.get(dmg_col, 0), errors="coerce").fillna(0).astype(int)
             if dmg_col

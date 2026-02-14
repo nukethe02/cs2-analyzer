@@ -4948,19 +4948,64 @@
             // Helper: Format weapon name nicely
             const formatWeaponName = (weapon) => {
                 const names = {
-                    'weapon_ak47': 'AK-47', 'ak47': 'AK-47',
-                    'weapon_m4a1': 'M4A1', 'm4a1': 'M4A1',
-                    'weapon_m4a1_silencer': 'M4A1-S', 'm4a1_silencer': 'M4A1-S',
-                    'weapon_awp': 'AWP', 'awp': 'AWP',
-                    'weapon_deagle': 'Deagle', 'deagle': 'Deagle',
-                    'weapon_usp_silencer': 'USP-S', 'usp_silencer': 'USP-S',
-                    'weapon_glock': 'Glock', 'glock': 'Glock',
-                    'weapon_ssg08': 'Scout', 'ssg08': 'Scout',
-                    'weapon_famas': 'FAMAS', 'famas': 'FAMAS',
-                    'weapon_galil': 'Galil', 'galil': 'Galil'
+                    // Rifles
+                    'ak47': 'AK-47', 'weapon_ak47': 'AK-47',
+                    'm4a1': 'M4A4', 'weapon_m4a1': 'M4A4',
+                    'm4a1_silencer': 'M4A1-S', 'weapon_m4a1_silencer': 'M4A1-S',
+                    'famas': 'FAMAS', 'weapon_famas': 'FAMAS',
+                    'galilar': 'Galil AR', 'weapon_galilar': 'Galil AR',
+                    'galil': 'Galil AR', 'weapon_galil': 'Galil AR',
+                    'aug': 'AUG', 'weapon_aug': 'AUG',
+                    'sg556': 'SG 553', 'weapon_sg556': 'SG 553',
+                    // Snipers
+                    'awp': 'AWP', 'weapon_awp': 'AWP',
+                    'ssg08': 'Scout', 'weapon_ssg08': 'Scout',
+                    'scar20': 'SCAR-20', 'weapon_scar20': 'SCAR-20',
+                    'g3sg1': 'G3SG1', 'weapon_g3sg1': 'G3SG1',
+                    // SMGs
+                    'mp9': 'MP9', 'weapon_mp9': 'MP9',
+                    'mac10': 'MAC-10', 'weapon_mac10': 'MAC-10',
+                    'mp7': 'MP7', 'weapon_mp7': 'MP7',
+                    'mp5sd': 'MP5-SD', 'weapon_mp5sd': 'MP5-SD',
+                    'ump45': 'UMP-45', 'weapon_ump45': 'UMP-45',
+                    'p90': 'P90', 'weapon_p90': 'P90',
+                    'bizon': 'PP-Bizon', 'weapon_bizon': 'PP-Bizon',
+                    // Pistols
+                    'glock': 'Glock-18', 'weapon_glock': 'Glock-18',
+                    'usp_silencer': 'USP-S', 'weapon_usp_silencer': 'USP-S',
+                    'hkp2000': 'P2000', 'weapon_hkp2000': 'P2000',
+                    'p250': 'P250', 'weapon_p250': 'P250',
+                    'elite': 'Dual Berettas', 'weapon_elite': 'Dual Berettas',
+                    'fiveseven': 'Five-SeveN', 'weapon_fiveseven': 'Five-SeveN',
+                    'tec9': 'Tec-9', 'weapon_tec9': 'Tec-9',
+                    'cz75a': 'CZ75-Auto', 'weapon_cz75a': 'CZ75-Auto',
+                    'cz75auto': 'CZ75-Auto',
+                    'deagle': 'Desert Eagle', 'weapon_deagle': 'Desert Eagle',
+                    'revolver': 'R8 Revolver', 'weapon_revolver': 'R8 Revolver',
+                    // Shotguns
+                    'nova': 'Nova', 'weapon_nova': 'Nova',
+                    'xm1014': 'XM1014', 'weapon_xm1014': 'XM1014',
+                    'sawedoff': 'Sawed-Off', 'weapon_sawedoff': 'Sawed-Off',
+                    'mag7': 'MAG-7', 'weapon_mag7': 'MAG-7',
+                    // Machine guns
+                    'm249': 'M249', 'weapon_m249': 'M249',
+                    'negev': 'Negev', 'weapon_negev': 'Negev',
+                    // Equipment
+                    'knife': 'Knife', 'weapon_knife': 'Knife',
+                    'knife_t': 'Knife', 'weapon_knife_t': 'Knife',
+                    'bayonet': 'Knife', 'weapon_bayonet': 'Knife',
+                    'hegrenade': 'HE Grenade', 'weapon_hegrenade': 'HE Grenade',
+                    'flashbang': 'Flashbang', 'weapon_flashbang': 'Flashbang',
+                    'smokegrenade': 'Smoke', 'weapon_smokegrenade': 'Smoke',
+                    'molotov': 'Molotov', 'weapon_molotov': 'Molotov',
+                    'incgrenade': 'Incendiary', 'weapon_incgrenade': 'Incendiary',
+                    'decoy': 'Decoy', 'weapon_decoy': 'Decoy',
+                    'inferno': 'Molotov', 'taser': 'Zeus x27', 'weapon_taser': 'Zeus x27',
+                    'c4': 'C4'
                 };
                 if (!weapon) return 'N/A';
-                return names[weapon] || names[weapon.toLowerCase()] || weapon.replace('weapon_', '').toUpperCase();
+                const key = weapon.toLowerCase();
+                return names[key] || names[key.replace('weapon_', '')] || key.replace('weapon_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             };
 
             // Helper: Get best weapon from player's weapon_kills

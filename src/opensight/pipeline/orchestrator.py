@@ -278,8 +278,8 @@ class DemoOrchestrator:
         # Calculate RWS using direct method (more reliable)
         rws_data = self._calculate_rws_direct(demo_data)
 
-        # Calculate multi-kills (2K, 3K, 4K, 5K)
-        multikills = self._calculate_multikills(demo_data)
+        # Multi-kills (2K, 3K, 4K, 5K) are pre-computed by DemoAnalyzer
+        # on p.multi_kills — no need to recalculate here.
 
         # Build timeline graph data
         timeline_graph = self._build_timeline_graph_data(demo_data)
@@ -300,7 +300,6 @@ class DemoOrchestrator:
         # Build comprehensive player data
         players = {}
         for sid, p in analysis.players.items():
-            mk = multikills.get(sid, {"2k": 0, "3k": 0, "4k": 0, "5k": 0})
             players[str(sid)] = {
                 "steam_id": str(sid),
                 "name": p.name,
@@ -326,10 +325,10 @@ class DemoOrchestrator:
                     # with PlayerMatchStats.kd_ratio property (models.py)
                     "kd_ratio": round(p.kills / max(1, p.deaths), 2),
                     "total_damage": p.total_damage,
-                    "2k": mk["2k"],
-                    "3k": mk["3k"],
-                    "4k": mk["4k"],
-                    "5k": mk["5k"],
+                    "2k": p.multi_kills.rounds_with_2k,
+                    "3k": p.multi_kills.rounds_with_3k,
+                    "4k": p.multi_kills.rounds_with_4k,
+                    "5k": p.multi_kills.rounds_with_5k,
                 },
                 "rating": {
                     "hltv_rating": round(p.hltv_rating, 2) if p.hltv_rating is not None else 0,

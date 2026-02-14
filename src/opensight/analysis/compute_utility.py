@@ -615,41 +615,14 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
                 if molly_count > 0 and player.utility.molotovs_thrown == 0:
                     player.utility.molotovs_thrown = molly_count
 
-    # ---- BUG-14: Compute unused utility value ----
-    # For each player, check kills where they were the victim.
-    # If victim had grenades in inventory at death, sum their costs.
-    all_kills = getattr(analyzer.data, "kills", [])
-    for steam_id, player in analyzer._players.items():
-        unused_value = 0
-        for kill in all_kills:
-            victim_id = getattr(kill, "victim_steamid", None)
-            if victim_id is None:
-                continue
-            if str(victim_id) != str(steam_id):
-                continue
-            # Skip knife round
-            r_num = getattr(kill, "round_num", 0)
-            if hasattr(analyzer, "_knife_round_num") and analyzer._knife_round_num is not None:
-                if r_num == analyzer._knife_round_num:
-                    continue
-            # Check for victim equipment/inventory at death
-            victim_equipment = (
-                getattr(kill, "victim_equipment", None)
-                or getattr(kill, "victim_inventory", None)
-                or getattr(kill, "inventory", None)
-            )
-            if victim_equipment:
-                if isinstance(victim_equipment, str):
-                    items = victim_equipment.split(",")
-                elif isinstance(victim_equipment, list):
-                    items = victim_equipment
-                else:
-                    continue
-                for item in items:
-                    item_clean = item.strip().lower()
-                    cost = GRENADE_COSTS.get(item_clean, 0)
-                    unused_value += cost
-        player.utility.unused_utility_value = unused_value
+    # ---- Unused utility value ----
+    # NOTE: demoparser2 player_death events do NOT include victim inventory/equipment.
+    # KillEvent has no victim_equipment/victim_inventory fields, so we cannot determine
+    # what grenades a player was holding when they died. This metric requires parsing
+    # entity props (m_hMyWeapons) at the death tick, which is not yet implemented.
+    # Set to None (unknown) rather than 0 (falsely claims no waste).
+    for _steam_id, player in analyzer._players.items():
+        player.utility.unused_utility_value = None
 
     # Log final utility stats summary
     total_flashes = sum(p.utility.flashbangs_thrown for p in analyzer._players.values())

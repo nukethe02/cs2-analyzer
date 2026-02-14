@@ -672,8 +672,8 @@ class UtilityStats:
     molotov_damage: int = 0  # Damage to enemies from molotov/incendiary
     molotov_team_damage: int = 0  # Damage to teammates from fire
 
-    # Economy - unused utility at death
-    unused_utility_value: int = 0  # Average $ of utility not used when dying
+    # Economy - unused utility at death (None = not available from demo data)
+    unused_utility_value: int | None = None
 
     # Round context (set by analyzer)
     _rounds_played: int = 0
@@ -871,7 +871,7 @@ class UtilityStats:
         score = usage_rate * 80  # Up to 80 points for using utility
 
         # Penalty for dying with unused utility (if tracked)
-        if self.unused_utility_value > 0:
+        if self.unused_utility_value is not None and self.unused_utility_value > 0:
             avg_unused = self.unused_utility_value / self._rounds_played
             # Each $300 unused = 5 point penalty (max 20)
             penalty = min(20, avg_unused / 300 * 5)
