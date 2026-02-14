@@ -620,8 +620,9 @@ def _get_nearby_teammates(
     the tick when the death occurred. Returns only teammates within the
     proximity threshold (in game units).
 
-    If ticks_df or position data is unavailable, returns ALL teammates
-    (graceful fallback to old behavior).
+    If ticks_df or position data is unavailable, returns empty list.
+    A death without position data should NOT count as a trade opportunity
+    for every alive teammate — that inflates trade stats 3-8x.
 
     Args:
         teammates_alive: List of alive teammate steam IDs.
@@ -642,11 +643,11 @@ def _get_nearby_teammates(
         or "X" not in ticks_df.columns
         or "Y" not in ticks_df.columns
     ):
-        # No position data available — fall back to all alive teammates
-        return teammates_alive
+        # No position data — cannot determine proximity, skip this opportunity
+        return []
 
     if math.isnan(death_x) or math.isnan(death_y):
-        return teammates_alive
+        return []
 
     nearby: list[int] = []
     proximity_sq = proximity * proximity  # Compare squared distances (faster)
@@ -655,8 +656,7 @@ def _get_nearby_teammates(
         # Find this teammate's position at (or closest to) the kill tick
         teammate_ticks = ticks_df[ticks_df[ticks_steamid_col] == teammate_id]
         if teammate_ticks.empty:
-            # No tick data for this player — include them conservatively
-            nearby.append(teammate_id)
+            # No tick data for this player — cannot determine proximity, skip
             continue
 
         # Find the tick closest to the kill tick
@@ -666,14 +666,12 @@ def _get_nearby_teammates(
 
         # Only use if within 2 seconds of the kill tick (128 ticks at 64 tick rate)
         if abs(int(closest_row["tick"]) - kill_tick) > 128:
-            # Tick data too far from kill moment — include conservatively
-            nearby.append(teammate_id)
+            # Tick data too far from kill moment — cannot determine proximity, skip
             continue
 
         tm_x = safe_float(closest_row.get("X"))
         tm_y = safe_float(closest_row.get("Y"))
         if tm_x is None or tm_y is None:
-            nearby.append(teammate_id)
             continue
 
         dx = tm_x - death_x
@@ -880,6 +878,22 @@ def detect_trades(analyzer: DemoAnalyzer) -> None:
             if has_death_positions:
                 death_x = safe_float(kill.get(vic_x_col), default=float("nan"))
                 death_y = safe_float(kill.get(vic_y_col), default=float("nan"))
+
+            # Fallback: look up victim position from ticks_df if kills_df lacks it
+            if (
+                math.isnan(death_x)
+                and ticks_df is not None
+                and not ticks_df.empty
+                and ticks_steamid_col
+            ):
+                vic_ticks = ticks_df[ticks_df[ticks_steamid_col] == victim_id]
+                if not vic_ticks.empty:
+                    tick_diffs = (vic_ticks["tick"] - kill_tick).abs()
+                    closest_idx = tick_diffs.idxmin()
+                    row = vic_ticks.loc[closest_idx]
+                    if abs(int(row["tick"]) - kill_tick) <= 128:
+                        death_x = safe_float(row.get("X"), default=float("nan"))
+                        death_y = safe_float(row.get("Y"), default=float("nan"))
 
             # Filter to nearby teammates for OPPORTUNITY counting.
             # Full teammates_alive list is still used for attempt/success checks

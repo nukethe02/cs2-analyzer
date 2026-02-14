@@ -146,6 +146,71 @@ class DemoOrchestrator:
         ct_score, t_score, _ = self._compute_real_score(demo_data)
         return f"{ct_score} - {t_score}"
 
+    def _strip_knife_round(self, demo_data) -> int | None:
+        """Remove knife round data from demo_data IN PLACE.
+
+        Filters all event lists, DataFrames, and decrements num_rounds.
+        Must be called BEFORE DemoAnalyzer or any other consumer touches the data.
+
+        Returns the knife round number if detected, else None.
+        """
+        knife_round_num = self._get_knife_round_num(demo_data)
+        if knife_round_num is None:
+            logger.info("No knife round detected")
+            return None
+
+        logger.info(f"Stripping knife round {knife_round_num} from all data")
+
+        # --- Filter event lists ---
+        def keep_event(evt):
+            return getattr(evt, "round_num", 0) != knife_round_num
+
+        demo_data.kills = [e for e in demo_data.kills if keep_event(e)]
+        demo_data.damages = [e for e in demo_data.damages if keep_event(e)]
+        demo_data.blinds = [e for e in demo_data.blinds if keep_event(e)]
+        demo_data.weapon_fires = [e for e in demo_data.weapon_fires if keep_event(e)]
+        demo_data.grenades = [e for e in demo_data.grenades if keep_event(e)]
+        demo_data.bomb_events = [e for e in demo_data.bomb_events if keep_event(e)]
+
+        # Filter rounds list
+        demo_data.rounds = [
+            r for r in demo_data.rounds if getattr(r, "round_num", 0) != knife_round_num
+        ]
+
+        # --- Filter DataFrames ---
+        round_col_options = ["round_num", "total_rounds_played", "round"]
+        for df_name in [
+            "kills_df",
+            "damages_df",
+            "rounds_df",
+            "weapon_fires_df",
+            "blinds_df",
+            "grenades_df",
+            "bomb_events_df",
+        ]:
+            df = getattr(demo_data, df_name, None)
+            if df is None or df.empty:
+                continue
+            for col in round_col_options:
+                if col in df.columns:
+                    before = len(df)
+                    setattr(demo_data, df_name, df[df[col] != knife_round_num])
+                    after = len(getattr(demo_data, df_name))
+                    if before != after:
+                        logger.debug(
+                            f"Filtered {df_name}: {before} -> {after} rows (removed round {knife_round_num})"
+                        )
+                    break
+
+        # --- Decrement num_rounds ---
+        if demo_data.num_rounds > 0:
+            demo_data.num_rounds -= 1
+            logger.info(
+                f"Adjusted num_rounds: {demo_data.num_rounds + 1} -> {demo_data.num_rounds}"
+            )
+
+        return knife_round_num
+
     def _resolve_player_name(self, steam_id, event_name: str = "") -> str:
         """Resolve a player name consistently using canonical name map.
 
@@ -202,6 +267,10 @@ class DemoOrchestrator:
         demo_data = parser.parse()
         self._demo_data = demo_data
         self._player_names = getattr(demo_data, "player_names", {})
+
+        # Strip knife round from ALL data BEFORE any analysis runs.
+        # This filters event lists, DataFrames, rounds, and decrements num_rounds.
+        knife_round_num = self._strip_knife_round(demo_data)
 
         analyzer = DemoAnalyzer(demo_data)
         analysis = analyzer.analyze()

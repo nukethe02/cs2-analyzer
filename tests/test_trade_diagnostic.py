@@ -99,6 +99,26 @@ def make_demo_data_with_trades() -> DemoData:
 
     team_starting_sides = {"Team A": "CT", "Team B": "T"}
 
+    import numpy as np
+
+    # Position data: place teammates near each other so trade proximity works
+    # CT1 dies at (500, 500), CT2 is at (600, 500) — within 1500 unit threshold
+    # CT3 dies at (1000, 1000), CT4 is at (1100, 1000) — within 1500 unit threshold
+    ticks_rows = []
+    all_players = list(player_names.keys())
+    for tick in [1000, 1200, 5000, 5250, 5400]:
+        for sid in all_players:
+            # Place CT players near (500, 500) and T players near (2000, 2000)
+            if sid < 200:
+                x, y = 500.0 + (sid - 100) * 100, 500.0
+            else:
+                x, y = 2000.0 + (sid - 200) * 100, 2000.0
+            ticks_rows.append({"steamid": sid, "tick": tick, "X": x, "Y": y})
+
+    ticks_df = pd.DataFrame(ticks_rows)
+    ticks_df["steamid"] = ticks_df["steamid"].astype(np.int64)
+    ticks_df["tick"] = ticks_df["tick"].astype(np.int64)
+
     return DemoData(
         file_path=Path("/tmp/test_trade.dem"),
         map_name="de_dust2",
@@ -116,6 +136,7 @@ def make_demo_data_with_trades() -> DemoData:
         damages=[],
         kills_df=kills_df,
         damages_df=damages_df,
+        ticks_df=ticks_df,
     )
 
 
@@ -268,12 +289,13 @@ class TestTradeDetectionDiagnostic:
         assert player_teams_lookup[201] == "T"
 
     def test_no_team_enrichment_failure_mode(self):
-        """Step 5: Simulate no team enrichment (ticks_df was empty).
+        """Step 5: Simulate no team enrichment (no team columns in kills_df).
 
-        This is the most likely failure mode: demoparser2's player_death event
-        doesn't include team columns natively. If ticks_df parsing fails,
-        _enrich_with_team_info is skipped, leaving no team columns in kills_df.
+        Without team data AND without position data, trade detection gets 0.
+        With position data but no team columns, team inference from kill graph kicks in.
         """
+        import numpy as np
+
         from opensight.analysis.analytics import DemoAnalyzer
         from opensight.analysis.compute_combat import detect_trades
 
@@ -291,6 +313,17 @@ class TestTradeDetectionDiagnostic:
         )
 
         damages_df = pd.DataFrame()
+
+        # Position data so proximity filtering can work
+        all_sids = [101, 102, 103, 104, 105, 201, 202, 203, 204, 205]
+        ticks_rows = []
+        for tick in [1000, 1200, 5000, 5250, 5400]:
+            for sid in all_sids:
+                x = 500.0 + (sid - 100) * 100 if sid < 200 else 2000.0 + (sid - 200) * 100
+                ticks_rows.append({"steamid": sid, "tick": tick, "X": x, "Y": 500.0})
+        ticks_df = pd.DataFrame(ticks_rows)
+        ticks_df["steamid"] = ticks_df["steamid"].astype(np.int64)
+        ticks_df["tick"] = ticks_df["tick"].astype(np.int64)
 
         # NO persistent teams, NO player_teams (simulating complete enrichment failure)
         demo_data = DemoData(
@@ -321,6 +354,7 @@ class TestTradeDetectionDiagnostic:
             damages=[],
             kills_df=kills_df,
             damages_df=damages_df,
+            ticks_df=ticks_df,
         )
 
         analyzer = DemoAnalyzer(demo_data)
@@ -354,6 +388,8 @@ class TestTradeDetectionDiagnostic:
 
         This tests the fallback path in _init_player_stats.
         """
+        import numpy as np
+
         from opensight.analysis.analytics import DemoAnalyzer
         from opensight.analysis.compute_combat import detect_trades
 
@@ -367,6 +403,17 @@ class TestTradeDetectionDiagnostic:
                 "total_rounds_played": [1, 1, 2, 2, 2],
             }
         )
+
+        # Position data so proximity filtering can work
+        all_sids = [101, 102, 103, 104, 105, 201, 202, 203, 204, 205]
+        ticks_rows = []
+        for tick in [1000, 1200, 5000, 5250, 5400]:
+            for sid in all_sids:
+                x = 500.0 + (sid - 100) * 100 if sid < 200 else 2000.0 + (sid - 200) * 100
+                ticks_rows.append({"steamid": sid, "tick": tick, "X": x, "Y": 500.0})
+        ticks_df = pd.DataFrame(ticks_rows)
+        ticks_df["steamid"] = ticks_df["steamid"].astype(np.int64)
+        ticks_df["tick"] = ticks_df["tick"].astype(np.int64)
 
         demo_data = DemoData(
             file_path=Path("/tmp/test.dem"),
@@ -408,6 +455,7 @@ class TestTradeDetectionDiagnostic:
             damages=[],
             kills_df=kills_df,
             damages_df=pd.DataFrame(),
+            ticks_df=ticks_df,
         )
 
         analyzer = DemoAnalyzer(demo_data)
@@ -667,6 +715,8 @@ class TestTradeProximityFiltering:
 
     def test_trade_outside_window_not_counted(self):
         """Kill outside 5-second window should not be a trade."""
+        import numpy as np
+
         from opensight.analysis.analytics import DemoAnalyzer
         from opensight.analysis.compute_combat import detect_trades
 
@@ -687,6 +737,20 @@ class TestTradeProximityFiltering:
             }
         )
 
+        # Position data: CT players near (500,500), T players near (2000,2000)
+        ticks_rows = []
+        for tick in [1000, 1000 + 384]:
+            for sid, x, y in [
+                (101, 500, 500),
+                (102, 600, 500),
+                (201, 2000, 2000),
+                (202, 2100, 2000),
+            ]:
+                ticks_rows.append({"steamid": sid, "tick": tick, "X": float(x), "Y": float(y)})
+        ticks_df = pd.DataFrame(ticks_rows)
+        ticks_df["steamid"] = ticks_df["steamid"].astype(np.int64)
+        ticks_df["tick"] = ticks_df["tick"].astype(np.int64)
+
         demo_data = DemoData(
             file_path=Path("/tmp/test_window.dem"),
             map_name="de_dust2",
@@ -704,6 +768,7 @@ class TestTradeProximityFiltering:
             damages=[],
             kills_df=kills_df,
             damages_df=pd.DataFrame(),
+            ticks_df=ticks_df,
         )
 
         analyzer = DemoAnalyzer(demo_data)
@@ -720,6 +785,8 @@ class TestTradeProximityFiltering:
 
     def test_trade_within_window_counted(self):
         """Kill within 5-second window should be a trade."""
+        import numpy as np
+
         from opensight.analysis.analytics import DemoAnalyzer
         from opensight.analysis.compute_combat import detect_trades
 
@@ -739,6 +806,20 @@ class TestTradeProximityFiltering:
             }
         )
 
+        # Position data: CT players near each other so proximity check passes
+        ticks_rows = []
+        for tick in [1000, 1192]:
+            for sid, x, y in [
+                (101, 500, 500),
+                (102, 600, 500),
+                (201, 2000, 2000),
+                (202, 2100, 2000),
+            ]:
+                ticks_rows.append({"steamid": sid, "tick": tick, "X": float(x), "Y": float(y)})
+        ticks_df = pd.DataFrame(ticks_rows)
+        ticks_df["steamid"] = ticks_df["steamid"].astype(np.int64)
+        ticks_df["tick"] = ticks_df["tick"].astype(np.int64)
+
         demo_data = DemoData(
             file_path=Path("/tmp/test_window2.dem"),
             map_name="de_dust2",
@@ -756,6 +837,7 @@ class TestTradeProximityFiltering:
             damages=[],
             kills_df=kills_df,
             damages_df=pd.DataFrame(),
+            ticks_df=ticks_df,
         )
 
         analyzer = DemoAnalyzer(demo_data)
@@ -770,23 +852,25 @@ class TestTradeProximityFiltering:
             f"got {ct2.trades.trade_kill_success} successes"
         )
 
-    def test_no_ticks_df_falls_back_gracefully(self):
-        """Without ticks_df, proximity filtering falls back to all teammates."""
+    def test_no_ticks_df_returns_zero_trades(self):
+        """Without ticks_df, proximity cannot be determined so trades are 0."""
         from opensight.analysis.analytics import DemoAnalyzer
         from opensight.analysis.compute_combat import detect_trades
 
-        # Use existing make_demo_data_with_trades which has no ticks_df
+        # Create demo data WITHOUT ticks_df to test the no-position-data path
         demo_data = make_demo_data_with_trades()
+        demo_data.ticks_df = None  # Remove position data
+
         analyzer = DemoAnalyzer(demo_data)
         analyzer._init_column_cache()
         analyzer._init_player_stats()
 
         detect_trades(analyzer)
 
-        # Should still detect trades (fallback = all alive teammates)
-        total_success = sum(p.trades.trade_kill_success for p in analyzer._players.values())
-        assert total_success > 0, (
-            "Without ticks_df, trade detection should still work (fallback to all teammates)"
+        # Without position data, no trade opportunities should be detected
+        total_opps = sum(p.trades.trade_kill_opportunities for p in analyzer._players.values())
+        assert total_opps == 0, (
+            "Without ticks_df, no trade opportunities should be detected (no proximity data)"
         )
 
     def test_get_nearby_teammates_helper(self):
@@ -839,7 +923,7 @@ class TestTradeProximityFiltering:
             None,
             None,
         )
-        assert result == teammates, "Should return all teammates when ticks_df is None"
+        assert result == [], "Should return empty list when ticks_df is None (no proximity data)"
 
     def test_get_nearby_teammates_nan_position(self):
         """Helper returns all teammates when death position is NaN."""
@@ -865,4 +949,6 @@ class TestTradeProximityFiltering:
             ticks_df,
             "steamid",
         )
-        assert result == teammates, "Should return all teammates when death position is NaN"
+        assert result == [], (
+            "Should return empty list when death position is NaN (no proximity data)"
+        )
