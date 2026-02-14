@@ -502,9 +502,12 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
         kills_df, ["flash_assist", "assistedflash", "is_flash_assist"]
     )
     if not kills_df.empty and "assister_steamid" in kills_df.columns and flash_assist_col:
+        # Convert assister_steamid to numeric once (demoparser2 returns strings;
+        # steam_id keys are int, so direct comparison fails silently)
+        assister_numeric = pd.to_numeric(kills_df["assister_steamid"], errors="coerce")
         for steam_id, player in analyzer._players.items():
             flash_assists = kills_df[
-                (kills_df["assister_steamid"] == steam_id) & (kills_df[flash_assist_col])
+                (assister_numeric == float(steam_id)) & (kills_df[flash_assist_col])
             ]
             player.utility.flash_assists = len(flash_assists)
 
@@ -901,11 +904,10 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
             fa_col = _col
             break
     if not kills_df.empty and "assister_steamid" in kills_df.columns and fa_col:
+        # Convert assister_steamid to numeric once (string vs int mismatch)
+        assister_numeric = pd.to_numeric(kills_df["assister_steamid"], errors="coerce")
         for steam_id, metrics in result.items():
-            steam_id_int = int(steam_id)
-            flash_assists = kills_df[
-                (kills_df["assister_steamid"] == steam_id_int) & (kills_df[fa_col])
-            ]
+            flash_assists = kills_df[(assister_numeric == float(steam_id)) & (kills_df[fa_col])]
             metrics.flash_assists = len(flash_assists)
 
     logger.info(f"Computed utility metrics for {len(result)} players")

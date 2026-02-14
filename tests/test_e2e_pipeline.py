@@ -603,30 +603,36 @@ class TestPipelineDataFlow:
         reason=f"Golden demo not found at {GOLDEN_DEMO_PATH}",
     )
     def test_no_raw_steamids_in_output(self):
-        """Verify no raw steamids appear as player names in output."""
+        """Verify no raw SteamID64s appear as player names in output.
+
+        Only SteamID64 pattern (17+ digits starting with 7656119) should be flagged.
+        Players CAN have numeric names — those are valid.
+        """
+        from opensight.core.parser import is_valid_player_name
         from opensight.pipeline.orchestrator import DemoOrchestrator
 
         orchestrator = DemoOrchestrator()
         result = orchestrator.analyze(GOLDEN_DEMO_PATH)
 
+        def _is_raw_steamid(name: str) -> bool:
+            """Check if a name is a raw SteamID64 (not a valid player name)."""
+            return not is_valid_player_name(name)
+
         # Check player names
         invalid_names = []
         for steam_id, player in result["players"].items():
             name = player.get("name", "")
-            # Raw steamid pattern: all digits, very long
-            if name.isdigit() and len(name) > 10:
+            if _is_raw_steamid(name):
                 invalid_names.append(f"Player {steam_id} has raw steamid as name: {name}")
 
-        # Check kill matrix (it's a list of kill events)
+        # Check kill matrix
         kill_matrix = result.get("kill_matrix", [])
         if isinstance(kill_matrix, list):
             for kill in kill_matrix:
-                victim = kill.get("victim", "")
-                killer = kill.get("killer", "")
-                if victim and victim.isdigit() and len(victim) > 10:
-                    invalid_names.append(f"Kill matrix victim is raw steamid: {victim}")
-                if killer and killer.isdigit() and len(killer) > 10:
-                    invalid_names.append(f"Kill matrix killer is raw steamid: {killer}")
+                for field in ["victim", "killer", "attacker_name", "victim_name"]:
+                    val = kill.get(field, "")
+                    if val and _is_raw_steamid(val):
+                        invalid_names.append(f"Kill matrix {field} is raw steamid: {val}")
 
         if invalid_names:
             msg = "RAW STEAMIDS DETECTED IN OUTPUT:\n" + "\n".join(

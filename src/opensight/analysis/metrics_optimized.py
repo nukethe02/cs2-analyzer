@@ -216,15 +216,19 @@ def compute_ttd_vectorized(
     # float64 only preserves ~15.9 significant digits, so
     # int(float(76561198073476793)) == 76561198073476800 -- wrong!
     # This precision loss causes player lookups to fail silently.
+    # Convert steamids WITHOUT float64 intermediate — pd.to_numeric goes through
+    # float64 which corrupts 17-digit Steam64 IDs (precision loss).
+    from opensight.core.parser import steamid_series_to_int
+
     kills = kills_df[[kill_att_col, kill_vic_col, "tick"]].copy()
     kills.columns = ["attacker_id", "victim_id", "kill_tick"]
-    kills["attacker_id"] = pd.to_numeric(kills["attacker_id"], errors="coerce").astype("Int64")
-    kills["victim_id"] = pd.to_numeric(kills["victim_id"], errors="coerce").astype("Int64")
+    kills["attacker_id"] = steamid_series_to_int(kills["attacker_id"])
+    kills["victim_id"] = steamid_series_to_int(kills["victim_id"])
 
     damages = damages_df[[dmg_att_col, dmg_vic_col, "tick"]].copy()
     damages.columns = ["attacker_id", "victim_id", "dmg_tick"]
-    damages["attacker_id"] = pd.to_numeric(damages["attacker_id"], errors="coerce").astype("Int64")
-    damages["victim_id"] = pd.to_numeric(damages["victim_id"], errors="coerce").astype("Int64")
+    damages["attacker_id"] = steamid_series_to_int(damages["attacker_id"])
+    damages["victim_id"] = steamid_series_to_int(damages["victim_id"])
 
     # For each kill, find the first damage from the same attacker to same victim
     # that occurred within an engagement window BEFORE the kill tick.
@@ -269,9 +273,9 @@ def compute_ttd_vectorized(
 
     # Step 6: Filter valid TTD values and identify prefires
     valid_ttd = first_damage[
-        (first_damage["ttd_ms"] > TTD_MIN_MS) & (first_damage["ttd_ms"] <= TTD_MAX_MS)
+        (first_damage["ttd_ms"] >= TTD_MIN_MS) & (first_damage["ttd_ms"] <= TTD_MAX_MS)
     ]
-    prefires = first_damage[first_damage["ttd_ms"] <= TTD_MIN_MS]
+    prefires = first_damage[first_damage["ttd_ms"] < TTD_MIN_MS]
 
     # Step 7: Group by player and collect results
     player_ttd_values: dict[int, list[float]] = {}

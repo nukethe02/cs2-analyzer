@@ -184,12 +184,15 @@ class TestPlayerNameValidation:
         assert is_valid_player_name("76561198012345678") is False
         assert is_valid_player_name("76561199999999999") is False
 
-    def test_is_valid_player_name_rejects_numeric_only(self):
-        """Pure numeric strings are rejected."""
+    def test_is_valid_player_name_accepts_numeric_names(self):
+        """Pure numeric strings are valid — players CAN choose numeric names."""
         from opensight.core.parser import is_valid_player_name
 
-        assert is_valid_player_name("12345678901234567") is False
-        assert is_valid_player_name("123456") is False
+        # Short numbers are valid player names
+        assert is_valid_player_name("123456") is True
+        assert is_valid_player_name("129310238324") is True
+        # 17-digit number NOT starting with 7656119 is also a valid name
+        assert is_valid_player_name("12345678901234567") is True
 
     def test_is_valid_player_name_accepts_normal_names(self):
         """Normal player names are accepted."""
@@ -696,24 +699,26 @@ class TestRegressionBugs:
         )
 
     def test_player_names_not_steam_ids(self):
-        """Player names should never be raw Steam IDs.
+        """SteamID64 strings should be rejected as player names.
 
-        Regression test for: Player names showing as 17-digit Steam IDs
-        instead of actual names.
+        Only the specific SteamID64 pattern (17+ digits, starts with 7656119)
+        should be rejected. Other numeric strings are valid player names.
         """
         from opensight.core.parser import is_valid_player_name, make_fallback_player_name
 
-        # These are Steam ID formats that should NOT be valid names
-        invalid_as_names = [
-            "76561198012345678",
-            "76561199999999999",
-            "7656119803245612",
-        ]
+        # SteamID64 format: 17 digits starting with 7656119 — MUST be rejected
+        assert not is_valid_player_name("76561198012345678"), (
+            "REGRESSION: SteamID64 accepted as valid name"
+        )
+        assert not is_valid_player_name("76561199999999999"), (
+            "REGRESSION: SteamID64 accepted as valid name"
+        )
 
-        for steam_id_str in invalid_as_names:
-            assert not is_valid_player_name(steam_id_str), (
-                f"REGRESSION: Steam ID '{steam_id_str}' accepted as valid name"
-            )
+        # Non-SteamID64 numeric strings are VALID player names
+        assert is_valid_player_name("7656119803245612"), (
+            "16-digit number should be valid (not a full SteamID64)"
+        )
+        assert is_valid_player_name("129310238324"), "12-digit number should be valid player name"
 
         # Fallback should produce friendly names
         fallback = make_fallback_player_name(76561198012345678)

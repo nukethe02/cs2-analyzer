@@ -102,8 +102,11 @@ def is_valid_player_name(name: str) -> bool:
 
     A valid player name is NOT:
     - Empty or whitespace only
-    - All digits (Steam ID)
-    - Very long numbers (Steam ID 64-bit format)
+    - A SteamID64 (17 digits starting with 7656119)
+
+    Note: All-digit names ARE valid — players can choose numeric names.
+    Only reject the specific SteamID64 pattern that demoparser2 sometimes
+    returns when the real name is unavailable.
 
     Args:
         name: The name string to validate
@@ -114,17 +117,50 @@ def is_valid_player_name(name: str) -> bool:
     if not name or not name.strip():
         return False
 
-    # Steam IDs are typically 17+ digit numbers (SteamID64)
-    # or shorter numbers. If it's all digits, it's probably an ID.
     stripped = name.strip()
-    if stripped.isdigit():
-        return False
 
-    # Also catch cases like "76561198..." (SteamID64 prefix)
-    if stripped.startswith("7656119") and len(stripped) >= 15:
+    # Reject SteamID64 pattern: 17 digits starting with "7656119"
+    # This is the specific pattern demoparser2 returns when name is unavailable.
+    # Do NOT reject all-digit strings — players can have numeric names like "129310238324".
+    if stripped.isdigit() and stripped.startswith("7656119") and len(stripped) >= 17:
         return False
 
     return True
+
+
+def steamid_str_to_int(value) -> int:
+    """Convert a steamid value to int without float64 precision loss.
+
+    Steam64 IDs are 17 digits which exceeds float64's ~15-digit precision.
+    pd.to_numeric().astype(int) corrupts them via float64 intermediate.
+    This function converts directly: str → int (no float64 step).
+    """
+    if value is None:
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        # Already float64 — precision may already be lost, but convert what we have
+        if pd.isna(value):
+            return 0
+        return int(value)
+    # String path — safe, no precision loss
+    s = str(value).strip()
+    if not s or s == "nan" or s == "None":
+        return 0
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return 0
+
+
+def steamid_series_to_int(series: pd.Series) -> pd.Series:
+    """Convert a Series of steamid strings to int64 without float64 precision loss.
+
+    Uses object-dtype intermediate to avoid the str→float64→int truncation
+    that corrupts 17-digit Steam64 IDs.
+    """
+    return series.fillna("0").astype(str).str.strip().replace("", "0").apply(steamid_str_to_int)
 
 
 def make_fallback_player_name(steam_id: int) -> str:
@@ -1936,13 +1972,11 @@ class DemoParser:
             if round_col
             else 0
         )
-        df["_att_id"] = (
-            pd.to_numeric(df.get(att_id, 0), errors="coerce").fillna(0).astype(int) if att_id else 0
-        )
+        # SteamID columns: use steamid_series_to_int to avoid float64 precision loss.
+        # Steam64 IDs are 17 digits; pd.to_numeric().astype(int) corrupts them via float64.
+        df["_att_id"] = steamid_series_to_int(df[att_id]) if att_id else 0
         df["_att_name"] = df.get(att_name, "").fillna("") if att_name else ""
-        df["_vic_id"] = (
-            pd.to_numeric(df.get(vic_id, 0), errors="coerce").fillna(0).astype(int) if vic_id else 0
-        )
+        df["_vic_id"] = steamid_series_to_int(df[vic_id]) if vic_id else 0
         df["_vic_name"] = df.get(vic_name, "").fillna("") if vic_name else ""
         df["_weapon"] = df["weapon"].fillna("") if "weapon" in df.columns else ""
         df["_headshot"] = (
@@ -1968,8 +2002,10 @@ class DemoParser:
             else:
                 df[target] = None
 
-        # Assister fields
-        df["_assister_id"] = pd.to_numeric(df.get("assister_steamid", pd.NA), errors="coerce")
+        # Assister steamid: also needs precision-safe conversion
+        df["_assister_id"] = steamid_series_to_int(
+            df.get("assister_steamid", pd.Series(0, index=df.index))
+        )
         df["_assister_name"] = df.get("assister_name", pd.NA)
 
         # VECTORIZED: Convert to list of dicts (C-speed iteration)
@@ -1994,9 +2030,7 @@ class DemoParser:
                     victim_side=str(r["_vic_side"]),
                     weapon=str(r["_weapon"]) if r["_weapon"] else "",
                     headshot=bool(r["_headshot"]),
-                    assister_steamid=(
-                        int(r["_assister_id"]) if pd.notna(r["_assister_id"]) else None
-                    ),
+                    assister_steamid=(int(r["_assister_id"]) if r["_assister_id"] else None),
                     assister_name=(
                         str(r["_assister_name"]) if pd.notna(r["_assister_name"]) else None
                     ),
@@ -2064,13 +2098,10 @@ class DemoParser:
             if round_col
             else 0
         )
-        df["_att_id"] = (
-            pd.to_numeric(df.get(att_id, 0), errors="coerce").fillna(0).astype(int) if att_id else 0
-        )
+        # SteamID columns: precision-safe conversion (avoids float64 truncation)
+        df["_att_id"] = steamid_series_to_int(df[att_id]) if att_id else 0
         df["_att_name"] = df.get(att_name, "").fillna("") if att_name else ""
-        df["_vic_id"] = (
-            pd.to_numeric(df.get(vic_id, 0), errors="coerce").fillna(0).astype(int) if vic_id else 0
-        )
+        df["_vic_id"] = steamid_series_to_int(df[vic_id]) if vic_id else 0
         df["_vic_name"] = df.get(vic_name, "").fillna("") if vic_name else ""
         df["_damage"] = (
             pd.to_numeric(df.get(dmg_col, 0), errors="coerce").fillna(0).astype(int)

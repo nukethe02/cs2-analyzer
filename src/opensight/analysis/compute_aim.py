@@ -1297,8 +1297,10 @@ def calculate_spray_accuracy_for_player(
     # Sort by tick
     spray_shots.sort(key=lambda s: s.tick)
 
-    # Detect bursts and count shots 4+ in each burst
+    # Detect bursts of 4+ consecutive shots, then include ALL shots in each burst.
+    # Leetify counts every shot in a qualifying spray, not just shots 4+.
     spray_shot_ticks = []
+    burst_start = 0
     burst_shot_count = 1
 
     for i in range(1, len(spray_shots)):
@@ -1307,10 +1309,18 @@ def calculate_spray_accuracy_for_player(
 
         if current.tick - previous.tick <= burst_tick_window:
             burst_shot_count += 1
-            if burst_shot_count >= 4:
-                spray_shot_ticks.append(current.tick)
         else:
+            # End of burst — if it was 4+ shots, include ALL shots from burst_start
+            if burst_shot_count >= 4:
+                for j in range(burst_start, i):
+                    spray_shot_ticks.append(spray_shots[j].tick)
+            burst_start = i
             burst_shot_count = 1
+
+    # Don't forget the last burst
+    if burst_shot_count >= 4:
+        for j in range(burst_start, len(spray_shots)):
+            spray_shot_ticks.append(spray_shots[j].tick)
 
     player.spray_shots_fired = len(spray_shot_ticks)
 

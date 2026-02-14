@@ -115,7 +115,7 @@ GOLDEN_EXPECTATIONS = {
         "deaths": 25,
         "adr": 99.2,
     },
-    "Player_0810": {
+    "129310238324": {
         "team": "CT",
         "hltv_rating": 1.49,
         "kast_percentage": 77.4,
