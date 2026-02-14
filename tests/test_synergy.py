@@ -279,11 +279,11 @@ class TestSynergyAnalyzer:
         mock_data.blinds_df = pd.DataFrame()
         mock_data.rounds_df = pd.DataFrame()
         mock_data.player_persistent_teams = {
-            100: "Team A",
-            101: "Team A",
-            102: "Team A",
-            200: "Team B",
-            201: "Team B",
+            100: 3,
+            101: 3,
+            102: 3,
+            200: 2,
+            201: 2,
         }
         mock_data.player_teams = {}
         mock_data.player_names = {
@@ -295,7 +295,7 @@ class TestSynergyAnalyzer:
         }
         mock_data.num_rounds = 20
         mock_data.tick_rate = 64
-        mock_data.team_starting_sides = {"Team A": "CT", "Team B": "T"}
+        mock_data.team_starting_sides = {"CT": "CT", "T": "T"}
         mock_data.halftime_round = 13
 
         analyzer = SynergyAnalyzer(mock_data)
@@ -365,9 +365,9 @@ class TestSynergyAnalyzer:
         mock_data.blinds_df = pd.DataFrame()
         mock_data.rounds_df = pd.DataFrame()
         mock_data.player_persistent_teams = {
-            100: "Team A",
-            101: "Team A",
-            200: "Team B",
+            100: 3,
+            101: 3,
+            200: 2,
         }
         mock_data.player_teams = {}
         mock_data.player_names = {100: "A", 101: "B", 200: "C"}

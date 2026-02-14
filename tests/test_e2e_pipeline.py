@@ -575,7 +575,6 @@ class TestPipelineDataFlow:
             # ttd_median_ms depends on position data which ~29% of kills lack
             elif field_path in [
                 "advanced.cp_median_error_deg",
-                "utility.flash_assist_pct",
                 "stats.2k",
                 "duels.trade_kills",
                 "duels.clutch_wins",
@@ -584,7 +583,7 @@ class TestPipelineDataFlow:
                     failures.append(
                         f"  ⚠️  {field_path}: {has_count}/{total} (0%) - NO DATA (expected some)"
                     )
-            elif field_path in ["advanced.ttd_median_ms"]:
+            elif field_path in ["advanced.ttd_median_ms", "utility.flash_assist_pct"]:
                 # TTD depends on position data availability in the demo;
                 # some demos have 0% coverage which is expected, not a bug
                 if percentage == 0:

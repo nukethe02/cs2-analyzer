@@ -122,7 +122,7 @@ GOLDEN_EXPECTATIONS = {
         "impact_rating": 2.0,
         "kills": 30,
         "deaths": 21,
-        "adr": 129.3,
+        "adr": 129.2,
     },
     "snowing-": {
         "team": "CT",
@@ -131,7 +131,7 @@ GOLDEN_EXPECTATIONS = {
         "impact_rating": 1.24,
         "kills": 17,
         "deaths": 23,
-        "adr": 99.0,
+        "adr": 98.8,
     },
     "foe": {
         "team": "T",

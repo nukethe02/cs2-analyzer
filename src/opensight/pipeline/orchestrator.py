@@ -25,15 +25,34 @@ TEAM_NAME_MAP = {2: "Terrorists", 3: "Counter-Terrorists"}
 
 
 # Knife weapon identifiers from demoparser2 - used to detect and exclude knife rounds
-KNIFE_WEAPONS = frozenset({
-    "knife", "knife_t", "knife_ct", "bayonet",
-    "knife_butterfly", "knife_tactical", "knife_flip", "knife_push",
-    "knife_karambit", "knife_m9_bayonet", "knife_gut",
-    "knife_survival_bowie", "knife_falchion", "knife_stiletto",
-    "knife_ursus", "knife_widowmaker", "knife_skeleton",
-    "knife_css", "knife_cord", "knife_canis", "knife_outdoor",
-    "knife_ghost", "knife_nomad", "knife_kukri",
-})
+KNIFE_WEAPONS = frozenset(
+    {
+        "knife",
+        "knife_t",
+        "knife_ct",
+        "bayonet",
+        "knife_butterfly",
+        "knife_tactical",
+        "knife_flip",
+        "knife_push",
+        "knife_karambit",
+        "knife_m9_bayonet",
+        "knife_gut",
+        "knife_survival_bowie",
+        "knife_falchion",
+        "knife_stiletto",
+        "knife_ursus",
+        "knife_widowmaker",
+        "knife_skeleton",
+        "knife_css",
+        "knife_cord",
+        "knife_canis",
+        "knife_outdoor",
+        "knife_ghost",
+        "knife_nomad",
+        "knife_kukri",
+    }
+)
 
 
 def is_knife_round(kills_in_round: list, round_num: int = 0) -> bool:
@@ -62,6 +81,8 @@ def is_knife_round(kills_in_round: list, round_num: int = 0) -> bool:
     if round_num == 1 and knife_kills > len(weapons) / 2:
         return True
     return False
+
+
 class DemoOrchestrator:
     """
     Orchestrates the complete demo analysis pipeline.
@@ -77,6 +98,7 @@ class DemoOrchestrator:
     def __init__(self, *, use_cache: bool = True):
         self._use_cache = use_cache
         self._cache = None  # Lazy-init to avoid circular import
+        self._player_names: dict = {}  # Populated in analyze() from demo_data
 
     def _get_cache(self):
         """Lazy-import and create DemoCache to avoid circular import."""
@@ -142,7 +164,6 @@ class DemoOrchestrator:
         if steam_id:
             return make_fallback_player_name(steam_id)
         return "Unknown"
-
 
     def analyze(self, demo_path: Path, *, force: bool = False) -> dict:
         """
@@ -464,7 +485,9 @@ class DemoOrchestrator:
                     continue
                 kill_dict = {
                     "attacker_steamid": str(getattr(kill, "attacker_steamid", 0)),
-                    "attacker_name": self._resolve_player_name(getattr(kill, "attacker_steamid", 0), getattr(kill, "attacker_name", "")),
+                    "attacker_name": self._resolve_player_name(
+                        getattr(kill, "attacker_steamid", 0), getattr(kill, "attacker_name", "")
+                    ),
                     "weapon": getattr(kill, "weapon", ""),
                     "round": getattr(kill, "round_num", 0),
                     "round_num": getattr(kill, "round_num", 0),
@@ -914,7 +937,9 @@ class DemoOrchestrator:
             # 4+ times in orchestrator.py. Consider resolve_player_name(event, attr, steam_id, names).
             # Resolve attacker name with proper fallback
             attacker_id = getattr(kill, "attacker_steamid", 0)
-            attacker_name = self._resolve_player_name(attacker_id, getattr(kill, "attacker_name", ""))
+            attacker_name = self._resolve_player_name(
+                attacker_id, getattr(kill, "attacker_name", "")
+            )
 
             # Resolve victim name with proper fallback
             victim_id = getattr(kill, "victim_steamid", 0)
@@ -1040,7 +1065,9 @@ class DemoOrchestrator:
             tick = getattr(grenade, "tick", 0)
             time_seconds = tick_to_round_time(tick, round_start)
 
-            player_name = self._resolve_player_name(getattr(grenade, "player_steamid", 0), getattr(grenade, "player_name", ""))
+            player_name = self._resolve_player_name(
+                getattr(grenade, "player_steamid", 0), getattr(grenade, "player_name", "")
+            )
             player_team = self._normalize_side(getattr(grenade, "player_side", "Unknown"))
 
             # Determine zone from grenade coordinates (needed by strat engine)
@@ -1087,7 +1114,9 @@ class DemoOrchestrator:
             tick = getattr(blind, "tick", 0)
             time_seconds = tick_to_round_time(tick, round_start)
 
-            attacker_name = self._resolve_player_name(getattr(blind, "attacker_steamid", 0), getattr(blind, "attacker_name", ""))
+            attacker_name = self._resolve_player_name(
+                getattr(blind, "attacker_steamid", 0), getattr(blind, "attacker_name", "")
+            )
             player_team = self._normalize_side(getattr(blind, "attacker_side", "Unknown"))
 
             blinds_by_round[round_num].append(
@@ -1097,7 +1126,9 @@ class DemoOrchestrator:
                     "type": "flash",
                     "player": attacker_name,
                     "player_team": player_team,
-                    "victim": self._resolve_player_name(getattr(blind, "victim_steamid", 0), getattr(blind, "victim_name", "")),
+                    "victim": self._resolve_player_name(
+                        getattr(blind, "victim_steamid", 0), getattr(blind, "victim_name", "")
+                    ),
                     "duration": getattr(blind, "blind_duration", 0),
                     "enemy": not getattr(blind, "is_teammate", False),
                 }
@@ -1156,7 +1187,6 @@ class DemoOrchestrator:
                         break
                     idx -= 1
                 event["was_dry_peek"] = not had_support
-
 
         knife_round_num = self._get_knife_round_num(demo_data)
 
@@ -1450,7 +1480,9 @@ class DemoOrchestrator:
         player_round_kills: dict[str, dict[int, int]] = {}  # name -> {round_num -> kill_count}
 
         for kill in kills:
-            attacker_name = self._resolve_player_name(getattr(kill, "attacker_steamid", 0), getattr(kill, "attacker_name", ""))
+            attacker_name = self._resolve_player_name(
+                getattr(kill, "attacker_steamid", 0), getattr(kill, "attacker_name", "")
+            )
             round_num = getattr(kill, "round_num", 0)
 
             if attacker_name == "Unknown":
@@ -1527,6 +1559,10 @@ class DemoOrchestrator:
         blinds = getattr(demo_data, "blinds", [])
         player_names = getattr(demo_data, "player_names", {})
 
+        # Ensure _player_names is populated (needed by _resolve_player_name)
+        if not self._player_names and player_names:
+            self._player_names = player_names
+
         # Prefer player_persistent_teams (handles halftime correctly) over deprecated player_teams
         player_persistent_teams = getattr(demo_data, "player_persistent_teams", {})
         team_starting_sides = getattr(demo_data, "team_starting_sides", {})
@@ -1537,7 +1573,9 @@ class DemoOrchestrator:
         player_starting_sides = {}
         if player_persistent_teams and team_starting_sides:
             for steamid, persistent_team in player_persistent_teams.items():
-                starting_side = self._normalize_side(team_starting_sides.get(persistent_team, "Unknown"))
+                starting_side = self._normalize_side(
+                    team_starting_sides.get(persistent_team, "Unknown")
+                )
                 player_starting_sides[steamid] = starting_side
 
         rounds = getattr(demo_data, "rounds", [])
@@ -1650,11 +1688,11 @@ class DemoOrchestrator:
         # Build cumulative data for graphs
         players_timeline = []
         for steam_id, round_data in player_round_data.items():
-            # Use last 4 digits for readability instead of raw Steam ID
-            suffix = str(steam_id)[-4:] if steam_id else "0000"
             player_name = self._resolve_player_name(steam_id)
             # Get team - prefer player_starting_sides (persistent teams), fallback to player_teams, then kill inference
-            team = player_starting_sides.get(steam_id) or self._normalize_side(player_teams.get(steam_id, "Unknown"))
+            team = player_starting_sides.get(steam_id) or self._normalize_side(
+                player_teams.get(steam_id, "Unknown")
+            )
             if team == "Unknown":
                 # Try to infer from kills
                 for kill in kills:
@@ -1929,7 +1967,6 @@ class DemoOrchestrator:
     def _build_kill_matrix(self, demo_data) -> list[dict]:
         """Build kill matrix showing who killed who."""
         kills = getattr(demo_data, "kills", [])
-        player_names = getattr(demo_data, "player_names", {})
 
         matrix = {}
         for kill in kills:
@@ -1937,7 +1974,9 @@ class DemoOrchestrator:
             victim_id = getattr(kill, "victim_steamid", 0)
 
             # Resolve attacker name with validation
-            attacker_name = self._resolve_player_name(attacker_id, getattr(kill, "attacker_name", ""))
+            attacker_name = self._resolve_player_name(
+                attacker_id, getattr(kill, "attacker_name", "")
+            )
 
             # Resolve victim name with validation
             victim_name = self._resolve_player_name(victim_id, getattr(kill, "victim_name", ""))
@@ -2019,13 +2058,17 @@ class DemoOrchestrator:
 
             # Get attacker (entry fragger) info
             attacker_id = getattr(first_kill, "attacker_steamid", 0)
-            attacker_name = self._resolve_player_name(attacker_id, getattr(first_kill, "attacker_name", ""))
+            attacker_name = self._resolve_player_name(
+                attacker_id, getattr(first_kill, "attacker_name", "")
+            )
             attacker_side = getattr(first_kill, "attacker_side", "") or ""
             attacker_team = "CT" if "CT" in attacker_side.upper() else "T"
 
             # Get victim (entry death) info
             victim_id = getattr(first_kill, "victim_steamid", 0)
-            victim_name = self._resolve_player_name(victim_id, getattr(first_kill, "victim_name", ""))
+            victim_name = self._resolve_player_name(
+                victim_id, getattr(first_kill, "victim_name", "")
+            )
             victim_side = getattr(first_kill, "victim_side", "") or ""
             victim_team = "CT" if "CT" in victim_side.upper() else "T"
 
@@ -2108,7 +2151,9 @@ class DemoOrchestrator:
                                 "z": g_z,
                                 "tick": g_tick,
                                 "thrower_steamid": thrower_id,
-                                "thrower_name": self._resolve_player_name(thrower_id, getattr(grenade, "player_name", "")),
+                                "thrower_name": self._resolve_player_name(
+                                    thrower_id, getattr(grenade, "player_name", "")
+                                ),
                                 "time_before_ms": int(tick_diff * 1000 / TICK_RATE),
                                 "distance": round(distance, 1),
                             }
@@ -2330,7 +2375,9 @@ class DemoOrchestrator:
                         "phase": phase,
                         "round_type": round_type,
                         "round_num": round_num,
-                        "player_name": self._resolve_player_name(getattr(kill, "attacker_steamid", 0), getattr(kill, "attacker_name", "")),
+                        "player_name": self._resolve_player_name(
+                            getattr(kill, "attacker_steamid", 0), getattr(kill, "attacker_name", "")
+                        ),
                         "player_steamid": getattr(kill, "attacker_steamid", 0),
                         "weapon": getattr(kill, "weapon", ""),
                         "headshot": getattr(kill, "headshot", False),
@@ -2369,7 +2416,9 @@ class DemoOrchestrator:
                         "phase": phase,
                         "round_type": round_type,
                         "round_num": round_num,
-                        "player_name": self._resolve_player_name(getattr(kill, "victim_steamid", 0), getattr(kill, "victim_name", "")),
+                        "player_name": self._resolve_player_name(
+                            getattr(kill, "victim_steamid", 0), getattr(kill, "victim_name", "")
+                        ),
                         "player_steamid": getattr(kill, "victim_steamid", 0),
                     }
                 )
@@ -2422,7 +2471,9 @@ class DemoOrchestrator:
 
                 # Get player info
                 player_steamid = getattr(grenade, "player_steamid", 0)
-                player_name = self._resolve_player_name(player_steamid, getattr(grenade, "player_name", ""))
+                player_name = self._resolve_player_name(
+                    player_steamid, getattr(grenade, "player_name", "")
+                )
                 team = self._normalize_side(getattr(grenade, "player_side", ""))
 
                 # Get zone
@@ -3020,9 +3071,11 @@ class DemoOrchestrator:
             analysis: MatchAnalysis object with match metadata
         """
         try:
-            from opensight.ai.llm_client import generate_batch_summaries, generate_match_summary
             # Early check: skip gracefully if API key not configured (BUG-17)
             import os as _os
+
+            from opensight.ai.llm_client import generate_batch_summaries, generate_match_summary
+
             if not _os.getenv("ANTHROPIC_API_KEY"):
                 logger.info("ANTHROPIC_API_KEY not set - AI coaching unavailable")
                 for player_data in players.values():
@@ -3038,7 +3091,9 @@ class DemoOrchestrator:
             # Build match context
             match_context = {
                 "map_name": getattr(analysis, "map_name", ""),
-                "total_rounds": self._compute_real_score(self._demo_data)[2]  # Subtract knife round,
+                "total_rounds": self._compute_real_score(self._demo_data)[
+                    2
+                ],  # Subtract knife round
                 "team1_score": getattr(analysis, "team1_score", 0),
                 "team2_score": getattr(analysis, "team2_score", 0),
             }

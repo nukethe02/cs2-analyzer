@@ -722,21 +722,21 @@ class DemoAnalyzer:
                 # Filter out self-damage
                 dmg_vic_col = self._find_col(damages_df, self.VIC_ID_COLS)
                 if dmg_vic_col and dmg_vic_col in damages_df.columns:
-                    player_dmg = player_dmg[player_dmg[dmg_vic_col].astype(float) != float(steam_id)]
+                    player_dmg = player_dmg[
+                        player_dmg[dmg_vic_col].astype(float) != float(steam_id)
+                    ]
                 # Filter out team damage (attacker_team == victim_team)
                 dmg_att_team_col = self._find_col(damages_df, self.ATT_SIDE_COLS)
                 dmg_vic_team_col = self._find_col(damages_df, self.VIC_SIDE_COLS)
                 if dmg_att_team_col and dmg_vic_team_col:
-                    player_dmg = player_dmg[player_dmg[dmg_att_team_col] != player_dmg[dmg_vic_team_col]]
+                    player_dmg = player_dmg[
+                        player_dmg[dmg_att_team_col] != player_dmg[dmg_vic_team_col]
+                    ]
                 player.total_damage = int(player_dmg[dmg_col].sum())
 
             # Flash assists (handle demoparser2 column name variants)
             fa_col = self._find_col(kills_df, ["flash_assist", "assistedflash", "is_flash_assist"])
-            if (
-                not kills_df.empty
-                and fa_col
-                and "assister_steamid" in kills_df.columns
-            ):
+            if not kills_df.empty and fa_col and "assister_steamid" in kills_df.columns:
                 flash_assists = kills_df[
                     (kills_df["assister_steamid"].astype(float) == float(steam_id))
                     & (kills_df[fa_col])

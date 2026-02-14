@@ -498,12 +498,10 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
     FLASH_ASSIST_WINDOW_TICKS = 192  # ~3 seconds at 64 tick
 
     # Try native flash_assist field first (handle demoparser2 column name variants)
-    flash_assist_col = analyzer._find_col(kills_df, ["flash_assist", "assistedflash", "is_flash_assist"])
-    if (
-        not kills_df.empty
-        and "assister_steamid" in kills_df.columns
-        and flash_assist_col
-    ):
+    flash_assist_col = analyzer._find_col(
+        kills_df, ["flash_assist", "assistedflash", "is_flash_assist"]
+    )
+    if not kills_df.empty and "assister_steamid" in kills_df.columns and flash_assist_col:
         for steam_id, player in analyzer._players.items():
             flash_assists = kills_df[
                 (kills_df["assister_steamid"] == steam_id) & (kills_df[flash_assist_col])
@@ -902,11 +900,7 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
         if _col in kills_df.columns:
             fa_col = _col
             break
-    if (
-        not kills_df.empty
-        and "assister_steamid" in kills_df.columns
-        and fa_col
-    ):
+    if not kills_df.empty and "assister_steamid" in kills_df.columns and fa_col:
         for steam_id, metrics in result.items():
             steam_id_int = int(steam_id)
             flash_assists = kills_df[
