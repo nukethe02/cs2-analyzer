@@ -1011,6 +1011,19 @@ class DemoParser:
         # Optimize dtypes for memory efficiency
         kills_df = self._optimize_dtypes(kills_df)
         damages_df = self._optimize_dtypes(damages_df)
+
+        # Cap damage at victim's HP before hit (dmg_health reports overkill damage).
+        # Actual damage = min(dmg_health, user_health). Without this cap, ADR is
+        # inflated ~30% because weapon damage exceeds remaining HP on finishing blows.
+        dmg_cap_col = self._find_column(damages_df, ["dmg_health", "damage", "dmg"])
+        if dmg_cap_col and "user_health" in damages_df.columns:
+            victim_hp = pd.to_numeric(damages_df["user_health"], errors="coerce").fillna(100)
+            damages_df[dmg_cap_col] = damages_df[dmg_cap_col].clip(upper=victim_hp)
+            logger.info(
+                f"Capped {dmg_cap_col} at victim HP (max after cap: "
+                f"{damages_df[dmg_cap_col].max()})"
+            )
+
         weapon_fires_df = (
             self._optimize_dtypes(weapon_fires_df) if comprehensive else weapon_fires_df
         )

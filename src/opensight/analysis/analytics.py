@@ -678,7 +678,7 @@ class DemoAnalyzer:
         # Find damage columns
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
         dmg_col = (
-            self._find_col(damages_df, ["dmg_health_real", "dmg_health", "damage", "dmg"])
+            self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
             if not damages_df.empty
             else None
         )
@@ -776,7 +776,7 @@ class DemoAnalyzer:
 
         # Find damage and round columns
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS)
-        dmg_col = self._find_col(damages_df, ["dmg_health_real", "dmg_health", "damage", "dmg"])
+        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
         round_col = self._find_col(damages_df, ["round_num", "round"])
 
         if not dmg_att_col or not dmg_col or not round_col:

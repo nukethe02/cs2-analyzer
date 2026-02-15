@@ -26,6 +26,7 @@ This codebase was damaged by AI inventing field names. Before touching ANY code 
 - Utility stats: `p.utility.flashbangs_thrown` NOT `flashes_thrown`
 - TTD fields: `ttd_median_ms` = engagement duration, NOT reaction time
 - `cp_median_error_deg` on PlayerMatchStats, NOT `cp_median_deg`
+- Damage: `dmg_health` is OVERKILL damage — capped at `user_health` in parser. Do NOT use `dmg_health_real` (doesn't exist)
 - After ANY correction: update this section with the lesson learned
 
 ## Before Making Any Changes (CRITICAL)
