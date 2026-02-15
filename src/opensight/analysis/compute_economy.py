@@ -23,8 +23,30 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _normalize_sid_series(series: pd.Series) -> pd.Series:
+    """Normalize steamid Series to clean strings (no float precision loss)."""
+    s = series.astype(str).str.strip()
+    # Remove trailing .0 from float-stored steamids (e.g. "76561198048426444.0")
+    s = s.str.replace(r"\.0$", "", regex=True)
+    s = s.replace({"nan": "", "None": "", "0": ""})
+    return s
+
+
+def _normalize_sid(sid) -> str:
+    """Normalize a single steamid to a clean string."""
+    s = str(sid).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
 def calculate_kast(analyzer: DemoAnalyzer) -> None:
-    """Calculate KAST (Kill/Assist/Survived/Traded) for each player using optimized lookups."""
+    """Calculate KAST (Kill/Assist/Survived/Traded) for each player.
+
+    Uses STRING-based steamid matching to avoid float64 precision loss
+    on 17-digit SteamIDs (>2^53), which causes set-lookup failures when
+    using pd.to_numeric or float().
+    """
     kills_df = analyzer.data.kills_df
     if (
         kills_df.empty
@@ -37,77 +59,73 @@ def calculate_kast(analyzer: DemoAnalyzer) -> None:
 
     trade_window_ticks = int(TRADE_WINDOW_SECONDS * analyzer.TICK_RATE)
 
-    # Pre-compute lookups using groupby for efficiency
-    kills_df = kills_df.copy()
-    kills_df[analyzer._att_id_col] = pd.to_numeric(kills_df[analyzer._att_id_col], errors="coerce")
-    kills_df[analyzer._vic_id_col] = pd.to_numeric(kills_df[analyzer._vic_id_col], errors="coerce")
+    # Work on a copy — normalize steamids to clean strings
+    kdf = kills_df.copy()
+    att_col = analyzer._att_id_col
+    vic_col = analyzer._vic_id_col
+    kdf[att_col] = _normalize_sid_series(kdf[att_col])
+    kdf[vic_col] = _normalize_sid_series(kdf[vic_col])
 
-    # Create lookup sets: which players got K/A/Died in each round
-    kills_by_round = (
-        kills_df.groupby(analyzer._round_col)[analyzer._att_id_col].apply(set).to_dict()
-    )
-    deaths_by_round = (
-        kills_df.groupby(analyzer._round_col)[analyzer._vic_id_col].apply(set).to_dict()
-    )
+    # Create lookup sets: which players got K/A/Died in each round (string-based)
+    kills_by_round = kdf.groupby(analyzer._round_col)[att_col].apply(set).to_dict()
+    deaths_by_round = kdf.groupby(analyzer._round_col)[vic_col].apply(set).to_dict()
 
-    assists_by_round = {}
-    if "assister_steamid" in kills_df.columns:
-        kills_df["assister_steamid"] = pd.to_numeric(kills_df["assister_steamid"], errors="coerce")
-        assists_by_round = (
-            kills_df.dropna(subset=["assister_steamid"])
-            .groupby(analyzer._round_col)["assister_steamid"]
-            .apply(set)
-            .to_dict()
-        )
+    assists_by_round: dict = {}
+    if "assister_steamid" in kdf.columns:
+        kdf["assister_steamid"] = _normalize_sid_series(kdf["assister_steamid"])
+        valid_assists = kdf[kdf["assister_steamid"] != ""]
+        if not valid_assists.empty:
+            assists_by_round = (
+                valid_assists.groupby(analyzer._round_col)["assister_steamid"].apply(set).to_dict()
+            )
 
     # Pre-compute trade lookup (who was traded in each round)
     traded_by_round: dict[int, set] = {}
-    if analyzer._att_side_col and analyzer._att_side_col in kills_df.columns:
-        # Build player team lookup
-        player_teams = {int(sid): player.team for sid, player in analyzer._players.items()}
+    if analyzer._att_side_col and analyzer._att_side_col in kdf.columns:
+        # Build player team lookup (string keys)
+        player_teams = {
+            _normalize_sid(sid): player.team for sid, player in analyzer._players.items()
+        }
 
-        for round_num in kills_df[analyzer._round_col].unique():
-            round_kills = kills_df[kills_df[analyzer._round_col] == round_num].sort_values(
-                by="tick"
-            )
-            traded_players = set()
+        for round_num in kdf[analyzer._round_col].unique():
+            round_kills = kdf[kdf[analyzer._round_col] == round_num].sort_values(by="tick")
+            traded_players: set = set()
 
             for _idx, death in round_kills.iterrows():
-                victim_id = safe_int(death.get(analyzer._vic_id_col), default=0)
-                if not victim_id:
+                victim_id = str(death.get(vic_col, "")).strip()
+                if not victim_id or victim_id == "nan":
                     continue
 
                 death_tick = safe_int(death.get("tick"))
-                killer_id = safe_int(death.get(analyzer._att_id_col), default=0)
+                killer_id = str(death.get(att_col, "")).strip()
                 victim_team = player_teams.get(victim_id, "")
 
-                if not killer_id or not victim_team:
+                if not killer_id or killer_id in ("", "nan") or not victim_team:
                     continue
 
-                # Check if death was traded
+                # Check if death was traded (killer killed within trade window)
                 trade_mask = (
                     (round_kills["tick"] > death_tick)
                     & (round_kills["tick"] <= death_tick + trade_window_ticks)
-                    & (round_kills[analyzer._vic_id_col] == killer_id)
+                    & (round_kills[vic_col] == killer_id)
                 )
 
-                if analyzer._att_side_col in round_kills.columns:
-                    potential_trades = round_kills[trade_mask]
-                    for _, trade_kill in potential_trades.iterrows():
-                        trader_id = safe_int(trade_kill.get(analyzer._att_id_col), default=0)
-                        trader_team = player_teams.get(trader_id, "")
-                        if trader_team == victim_team:
-                            traded_players.add(victim_id)
-                            break
+                potential_trades = round_kills[trade_mask]
+                for _, trade_kill in potential_trades.iterrows():
+                    trader_id = str(trade_kill.get(att_col, "")).strip()
+                    trader_team = player_teams.get(trader_id, "")
+                    if trader_team == victim_team:
+                        traded_players.add(victim_id)
+                        break
 
             traded_by_round[round_num] = traded_players
 
     # Get unique round numbers
-    round_nums = sorted(kills_df[analyzer._round_col].unique())
+    round_nums = sorted(kdf[analyzer._round_col].unique())
 
     # Calculate KAST for each player
     for steam_id, player in analyzer._players.items():
-        steam_id_float = float(steam_id)
+        sid = _normalize_sid(steam_id)
         kast_count = 0
         survived_count = 0
 
@@ -115,20 +133,20 @@ def calculate_kast(analyzer: DemoAnalyzer) -> None:
             kast_this_round = False
 
             # K - Got a kill
-            if steam_id_float in kills_by_round.get(round_num, set()):
+            if sid in kills_by_round.get(round_num, set()):
                 kast_this_round = True
 
             # A - Got an assist
-            if not kast_this_round and steam_id_float in assists_by_round.get(round_num, set()):
+            if not kast_this_round and sid in assists_by_round.get(round_num, set()):
                 kast_this_round = True
 
             # S - Survived (didn't die)
-            if steam_id_float not in deaths_by_round.get(round_num, set()):
+            if sid not in deaths_by_round.get(round_num, set()):
                 kast_this_round = True
                 survived_count += 1
 
             # T - Was traded
-            if not kast_this_round and steam_id in traded_by_round.get(round_num, set()):
+            if not kast_this_round and sid in traded_by_round.get(round_num, set()):
                 kast_this_round = True
 
             if kast_this_round:

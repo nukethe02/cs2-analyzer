@@ -1029,6 +1029,49 @@ class DemoParser:
         )
         blinds_df = self._optimize_dtypes(blinds_df) if comprehensive else blinds_df
 
+        # ==========================================================
+        # KNIFE ROUND DETECTION — filter at source before processing
+        # ==========================================================
+        # Must happen before _calculate_stats, _build_kills, etc.
+        # so that knife round kills/damages don't inflate K/D/ADR.
+        knife_end_tick = self._detect_knife_round_tick(kills_df, round_end_df)
+        if knife_end_tick is not None:
+            # Filter ALL event DataFrames to remove knife round events
+            if not kills_df.empty and "tick" in kills_df.columns:
+                kills_df = kills_df[kills_df["tick"] > knife_end_tick]
+            if not damages_df.empty and "tick" in damages_df.columns:
+                damages_df = damages_df[damages_df["tick"] > knife_end_tick]
+            if not weapon_fires_df.empty and "tick" in weapon_fires_df.columns:
+                weapon_fires_df = weapon_fires_df[weapon_fires_df["tick"] > knife_end_tick]
+            if not blinds_df.empty and "tick" in blinds_df.columns:
+                blinds_df = blinds_df[blinds_df["tick"] > knife_end_tick]
+
+            # Comprehensive event DataFrames (filter each directly)
+            def _tick_filter(df: pd.DataFrame) -> pd.DataFrame:
+                if not df.empty and "tick" in df.columns:
+                    return df[df["tick"] > knife_end_tick]
+                return df
+
+            grenades_thrown_df = _tick_filter(grenades_thrown_df)
+            flash_det_df = _tick_filter(flash_det_df)
+            he_det_df = _tick_filter(he_det_df)
+            smoke_det_df = _tick_filter(smoke_det_df)
+            molly_det_df = _tick_filter(molly_det_df)
+            bomb_planted_df = _tick_filter(bomb_planted_df)
+            bomb_defused_df = _tick_filter(bomb_defused_df)
+            bomb_exploded_df = _tick_filter(bomb_exploded_df)
+
+            # Remove warmup marker (tick=0) and knife round from round DataFrames
+            round_end_df = round_end_df[round_end_df["tick"] > knife_end_tick].reset_index(
+                drop=True
+            )
+            # Remove corresponding entries from round_start and round_freeze
+            # (first 2 entries = warmup + knife round)
+            if not round_start_df.empty and len(round_start_df) > 2:
+                round_start_df = round_start_df.iloc[2:].reset_index(drop=True)
+            if not round_freeze_df.empty and len(round_freeze_df) > 1:
+                round_freeze_df = round_freeze_df.iloc[1:].reset_index(drop=True)
+
         # Calculate duration
         tick_rate = 64
         max_tick = 0
@@ -1245,6 +1288,81 @@ class DemoParser:
             logger.warning(f"PARSER WARNING: {w}")
 
         return self._data
+
+    # ------------------------------------------------------------------
+    # Knife round detection
+    # ------------------------------------------------------------------
+
+    _KNIFE_WEAPONS = frozenset(
+        {
+            "knife",
+            "knife_t",
+            "knife_ct",
+            "bayonet",
+            "knife_butterfly",
+            "knife_tactical",
+            "knife_flip",
+            "knife_push",
+            "knife_karambit",
+            "knife_m9_bayonet",
+            "knife_gut",
+            "knife_survival_bowie",
+            "knife_falchion",
+            "knife_stiletto",
+            "knife_ursus",
+            "knife_widowmaker",
+            "knife_skeleton",
+            "knife_css",
+            "knife_cord",
+            "knife_canis",
+            "knife_outdoor",
+            "knife_ghost",
+            "knife_nomad",
+            "knife_kukri",
+        }
+    )
+
+    def _detect_knife_round_tick(
+        self, kills_df: pd.DataFrame, round_end_df: pd.DataFrame
+    ) -> int | None:
+        """Detect knife round by checking if ALL kills before the first
+        round_end tick use knife/melee weapons.
+
+        Returns the end tick of the knife round if detected, else None.
+        This lets callers filter event DataFrames with ``tick > end_tick``.
+        """
+        if round_end_df.empty or kills_df.empty:
+            return None
+        if "tick" not in kills_df.columns or "tick" not in round_end_df.columns:
+            return None
+
+        # First valid round_end (skip warmup markers at tick=0)
+        valid_ends = round_end_df[round_end_df["tick"] > 0]
+        if valid_ends.empty:
+            return None
+
+        first_end_tick = int(valid_ends.iloc[0]["tick"])
+
+        # Kills that happened during the candidate knife round
+        early_kills = kills_df[kills_df["tick"] <= first_end_tick]
+        if early_kills.empty:
+            return None  # no kills → not a knife round
+
+        weapon_col = self._find_column(early_kills, ["weapon", "attacker_weapon"])
+        if not weapon_col:
+            return None
+
+        weapons = early_kills[weapon_col].astype(str).str.lower()
+        all_knife = weapons.apply(lambda w: w in self._KNIFE_WEAPONS or w.startswith("knife")).all()
+
+        if all_knife:
+            logger.info(
+                f"Knife round detected at source: {len(early_kills)} knife kills, "
+                f"end tick {first_end_tick}"
+            )
+            return first_end_tick
+
+        return None
 
     def _find_column(
         self, df: pd.DataFrame, options: list[str], cache_key: str = None
@@ -2262,53 +2380,73 @@ class DemoParser:
             )
             rounds.append(round_info)
 
-        # Filter out knife round if present (always first round)
-        # Knife rounds have: non-bomb win reasons, low/no equipment value,
-        # or explicit knife-related keywords in the reason field.
-        # Works for any match format (MR12, MR15, overtime).
-        if len(rounds) >= 2:
-            first_round = rounds[0]
-            first_round_reason_lower = first_round.reason.lower()
+        # Strip non-competitive rounds from the front (warmup markers + knife round).
+        # Uses a while loop because demoparser2 can emit both a warmup marker
+        # (tick=0, reason=NaN) AND a knife round as separate entries.
+        # Three signals for non-competitive first rounds:
+        #   1. Explicit knife reason keywords
+        #   2. Negative duration (end_tick < start_tick) — hallmark of knife rounds
+        #   3. Empty/null reason with zero ticks — warmup markers
+        competitive_reasons = [
+            "bomb_planted",
+            "bomb_defused",
+            "target_bombed",
+            "target_saved",
+            "elimination",
+            "t_killed",
+            "ct_killed",
+            "ct_win",
+            "terrorist_win",
+            "t_win",
+            "hostages_rescued",
+            "hostages_not_rescued",
+            "time_expired",
+        ]
+        competitive_reason_nums = {1, 7, 8, 9, 11, 12, 13}
+        knife_reason_keywords = ["knife", "side", "determination", "pick"]
 
-            # Check for knife round indicators in win reason
-            knife_round_reasons = ["knife", "side", "determination", "pick"]
-            is_knife_reason = any(r in first_round_reason_lower for r in knife_round_reasons)
+        while len(rounds) >= 2:
+            first = rounds[0]
+            reason_lower = first.reason.lower()
 
-            # Check if reason is a normal competitive round end
-            bomb_reasons = [
-                "bomb_planted",
-                "bomb_defused",
-                "target_bombed",
-                "target_saved",
-                "elimination",
-            ]
-            is_bomb_related = any(b in first_round_reason_lower for b in bomb_reasons)
+            # Signal 1: explicit knife reason
+            is_knife_reason = any(k in reason_lower for k in knife_reason_keywords)
 
-            # Also check numeric reason codes for bomb-related endings
-            # 1=TARGET_BOMBED, 7=BOMB_DEFUSED, 12=TARGET_SAVED
+            # Signal 2: negative duration (start_tick > end_tick, both > 0)
+            negative_duration = (
+                first.end_tick > 0 and first.start_tick > 0 and first.start_tick > first.end_tick
+            )
+
+            # Signal 3: warmup marker (tick=0, empty reason)
+            is_warmup_marker = first.end_tick == 0 and not reason_lower.strip()
+
+            # Check if this is a legitimate competitive round
+            is_competitive = any(r in reason_lower for r in competitive_reasons)
             try:
-                reason_num = int(float(first_round_reason_lower))
-                if reason_num in {1, 7, 12}:
-                    is_bomb_related = True
+                rn = int(float(reason_lower))
+                if rn in competitive_reason_nums:
+                    is_competitive = True
             except (ValueError, TypeError):
                 pass
 
-            # Check for no/minimal equipment (knife-only loadout, default knife ~$200)
-            low_equipment = (
-                first_round.ct_equipment_value <= 200 and first_round.t_equipment_value <= 200
-            )
+            should_strip = is_knife_reason or negative_duration or is_warmup_marker
+            # Never strip a round with a clearly competitive reason
+            # (unless it also has negative duration — that means knife round)
+            if should_strip and is_competitive and not negative_duration:
+                should_strip = False
 
-            # Filter if: explicit knife reason, OR (non-bomb reason AND low equipment)
-            if is_knife_reason or (not is_bomb_related and low_equipment):
+            if should_strip:
                 logger.info(
-                    f"Detected and filtering out knife round "
-                    f"(reason: {first_round.reason}, "
-                    f"ct_equip: {first_round.ct_equipment_value}, "
-                    f"t_equip: {first_round.t_equipment_value})"
+                    f"Stripping non-competitive round (reason={first.reason!r}, "
+                    f"start={first.start_tick}, end={first.end_tick}, "
+                    f"knife={is_knife_reason}, neg_dur={negative_duration}, "
+                    f"warmup={is_warmup_marker})"
                 )
                 rounds = rounds[1:]
                 for i in range(len(rounds)):
                     rounds[i].round_num = i + 1
+            else:
+                break  # First round looks competitive, stop stripping
 
         return rounds
 

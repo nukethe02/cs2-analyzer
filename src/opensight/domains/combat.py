@@ -941,13 +941,16 @@ class CombatAnalyzer:
             # Get unique attackers this round
             attackers = round_kills[att_col].unique()
 
-            for steamid in attackers:
-                steamid = safe_int(steamid)
+            for steamid_raw in attackers:
+                steamid = safe_int(steamid_raw)
                 if steamid == 0:
                     continue
 
                 # Get kills by this player, sorted by tick
-                player_kills = round_kills[round_kills[att_col] == steamid].sort_values(tick_col)
+                # Use raw value for DataFrame filtering (str==str), int for result objects
+                player_kills = round_kills[round_kills[att_col] == steamid_raw].sort_values(
+                    tick_col
+                )
 
                 # Filter to spray weapons only (strip weapon_ prefix for matching)
                 weapon_normalized = (

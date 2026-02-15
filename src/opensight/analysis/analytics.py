@@ -697,11 +697,20 @@ class DemoAnalyzer:
             logger.info(f"DataFrame attacker steamids (sample): {list(unique_attackers[:5])}")
             logger.info(f"Attacker column dtype: {kills_df[att_id_col].dtype}")
 
+        # Pre-compute flash assist column for assist filtering
+        fa_col = self._find_col(kills_df, ["assistedflash", "flash_assist", "is_flash_assist"])
+
         for steam_id, player in self._players.items():
             # Kills - use cached column
             if not kills_df.empty and att_id_col in kills_df.columns:
                 # Convert to same type for comparison (handle float vs int issue)
                 player_kills = kills_df[kills_df[att_id_col].astype(float) == float(steam_id)]
+                # Exclude suicides (attacker == victim, e.g. fall damage / world kills)
+                if vic_id_col in kills_df.columns:
+                    player_kills = player_kills[
+                        player_kills[att_id_col].astype(float)
+                        != player_kills[vic_id_col].astype(float)
+                    ]
                 player.kills = len(player_kills)
 
                 if "headshot" in kills_df.columns:
@@ -714,11 +723,14 @@ class DemoAnalyzer:
             if not kills_df.empty and vic_id_col in kills_df.columns:
                 player.deaths = len(kills_df[kills_df[vic_id_col].astype(float) == float(steam_id)])
 
-            # Assists
+            # Assists — exclude flash assists (Leetify counts damage-only assists)
             if not kills_df.empty and "assister_steamid" in kills_df.columns:
-                player.assists = len(
-                    kills_df[kills_df["assister_steamid"].astype(float) == float(steam_id)]
-                )
+                assister_mask = kills_df["assister_steamid"].astype(float) == float(steam_id)
+                if fa_col and fa_col in kills_df.columns:
+                    # Damage assists only: assister matches AND NOT a flash assist
+                    player.assists = len(kills_df[assister_mask & ~kills_df[fa_col]])
+                else:
+                    player.assists = len(kills_df[assister_mask])
 
             # Damage - use dynamic column finding (filter self/team damage for accurate ADR)
             if dmg_att_col and dmg_col:
