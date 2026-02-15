@@ -676,12 +676,13 @@ class DemoAnalyzer:
                 vic_id_col = "user_steamid"  # Default to demoparser2 convention
 
         # Find damage columns
-        # Prefer dmg_health (actual HP removed, capped at victim HP) over
-        # dmg_health_real (theoretical damage including overkill) to match
-        # Leetify/HLTV ADR calculations which cap at actual damage dealt.
+        # Prefer dmg_health_real (theoretical damage per hit) — Leetify/HLTV use this
+        # for ADR. We then clip at 100 per hit to cap overkill (e.g. AWP headshot = 400+
+        # becomes 100). Do NOT use dmg_health here: it caps at victim's remaining HP,
+        # which double-caps and produces ADR values lower than Leetify.
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
         dmg_col = (
-            self._find_col(damages_df, ["dmg_health", "damage", "dmg", "dmg_health_real"])
+            self._find_col(damages_df, ["dmg_health_real", "dmg_health", "damage", "dmg"])
             if not damages_df.empty
             else None
         )
@@ -780,7 +781,7 @@ class DemoAnalyzer:
 
         # Find damage and round columns
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS)
-        dmg_col = self._find_col(damages_df, ["dmg_health", "damage", "dmg", "dmg_health_real"])
+        dmg_col = self._find_col(damages_df, ["dmg_health_real", "dmg_health", "damage", "dmg"])
         round_col = self._find_col(damages_df, ["round_num", "round"])
 
         if not dmg_att_col or not dmg_col or not round_col:

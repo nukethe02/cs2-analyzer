@@ -1182,13 +1182,16 @@ def detect_clutches(analyzer: DemoAnalyzer) -> None:
 
             # Determine outcome: WON requires team win AND player contribution
             # For 1v1: allow bomb/defuse/time wins without kills (valid tactical play)
-            # For 1vN (N>=2): also allow objective wins without kills (bomb plant,
-            # defuse, time-out) — these are legitimate clutch plays
+            # For 1vN (N>=2): require at least 1 kill — hiding while the bomb
+            # happens to explode is not a "clutch"
             if round_winner == side:
-                # Team won = clutch won (the clutcher was last alive, so they
-                # contributed to the win regardless of kill count)
-                outcome = "WON"
-                clutch_won = True
+                if enemies_at_start == 1 or enemies_killed >= 1:
+                    outcome = "WON"
+                    clutch_won = True
+                else:
+                    # Team won but clutcher got 0 kills in 1vN (N>=2) — "saved"
+                    outcome = "SAVED"
+                    clutch_won = False
             elif clutcher_died:
                 outcome = "LOST"
                 clutch_won = False
