@@ -949,8 +949,11 @@ class CombatAnalyzer:
                 # Get kills by this player, sorted by tick
                 player_kills = round_kills[round_kills[att_col] == steamid].sort_values(tick_col)
 
-                # Filter to spray weapons only
-                spray_kills = player_kills[player_kills[weapon_col].str.lower().isin(SPRAY_WEAPONS)]
+                # Filter to spray weapons only (strip weapon_ prefix for matching)
+                weapon_normalized = (
+                    player_kills[weapon_col].str.lower().str.replace("weapon_", "", regex=False)
+                )
+                spray_kills = player_kills[weapon_normalized.isin(SPRAY_WEAPONS)]
 
                 if len(spray_kills) < 2:
                     continue
@@ -960,7 +963,7 @@ class CombatAnalyzer:
 
                 for _, kill in spray_kills.iterrows():
                     tick = safe_int(kill[tick_col])
-                    weapon = str(kill[weapon_col]).lower()
+                    weapon = str(kill[weapon_col]).lower().replace("weapon_", "")
                     victim_name = (
                         str(kill[vic_name_col])
                         if vic_name_col and kill.get(vic_name_col)

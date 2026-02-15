@@ -806,7 +806,7 @@ class MapZones {
                         <span class="zone-kd" style="color: ${kdColor};">${s.kd_ratio.toFixed(2)} K/D</span>
                     </div>
                     <div class="zone-stat-details">
-                        <span>${s.kill_pct}% of kills</span>
+                        <span>${s.kills}K / ${s.deaths}D (${s.kill_pct}%)</span>
                         <span class="kills">${s.kills}K</span>
                         <span class="deaths">${s.deaths}D</span>
                     </div>

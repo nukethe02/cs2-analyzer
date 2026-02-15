@@ -308,7 +308,8 @@ class TestClutchWinRequiresKills:
         clutcher = analyzer._players[76561198000000005]
         # CT5 was in a clutch situation (1v5 after 4 CTs die)
         assert clutcher.clutches.total_situations >= 1
-        # CT5 got 0 kills — should NOT be counted as a win
+        # CT5 got 0 kills in a 1v5 — should NOT be counted as a win
+        # (hiding while team wins is not a "clutch" for 1vN where N>=2)
         assert clutcher.clutches.total_wins == 0
         assert clutcher.clutches.clutches[0].outcome == "SAVED"
         assert clutcher.clutches.clutches[0].enemies_killed == 0

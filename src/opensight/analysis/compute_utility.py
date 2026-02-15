@@ -439,6 +439,7 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
                 "he_grenade",
                 "grenade_he",
                 "hegrenade_projectile",
+                "weapon_hegrenade",
             ]
             molly_weapons = [
                 "molotov",
@@ -446,6 +447,9 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
                 "inferno",
                 "molotov_projectile",
                 "incendiary",
+                "weapon_molotov",
+                "weapon_incgrenade",
+                "incgrenade_projectile",
             ]
 
             # Log weapon distribution in damage events
@@ -455,10 +459,10 @@ def calculate_utility_stats(analyzer: DemoAnalyzer) -> None:
 
             for steam_id, player in analyzer._players.items():
                 # Match steamid handling type differences
-                steam_id_float = float(steam_id)
-                player_dmg = damages_df[
-                    pd.to_numeric(damages_df[att_col], errors="coerce") == steam_id_float
-                ]
+                # Use string comparison to avoid float64 precision loss on 17-digit IDs
+                steam_id_str = str(steam_id)
+                att_values = damages_df[att_col].astype(str).str.split(".").str[0]
+                player_dmg = damages_df[att_values == steam_id_str]
 
                 # HE damage
                 he_dmg = player_dmg[player_dmg[weapon_col].str.lower().isin(he_weapons)]
@@ -830,6 +834,7 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
                 "he_grenade",
                 "grenade_he",
                 "hegrenade_projectile",
+                "weapon_hegrenade",
             ]
             molly_weapons = [
                 "molotov",
@@ -837,6 +842,9 @@ def compute_utility_metrics(match_data: DemoData) -> dict[str, UtilityMetrics]:
                 "inferno",
                 "molotov_projectile",
                 "incendiary",
+                "weapon_molotov",
+                "weapon_incgrenade",
+                "incgrenade_projectile",
             ]
 
             for steam_id, metrics in result.items():

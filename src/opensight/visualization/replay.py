@@ -407,7 +407,13 @@ class ReplayGenerator:
                 else:
                     replay.team2_score += 1
 
-        logger.info(f"Generated replay with {len(replay.rounds)} rounds")
+        if not replay.rounds:
+            logger.warning(
+                "No replay rounds generated — tick-level position data (ticks_df) "
+                "may be unavailable in this demo format."
+            )
+        else:
+            logger.info(f"Generated replay with {len(replay.rounds)} rounds")
         return replay
 
     def generate_round_replay(self, round_num: int) -> RoundReplay | None:

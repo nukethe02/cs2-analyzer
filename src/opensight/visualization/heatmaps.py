@@ -136,10 +136,14 @@ def generate_kill_heatmap(
             except Exception:
                 pass
 
+    kill_count = sum(1 for p in points if p["type"] == "kill")
+    death_count = sum(1 for p in points if p["type"] == "death")
     return {
         "map_name": map_name,
         "points": points,
         "total": len(points),
+        "total_kills": kill_count,
+        "total_deaths": death_count,
     }
 
 

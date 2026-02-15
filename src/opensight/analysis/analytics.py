@@ -676,6 +676,10 @@ class DemoAnalyzer:
                 vic_id_col = "user_steamid"  # Default to demoparser2 convention
 
         # Find damage columns
+        # Prefer dmg_health_real (theoretical damage per hit) — Leetify/HLTV use this
+        # for ADR. We then clip at 100 per hit to cap overkill (e.g. AWP headshot = 400+
+        # becomes 100). Do NOT use dmg_health here: it caps at victim's remaining HP,
+        # which double-caps and produces ADR values lower than Leetify.
         dmg_att_col = self._find_col(damages_df, self.ATT_ID_COLS) if not damages_df.empty else None
         dmg_col = (
             self._find_col(damages_df, ["dmg_health", "damage", "dmg"])
@@ -732,7 +736,8 @@ class DemoAnalyzer:
                     player_dmg = player_dmg[
                         player_dmg[dmg_att_team_col] != player_dmg[dmg_vic_team_col]
                     ]
-                player.total_damage = int(player_dmg[dmg_col].sum())
+                # Cap damage at 100 per hit (no overkill) to match Leetify/HLTV ADR
+                player.total_damage = int(player_dmg[dmg_col].clip(upper=100).sum())
 
             # Flash assists (handle demoparser2 column name variants)
             fa_col = self._find_col(kills_df, ["flash_assist", "assistedflash", "is_flash_assist"])

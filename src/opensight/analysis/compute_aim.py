@@ -736,8 +736,22 @@ def compute_crosshair_placement(analyzer: "DemoAnalyzer") -> None:
         if k.attacker_x is not None and k.attacker_pitch is not None and k.victim_x is not None
     ]
 
+    # PRIORITY: Tick data gives the most accurate CP because we can measure
+    # PRE-ENGAGEMENT crosshair position (before player starts adjusting aim).
+    # Kill-event angles are measured AT kill time (after aim correction), which
+    # produces artificially low CP values compared to Leetify.
+    if analyzer.data.ticks_df is not None and not analyzer.data.ticks_df.empty:
+        required_cols = ["steamid", "X", "Y", "Z", "pitch", "yaw", "tick"]
+        if all(col in analyzer.data.ticks_df.columns for col in required_cols):
+            compute_cp_from_ticks(analyzer)
+            return
+
+    # Fallback: Kill event positions (less accurate - uses post-correction angles)
     if kills_with_pos:
-        logger.info(f"Computing CP from {len(kills_with_pos)} KillEvent objects with position data")
+        logger.info(
+            f"Computing CP from {len(kills_with_pos)} KillEvent objects with position data "
+            "(kill-time angles, may underestimate vs Leetify)"
+        )
         compute_cp_from_kill_events(analyzer, kills_with_pos)
         return
 
@@ -788,13 +802,9 @@ def compute_crosshair_placement(analyzer: "DemoAnalyzer") -> None:
             compute_cp_from_events(analyzer)
             return
 
-    # Final fallback: tick data
-    if analyzer.data.ticks_df is not None and not analyzer.data.ticks_df.empty:
-        compute_cp_from_ticks(analyzer)
-    else:
-        logger.warning(
-            "No position/angle data available for CP computation. Position data requires parsing with player props."
-        )
+    logger.warning(
+        "No position/angle data available for CP computation. Position data requires parsing with player props."
+    )
 
 
 def compute_cp_from_kill_events(analyzer: "DemoAnalyzer", kills: list) -> None:
@@ -1066,17 +1076,40 @@ def compute_cp_from_events(analyzer: "DemoAnalyzer") -> None:
 
 
 def compute_cp_from_ticks(analyzer: "DemoAnalyzer") -> None:
-    """Compute CP from tick-level data (fallback)."""
+    """Compute CP from tick-level data using PRE-ENGAGEMENT crosshair position.
+
+    Uses attacker's crosshair angles from ~500ms BEFORE the first damage event,
+    rather than at kill time. This measures where the crosshair was BEFORE the
+    player started adjusting their aim, matching Leetify's definition of crosshair
+    placement quality.
+    """
     from opensight.analysis.analytics import CrosshairPlacementResult
 
     ticks_df = analyzer.data.ticks_df
     kills_df = analyzer.data.kills_df
-    logger.info("Computing CP from tick data (slower)")
+    damages_df = analyzer.data.damages_df
+    logger.info("Computing CP from tick data (pre-engagement angles)")
 
     required_cols = ["steamid", "X", "Y", "Z", "pitch", "yaw", "tick"]
     if not all(col in ticks_df.columns for col in required_cols):
         logger.warning("Missing columns for tick-based CP")
         return
+
+    # Pre-engagement lookback: 500ms before first damage (Leetify-style)
+    PRE_ENGAGEMENT_LOOKBACK_TICKS = int(500 / analyzer.MS_PER_TICK)
+
+    # Build damage lookup for first damage tick per (attacker, victim)
+    dmg_att_col = (
+        analyzer._find_col(damages_df, analyzer.ATT_ID_COLS) if not damages_df.empty else None
+    )
+    dmg_vic_col = (
+        analyzer._find_col(damages_df, analyzer.VIC_ID_COLS) if not damages_df.empty else None
+    )
+    first_damage_ticks: dict[tuple[int, int], int] = {}
+    if dmg_att_col and dmg_vic_col and "tick" in damages_df.columns:
+        for (att, vic), group in damages_df.groupby([dmg_att_col, dmg_vic_col]):
+            if pd.notna(att) and pd.notna(vic):
+                first_damage_ticks[(int(att), int(vic))] = int(group["tick"].min())
 
     for _, kill_row in kills_df.iterrows():
         try:
@@ -1088,14 +1121,30 @@ def compute_cp_from_ticks(analyzer: "DemoAnalyzer") -> None:
             if not att_id or not vic_id:
                 continue
 
-            att_ticks = ticks_df[(ticks_df["steamid"] == att_id) & (ticks_df["tick"] <= kill_tick)]
-            vic_ticks = ticks_df[(ticks_df["steamid"] == vic_id) & (ticks_df["tick"] <= kill_tick)]
+            # Find the pre-engagement tick: 500ms before first damage
+            first_dmg_tick = first_damage_ticks.get((att_id, vic_id))
+            if first_dmg_tick and first_dmg_tick <= kill_tick:
+                target_tick = first_dmg_tick - PRE_ENGAGEMENT_LOOKBACK_TICKS
+            else:
+                # Fallback: 500ms before kill
+                target_tick = kill_tick - PRE_ENGAGEMENT_LOOKBACK_TICKS
+
+            # Get attacker's state at or before the target tick
+            att_ticks = ticks_df[
+                (ticks_df["steamid"] == att_id) & (ticks_df["tick"] <= target_tick)
+            ]
+            # Get victim's state near the target tick (for position reference)
+            vic_ticks = ticks_df[
+                (ticks_df["steamid"] == vic_id)
+                & (ticks_df["tick"] <= kill_tick)
+                & (ticks_df["tick"] >= target_tick - PRE_ENGAGEMENT_LOOKBACK_TICKS)
+            ]
 
             if att_ticks.empty or vic_ticks.empty:
                 continue
 
-            att_state = att_ticks.iloc[-1]
-            vic_state = vic_ticks.iloc[-1]
+            att_state = att_ticks.iloc[-1]  # Latest tick at or before target
+            vic_state = vic_ticks.iloc[-1]  # Victim position closest to target
 
             att_pos = np.array(
                 [
@@ -1138,7 +1187,7 @@ def compute_cp_from_ticks(analyzer: "DemoAnalyzer") -> None:
             logger.debug(f"Error in tick-based CP: {e}")
             continue
 
-    logger.info(f"Computed CP for {len(analyzer._cp_results)} kills (tick-based)")
+    logger.info(f"Computed CP for {len(analyzer._cp_results)} kills (tick-based, pre-engagement)")
 
 
 def calculate_angular_error(
@@ -1351,8 +1400,13 @@ def calculate_counter_strafing_for_player(
     Excludes non-gun weapons (knife, grenades, C4) since movement doesn't
     affect their accuracy.
     """
-    # Velocity threshold - standard CS2 "stopped" speed for accurate shooting
-    cs_velocity_threshold = 34.0
+    # Velocity threshold for counter-strafe detection.
+    # CS2 accurate shooting speed varies by weapon (~34 u/s for rifles at minimum),
+    # but Leetify uses a higher threshold (~60-80 u/s) that measures effective
+    # deceleration rather than near-zero velocity. Using 64 u/s as a compromise
+    # that accounts for weapon-specific accuracy thresholds and matches Leetify
+    # output more closely.
+    cs_velocity_threshold = 64.0
 
     # Weapons to EXCLUDE from counter-strafe tracking (movement doesn't matter)
     excluded_weapons = {

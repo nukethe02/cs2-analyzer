@@ -236,6 +236,12 @@ async def generate_replay_data(
         generator = ReplayGenerator(data, sample_rate=sample_rate)
         replay = generator.generate_full_replay()
 
+        if not replay.rounds:
+            raise HTTPException(
+                status_code=422,
+                detail="No replay data available. This demo may not contain tick-level position data required for 2D replay.",
+            )
+
         transformer = CoordinateTransformer(data.map_name)
 
         all_replay_frames = [frame for r in replay.rounds for frame in r.frames]

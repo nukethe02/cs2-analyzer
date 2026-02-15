@@ -175,9 +175,10 @@ TRADE_WINDOW_SECONDS = 5.0
 
 # Trade proximity threshold in game units.
 # Only teammates within this distance of a death are counted as having
-# a "trade opportunity". Leetify uses ~1000-1500 units. We use 1500 to
-# be inclusive of teammates holding nearby angles or rotating quickly.
-TRADE_PROXIMITY_UNITS = 1500.0
+# a "trade opportunity". Reduced from 1500 to 1000 to match Leetify's
+# tighter definition — ~1000 units = close enough to realistically trade
+# without requiring a major rotation.
+TRADE_PROXIMITY_UNITS = 1000.0
 
 # Flash assist minimum duration (seconds)
 FLASH_ASSIST_MIN_DURATION = 0.5
