@@ -60,7 +60,9 @@ def is_knife_round(kills_in_round: list, round_num: int = 0) -> bool:
 
     A knife round is identified when:
     - All kill weapons in the round are knives, OR
-    - It is round 1 and majority of kills use knife weapons.
+    - It is one of the first two rounds (0 or 1) and majority of kills use knife weapons.
+
+    Note: demoparser2 may number the knife round as 0 or 1 depending on demo format.
     """
     if not kills_in_round:
         return False
@@ -77,8 +79,8 @@ def is_knife_round(kills_in_round: list, round_num: int = 0) -> bool:
     # All kills are knife kills -> knife round
     if knife_kills == len(weapons):
         return True
-    # Round 1 with majority knife kills -> knife round
-    if round_num == 1 and knife_kills > len(weapons) / 2:
+    # First round (0 or 1) with majority knife kills -> knife round
+    if round_num <= 1 and knife_kills > len(weapons) / 2:
         return True
     return False
 
@@ -109,15 +111,22 @@ class DemoOrchestrator:
         return self._cache
 
     def _get_knife_round_num(self, demo_data) -> int | None:
-        """Detect knife round. Cached after first call."""
+        """Detect knife round. Cached after first call.
+
+        Checks both round 0 and round 1, since demoparser2 may number the
+        warmup/knife round differently depending on demo format.
+        """
         if hasattr(self, "_knife_round_num_cache"):
             return self._knife_round_num_cache
         all_kills = getattr(demo_data, "kills", [])
-        round_1_kills = [k for k in all_kills if getattr(k, "round_num", 0) == 1]
-        if round_1_kills and is_knife_round(round_1_kills, round_num=1):
-            self._knife_round_num_cache = 1
-        else:
-            self._knife_round_num_cache = None
+        # Check round 0 first, then round 1 (knife round is always earliest)
+        for candidate in [0, 1]:
+            candidate_kills = [k for k in all_kills if getattr(k, "round_num", -1) == candidate]
+            if candidate_kills and is_knife_round(candidate_kills, round_num=candidate):
+                self._knife_round_num_cache = candidate
+                logger.info(f"Knife round detected as round {candidate}")
+                return candidate
+        self._knife_round_num_cache = None
         return self._knife_round_num_cache
 
     def _compute_real_score(self, demo_data) -> tuple[int, int, int]:
@@ -345,15 +354,27 @@ class DemoOrchestrator:
                     ),
                 },
                 "advanced": {
-                    # TTD - Time to Damage (engagement duration)
+                    # TTD - Time to Damage
+                    # Prefer true reaction time (visibility → first damage) over
+                    # engagement duration (first damage → kill) for Leetify parity.
                     "ttd_median_ms": (
-                        round(p.ttd_median_ms, 1) if p.ttd_median_ms is not None else None
+                        round(p.reaction_time_median_ms, 1)
+                        if p.reaction_time_median_ms is not None
+                        else (round(p.ttd_median_ms, 1) if p.ttd_median_ms is not None else None)
                     ),
-                    "ttd_mean_ms": (round(p.ttd_mean_ms, 1) if p.ttd_mean_ms is not None else None),
+                    "ttd_mean_ms": (
+                        round(p.reaction_time_mean_ms, 1)
+                        if p.reaction_time_mean_ms is not None
+                        else (round(p.ttd_mean_ms, 1) if p.ttd_mean_ms is not None else None)
+                    ),
                     "ttd_95th_ms": (
-                        round(float(np.percentile(p.engagement_duration_values, 95)), 1)
-                        if p.engagement_duration_values
-                        else None
+                        round(float(np.percentile(p.true_ttd_values, 95)), 1)
+                        if p.true_ttd_values
+                        else (
+                            round(float(np.percentile(p.engagement_duration_values, 95)), 1)
+                            if p.engagement_duration_values
+                            else None
+                        )
                     ),
                     # CP - Crosshair Placement
                     "cp_median_error_deg": (
@@ -424,7 +445,9 @@ class DemoOrchestrator:
                     "counter_strafe_pct": round(p.counter_strafe_pct, 1),
                     # TTD and CP (duplicated here for frontend convenience)
                     "time_to_damage_ms": (
-                        round(p.ttd_median_ms, 1) if p.ttd_median_ms is not None else 0
+                        round(p.reaction_time_median_ms, 1)
+                        if p.reaction_time_median_ms is not None
+                        else (round(p.ttd_median_ms, 1) if p.ttd_median_ms is not None else 0)
                     ),
                     "crosshair_placement_deg": (
                         round(p.cp_median_error_deg, 1) if p.cp_median_error_deg is not None else 0
@@ -609,7 +632,7 @@ class DemoOrchestrator:
                 f"Synergy analysis: {len(synergy.get('pair_synergies', []))} pairs analyzed"
             )
         except Exception as e:
-            logger.debug(f"Synergy analysis not available: {e}")
+            logger.warning(f"Synergy analysis failed: {e}", exc_info=True)
             synergy = {
                 "pair_synergies": [],
                 "best_duo": None,
@@ -646,15 +669,16 @@ class DemoOrchestrator:
         }
 
         # Convert to dict for caching
+        ct_score, t_score, real_rounds = self._compute_real_score(demo_data)
         result = {
             "demo_path": str(demo_path),
             "demo_info": {
                 "map": map_name,
-                "rounds": self._compute_real_score(demo_data)[2],
+                "rounds": real_rounds,
                 "duration_minutes": getattr(analysis, "duration_minutes", 30),
-                "score": self._format_score(demo_data),
-                "score_ct": analysis.team1_score,  # Numeric CT score for AI modules
-                "score_t": analysis.team2_score,  # Numeric T score for AI modules
+                "score": f"{ct_score} - {t_score}",
+                "score_ct": ct_score,  # Corrected: excludes knife round
+                "score_t": t_score,  # Corrected: excludes knife round
                 "total_kills": sum(p["stats"]["kills"] for p in players.values()),
                 "team1_name": getattr(analysis, "team1_name", "Counter-Terrorists"),
                 "team2_name": getattr(analysis, "team2_name", "Terrorists"),
@@ -2055,9 +2079,9 @@ class DemoOrchestrator:
         return [
             {
                 "attacker": k[1],
-                "attacker_steamid": k[0],
+                "attacker_steamid": str(k[0]),
                 "victim": k[3],
-                "victim_steamid": k[2],
+                "victim_steamid": str(k[2]),
                 "count": v,
             }
             for k, v in matrix.items()
@@ -2580,6 +2604,8 @@ class DemoOrchestrator:
             "zone_stats": zone_stats,
             "zone_definitions": zone_definitions,
             "dry_peek_data": dry_peek_data,
+            "total_kills_positioned": len(kill_positions),
+            "total_deaths_positioned": len(death_positions),
         }
 
     def _generate_coaching_insights(self, demo_data, analysis, players: dict) -> list[dict]:
@@ -2664,7 +2690,7 @@ class DemoOrchestrator:
                     insights.append(
                         {
                             "type": "warning",
-                            "message": f"Crosshair placement: {cp:.1f}Â° error ({diff:+.1f}Â° vs avg). Pre-aim head level at common angles",
+                            "message": f"Crosshair placement: {cp:.1f}° error ({diff:+.1f}° vs avg). Pre-aim head level at common angles",
                             "category": "Aim",
                             "metric": "cp_error_deg",
                             "value": cp,
@@ -2676,7 +2702,7 @@ class DemoOrchestrator:
                     insights.append(
                         {
                             "type": "positive",
-                            "message": f"Excellent crosshair placement: {cp:.1f}Â° error - {cp_rating}",
+                            "message": f"Excellent crosshair placement: {cp:.1f}° error - {cp_rating}",
                             "category": "Aim",
                             "metric": "cp_error_deg",
                             "value": cp,
@@ -3688,7 +3714,7 @@ class DemoOrchestrator:
         # CP (lower is better)
         cp = advanced.get("cp_median_error_deg")
         if cp is not None and 0 < cp < 5:
-            notable_stats.append(("precise_aim", 100 - cp, f"{cp:.1f}Â° CP"))
+            notable_stats.append(("precise_aim", 100 - cp, f"{cp:.1f}° CP"))
 
         # Sort by value (highest first) and pick top identity
         notable_stats.sort(key=lambda x: x[1], reverse=True)

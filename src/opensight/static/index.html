@@ -2986,7 +2986,11 @@
                 displayAIReport('tactical', aiAnalysisState.tactical.data);
             } catch (err) {
                 loadingDiv.classList.remove('loading');
-                contentDiv.innerHTML = '<div class="ai-error">Failed to load tactical analysis: ' + esc(err.message) + '</div>';
+                const isApiKeyError = err.message && (err.message.includes('API') || err.message.includes('api_key') || err.message.includes('not configured') || err.message.includes('503'));
+                const errorMsg = isApiKeyError
+                    ? '<div class="ai-error" style="padding: 24px; text-align: center;"><h4 style="margin-bottom: 8px;">AI Analysis Requires API Key</h4><p style="color: var(--text-muted);">Set the <code>ANTHROPIC_API_KEY</code> environment variable on the server to enable AI-powered analysis features.</p></div>'
+                    : '<div class="ai-error">Failed to load tactical analysis: ' + esc(err.message) + '</div>';
+                contentDiv.innerHTML = errorMsg;
                 contentDiv.style.display = 'block';
                 loadingDiv.style.display = 'none';
             }
@@ -3028,7 +3032,11 @@
                 displayAIReport('stratsteal', aiAnalysisState.stratsteal.data);
             } catch (err) {
                 loadingDiv.classList.remove('loading');
-                contentDiv.innerHTML = '<div class="ai-error">Failed to load strat-steal analysis: ' + esc(err.message) + '</div>';
+                const isApiKeyError = err.message && (err.message.includes('API') || err.message.includes('api_key') || err.message.includes('not configured') || err.message.includes('503'));
+                const errorMsg = isApiKeyError
+                    ? '<div class="ai-error" style="padding: 24px; text-align: center;"><h4 style="margin-bottom: 8px;">AI Analysis Requires API Key</h4><p style="color: var(--text-muted);">Set the <code>ANTHROPIC_API_KEY</code> environment variable on the server to enable AI-powered analysis features.</p></div>'
+                    : '<div class="ai-error">Failed to load strat-steal analysis: ' + esc(err.message) + '</div>';
+                contentDiv.innerHTML = errorMsg;
                 contentDiv.style.display = 'block';
                 loadingDiv.style.display = 'none';
             }
@@ -3070,7 +3078,11 @@
                 displayAIReport('selfreview', aiAnalysisState.selfreview.data);
             } catch (err) {
                 loadingDiv.classList.remove('loading');
-                contentDiv.innerHTML = '<div class="ai-error">Failed to load self-review: ' + esc(err.message) + '</div>';
+                const isApiKeyError = err.message && (err.message.includes('API') || err.message.includes('api_key') || err.message.includes('not configured') || err.message.includes('503'));
+                const errorMsg = isApiKeyError
+                    ? '<div class="ai-error" style="padding: 24px; text-align: center;"><h4 style="margin-bottom: 8px;">AI Analysis Requires API Key</h4><p style="color: var(--text-muted);">Set the <code>ANTHROPIC_API_KEY</code> environment variable on the server to enable AI-powered analysis features.</p></div>'
+                    : '<div class="ai-error">Failed to load self-review: ' + esc(err.message) + '</div>';
+                contentDiv.innerHTML = errorMsg;
                 contentDiv.style.display = 'block';
                 loadingDiv.style.display = 'none';
             }
@@ -6549,8 +6561,13 @@
                 `;
             }
 
-            // Build matrix data
-            const playerNames = [...new Set(players.map(p => p.name))];
+            // Build matrix data - group by team (CT first, then T) for readability
+            const sortedPlayers = [...players].sort((a, b) => {
+                const teamA = (a.team || '').toUpperCase().includes('CT') ? 0 : 1;
+                const teamB = (b.team || '').toUpperCase().includes('CT') ? 0 : 1;
+                return teamA - teamB;
+            });
+            const playerNames = [...new Set(sortedPlayers.map(p => p.name))];
             const matrixData = {};
 
             for (const entry of matrix) {
@@ -6613,7 +6630,7 @@
                 if (names.length < 2) return null;
                 const [p1, p2] = names;
                 return { p1, p2, p1Kills: data[p1], p2Kills: data[p2], total: data[p1] + data[p2] };
-            }).filter(Boolean).sort((a, b) => b.total - a.total).slice(0, 20);
+            }).filter(Boolean).sort((a, b) => b.total - a.total).slice(0, 25);
 
             const getColor = (name) => playerTeam[name] === 'CT' ? 'var(--ct-color)' : 'var(--t-color)';
             const getBg = (name) => playerTeam[name] === 'CT' ? 'var(--ct-bg)' : 'var(--t-bg)';
@@ -8387,7 +8404,7 @@
             const playerOptions = players.map(p => {
                 const steamId = p.steam_id || p.steamid || p.id || '';
                 const name = p.name || 'Unknown';
-                return `<option value="${escapeHtml(steamId)}">${escapeHtml(name)} (${escapeHtml(steamId.slice(-4))})</option>`;
+                return `<option value="${escapeHtml(steamId)}">${escapeHtml(name)}</option>`;
             }).join('');
 
             return `
@@ -8411,11 +8428,12 @@
                             </select>
                         </div>
                         <div>
-                            <label style="display: block; color: var(--text-muted); font-size: 0.8rem; margin-bottom: 4px;">Time Period</label>
+                            <label style="display: block; color: var(--text-muted); font-size: 0.8rem; margin-bottom: 4px;">Match History Range</label>
                             <select id="trends-timeframe" style="padding: 10px 12px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.9rem;">
                                 <option value="7">Last 7 days</option>
                                 <option value="30" selected>Last 30 days</option>
                                 <option value="90">Last 90 days</option>
+                                <option value="0">All time</option>
                             </select>
                         </div>
                         <div style="align-self: flex-end;">
@@ -8424,6 +8442,7 @@
                             </button>
                         </div>
                     </div>
+                    <p style="color: var(--text-muted); font-size: 0.75rem; margin-top: -12px; margin-bottom: 16px;">Trends are based on all previously analyzed demos for this player, not just the current match.</p>
 
                     <div id="trends-content" style="display: none;">
                         <!-- Will be populated by loadPlayerTrends() -->

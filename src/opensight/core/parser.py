@@ -2271,6 +2271,15 @@ class DemoParser:
             ]
             is_bomb_related = any(b in first_round_reason_lower for b in bomb_reasons)
 
+            # Also check numeric reason codes for bomb-related endings
+            # 1=TARGET_BOMBED, 7=BOMB_DEFUSED, 12=TARGET_SAVED
+            try:
+                reason_num = int(float(first_round_reason_lower))
+                if reason_num in {1, 7, 12}:
+                    is_bomb_related = True
+            except (ValueError, TypeError):
+                pass
+
             # Check for no/minimal equipment (knife-only loadout, default knife ~$200)
             low_equipment = (
                 first_round.ct_equipment_value <= 200 and first_round.t_equipment_value <= 200

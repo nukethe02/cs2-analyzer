@@ -34,7 +34,13 @@ FLASH_ASSIST_WINDOW_MS = 2500
 
 
 def _normalize_side(side) -> str:
-    """Normalize team side to 'CT' or 'T' from int or string."""
+    """Normalize team side to a consistent string for teammate detection.
+
+    Handles multiple formats from demoparser2:
+    - int: 2=T, 3=CT
+    - str: "CT", "T", "CounterTerrorist", "Terrorist"
+    - str: "Team A", "Team B" (persistent team labels)
+    """
     if isinstance(side, int):
         if side == 3:
             return "CT"
@@ -46,6 +52,10 @@ def _normalize_side(side) -> str:
         return "CT"
     if side_str == "T" or "TERRORIST" in side_str:
         return "T"
+    # Preserve persistent team labels like "Team A" / "Team B" as-is
+    # so teammates are grouped correctly even without CT/T mapping
+    if side_str:
+        return side_str
     return "Unknown"
 
 
